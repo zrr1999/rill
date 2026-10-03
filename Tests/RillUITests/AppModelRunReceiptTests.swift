@@ -1,711 +1,710 @@
-
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
 @testable import RillUI
 
 private actor SuspendedFirstRunReceiptRepository: WorkflowRunReceiptRepository {
-    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
-    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
-        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
-        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+  func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+  func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+    guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+    try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+  }
+
+  private var stored: [UUID: WorkflowRunReceipt] = [:]
+  private var queryCount = 0
+  private var firstSnapshotWasCaptured = false
+  private var firstQueryContinuation: CheckedContinuation<Void, Never>?
+
+  func insertTerminal(_ receipt: WorkflowRunReceipt) throws {
+    stored[receipt.runID] = receipt
+  }
+
+  func receipts(
+    matching query: WorkflowRunReceiptQuery
+  ) async throws -> [WorkflowRunReceipt] {
+    queryCount += 1
+    let snapshot = Array(stored.values)
+    if queryCount == 1 {
+      firstSnapshotWasCaptured = true
+      await withCheckedContinuation { continuation in
+        firstQueryContinuation = continuation
+      }
     }
+    return snapshot.sorted { $0.timestamp > $1.timestamp }
+  }
 
-    private var stored: [UUID: WorkflowRunReceipt] = [:]
-    private var queryCount = 0
-    private var firstSnapshotWasCaptured = false
-    private var firstQueryContinuation: CheckedContinuation<Void, Never>?
+  func deleteReceipts(olderThan cutoff: Date) throws -> Int { 0 }
 
-    func insertTerminal(_ receipt: WorkflowRunReceipt) throws {
-        stored[receipt.runID] = receipt
-    }
+  func deleteAllReceipts() throws -> Int {
+    let count = stored.count
+    stored.removeAll()
+    return count
+  }
 
-    func receipts(
-        matching query: WorkflowRunReceiptQuery
-    ) async throws -> [WorkflowRunReceipt] {
-        queryCount += 1
-        let snapshot = Array(stored.values)
-        if queryCount == 1 {
-            firstSnapshotWasCaptured = true
-            await withCheckedContinuation { continuation in
-                firstQueryContinuation = continuation
-            }
-        }
-        return snapshot.sorted { $0.timestamp > $1.timestamp }
-    }
+  func didCaptureFirstSnapshot() -> Bool {
+    firstSnapshotWasCaptured
+  }
 
-    func deleteReceipts(olderThan cutoff: Date) throws -> Int { 0 }
+  func observedQueryCount() -> Int {
+    queryCount
+  }
 
-    func deleteAllReceipts() throws -> Int {
-        let count = stored.count
-        stored.removeAll()
-        return count
-    }
-
-    func didCaptureFirstSnapshot() -> Bool {
-        firstSnapshotWasCaptured
-    }
-
-    func observedQueryCount() -> Int {
-        queryCount
-    }
-
-    func releaseFirstQuery() {
-        firstQueryContinuation?.resume()
-        firstQueryContinuation = nil
-    }
+  func releaseFirstQuery() {
+    firstQueryContinuation?.resume()
+    firstQueryContinuation = nil
+  }
 }
 
 private actor SwitchableRunReceiptRepository: WorkflowRunReceiptRepository {
-    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
-    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
-        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
-        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+  func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+  func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+    guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+    try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+  }
+
+  enum QueryError: Error { case unavailable }
+
+  private var receiptsByRunID: [UUID: WorkflowRunReceipt]
+  private var clearThrough: Date?
+  private var queryShouldFail = false
+  private var queryCount = 0
+
+  init(receipts: [WorkflowRunReceipt]) {
+    receiptsByRunID = Dictionary(
+      receipts.map { ($0.runID, $0) },
+      uniquingKeysWith: { existing, _ in existing }
+    )
+  }
+
+  func insertTerminal(_ receipt: WorkflowRunReceipt) throws {
+    guard clearThrough.map({ receipt.timestamp > $0 }) ?? true else {
+      throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(
+        runID: receipt.runID
+      )
     }
+    receiptsByRunID[receipt.runID] = receipt
+  }
 
-    enum QueryError: Error { case unavailable }
-
-    private var receiptsByRunID: [UUID: WorkflowRunReceipt]
-    private var clearThrough: Date?
-    private var queryShouldFail = false
-    private var queryCount = 0
-
-    init(receipts: [WorkflowRunReceipt]) {
-        receiptsByRunID = Dictionary(
-            receipts.map { ($0.runID, $0) },
-            uniquingKeysWith: { existing, _ in existing }
-        )
+  func receipts(
+    matching query: WorkflowRunReceiptQuery
+  ) throws -> [WorkflowRunReceipt] {
+    queryCount += 1
+    guard !queryShouldFail else { throw QueryError.unavailable }
+    var receipts = Array(receiptsByRunID.values)
+    if let runID = query.runID {
+      receipts = receipts.filter { $0.runID == runID }
     }
-
-    func insertTerminal(_ receipt: WorkflowRunReceipt) throws {
-        guard clearThrough.map({ receipt.timestamp > $0 }) ?? true else {
-            throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(
-                runID: receipt.runID
-            )
-        }
-        receiptsByRunID[receipt.runID] = receipt
+    if let runIDs = query.runIDs {
+      receipts = receipts.filter { runIDs.contains($0.runID) }
     }
-
-    func receipts(
-        matching query: WorkflowRunReceiptQuery
-    ) throws -> [WorkflowRunReceipt] {
-        queryCount += 1
-        guard !queryShouldFail else { throw QueryError.unavailable }
-        var receipts = Array(receiptsByRunID.values)
-        if let runID = query.runID {
-            receipts = receipts.filter { $0.runID == runID }
-        }
-        if let runIDs = query.runIDs {
-            receipts = receipts.filter { runIDs.contains($0.runID) }
-        }
-        if let since = query.since {
-            receipts = receipts.filter { $0.timestamp >= since }
-        }
-        receipts.sort { $0.timestamp > $1.timestamp }
-        if let limit = query.limit, limit >= 0 {
-            receipts = Array(receipts.prefix(limit))
-        }
-        return receipts
+    if let since = query.since {
+      receipts = receipts.filter { $0.timestamp >= since }
     }
-
-    func deleteReceipts(olderThan cutoff: Date) throws -> Int { 0 }
-
-    func deleteReceipts(through upperBound: Date) async throws -> Int {
-        let originalCount = receiptsByRunID.count
-        receiptsByRunID = receiptsByRunID.filter { $0.value.timestamp > upperBound }
-        if clearThrough.map({ upperBound > $0 }) ?? true {
-            clearThrough = upperBound
-        }
-        return originalCount - receiptsByRunID.count
+    receipts.sort { $0.timestamp > $1.timestamp }
+    if let limit = query.limit, limit >= 0 {
+      receipts = Array(receipts.prefix(limit))
     }
+    return receipts
+  }
 
-    func deleteAllReceipts() throws -> Int { 0 }
+  func deleteReceipts(olderThan cutoff: Date) throws -> Int { 0 }
 
-    func failFutureQueries() {
-        queryShouldFail = true
+  func deleteReceipts(through upperBound: Date) async throws -> Int {
+    let originalCount = receiptsByRunID.count
+    receiptsByRunID = receiptsByRunID.filter { $0.value.timestamp > upperBound }
+    if clearThrough.map({ upperBound > $0 }) ?? true {
+      clearThrough = upperBound
     }
+    return originalCount - receiptsByRunID.count
+  }
 
-    func observedQueryCount() -> Int {
-        queryCount
-    }
+  func deleteAllReceipts() throws -> Int { 0 }
+
+  func failFutureQueries() {
+    queryShouldFail = true
+  }
+
+  func observedQueryCount() -> Int {
+    queryCount
+  }
 }
 
 private actor SuspendedAcceptedInsertRunReceiptRepository: WorkflowRunReceiptRepository {
-    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
-    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
-        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
-        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+  func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+  func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+    guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+    try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+  }
+
+  enum QueryError: Error { case unavailable }
+
+  private var receiptsByRunID: [UUID: WorkflowRunReceipt] = [:]
+  private var clearThrough: Date?
+  private var queryCount = 0
+  private var queryShouldFail = false
+  private var insertWasAccepted = false
+  private var insertContinuation: CheckedContinuation<Void, Never>?
+
+  func insertTerminal(_ receipt: WorkflowRunReceipt) async throws {
+    guard clearThrough.map({ receipt.timestamp > $0 }) ?? true else {
+      throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(
+        runID: receipt.runID
+      )
     }
-
-    enum QueryError: Error { case unavailable }
-
-    private var receiptsByRunID: [UUID: WorkflowRunReceipt] = [:]
-    private var clearThrough: Date?
-    private var queryCount = 0
-    private var queryShouldFail = false
-    private var insertWasAccepted = false
-    private var insertContinuation: CheckedContinuation<Void, Never>?
-
-    func insertTerminal(_ receipt: WorkflowRunReceipt) async throws {
-        guard clearThrough.map({ receipt.timestamp > $0 }) ?? true else {
-            throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(
-                runID: receipt.runID
-            )
-        }
-        receiptsByRunID[receipt.runID] = receipt
-        insertWasAccepted = true
-        await withCheckedContinuation { continuation in
-            insertContinuation = continuation
-        }
+    receiptsByRunID[receipt.runID] = receipt
+    insertWasAccepted = true
+    await withCheckedContinuation { continuation in
+      insertContinuation = continuation
     }
+  }
 
-    func receipts(
-        matching query: WorkflowRunReceiptQuery
-    ) throws -> [WorkflowRunReceipt] {
-        queryCount += 1
-        guard !queryShouldFail else { throw QueryError.unavailable }
-        var receipts = Array(receiptsByRunID.values)
-        if let runID = query.runID {
-            receipts = receipts.filter { $0.runID == runID }
-        }
-        if let runIDs = query.runIDs {
-            receipts = receipts.filter { runIDs.contains($0.runID) }
-        }
-        if let since = query.since {
-            receipts = receipts.filter { $0.timestamp >= since }
-        }
-        receipts.sort { $0.timestamp > $1.timestamp }
-        if let limit = query.limit, limit >= 0 {
-            receipts = Array(receipts.prefix(limit))
-        }
-        return receipts
+  func receipts(
+    matching query: WorkflowRunReceiptQuery
+  ) throws -> [WorkflowRunReceipt] {
+    queryCount += 1
+    guard !queryShouldFail else { throw QueryError.unavailable }
+    var receipts = Array(receiptsByRunID.values)
+    if let runID = query.runID {
+      receipts = receipts.filter { $0.runID == runID }
     }
-
-    func deleteReceipts(olderThan cutoff: Date) throws -> Int { 0 }
-
-    func deleteReceipts(through upperBound: Date) async throws -> Int {
-        let originalCount = receiptsByRunID.count
-        receiptsByRunID = receiptsByRunID.filter { $0.value.timestamp > upperBound }
-        if clearThrough.map({ upperBound > $0 }) ?? true {
-            clearThrough = upperBound
-        }
-        return originalCount - receiptsByRunID.count
+    if let runIDs = query.runIDs {
+      receipts = receipts.filter { runIDs.contains($0.runID) }
     }
-
-    func deleteAllReceipts() throws -> Int { 0 }
-
-    func didAcceptInsert() -> Bool { insertWasAccepted }
-    func observedQueryCount() -> Int { queryCount }
-    func storedCount() -> Int { receiptsByRunID.count }
-
-    func failFutureQueries() {
-        queryShouldFail = true
+    if let since = query.since {
+      receipts = receipts.filter { $0.timestamp >= since }
     }
-
-    func releaseInsert() {
-        insertContinuation?.resume()
-        insertContinuation = nil
+    receipts.sort { $0.timestamp > $1.timestamp }
+    if let limit = query.limit, limit >= 0 {
+      receipts = Array(receipts.prefix(limit))
     }
+    return receipts
+  }
+
+  func deleteReceipts(olderThan cutoff: Date) throws -> Int { 0 }
+
+  func deleteReceipts(through upperBound: Date) async throws -> Int {
+    let originalCount = receiptsByRunID.count
+    receiptsByRunID = receiptsByRunID.filter { $0.value.timestamp > upperBound }
+    if clearThrough.map({ upperBound > $0 }) ?? true {
+      clearThrough = upperBound
+    }
+    return originalCount - receiptsByRunID.count
+  }
+
+  func deleteAllReceipts() throws -> Int { 0 }
+
+  func didAcceptInsert() -> Bool { insertWasAccepted }
+  func observedQueryCount() -> Int { queryCount }
+  func storedCount() -> Int { receiptsByRunID.count }
+
+  func failFutureQueries() {
+    queryShouldFail = true
+  }
+
+  func releaseInsert() {
+    insertContinuation?.resume()
+    insertContinuation = nil
+  }
 }
 
 @MainActor
 final class AppModelRunReceiptTests: XCTestCase {
-    func testDiscardedCaptureReturnsToIdleBeforeARunStarts() {
-        let model = makeHarness().model
-        let workflowID = UUID()
-        let runID = UUID()
-        model.voice.workflowAudioRunState = .recording(workflowID: workflowID)
-        model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording)))
-        model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .hidden)))
-        XCTAssertEqual(model.voice.workflowAudioRunState, .transcribing(workflowID: workflowID))
+  func testDiscardedCaptureReturnsToIdleBeforeARunStarts() {
+    let model = makeHarness().model
+    let workflowID = UUID()
+    let runID = UUID()
+    model.voice.workflowAudioRunState = .recording(workflowID: workflowID)
+    model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording)))
+    model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .hidden)))
+    XCTAssertEqual(model.voice.workflowAudioRunState, .transcribing(workflowID: workflowID))
 
-        model.handle(.runDiscarded(runID: runID))
+    model.handle(.runDiscarded(runID: runID))
 
-        XCTAssertEqual(model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(model.voice.currentCaptureLiveSubtitleSnapshot)
-        XCTAssertNil(model.voice.liveSubtitleSnapshot)
-        XCTAssertFalse(model.voice.isRunning)
-        XCTAssertNil(model.lastFailure)
-        XCTAssertTrue(model.history.historyRecords.isEmpty)
+    XCTAssertEqual(model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(model.voice.currentCaptureLiveSubtitleSnapshot)
+    XCTAssertNil(model.voice.liveSubtitleSnapshot)
+    XCTAssertFalse(model.voice.isRunning)
+    XCTAssertNil(model.lastFailure)
+    XCTAssertTrue(model.history.historyRecords.isEmpty)
+  }
+
+  func testDiscardedInputClearsOnlyItsOwnPresentationWithoutFailureOrHistory() {
+    let harness = makeHarness()
+    let model = harness.model
+    let run = RunSnapshot(
+      runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "Voice"), trigger: .hotkey
+    )
+    model.handle(.runStarted(run))
+    model.handle(.runDiscarded(runID: run.runID))
+    XCTAssertFalse(model.voice.isRunning)
+    XCTAssertNil(model.lastFailure)
+    XCTAssertTrue(model.history.historyRecords.isEmpty)
+
+    let newer = RunSnapshot(
+      runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "New voice"), trigger: .hotkey
+    )
+    model.handle(.runStarted(newer))
+    model.handle(.runDiscarded(runID: run.runID))
+    XCTAssertEqual(model.voice.activeRunID, newer.runID)
+    XCTAssertTrue(model.voice.isRunning)
+    model.handle(.runFailed(runID: newer.runID, workflow: newer.workflow, message: "Provider unavailable"))
+    XCTAssertNotNil(model.lastFailure)
+    model.handle(.runDiscarded(runID: run.runID))
+    XCTAssertNotNil(model.lastFailure)
+  }
+
+  func testAppModelLoadsDurableRunReceiptsWithoutEventReplay() async throws {
+    let receipt = try makeReceipt(trigger: .recordReplay)
+    let repository = try InMemoryWorkflowRunReceiptRepository(receipts: [receipt])
+    let harness = makeHarness(runReceiptRepository: repository)
+
+    let loaded = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
     }
 
-    func testDiscardedInputClearsOnlyItsOwnPresentationWithoutFailureOrHistory() {
-        let harness = makeHarness()
-        let model = harness.model
-        let run = RunSnapshot(
-            runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "Voice"), trigger: .hotkey
-        )
-        model.handle(.runStarted(run))
-        model.handle(.runDiscarded(runID: run.runID))
-        XCTAssertFalse(model.voice.isRunning)
-        XCTAssertNil(model.lastFailure)
-        XCTAssertTrue(model.history.historyRecords.isEmpty)
+    XCTAssertTrue(loaded)
+  }
 
-        let newer = RunSnapshot(
-            runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "New voice"), trigger: .hotkey
-        )
-        model.handle(.runStarted(newer))
-        model.handle(.runDiscarded(runID: run.runID))
-        XCTAssertEqual(model.voice.activeRunID, newer.runID)
-        XCTAssertTrue(model.voice.isRunning)
-        model.handle(.runFailed(runID: newer.runID, workflow: newer.workflow, message: "Provider unavailable"))
-        XCTAssertNotNil(model.lastFailure)
-        model.handle(.runDiscarded(runID: run.runID))
-        XCTAssertNotNil(model.lastFailure)
+  func testRepositoryChangeRefreshesCacheWithoutWritingRepository() async throws {
+    let repository = InMemoryWorkflowRunReceiptRepository()
+    let harness = makeHarness(runReceiptRepository: repository)
+    let receipt = try makeReceipt(trigger: .hotkey)
+    try await repository.insertTerminal(receipt)
+
+    await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
+
+    let loaded = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
+    }
+    let stored = try await repository.receipts(matching: .all)
+    XCTAssertTrue(loaded)
+    XCTAssertEqual(stored, [receipt])
+  }
+
+  func testRepositoryChangeInvalidatesOlderInFlightRepositorySnapshot() async throws {
+    let repository = SuspendedFirstRunReceiptRepository()
+    let harness = makeHarness(runReceiptRepository: repository)
+    let receipt = try makeReceipt(trigger: .recordReplay)
+
+    let firstQueryStarted = await waitUntilAsync {
+      await repository.didCaptureFirstSnapshot()
+    }
+    XCTAssertTrue(firstQueryStarted)
+
+    try await repository.insertTerminal(receipt)
+    await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
+
+    let postPersistReloadStarted = await waitUntilAsync {
+      await repository.observedQueryCount() >= 2
+    }
+    XCTAssertTrue(postPersistReloadStarted)
+    await repository.releaseFirstQuery()
+
+    let retained = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
+    }
+    XCTAssertTrue(retained)
+  }
+
+  func testVisibleHistoryRunLoadsExactReceiptBeyondGlobalRecentLimit() async throws {
+    let now = Date()
+    let requiredRunID = UUID()
+    let requiredReceipt = try makeReceipt(
+      runID: requiredRunID,
+      trigger: .hotkey,
+      timestamp: now.addingTimeInterval(-1_000)
+    )
+    let highTrafficReceipts = try (0..<101).map { offset in
+      try makeReceipt(
+        runID: UUID(),
+        trigger: .recordUse,
+        timestamp: now.addingTimeInterval(-Double(offset))
+      )
+    }
+    let receiptRepository = try InMemoryWorkflowRunReceiptRepository(
+      receipts: highTrafficReceipts + [requiredReceipt]
+    )
+    let historyRepository = InMemoryHistoryRepository(records: [
+      WorkflowResultRecord(
+        runID: requiredRunID,
+        workflow: WorkflowPresentation(fallbackName: "Visible run"),
+        finalText: "result",
+        timestamp: now,
+        outcome: .completed
+      )
+    ])
+    let harness = makeHarness(
+      historyRepository: historyRepository,
+      runReceiptRepository: receiptRepository
+    )
+
+    await waitForHistoryMaintenance(harness)
+    await harness.model.waitForHistoryProjectionLoads()
+
+    XCTAssertEqual(harness.model.workflowRunReceipt(for: requiredRunID), requiredReceipt)
+  }
+
+  func testPersistedVoiceTriggerKeepsCustomResultVisibleAfterWorkflowRemoval() async {
+    let runID = UUID()
+    let record = WorkflowResultRecord(
+      runID: runID,
+      workflowID: UUID(),
+      workflow: WorkflowPresentation(fallbackName: "Removed Custom Dictation"),
+      finalText: "retained voice result",
+      timestamp: Date(),
+      outcome: .completed,
+      trigger: .hotkey
+    )
+    let historyRepository = InMemoryHistoryRepository(records: [record])
+    let harness = makeHarness(
+      workflows: [],
+      historyRepository: historyRepository
+    )
+
+    let loaded = await waitUntil {
+      harness.model.history.historyRecords.contains { $0.runID == runID }
     }
 
-    func testAppModelLoadsDurableRunReceiptsWithoutEventReplay() async throws {
-        let receipt = try makeReceipt(trigger: .recordReplay)
-        let repository = try InMemoryWorkflowRunReceiptRepository(receipts: [receipt])
-        let harness = makeHarness(runReceiptRepository: repository)
+    XCTAssertTrue(loaded)
+    XCTAssertEqual(harness.model.recentVoiceResultRecords.map(\.runID), [runID])
+  }
 
-        let loaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
+  func testLegacyGroupMetadataCannotClassifyClipboardBodyAsVoiceWithoutReceipt() async {
+    let workflow = WorkflowDefinition(
+      name: "Legacy Group Rewrite",
+      pipeline: PipelineDeclaration(
+        recognizerID: "context.selection",
+        outputActions: [OutputActionReference(id: "record.store")]
+      ),
+      ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
+      metadata: [
+        WorkflowMetadataKey.legacyEventType: "groupItemCreated",
+        WorkflowMetadataKey.legacySourceCollectionID: RecordCollection.voiceInputID.rawValue.uuidString,
+        WorkflowMetadataKey.legacyExcludePolishTag: "true",
+        WorkflowMetadataKey.legacyGroupActionKind: RecordCollectionActionKind.editRecord.rawValue,
+      ]
+    )
+    let runID = UUID()
+    let record = WorkflowResultRecord(
+      runID: runID,
+      workflowID: workflow.id,
+      workflow: workflow.presentation,
+      finalText: "legacy clipboard payload",
+      timestamp: Date(),
+      outcome: .completed
+    )
+    let harness = makeHarness(
+      workflows: [workflow],
+      historyRepository: InMemoryHistoryRepository(records: [record])
+    )
 
-        XCTAssertTrue(loaded)
+    let loaded = await waitUntil {
+      harness.model.history.historyRecords.contains { $0.runID == runID }
     }
 
-    func testRepositoryChangeRefreshesCacheWithoutWritingRepository() async throws {
-        let repository = InMemoryWorkflowRunReceiptRepository()
-        let harness = makeHarness(runReceiptRepository: repository)
-        let receipt = try makeReceipt(trigger: .hotkey)
-        try await repository.insertTerminal(receipt)
+    XCTAssertTrue(loaded)
+    XCTAssertTrue(harness.model.recentVoiceHistoryRecords.isEmpty)
+    XCTAssertTrue(harness.model.recentVoiceResultRecords.isEmpty)
+  }
 
-        await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
+  func testLegacyReceiptFallbackIsVoiceButTriggerConflictFailsClosed() async throws {
+    let legacyVoiceRunID = UUID()
+    let conflictingRunID = UUID()
+    let legacyVoice = WorkflowResultRecord(
+      runID: legacyVoiceRunID,
+      workflow: WorkflowPresentation(fallbackName: "Legacy Voice"),
+      finalText: "voice body",
+      timestamp: Date(),
+      outcome: .completed
+    )
+    let conflicting = WorkflowResultRecord(
+      runID: conflictingRunID,
+      workflow: WorkflowPresentation(fallbackName: "Conflicting Body"),
+      finalText: "must stay hidden",
+      timestamp: Date().addingTimeInterval(-1),
+      outcome: .completed,
+      trigger: .manual
+    )
+    let voiceReceipt = try makeReceipt(
+      runID: legacyVoiceRunID,
+      trigger: .failedAudioRecovery
+    )
+    let conflictingReceipt = try makeReceipt(
+      runID: conflictingRunID,
+      trigger: .recordReplay
+    )
+    let receiptRepository = try InMemoryWorkflowRunReceiptRepository(
+      receipts: [voiceReceipt, conflictingReceipt]
+    )
+    let harness = makeHarness(
+      historyRepository: InMemoryHistoryRepository(
+        records: [legacyVoice, conflicting]
+      ),
+      runReceiptRepository: receiptRepository
+    )
 
-        let loaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
-        let stored = try await repository.receipts(matching: .all)
-        XCTAssertTrue(loaded)
-        XCTAssertEqual(stored, [receipt])
+    let loaded = await waitUntil {
+      harness.model.history.historyRecords.count == 2
+        && harness.model.workflowRunReceipt(for: legacyVoiceRunID) == voiceReceipt
+        && harness.model.workflowRunReceipt(for: conflictingRunID) == conflictingReceipt
     }
 
-    func testRepositoryChangeInvalidatesOlderInFlightRepositorySnapshot() async throws {
-        let repository = SuspendedFirstRunReceiptRepository()
-        let harness = makeHarness(runReceiptRepository: repository)
-        let receipt = try makeReceipt(trigger: .recordReplay)
+    XCTAssertTrue(loaded)
+    XCTAssertEqual(
+      harness.model.recentVoiceResultRecords.map(\.runID),
+      [legacyVoiceRunID]
+    )
+  }
 
-        let firstQueryStarted = await waitUntilAsync {
-            await repository.didCaptureFirstSnapshot()
-        }
-        XCTAssertTrue(firstQueryStarted)
+  func testCompletedExplicitClearRemovesCachedReceiptWhenReloadFails() async throws {
+    let receipt = try makeReceipt(trigger: .recordUse)
+    let repository = SwitchableRunReceiptRepository(receipts: [receipt])
+    let maintenance = UITestLocalHistoryMaintenance(
+      fallbackResult: .completed(
+        LocalHistoryMaintenanceCounts(runReceiptRemovedCount: 1)
+      )
+    )
+    let harness = makeHarness(
+      runReceiptRepository: repository,
+      localHistoryMaintenance: maintenance
+    )
+    let initiallyLoaded = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
+    }
+    XCTAssertTrue(initiallyLoaded)
+    await repository.failFutureQueries()
 
-        try await repository.insertTerminal(receipt)
-        await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
-
-        let postPersistReloadStarted = await waitUntilAsync {
-            await repository.observedQueryCount() >= 2
-        }
-        XCTAssertTrue(postPersistReloadStarted)
-        await repository.releaseFirstQuery()
-
-        let retained = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
-        XCTAssertTrue(retained)
+    harness.model.clearRunHistory()
+    let maintenanceFinished = await waitUntil {
+      !harness.model.history.isLocalHistoryMaintenanceRunning
     }
 
-    func testVisibleHistoryRunLoadsExactReceiptBeyondGlobalRecentLimit() async throws {
-        let now = Date()
-        let requiredRunID = UUID()
-        let requiredReceipt = try makeReceipt(
-            runID: requiredRunID,
-            trigger: .hotkey,
-            timestamp: now.addingTimeInterval(-1_000)
-        )
-        let highTrafficReceipts = try (0..<101).map { offset in
-            try makeReceipt(
-                runID: UUID(),
-                trigger: .recordUse,
-                timestamp: now.addingTimeInterval(-Double(offset))
-            )
-        }
-        let receiptRepository = try InMemoryWorkflowRunReceiptRepository(
-            receipts: highTrafficReceipts + [requiredReceipt]
-        )
-        let historyRepository = InMemoryHistoryRepository(records: [
-            WorkflowResultRecord(
-                runID: requiredRunID,
-                workflow: WorkflowPresentation(fallbackName: "Visible run"),
-                finalText: "result",
-                timestamp: now,
-                outcome: .completed
-            ),
-        ])
-        let harness = makeHarness(
-            historyRepository: historyRepository,
-            runReceiptRepository: receiptRepository
-        )
+    XCTAssertTrue(maintenanceFinished)
+    XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
+  }
 
-        await waitForHistoryMaintenance(harness)
-        await harness.model.waitForHistoryProjectionLoads()
-
-        XCTAssertEqual(harness.model.workflowRunReceipt(for: requiredRunID), requiredReceipt)
+  func testLateRepositoryChangeCannotResurrectClearedReceiptWhenReloadFails() async throws {
+    let receipt = try makeReceipt(trigger: .recordUse)
+    let repository = SwitchableRunReceiptRepository(receipts: [receipt])
+    let maintenance = UITestLocalHistoryMaintenance(
+      fallbackResult: .completed(
+        LocalHistoryMaintenanceCounts(runReceiptRemovedCount: 1)
+      )
+    )
+    let harness = makeHarness(
+      runReceiptRepository: repository,
+      localHistoryMaintenance: maintenance
+    )
+    let initiallyLoaded = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
     }
+    XCTAssertTrue(initiallyLoaded)
+    await repository.failFutureQueries()
 
-    func testPersistedVoiceTriggerKeepsCustomResultVisibleAfterWorkflowRemoval() async {
-        let runID = UUID()
-        let record = WorkflowResultRecord(
-            runID: runID,
-            workflowID: UUID(),
-            workflow: WorkflowPresentation(fallbackName: "Removed Custom Dictation"),
-            finalText: "retained voice result",
-            timestamp: Date(),
-            outcome: .completed,
-            trigger: .hotkey
-        )
-        let historyRepository = InMemoryHistoryRepository(records: [record])
-        let harness = makeHarness(
-            workflows: [],
-            historyRepository: historyRepository
-        )
-
-        let loaded = await waitUntil {
-            harness.model.history.historyRecords.contains { $0.runID == runID }
-        }
-
-        XCTAssertTrue(loaded)
-        XCTAssertEqual(harness.model.recentVoiceResultRecords.map(\.runID), [runID])
+    harness.model.clearRunHistory()
+    let maintenanceFinished = await waitUntil {
+      !harness.model.history.isLocalHistoryMaintenanceRunning
     }
+    XCTAssertTrue(maintenanceFinished)
+    let queryCountBeforeLateEvent = await repository.observedQueryCount()
 
-    func testLegacyGroupMetadataCannotClassifyClipboardBodyAsVoiceWithoutReceipt() async {
-        let workflow = WorkflowDefinition(
-            name: "Legacy Group Rewrite",
-            pipeline: PipelineDeclaration(
-                recognizerID: "context.selection",
-                outputActions: [OutputActionReference(id: "record.store")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-            metadata: [
-                WorkflowMetadataKey.legacyEventType: "groupItemCreated",
-                WorkflowMetadataKey.legacySourceCollectionID: RecordCollection.voiceInputID.rawValue.uuidString,
-                WorkflowMetadataKey.legacyExcludePolishTag: "true",
-                WorkflowMetadataKey.legacyGroupActionKind: RecordCollectionActionKind.editRecord.rawValue,
-            ]
-        )
-        let runID = UUID()
-        let record = WorkflowResultRecord(
-            runID: runID,
-            workflowID: workflow.id,
-            workflow: workflow.presentation,
-            finalText: "legacy clipboard payload",
-            timestamp: Date(),
-            outcome: .completed
-        )
-        let harness = makeHarness(
-            workflows: [workflow],
-            historyRepository: InMemoryHistoryRepository(records: [record])
-        )
-
-        let loaded = await waitUntil {
-            harness.model.history.historyRecords.contains { $0.runID == runID }
-        }
-
-        XCTAssertTrue(loaded)
-        XCTAssertTrue(harness.model.recentVoiceHistoryRecords.isEmpty)
-        XCTAssertTrue(harness.model.recentVoiceResultRecords.isEmpty)
+    await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
+    let reloadAttempted = await waitUntilAsync {
+      await repository.observedQueryCount() > queryCountBeforeLateEvent
     }
+    XCTAssertTrue(reloadAttempted)
+    XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
+  }
 
-    func testLegacyReceiptFallbackIsVoiceButTriggerConflictFailsClosed() async throws {
-        let legacyVoiceRunID = UUID()
-        let conflictingRunID = UUID()
-        let legacyVoice = WorkflowResultRecord(
-            runID: legacyVoiceRunID,
-            workflow: WorkflowPresentation(fallbackName: "Legacy Voice"),
-            finalText: "voice body",
-            timestamp: Date(),
-            outcome: .completed
-        )
-        let conflicting = WorkflowResultRecord(
-            runID: conflictingRunID,
-            workflow: WorkflowPresentation(fallbackName: "Conflicting Body"),
-            finalText: "must stay hidden",
-            timestamp: Date().addingTimeInterval(-1),
-            outcome: .completed,
-            trigger: .manual
-        )
-        let voiceReceipt = try makeReceipt(
-            runID: legacyVoiceRunID,
-            trigger: .failedAudioRecovery
-        )
-        let conflictingReceipt = try makeReceipt(
-            runID: conflictingRunID,
-            trigger: .recordReplay
-        )
-        let receiptRepository = try InMemoryWorkflowRunReceiptRepository(
-            receipts: [voiceReceipt, conflictingReceipt]
-        )
-        let harness = makeHarness(
-            historyRepository: InMemoryHistoryRepository(
-                records: [legacyVoice, conflicting]
-            ),
-            runReceiptRepository: receiptRepository
-        )
-
-        let loaded = await waitUntil {
-            harness.model.history.historyRecords.count == 2
-                && harness.model.workflowRunReceipt(for: legacyVoiceRunID) == voiceReceipt
-                && harness.model.workflowRunReceipt(for: conflictingRunID) == conflictingReceipt
-        }
-
-        XCTAssertTrue(loaded)
-        XCTAssertEqual(
-            harness.model.recentVoiceResultRecords.map(\.runID),
-            [legacyVoiceRunID]
-        )
+  func testRepositoryChangeDeliveredAfterDurableClearFailsClosedWhenReloadFails() async throws {
+    let receipt = try makeReceipt(trigger: .hotkey)
+    let repository = SwitchableRunReceiptRepository(receipts: [receipt])
+    let harness = makeHarness(runReceiptRepository: repository)
+    let initiallyLoaded = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
     }
+    XCTAssertTrue(initiallyLoaded)
 
-    func testCompletedExplicitClearRemovesCachedReceiptWhenReloadFails() async throws {
-        let receipt = try makeReceipt(trigger: .recordUse)
-        let repository = SwitchableRunReceiptRepository(receipts: [receipt])
-        let maintenance = UITestLocalHistoryMaintenance(
-            fallbackResult: .completed(
-                LocalHistoryMaintenanceCounts(runReceiptRemovedCount: 1)
-            )
-        )
-        let harness = makeHarness(
-            runReceiptRepository: repository,
-            localHistoryMaintenance: maintenance
-        )
-        let initiallyLoaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
-        XCTAssertTrue(initiallyLoaded)
-        await repository.failFutureQueries()
+    // This ordering is the recorder's insert-return -> clear -> event-delivery
+    // window. The notification is deliberately delivered only after the
+    // durable row and its inclusive timestamp have been cleared.
+    let removedCount = try await repository.deleteReceipts(
+      through: receipt.timestamp
+    )
+    XCTAssertEqual(removedCount, 1)
+    await repository.failFutureQueries()
+    let queryCountBeforeChange = await repository.observedQueryCount()
 
-        harness.model.clearRunHistory()
-        let maintenanceFinished = await waitUntil {
-            !harness.model.history.isLocalHistoryMaintenanceRunning
-        }
+    await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
 
-        XCTAssertTrue(maintenanceFinished)
-        XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
+    let reloadAttempted = await waitUntilAsync {
+      await repository.observedQueryCount() > queryCountBeforeChange
     }
+    XCTAssertTrue(reloadAttempted)
+    XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
+  }
 
-    func testLateRepositoryChangeCannotResurrectClearedReceiptWhenReloadFails() async throws {
-        let receipt = try makeReceipt(trigger: .recordUse)
-        let repository = SwitchableRunReceiptRepository(receipts: [receipt])
-        let maintenance = UITestLocalHistoryMaintenance(
-            fallbackResult: .completed(
-                LocalHistoryMaintenanceCounts(runReceiptRemovedCount: 1)
-            )
-        )
-        let harness = makeHarness(
-            runReceiptRepository: repository,
-            localHistoryMaintenance: maintenance
-        )
-        let initiallyLoaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
-        XCTAssertTrue(initiallyLoaded)
-        await repository.failFutureQueries()
+  func testRecorderInsertReturnAfterConcurrentClearPublishesOnlyFailClosedInvalidation() async throws {
+    let repository = SuspendedAcceptedInsertRunReceiptRepository()
+    let harness = makeHarness(runReceiptRepository: repository)
+    let terminalTimestamp = Date()
+    let runID = UUID()
+    let recorder = WorkflowRunReceiptRecorder(
+      repository: repository,
+      eventBus: harness.eventBus,
+      wallClock: { terminalTimestamp }
+    )
+    try await recorder.begin(runID: runID, workflowID: UUID(), trigger: .hotkey)
 
-        harness.model.clearRunHistory()
-        let maintenanceFinished = await waitUntil {
-            !harness.model.history.isLocalHistoryMaintenanceRunning
-        }
-        XCTAssertTrue(maintenanceFinished)
-        let queryCountBeforeLateEvent = await repository.observedQueryCount()
-
-        await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
-        let reloadAttempted = await waitUntilAsync {
-            await repository.observedQueryCount() > queryCountBeforeLateEvent
-        }
-        XCTAssertTrue(reloadAttempted)
-        XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
+    let finishTask = Task {
+      try await recorder.finish(runID: runID, termination: .completed)
     }
-
-    func testRepositoryChangeDeliveredAfterDurableClearFailsClosedWhenReloadFails() async throws {
-        let receipt = try makeReceipt(trigger: .hotkey)
-        let repository = SwitchableRunReceiptRepository(receipts: [receipt])
-        let harness = makeHarness(runReceiptRepository: repository)
-        let initiallyLoaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
-        XCTAssertTrue(initiallyLoaded)
-
-        // This ordering is the recorder's insert-return -> clear -> event-delivery
-        // window. The notification is deliberately delivered only after the
-        // durable row and its inclusive timestamp have been cleared.
-        let removedCount = try await repository.deleteReceipts(
-            through: receipt.timestamp
-        )
-        XCTAssertEqual(removedCount, 1)
-        await repository.failFutureQueries()
-        let queryCountBeforeChange = await repository.observedQueryCount()
-
-        await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
-
-        let reloadAttempted = await waitUntilAsync {
-            await repository.observedQueryCount() > queryCountBeforeChange
-        }
-        XCTAssertTrue(reloadAttempted)
-        XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
+    let insertAccepted = await waitUntilAsync {
+      await repository.didAcceptInsert()
     }
+    XCTAssertTrue(insertAccepted)
 
-    func testRecorderInsertReturnAfterConcurrentClearPublishesOnlyFailClosedInvalidation() async throws {
-        let repository = SuspendedAcceptedInsertRunReceiptRepository()
-        let harness = makeHarness(runReceiptRepository: repository)
-        let terminalTimestamp = Date()
-        let runID = UUID()
-        let recorder = WorkflowRunReceiptRecorder(
-            repository: repository,
-            eventBus: harness.eventBus,
-            wallClock: { terminalTimestamp }
-        )
-        try await recorder.begin(runID: runID, workflowID: UUID(), trigger: .hotkey)
+    // The insert is already accepted, but its actor call is suspended before
+    // returning to the recorder. The clear therefore linearizes between the
+    // durable insert and the later repository-change publication.
+    let removedCount = try await repository.deleteReceipts(
+      through: terminalTimestamp
+    )
+    XCTAssertEqual(removedCount, 1)
+    await repository.failFutureQueries()
+    let queryCountBeforeRelease = await repository.observedQueryCount()
+    await repository.releaseInsert()
+    let receipt = try await finishTask.value
+    XCTAssertEqual(receipt.runID, runID)
 
-        let finishTask = Task {
-            try await recorder.finish(runID: runID, termination: .completed)
-        }
-        let insertAccepted = await waitUntilAsync {
-            await repository.didAcceptInsert()
-        }
-        XCTAssertTrue(insertAccepted)
-
-        // The insert is already accepted, but its actor call is suspended before
-        // returning to the recorder. The clear therefore linearizes between the
-        // durable insert and the later repository-change publication.
-        let removedCount = try await repository.deleteReceipts(
-            through: terminalTimestamp
-        )
-        XCTAssertEqual(removedCount, 1)
-        await repository.failFutureQueries()
-        let queryCountBeforeRelease = await repository.observedQueryCount()
-        await repository.releaseInsert()
-        let receipt = try await finishTask.value
-        XCTAssertEqual(receipt.runID, runID)
-
-        let reloadAttempted = await waitUntilAsync {
-            await repository.observedQueryCount() > queryCountBeforeRelease
-        }
-        let storedCount = await repository.storedCount()
-        XCTAssertTrue(reloadAttempted)
-        XCTAssertEqual(storedCount, 0)
-        XCTAssertNil(harness.model.workflowRunReceipt(for: runID))
+    let reloadAttempted = await waitUntilAsync {
+      await repository.observedQueryCount() > queryCountBeforeRelease
     }
+    let storedCount = await repository.storedCount()
+    XCTAssertTrue(reloadAttempted)
+    XCTAssertEqual(storedCount, 0)
+    XCTAssertNil(harness.model.workflowRunReceipt(for: runID))
+  }
 
-    func testLateCompletionAfterClearDoesNotRecreateHistory() async throws {
-        let historyRepository = InMemoryHistoryRepository()
-        let receiptRepository = InMemoryWorkflowRunReceiptRepository()
-        let maintenance = UITestLocalHistoryMaintenance(
-            fallbackResult: .completed(
-                LocalHistoryMaintenanceCounts(runReceiptRemovedCount: 1)
-            )
-        )
-        let harness = makeHarness(
-            historyRepository: historyRepository,
-            runReceiptRepository: receiptRepository,
-            localHistoryMaintenance: maintenance
-        )
-        let receipt = try makeReceipt(
-            trigger: .hotkey,
-            timestamp: Date(timeIntervalSince1970: 10)
-        )
-        let receiptGeneration = try await receiptRepository.captureRunHistoryWriteGeneration()
-        try await receiptRepository.insertTerminal(receipt)
-        await harness.eventBus.publish(
-            repositoryChangeEvent(
-                for: receipt,
-                writeGeneration: receiptGeneration
-            )
-        )
-        let receiptLoaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
-        XCTAssertTrue(receiptLoaded)
-
-        let clearGeneration = try await historyRepository.captureRunHistoryWriteGeneration()
-        let clearTransition = try RunHistoryClearTransition(advancing: clearGeneration)
-        _ = try await historyRepository.deleteRecords(
-            obsoletedBy: clearTransition,
-            preservingLegacyRowsAfter: nil
-        )
-        _ = try await receiptRepository.deleteReceipts(
-            obsoletedBy: clearTransition,
-            preservingLegacyRowsAfter: nil
-        )
-        harness.model.clearRunHistory()
-        let maintenanceFinished = await waitUntil {
-            !harness.model.history.isLocalHistoryMaintenanceRunning
-                && harness.model.workflowRunReceipt(for: receipt.runID) == nil
-        }
-        XCTAssertTrue(maintenanceFinished)
-
-        await harness.eventBus.publish(
-            .runCompleted(
-                WorkflowRunSummary(
-                    runID: receipt.runID,
-                    workflowID: receipt.workflowID ?? UUID(),
-                    workflow: WorkflowPresentation(fallbackName: "Late completion"),
-                    trigger: receipt.trigger,
-                    finalText: "result",
-                    finishedAt: Date(timeIntervalSince1970: 30)
-                )
-            )
-        )
-        for _ in 0..<20 { await Task.yield() }
-
-        let storedHistory = try await historyRepository.records(matching: .all)
-        XCTAssertTrue(storedHistory.isEmpty)
-        XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == receipt.runID })
+  func testLateCompletionAfterClearDoesNotRecreateHistory() async throws {
+    let historyRepository = InMemoryHistoryRepository()
+    let receiptRepository = InMemoryWorkflowRunReceiptRepository()
+    let maintenance = UITestLocalHistoryMaintenance(
+      fallbackResult: .completed(
+        LocalHistoryMaintenanceCounts(runReceiptRemovedCount: 1)
+      )
+    )
+    let harness = makeHarness(
+      historyRepository: historyRepository,
+      runReceiptRepository: receiptRepository,
+      localHistoryMaintenance: maintenance
+    )
+    let receipt = try makeReceipt(
+      trigger: .hotkey,
+      timestamp: Date(timeIntervalSince1970: 10)
+    )
+    let receiptGeneration = try await receiptRepository.captureRunHistoryWriteGeneration()
+    try await receiptRepository.insertTerminal(receipt)
+    await harness.eventBus.publish(
+      repositoryChangeEvent(
+        for: receipt,
+        writeGeneration: receiptGeneration
+      )
+    )
+    let receiptLoaded = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
     }
+    XCTAssertTrue(receiptLoaded)
 
-    private func makeReceipt(
-        runID: UUID = UUID(),
-        trigger: WorkflowRunTriggerKind,
-        timestamp: Date = Date()
-    ) throws -> WorkflowRunReceipt {
-        try WorkflowRunReceipt(
-            runID: runID,
-            workflowID: UUID(),
-            trigger: trigger,
-            timestamp: timestamp,
-            duration: .under250ms,
-            termination: .completed,
-            actionDetails: [
-                WorkflowActionReceipt(
-                    actionIndex: 0,
-                    result: .injected,
-                    duration: .under250ms
-                ),
-            ]
+    let clearGeneration = try await historyRepository.captureRunHistoryWriteGeneration()
+    let clearTransition = try RunHistoryClearTransition(advancing: clearGeneration)
+    _ = try await historyRepository.deleteRecords(
+      obsoletedBy: clearTransition,
+      preservingLegacyRowsAfter: nil
+    )
+    _ = try await receiptRepository.deleteReceipts(
+      obsoletedBy: clearTransition,
+      preservingLegacyRowsAfter: nil
+    )
+    harness.model.clearRunHistory()
+    let maintenanceFinished = await waitUntil {
+      !harness.model.history.isLocalHistoryMaintenanceRunning
+        && harness.model.workflowRunReceipt(for: receipt.runID) == nil
+    }
+    XCTAssertTrue(maintenanceFinished)
+
+    await harness.eventBus.publish(
+      .runCompleted(
+        WorkflowRunSummary(
+          runID: receipt.runID,
+          workflowID: receipt.workflowID ?? UUID(),
+          workflow: WorkflowPresentation(fallbackName: "Late completion"),
+          trigger: receipt.trigger,
+          finalText: "result",
+          finishedAt: Date(timeIntervalSince1970: 30)
         )
-    }
+      )
+    )
+    for _ in 0..<20 { await Task.yield() }
 
-    private func repositoryChangeEvent(
-        for receipt: WorkflowRunReceipt,
-        writeGeneration: RunHistoryWriteGeneration? = nil
-    ) -> RillEvent {
-        .runReceiptRepositoryChanged(
-            WorkflowRunReceiptRepositoryChange(
-                runID: receipt.runID,
-                terminalTimestamp: receipt.timestamp,
-                writeGeneration: writeGeneration
-            )
+    let storedHistory = try await historyRepository.records(matching: .all)
+    XCTAssertTrue(storedHistory.isEmpty)
+    XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == receipt.runID })
+  }
+
+  private func makeReceipt(
+    runID: UUID = UUID(),
+    trigger: WorkflowRunTriggerKind,
+    timestamp: Date = Date()
+  ) throws -> WorkflowRunReceipt {
+    try WorkflowRunReceipt(
+      runID: runID,
+      workflowID: UUID(),
+      trigger: trigger,
+      timestamp: timestamp,
+      duration: .under250ms,
+      termination: .completed,
+      actionDetails: [
+        WorkflowActionReceipt(
+          actionIndex: 0,
+          result: .injected,
+          duration: .under250ms
         )
-    }
+      ]
+    )
+  }
 
-    private func waitUntil(
-        _ predicate: @escaping @MainActor () -> Bool
-    ) async -> Bool {
-        for _ in 0..<100 {
-            if predicate() { return true }
-            await Task.yield()
-        }
-        return predicate()
-    }
+  private func repositoryChangeEvent(
+    for receipt: WorkflowRunReceipt,
+    writeGeneration: RunHistoryWriteGeneration? = nil
+  ) -> RillEvent {
+    .runReceiptRepositoryChanged(
+      WorkflowRunReceiptRepositoryChange(
+        runID: receipt.runID,
+        terminalTimestamp: receipt.timestamp,
+        writeGeneration: writeGeneration
+      )
+    )
+  }
 
-    private func waitUntilAsync(
-        _ predicate: @escaping @Sendable () async -> Bool
-    ) async -> Bool {
-        for _ in 0..<100 {
-            if await predicate() { return true }
-            await Task.yield()
-        }
-        return await predicate()
+  private func waitUntil(
+    _ predicate: @escaping @MainActor () -> Bool
+  ) async -> Bool {
+    for _ in 0..<100 {
+      if predicate() { return true }
+      await Task.yield()
     }
+    return predicate()
+  }
+
+  private func waitUntilAsync(
+    _ predicate: @escaping @Sendable () async -> Bool
+  ) async -> Bool {
+    for _ in 0..<100 {
+      if await predicate() { return true }
+      await Task.yield()
+    }
+    return await predicate()
+  }
 
 }

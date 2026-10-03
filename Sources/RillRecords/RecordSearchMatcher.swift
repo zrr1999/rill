@@ -10,9 +10,11 @@ struct RecordSearchMatcher: Sendable {
     let text = Self.fold(query.text).trimmingCharacters(in: .whitespacesAndNewlines)
     keywords = text.split(whereSeparator: \.isWhitespace).map(String.init)
     words = Self.words(text)
-    let isIdentifier = text.contains("://") || text.hasPrefix("/")
+    let isIdentifier =
+      text.contains("://") || text.hasPrefix("/")
       || (!text.contains(" ") && text.range(of: "[0-9]{3,}", options: .regularExpression) != nil)
-    canApproximate = query.matching == .approximate && !isIdentifier
+    canApproximate =
+      query.matching == .approximate && !isIdentifier
       && !words.isEmpty && words.count <= 8 && text.utf8.count <= 160
       && text.unicodeScalars.allSatisfy(\.isASCII)
   }
@@ -42,10 +44,12 @@ struct RecordSearchMatcher: Sendable {
   }
 
   static func words(_ text: String) -> [String] {
-    Array(Set(text.split { character in
-      guard let byte = character.asciiValue else { return true }
-      return !(97...122).contains(byte) && !(48...57).contains(byte)
-    }.map(String.init)))
+    Array(
+      Set(
+        text.split { character in
+          guard let byte = character.asciiValue else { return true }
+          return !(97...122).contains(byte) && !(48...57).contains(byte)
+        }.map(String.init)))
   }
 
   static func isNear(_ query: String, _ word: String) -> Bool {
@@ -67,7 +71,8 @@ struct RecordSearchMatcher: Sendable {
     for i in 1...needle.count {
       var row = [i] + Array(repeating: 0, count: haystack.count)
       for j in 1...haystack.count {
-        row[j] = min(row[j - 1] + 1, previous[j] + 1,
+        row[j] = min(
+          row[j - 1] + 1, previous[j] + 1,
           previous[j - 1] + (needle[i - 1] == haystack[j - 1] ? 0 : 1))
         if i > 1, j > 1, needle[i - 1] == haystack[j - 2], needle[i - 2] == haystack[j - 1] {
           row[j] = min(row[j], beforePrevious[j - 2] + 1)

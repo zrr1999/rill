@@ -202,7 +202,8 @@ final class BufferOutputController: NSObject {
 
   private func presentPendingMessageIfPossible() {
     guard !isClosed, task == nil, dragSettlementTask == nil, !isPresentingDrag,
-      let message = pendingMessage, let model else { return }
+      let message = pendingMessage, let model
+    else { return }
     pendingMessage = nil
     model.recordWorkspace.buffers.message = message
     showConfirmation()
@@ -323,7 +324,8 @@ final class BufferOutputController: NSObject {
       panel?.isFloatingPanel = true
       panel?.becomesKeyOnlyIfNeeded = true
       panel?.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-      panel?.title = model?.settings.language == .simplifiedChinese ? "Rill · 输出下一项" : "Rill · Output Next"
+      panel?.title = L10n.surface(
+        .rillOutputNext, language: model?.settings.language ?? .english)
       panel?.center()
     }
     panel?.contentView = content

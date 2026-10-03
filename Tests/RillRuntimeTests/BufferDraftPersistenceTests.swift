@@ -36,7 +36,7 @@ struct BufferDraftPersistenceTests {
     try await reopened.commitBufferDraft(id, draftID: draft.id, expectedRevision: 1)
     #expect(try await RecordStore(persistence: database).bufferDraft(for: id)?.committedRevision == 1)
     for file in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-      where file.lastPathComponent.hasPrefix("records.sqlite") {
+    where file.lastPathComponent.hasPrefix("records.sqlite") {
       #expect(try Data(contentsOf: file).range(of: Data(text.utf8)) == nil)
     }
   }

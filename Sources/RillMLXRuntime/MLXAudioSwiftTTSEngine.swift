@@ -245,8 +245,10 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
     )
     defer { try? FileManager.default.removeItem(at: stagingURL) }
 
-    progress(.init(phase: .downloading, completedUnitCount: 0,
-      totalUnitCount: Int64(descriptor.approximateDownloadByteCount)))
+    progress(
+      .init(
+        phase: .downloading, completedUnitCount: 0,
+        totalUnitCount: Int64(descriptor.approximateDownloadByteCount)))
     do {
       try await ModelFiles.download(
         repository: descriptor.repository, revision: descriptor.revision,
@@ -267,11 +269,13 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
       ),
       options: .atomic
     )
-    guard try SpeechSynthesisModelInventory.validatePublication(
-      stagingURL,
-      descriptor: descriptor,
-      verifyDigests: true
-    ) else {
+    guard
+      try SpeechSynthesisModelInventory.validatePublication(
+        stagingURL,
+        descriptor: descriptor,
+        verifyDigests: true
+      )
+    else {
       throw MLXAudioSwiftRuntimeError.invalidModelStore
     }
     try ModelFiles.publish(stagingURL, at: publicationURL)
@@ -296,8 +300,6 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
       try FileManager.default.removeItem(at: entry)
     }
   }
-
-
 
   private static func defaultHubCacheRootURL(
     fileManager: FileManager = .default

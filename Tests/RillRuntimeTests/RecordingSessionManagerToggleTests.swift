@@ -67,7 +67,7 @@ private struct ToggleAction: OutputAction {
   let probe: ToggleActionProbe
 
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      let text = try record.requireText(for: id)
+    let text = try record.requireText(for: id)
     await probe.record(text)
     return .copiedToClipboard
   }

@@ -324,27 +324,26 @@ struct MLXSileroVADModelStore: Sendable {
     return true
   }
 
-
-
-
-
   private static func defaultModelRootURL(
     fileManager: FileManager = .default
   ) -> URL {
-    let root = fileManager.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
-    ).first ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(
-      "Library/Application Support",
-      isDirectory: true
-    )
+    let root =
+      fileManager.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask
+      ).first
+      ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(
+        "Library/Application Support",
+        isDirectory: true
+      )
     return root.appendingPathComponent("Rill/Models/mlx-audio-swift", isDirectory: true)
   }
 
   private static func defaultHubCacheRootURL(
     fileManager: FileManager = .default
   ) -> URL {
-    let root = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
+    let root =
+      fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
       ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(
         "Library/Caches",
         isDirectory: true

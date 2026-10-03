@@ -19,7 +19,8 @@ import RillWorkflows
     model.applyLanguage(.english)
     let element = BufferVerifiableTarget()
     let target = RecordBufferTextOutput.Target(
-      element: element, isCurrent: { true }, post: { _ in
+      element: element, isCurrent: { true },
+      post: { _ in
         Issue.record("Verified AX output must not post keyboard events")
         return false
       })

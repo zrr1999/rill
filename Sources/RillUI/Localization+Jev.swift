@@ -4,12 +4,18 @@ enum JevText: CaseIterable {
   case title, open, disclosure, saveKey, clearKey, keyReady, keyNotice, fragment, candidate, score
   case select, rubric, working, close, send
   case credentialTitle, polishingTitle, returnToComparison, cancelReturn, retryPreview, privacySettings
+  case brandTitle, apiKey, apiKeyPlaceholder
   case providersTitle, settingsDescription, configureNotice, openSettings, invalidKey
 }
 
 extension L10n {
   static func jev(_ key: JevText, language: AppLanguage) -> String {
     switch (key, language) {
+    case (.brandTitle, .english), (.brandTitle, .simplifiedChinese): "Jev · TypeSafe"
+    case (.apiKey, .english): "API Key"
+    case (.apiKey, .simplifiedChinese): "API 密钥"
+    case (.apiKeyPlaceholder, .english): "TypeSafe API Key"
+    case (.apiKeyPlaceholder, .simplifiedChinese): "TypeSafe API 密钥"
     case (.credentialTitle, .english): "Jev API Key"
     case (.credentialTitle, .simplifiedChinese): "Jev API 密钥"
     case (.polishingTitle, .english): "Jev polishing prediction"
@@ -24,7 +30,8 @@ extension L10n {
     case (.privacySettings, .simplifiedChinese): "查看隐私设置…"
     case (.providersTitle, .english): "API Providers"
     case (.providersTitle, .simplifiedChinese): "API 服务"
-    case (.settingsDescription, .english): "One session key serves Jev candidate scoring and polishing prediction. Candidate scoring requires confirmation each time; automatic polishing prediction has a separate switch below."
+    case (.settingsDescription, .english):
+      "One session key serves Jev candidate scoring and polishing prediction. Candidate scoring requires confirmation each time; automatic polishing prediction has a separate switch below."
     case (.settingsDescription, .simplifiedChinese): "本次会话的 Key 供候选评分与润色判断共用。候选评分每次发送前须确认；自动润色判断需单独开启下方开关。"
     case (.configureNotice, .english): "Add a Jev key in Settings → Voice & Models → API Providers."
     case (.configureNotice, .simplifiedChinese): "请在设置 → 语音与模型 → API 服务中配置 Jev Key。"
@@ -36,7 +43,8 @@ extension L10n {
     case (.title, .simplifiedChinese): "使用 Jev 比较候选"
     case (.open, .english): "Compare with Jev…"
     case (.open, .simplifiedChinese): "用 Jev 比较…"
-    case (.disclosure, .english): "Send this query and up to 10 displayed text excerpts or file names to TypeSafe (api.typesafe.ai) for paid scoring. File contents, images, tags and source apps are not sent. Nothing is sent until you confirm below."
+    case (.disclosure, .english):
+      "Send this query and up to 10 displayed text excerpts or file names to TypeSafe (api.typesafe.ai) for paid scoring. File contents, images, tags and source apps are not sent. Nothing is sent until you confirm below."
     case (.disclosure, .simplifiedChinese): "将此查询和最多 10 条展示的文字片段或文件名发送给 TypeSafe（api.typesafe.ai）付费评分。不发送文件内容、图片、标签和来源应用。点击下方发送按钮前不会调用云端。"
     case (.saveKey, .english): "Use this key"
     case (.saveKey, .simplifiedChinese): "暂存 Key"
@@ -54,7 +62,8 @@ extension L10n {
     case (.score, .simplifiedChinese): "相关程度，满分 2"
     case (.select, .english): "Select this record"
     case (.select, .simplifiedChinese): "选择此记录"
-    case (.rubric, .english): "0: unrelated · 1: partly relevant · 2: directly useful. Scores are not correctness probabilities. Selection does not paste or change local order."
+    case (.rubric, .english):
+      "0: unrelated · 1: partly relevant · 2: directly useful. Scores are not correctness probabilities. Selection does not paste or change local order."
     case (.rubric, .simplifiedChinese): "0 不相关 · 1 部分相关 · 2 直接满足需求。分数不是正确概率；选择后不会自动粘贴，也不改变本地次序。"
     case (.working, .english): "Working… Close to cancel. A sent request may still incur usage."
     case (.working, .simplifiedChinese): "正在处理…关闭可取消。已经发出的请求仍可能计费。"

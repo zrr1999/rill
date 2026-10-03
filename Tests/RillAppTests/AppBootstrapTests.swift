@@ -103,7 +103,7 @@ private struct AppBootstrapExplanationAction: OutputAction {
   let id = "focused-application.insert"
 
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      _ = try record.requireText(for: id)
+    _ = try record.requireText(for: id)
     return .injected
   }
 }
@@ -260,10 +260,10 @@ private actor AppBootstrapClipboardHistory: RecordHistoryMaintaining {
 }
 
 private actor AppBootstrapHistoryRepository: HistoryRepository, HistoryMaintaining {
-    func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
-        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
-        try await (self as any HistoryRepository).save(value)
-    }
+  func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
+    guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+    try await (self as any HistoryRepository).save(value)
+  }
 
   private var clearCount: Int
   private var currentGeneration: RunHistoryWriteGeneration = .initial
@@ -315,10 +315,10 @@ private actor AppBootstrapHistoryRepository: HistoryRepository, HistoryMaintaini
 }
 
 private actor AppBootstrapDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
-    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
-        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
-        try await (self as any DiagnosticRepository).save(value)
-    }
+  func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+    guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+    try await (self as any DiagnosticRepository).save(value)
+  }
 
   private var clearCount: Int
   private var currentGeneration: RunHistoryWriteGeneration = .initial
@@ -525,10 +525,6 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertFalse(encoded.contains("AXTextArea"))
   }
 
-
-
-
-
   func testPackagedRuntimeExcludesWebhookAndRetainsSecureExternalActions() {
     let registry = OutputActionRegistry(
       actions: AppBootstrap.makeExternalOutputActions(
@@ -542,8 +538,6 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertNotNil(registry.action(for: ExternalOutputActionID.shortcutsRun))
     XCTAssertNotNil(registry.action(for: ExternalOutputActionID.markdownAppend))
   }
-
-
 
   func testRecognitionRunPreflightBlocksLegacyClipboardAutomation() async {
     let preflight = AppBootstrap.makeRecognitionRunPreflight()
@@ -1178,7 +1172,6 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(blockedDiagnostic.level, .error)
     XCTAssertEqual(blockedDiagnostic.metadata["blockReason"], "invalid-pending-state")
   }
-
 
   func testLocalSpeechPreparationBoundaryMapsProviderErrorsToPayloadFreeStages() throws {
     let cases: [(any Error, LocalSpeechPreparationFailure.Stage)] = [

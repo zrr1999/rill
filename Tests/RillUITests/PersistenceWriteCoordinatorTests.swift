@@ -49,7 +49,8 @@ struct PersistenceWriteCoordinatorTests {
     await store.waitUntilEntered()
     writes.replace(for: .workflowLibrary, debounce: .zero) {
       try await store.write("new-workflow")
-    } completion: { _ in }
+    } completion: { _ in
+    }
     await store.release()
     await writes.flush()
     #expect(await store.values == ["transaction", "new-workflow"])
@@ -62,7 +63,9 @@ struct PersistenceWriteCoordinatorTests {
     var completions: [String] = []
     writes.replace(for: .openAIModel, debounce: .zero) {
       try await store.write("old", pause: true, fail: true)
-    } completion: { _ in completions.append("old") }
+    } completion: { _ in
+      completions.append("old")
+    }
     await store.waitUntilEntered()
 
     writes.replace(for: .openAIModel, debounce: .zero) {
@@ -73,7 +76,9 @@ struct PersistenceWriteCoordinatorTests {
     let (finished, signal) = AsyncStream<Void>.makeStream()
     writes.replace(for: .interfaceLanguage, debounce: .zero) {
       try await store.write("independent")
-    } completion: { _ in signal.yield(()) }
+    } completion: { _ in
+      signal.yield(())
+    }
     for await _ in finished { break }
 
     #expect(await store.values == ["independent"])
@@ -88,10 +93,13 @@ struct PersistenceWriteCoordinatorTests {
     let store = PersistenceWriteProbe()
     writes.replace(for: .openAIModel, debounce: .seconds(3_600)) {
       try await store.write("old")
-    } completion: { _ in Issue.record("A superseded write published a result.") }
+    } completion: { _ in
+      Issue.record("A superseded write published a result.")
+    }
     writes.replace(for: .openAIModel, debounce: .zero) {
       try await store.write("new")
-    } completion: { _ in }
+    } completion: { _ in
+    }
 
     await writes.flush()
     #expect(await store.values == ["new"])
@@ -103,9 +111,10 @@ struct PersistenceWriteCoordinatorTests {
     writes.replace(for: .openAIModel, debounce: .zero) {
       try await store.write("first")
     } completion: { _ in
-      writes.track(Task {
-        try? await store.write("follow-up", pause: true)
-      })
+      writes.track(
+        Task {
+          try? await store.write("follow-up", pause: true)
+        })
     }
     var flushed = false
     let flush = Task {

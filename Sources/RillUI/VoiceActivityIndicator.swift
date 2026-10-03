@@ -132,8 +132,9 @@ private struct VoiceActivityLayerMeter: NSViewRepresentable {
     let color = accentColor.resolve(in: context.environment)
     view.update(
       levels: levels,
-      accentColor: NSColor(srgbRed: CGFloat(color.red), green: CGFloat(color.green),
-                           blue: CGFloat(color.blue), alpha: CGFloat(color.opacity)),
+      accentColor: NSColor(
+        srgbRed: CGFloat(color.red), green: CGFloat(color.green),
+        blue: CGFloat(color.blue), alpha: CGFloat(color.opacity)),
       barWidth: barWidth,
       barSpacing: barSpacing,
       minHeight: minHeight,
@@ -175,7 +176,8 @@ private final class VoiceActivityMeterView: NSView {
     maxHeight: CGFloat,
     animatesChanges: Bool
   ) {
-    let geometryChanged = self.barWidth != barWidth
+    let geometryChanged =
+      self.barWidth != barWidth
       || self.barSpacing != barSpacing
       || self.minHeight != minHeight
       || self.maxHeight != maxHeight

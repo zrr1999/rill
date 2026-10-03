@@ -97,7 +97,9 @@ public struct WorkflowFileVersion: Identifiable, Sendable, Equatable {
   public var source: String
 
   public init(id: URL, date: Date, source: String) {
-    self.id = id; self.date = date; self.source = source
+    self.id = id
+    self.date = date
+    self.source = source
   }
 }
 

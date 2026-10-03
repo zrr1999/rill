@@ -271,8 +271,6 @@ extension AppModel {
     return "\(baseName) · \(status)"
   }
 
-
-
   public func useDownloadedLocalSpeechModel(_ modelIdentifier: String) {
     guard areDownloadedLocalSpeechModelsAvailable else {
       refreshUnavailableStoredSettingsDomainErrors()
@@ -398,9 +396,14 @@ extension AppModel {
   }
 
   public func dictateToBuffer(_ input: BufferSpeechInput) {
-    guard let workflow = workflowLibrary.workflows.first(where: {
-      $0.usesBuiltinPushToTalkOutputRouting(initiatedBy: .hotkey) && isWorkflowEnabled($0)
-    }) else { recordWorkspace.buffers.editor.reportRecordingFailure(); return }
+    guard
+      let workflow = workflowLibrary.workflows.first(where: {
+        $0.usesBuiltinPushToTalkOutputRouting(initiatedBy: .hotkey) && isWorkflowEnabled($0)
+      })
+    else {
+      recordWorkspace.buffers.editor.reportRecordingFailure()
+      return
+    }
     runWorkflow(workflow, initiatedBy: .manual, bufferInput: input)
     if lastFailure != nil { recordWorkspace.buffers.editor.reportRecordingFailure() }
   }
@@ -1024,8 +1027,11 @@ extension AppModel {
     // A plain sidebar selection is a fresh user navigation, not a request
     // to resume an older search/CTA deep link that may still be waiting
     // for its destination view to appear.
-    if section == .settings { presentSettings(); return }
-    if section == .diagnostics { showSettings(.diagnostics); return }
+    if section == .diagnostics {
+      showSettings(.diagnostics)
+      return
+    }
+    leaveSettingsForNavigation()
     self.history.historyNavigationRequest = nil
     recordWorkspace.cancelNavigation()
     selectedSidebarSection = section
@@ -1038,6 +1044,7 @@ extension AppModel {
   }
 
   public func showRecordCollection(_ collectionID: RecordCollectionID) {
+    leaveSettingsForNavigation()
     self.history.historyNavigationRequest = nil
     selectedSidebarSection = .records
     recordWorkspace.selectCollection(collectionID)
@@ -1045,6 +1052,7 @@ extension AppModel {
 
   public func showWorkflow(_ workflowID: UUID) {
     guard self.workflowLibrary.workflows.contains(where: { $0.id == workflowID }) else { return }
+    leaveSettingsForNavigation()
     self.history.historyNavigationRequest = nil
     recordWorkspace.cancelNavigation()
     selectedSidebarSection = .workflows
@@ -1058,13 +1066,23 @@ extension AppModel {
   }
 
   public func presentSettings() {
-    settingsPresentationGeneration &+= 1
+    isShowingSettings = true
   }
 
-  public func consumeSettingsPresentation() -> Bool {
-    guard handledSettingsPresentationGeneration != settingsPresentationGeneration else { return false }
-    handledSettingsPresentationGeneration = settingsPresentationGeneration
-    return true
+  public func dismissSettings() {
+    guard isShowingSettings else { return }
+    isShowingSettings = false
+    settingsNavigationRequest = nil
+    discardComparisonReturn()
+    settingsSidebarFocusRestoreGeneration &+= 1
+  }
+
+  /// Content navigation replaces settings, but keeps the last settings pane.
+  private func leaveSettingsForNavigation() {
+    guard isShowingSettings else { return }
+    isShowingSettings = false
+    settingsNavigationRequest = nil
+    discardComparisonReturn()
   }
 
   public func showSettings(_ section: SettingsSection, item: SettingsItem? = nil) {
@@ -1084,6 +1102,7 @@ extension AppModel {
   }
 
   public func showHistoryEntry(_ entryID: UUID) {
+    leaveSettingsForNavigation()
     recordWorkspace.cancelNavigation()
     selectedSidebarSection = .stream
     self.history.setRunHistoryScope(.recentRuns)
@@ -1095,6 +1114,7 @@ extension AppModel {
   }
 
   public func openWorkflowEditor() {
+    leaveSettingsForNavigation()
     self.history.historyNavigationRequest = nil
     recordWorkspace.cancelNavigation()
     selectedSidebarSection = .workflows
@@ -1107,7 +1127,7 @@ extension AppModel {
 
   public func setRecordPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != settings.bufferOutputHotkeyBinding else {
-      lastFailure = settings.language == .simplifiedChinese ? "快捷键与输出下一项冲突。" : "Shortcut conflicts with Output Next."
+      lastFailure = L10n.surface(.shortcutConflictsWithOutputNext, language: settings.language)
       return
     }
     applyRecordPanelHotkeyBinding(.keyboardShortcut(shortcut))
@@ -1185,10 +1205,11 @@ extension AppModel {
       resolvedName = trimmedName
       // Renaming onto another workflow's name is an explicit error; edits
       // that keep the current name (even a duplicated one) save as-is.
-      let isRename = self.workflowLibrary.workflows.first(where: { $0.id == workflowID }).map {
-        WorkflowNameDuplicationPolicy.normalizedName(localizedWorkflowName(for: $0))
-          != WorkflowNameDuplicationPolicy.normalizedName(trimmedName)
-      } ?? true
+      let isRename =
+        self.workflowLibrary.workflows.first(where: { $0.id == workflowID }).map {
+          WorkflowNameDuplicationPolicy.normalizedName(localizedWorkflowName(for: $0))
+            != WorkflowNameDuplicationPolicy.normalizedName(trimmedName)
+        } ?? true
       if isRename, workflowNameIsTaken(trimmedName, excluding: workflowID) {
         self.workflowLibrary.workflowEditorError = L10n.workflowText(.workflowNameTakenError, language: self.settings.language)
         return
@@ -1197,10 +1218,11 @@ extension AppModel {
       resolvedName = uniqueWorkflowName(for: trimmedName)
     }
 
-    let existingMetadata = workflowID.flatMap { id in
-      self.workflowLibrary.customWorkflows.first(where: { $0.id == id })?.metadata
-        ?? self.workflowLibrary.builtInWorkflows.first(where: { $0.id == id })?.metadata
-    } ?? [:]
+    let existingMetadata =
+      workflowID.flatMap { id in
+        self.workflowLibrary.customWorkflows.first(where: { $0.id == id })?.metadata
+          ?? self.workflowLibrary.builtInWorkflows.first(where: { $0.id == id })?.metadata
+      } ?? [:]
     var sanitizedDraft = draft
     sanitizedDraft.name = resolvedName
     if let validationError = sanitizedDraft.outputValidationError(language: self.settings.language) {
@@ -1228,13 +1250,16 @@ extension AppModel {
     )
 
     let enableConflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
-    let desiredEnabledState = self.workflowLibrary.workflowEnabledStates[workflow.id]
+    let desiredEnabledState =
+      self.workflowLibrary.workflowEnabledStates[workflow.id]
       ?? self.workflowLibrary.builtInWorkflows.first(where: { $0.id == workflow.id })?.isEnabledByDefault
       ?? true
-    let supportIssue = desiredEnabledState
+    let supportIssue =
+      desiredEnabledState
       ? workflowExecutionSupportIssue(for: workflow)
       : nil
-    let savedEnabledState = desiredEnabledState
+    let savedEnabledState =
+      desiredEnabledState
       && supportIssue == nil
       && enableConflicts.isEmpty
 
@@ -1245,7 +1270,9 @@ extension AppModel {
         if fileURL != nil {
           guard let source = self.workflowLibrary.workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
           expected = .source(source)
-        } else { expected = .missing }
+        } else {
+          expected = .missing
+        }
         let record = try await workflowFileStore.saveDocument(
           WorkflowDocument(workflow: workflow, isEnabled: savedEnabledState), replacing: fileURL, expected: expected)
         self.workflowLibrary.workflowFileURLsByID[workflow.id] = record.fileURL
@@ -1320,8 +1347,7 @@ extension AppModel {
       return baseName
     }
     var suffix = 2
-    while takenNames.contains(WorkflowNameDuplicationPolicy.normalizedName("\(baseName) \(suffix)"))
-    {
+    while takenNames.contains(WorkflowNameDuplicationPolicy.normalizedName("\(baseName) \(suffix)")) {
       suffix += 1
     }
     return "\(baseName) \(suffix)"
@@ -1426,11 +1452,10 @@ extension AppModel {
 
 }
 
-
 extension AppModel {
   public func setBufferOutputHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != settings.recordPanelHotkeyBinding else {
-      lastFailure = settings.language == .simplifiedChinese ? "快捷键与剪贴板面板冲突。" : "Shortcut conflicts with the clipboard panel."
+      lastFailure = L10n.surface(.shortcutConflictsWithTheClipboard, language: settings.language)
       return
     }
     applyBufferOutputHotkeyBinding(.keyboardShortcut(shortcut))

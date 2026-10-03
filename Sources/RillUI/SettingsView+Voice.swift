@@ -81,8 +81,8 @@ extension SettingsView {
 
           if let workflowName = model.wakeWordSettingsSnapshot.workflowName {
             Text(L10n.settingsWorkflowName(workflowName, language: model.settings.language))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
       }
@@ -95,12 +95,12 @@ extension SettingsView {
       }
 
       Text(L10n.settingsText(.settingsWakeWordScopeDetail, language: model.settings.language))
-      .font(.caption)
-      .foregroundStyle(.secondary)
+        .font(.caption)
+        .foregroundStyle(.secondary)
 
       Text(L10n.settingsText(.settingsWakeWordPrivacyDetail, language: model.settings.language))
-      .font(.caption)
-      .foregroundStyle(.secondary)
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
     .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isApplyingWakeWordSettings)
     .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: wakeWordSettingsError == nil)
@@ -161,7 +161,7 @@ extension SettingsView {
 
   var voiceAssistantSetupOverview: some View {
     let readiness = model.voiceAssistantReadiness
-    return VStack(alignment: .leading, spacing: 10) {
+    return VStack(alignment: .leading, spacing: RillSpacing.dense) {
       Label(
         readiness.canEnableListening
           ? L10n.settingsText(.settingsAssistantSetupReady, language: model.settings.language)
@@ -223,7 +223,7 @@ extension SettingsView {
       }
       .buttonStyle(.bordered)
     }
-    .padding(10)
+    .padding(RillSpacing.dense)
     // RillCard prominent-tier fill at badge radius; padding stays manual.
     .background(
       .quaternary.opacity(RillCardProminence.prominent.fillOpacity),

@@ -297,7 +297,8 @@ public actor SpeechWorkerSupervisor {
     _ = try ensureSession()
     let modelID = RecordEmbeddingModelCatalog.modelID
     let response = try await exchange(
-      SpeechWorkerRequest(requestID: requestIDGenerator(), generation: generation,
+      SpeechWorkerRequest(
+        requestID: requestIDGenerator(), generation: generation,
         payload: .prepareEmbeddingModel(.init(modelID: modelID, downloadIfNeeded: downloadIfNeeded))),
       timeout: .seconds(downloadIfNeeded ? 1_800 : 60), priority: .interactive, progress: progress)
     guard response.preparedModelID == modelID else {
@@ -309,7 +310,8 @@ public actor SpeechWorkerSupervisor {
   public func embedRecordText(_ text: String, purpose: RecordEmbeddingPurpose) async throws -> RecordTextEmbedding {
     _ = try ensureSession()
     let response = try await exchange(
-      SpeechWorkerRequest(requestID: requestIDGenerator(), generation: generation,
+      SpeechWorkerRequest(
+        requestID: requestIDGenerator(), generation: generation,
         payload: .embedText(.init(modelID: RecordEmbeddingModelCatalog.modelID, text: text, purpose: purpose))),
       timeout: .seconds(30), priority: .interactive)
     guard let result = response.embeddingResult else {
@@ -990,64 +992,66 @@ private final class SpeechWorkerProcessSession: @unchecked Sendable {
   private func dispatchUnaryResponse(
     _ response: SpeechWorkerResponse
   ) throws {
-    let dispatch: (
-      AsyncThrowingStream<SpeechWorkerResponse, Error>.Continuation,
-      Bool
-    )? = lock.withLock {
-      guard var sink = unarySinks[response.requestID],
-        sink.generation == response.generation,
-        sink.expectedSequence == response.sequence,
-        response.protocolVersion == SpeechWorkerProtocol.version
-      else { return nil }
-      sink.expectedSequence &+= 1
-      let isTerminal = response.status != .progress
-      if isTerminal {
-        unarySinks.removeValue(forKey: response.requestID)
-      } else {
-        unarySinks[response.requestID] = sink
+    let dispatch:
+      (
+        AsyncThrowingStream<SpeechWorkerResponse, Error>.Continuation,
+        Bool
+      )? = lock.withLock {
+        guard var sink = unarySinks[response.requestID],
+          sink.generation == response.generation,
+          sink.expectedSequence == response.sequence,
+          response.protocolVersion == SpeechWorkerProtocol.version
+        else { return nil }
+        sink.expectedSequence &+= 1
+        let isTerminal = response.status != .progress
+        if isTerminal {
+          unarySinks.removeValue(forKey: response.requestID)
+        } else {
+          unarySinks[response.requestID] = sink
+        }
+        return (sink.continuation, isTerminal)
       }
-      return (sink.continuation, isTerminal)
-    }
     guard let dispatch else { throw SpeechWorkerClientError.staleResponse }
     dispatch.0.yield(response)
     if dispatch.1 { dispatch.0.finish() }
   }
 
   private func dispatchStreamingFrame(_ frame: SpeechWorkerFrame) throws {
-    let dispatch: (
-      AsyncThrowingStream<SpeechWorkerStreamEvent, Error>.Continuation,
-      @Sendable (SpeechWorkerClientError?) -> Void,
-      SpeechWorkerStreamEvent,
-      SpeechWorkerClientError?
-    )? = lock.withLock {
-      guard var sink = streamingSinks[frame.sessionID],
-        sink.requestID == frame.requestID,
-        sink.generation == frame.generation,
-        frame.sequence == sink.expectedSequence,
-        case .event(let event) = frame.body
-      else { return nil }
-      sink.expectedSequence += 1
-      let terminalFailure: SpeechWorkerClientError?
-      let isTerminal: Bool
-      switch event {
-      case .completed:
-        isTerminal = true
-        terminalFailure = nil
-      case .failure(let code):
-        isTerminal = true
-        terminalFailure = .remoteFailure(code)
-      case .accepted, .started, .vadActivity, .speechStarted, .speechEnded,
-        .transcriptUpdate, .stats:
-        isTerminal = false
-        terminalFailure = nil
+    let dispatch:
+      (
+        AsyncThrowingStream<SpeechWorkerStreamEvent, Error>.Continuation,
+        @Sendable (SpeechWorkerClientError?) -> Void,
+        SpeechWorkerStreamEvent,
+        SpeechWorkerClientError?
+      )? = lock.withLock {
+        guard var sink = streamingSinks[frame.sessionID],
+          sink.requestID == frame.requestID,
+          sink.generation == frame.generation,
+          frame.sequence == sink.expectedSequence,
+          case .event(let event) = frame.body
+        else { return nil }
+        sink.expectedSequence += 1
+        let terminalFailure: SpeechWorkerClientError?
+        let isTerminal: Bool
+        switch event {
+        case .completed:
+          isTerminal = true
+          terminalFailure = nil
+        case .failure(let code):
+          isTerminal = true
+          terminalFailure = .remoteFailure(code)
+        case .accepted, .started, .vadActivity, .speechStarted, .speechEnded,
+          .transcriptUpdate, .stats:
+          isTerminal = false
+          terminalFailure = nil
+        }
+        if isTerminal {
+          streamingSinks.removeValue(forKey: frame.sessionID)
+        } else {
+          streamingSinks[frame.sessionID] = sink
+        }
+        return (sink.continuation, sink.onTerminal, event, terminalFailure)
       }
-      if isTerminal {
-        streamingSinks.removeValue(forKey: frame.sessionID)
-      } else {
-        streamingSinks[frame.sessionID] = sink
-      }
-      return (sink.continuation, sink.onTerminal, event, terminalFailure)
-    }
     guard let dispatch else { throw SpeechWorkerClientError.staleResponse }
     dispatch.0.yield(dispatch.2)
     switch dispatch.2 {

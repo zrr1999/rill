@@ -14,7 +14,8 @@ struct HotwordSelectionTests {
     let expectedTerms = cached ? ["Spore", "Rill"] : ["Rill", "Spore"]
     let context = fixture.context
     let workflow = fixture.workflow
-    let options = SpeechRecognitionRequestOptions(modelID: fixture.options.modelID,
+    let options = SpeechRecognitionRequestOptions(
+      modelID: fixture.options.modelID,
       vocabulary: .init(revision: UUID(), collections: fixture.collections),
       language: fixture.options.language)
     let vocabulary = VocabularyRuleSource()
@@ -22,14 +23,18 @@ struct HotwordSelectionTests {
     let recognizer = HotwordRecognitionProbe()
     let recognizers = SpeechRecognizerRegistry(recognizers: [recognizer])
     let actions = OutputActionRegistry(actions: [HotwordOutputProbe()])
-    let compiler = WorkflowPlanCompiler(recognizerRegistry: recognizers,
+    let compiler = WorkflowPlanCompiler(
+      recognizerRegistry: recognizers,
       transformerRegistry: .init(transformers: []), actionRegistry: actions)
-    let resolver = LiveRecognitionContextResolver(compiler: compiler,
+    let resolver = LiveRecognitionContextResolver(
+      compiler: compiler,
       collections: { try vocabulary.currentCollections() }, selection: fixture.selection, sanitize: { $0 })
-    var gate = PrivacyRunGate(settingsProvider: { .init(cloudConfirmationRequired: false) },
+    var gate = PrivacyRunGate(
+      settingsProvider: { .init(cloudConfirmationRequired: false) },
       cloudConfirmationProvider: { _, _, _ in false })
     gate.prepareLiveRecognition = { runID, workflow, context, options, lifetime in
-      try await resolver.prepare(runID: runID, workflow: workflow, context: context,
+      try await resolver.prepare(
+        runID: runID, workflow: workflow, context: context,
         options: options, lifetime: lifetime)
     }
     let correctionTerms = OSAllocatedUnfairLock(initialState: [String]())
@@ -39,7 +44,8 @@ struct HotwordSelectionTests {
     }
     vocabulary.markUnavailable(reason: "library changed after snapshot")
     let runID = UUID()
-    let live = try await gate.issueLiveAudioSession(runID: runID,
+    let live = try await gate.issueLiveAudioSession(
+      runID: runID,
       privacyContextProvider: { context }, contextProvider: { _ in context },
       recognitionOptionsProvider: { _, _ in options }, workflow: workflow,
       revocationHandler: { _, _ in })
@@ -48,8 +54,10 @@ struct HotwordSelectionTests {
     #expect(await fixture.provider.requests.count == (cached ? 1 : 0))
     vocabulary.markUnavailable(reason: "library changed after admission")
     let capture = HotwordCaptureProbe(ranking: fixture.provider)
-    try await live.startCapture(.init(runID: runID, workflow: workflow,
-      options: live.audioCaptureOptions, audioLifetime: live.audioLifetime), using: capture)
+    try await live.startCapture(
+      .init(
+        runID: runID, workflow: workflow,
+        options: live.audioCaptureOptions, audioLifetime: live.audioLifetime), using: capture)
     if !cached {
       await fixture.provider.waitForRequest()
       #expect(await capture.startedBeforeCloud)
@@ -59,7 +67,8 @@ struct HotwordSelectionTests {
     try await live.sealCapture()
     let lease = try await live.processingLeaseForEnqueue()
     let bus = EventBus()
-    let coordinator = makeTestSessionCoordinator(privacyContextProvider: { context }, recognizerRegistry: recognizers,
+    let coordinator = makeTestSessionCoordinator(
+      privacyContextProvider: { context }, recognizerRegistry: recognizers,
       transformerRegistry: .init(transformers: []), actionRegistry: actions,
       candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus,
       vocabularyCollectionProvider: { try vocabulary.currentCollections() })
@@ -74,7 +83,8 @@ struct HotwordSelectionTests {
         }
       }
     }
-    let transfer = await queue.enqueue(authorizationLease: lease, triggerEvent: nil,
+    let transfer = await queue.enqueue(
+      authorizationLease: lease, triggerEvent: nil,
       deferredCapture: .resolved(audio))
     #expect(transfer == .accepted)
     await drained.value
@@ -91,22 +101,32 @@ struct HotwordSelectionTests {
     let fixture = HotwordFixture()
     let recognizers = SpeechRecognizerRegistry(recognizers: [FailingHotwordRecognizer()])
     let actions = OutputActionRegistry(actions: [HotwordOutputProbe()])
-    let compiler = WorkflowPlanCompiler(recognizerRegistry: recognizers,
+    let compiler = WorkflowPlanCompiler(
+      recognizerRegistry: recognizers,
       transformerRegistry: .init(transformers: []), actionRegistry: actions)
-    let plan = try compiler.compile(workflow: fixture.workflow, collections: fixture.collections,
+    let plan = try compiler.compile(
+      workflow: fixture.workflow, collections: fixture.collections,
       context: VocabularyRuleContext(contextSnapshot: fixture.context))
     let gate = HotwordCancellationBarrier()
     let preparation = HotwordRankingPreparation { await gate.runUntilCancelled() }
     preparation.recordingStarted()
     await gate.waitUntilStarted()
     let bus = EventBus()
-    let coordinator = makeTestSessionCoordinator(recognizerRegistry: recognizers,
+    let coordinator = makeTestSessionCoordinator(
+      recognizerRegistry: recognizers,
       transformerRegistry: .init(transformers: []), actionRegistry: actions,
       candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus)
-    let result = await coordinator.runReportingOutcome(workflow: fixture.workflow,
-      contextSnapshot: fixture.context, preparedRecognition: .init(options: fixture.options,
+    let result = await coordinator.runReportingOutcome(
+      workflow: fixture.workflow,
+      contextSnapshot: fixture.context,
+      preparedRecognition: .init(
+        options: fixture.options,
         plan: plan, hotwordPreparation: preparation))
-    guard case .failed = result else { Issue.record("Expected failed recognition"); preparation.cancel(); return }
+    guard case .failed = result else {
+      Issue.record("Expected failed recognition")
+      preparation.cancel()
+      return
+    }
     await preparation.wait()
     #expect(await gate.observedCancellation)
     #expect(preparation.isFinished)
@@ -114,7 +134,8 @@ struct HotwordSelectionTests {
 
   @Test func importedAudioDoesNotPrepareOrUploadHotwords() async throws {
     let called = OSAllocatedUnfairLock(initialState: false)
-    var gate = PrivacyRunGate(settingsProvider: { .init(cloudConfirmationRequired: false) },
+    var gate = PrivacyRunGate(
+      settingsProvider: { .init(cloudConfirmationRequired: false) },
       cloudConfirmationProvider: { _, _, _ in false })
     gate.prepareLiveRecognition = { _, _, _, _, _ in
       called.withLock { $0 = true }
@@ -125,7 +146,8 @@ struct HotwordSelectionTests {
       return nil
     }
     let context = hotwordContext()
-    let lease = try await gate.issueAudioProcessingLease(runID: UUID(),
+    let lease = try await gate.issueAudioProcessingLease(
+      runID: UUID(),
       privacyContextProvider: { context }, contextProvider: { _ in context },
       recognitionOptionsProvider: { _, _ in .empty }, workflow: hotwordWorkflow())
     #expect(!called.withLock { $0 })
@@ -270,8 +292,7 @@ struct HotwordSelectionTests {
       let first = try fixture.select()
       first.preparation?.recordingStarted()
       await fixture.provider.waitForRequest()
-      if invalid { await fixture.provider.finish(scores: []) }
-      else { await fixture.provider.fail() }
+      if invalid { await fixture.provider.finish(scores: []) } else { await fixture.provider.fail() }
       await first.preparation?.wait()
       let next = try fixture.select()
       #expect(next.status == .miss)
@@ -360,15 +381,18 @@ private final class HotwordFixture {
   init(timeout: Duration = .seconds(2)) {
     context = hotwordContext()
     focus = HotwordFocus(context.focus)
-    collections = [.personal(entries: [
-      .init(content: .hotword(phrase: "Rill"), createdAt: .distantPast),
-      .init(content: .hotword(phrase: "Spore"), createdAt: .distantFuture),
-    ])]
+    collections = [
+      .personal(entries: [
+        .init(content: .hotword(phrase: "Rill"), createdAt: .distantPast),
+        .init(content: .hotword(phrase: "Spore"), createdAt: .distantFuture),
+      ])
+    ]
     candidates = collections[0].entries.map {
       HotwordCandidate(id: $0.id, term: $0.legacyRule().pattern, priority: $0.priority)
     }
     workflow = hotwordWorkflow()
-    selection = HotwordSelection(provider: provider, settings: credentials, privacy: privacy,
+    selection = HotwordSelection(
+      provider: provider, settings: credentials, privacy: privacy,
       currentFocus: { [focus] in focus.value },
       report: { [events] event in events.withLock { $0.append(DiagnosticEventSanitizer.sanitize(event)) } },
       now: { [clock] in Date(timeIntervalSince1970: clock.withLock { $0 }) }, timeout: timeout)
@@ -376,11 +400,14 @@ private final class HotwordFixture {
     selection.configure(isEnabled: true)
   }
 
-  func select(context: ContextSnapshot? = nil, workflow: WorkflowDefinition? = nil,
+  func select(
+    context: ContextSnapshot? = nil, workflow: WorkflowDefinition? = nil,
     collections: [VocabularyCollection]? = nil, options: SpeechRecognitionRequestOptions? = nil,
-    lifetime: AudioCaptureLifetime? = nil) throws -> HotwordSelection.Selection {
+    lifetime: AudioCaptureLifetime? = nil
+  ) throws -> HotwordSelection.Selection {
     let runID = UUID()
-    return try selection.select(runID: runID, workflow: workflow ?? self.workflow,
+    return try selection.select(
+      runID: runID, workflow: workflow ?? self.workflow,
       collections: collections ?? self.collections, context: context ?? self.context,
       options: options ?? self.options, candidates: candidates,
       lifetime: lifetime ?? AudioCaptureLifetime(runID: runID))
@@ -415,10 +442,13 @@ private actor HotwordRankingProbe: HotwordRankingProvider {
   }
 
   func finish(scores: [HotwordRankingScore]? = nil) {
-    let value = scores ?? requests.last!.candidates.indices.map { index in
-      HotwordRankingScore(score: index == 1 ? 2 : 1, confidence: 1,
-        probabilities: index == 1 ? [0, 0, 1] : [0, 1, 0])
-    }
+    let value =
+      scores
+      ?? requests.last!.candidates.indices.map { index in
+        HotwordRankingScore(
+          score: index == 1 ? 2 : 1, confidence: 1,
+          probabilities: index == 1 ? [0, 0, 1] : [0, 1, 0])
+      }
     continuation?.resume(returning: value)
     continuation = nil
   }
@@ -430,17 +460,22 @@ private actor HotwordRankingProbe: HotwordRankingProvider {
 }
 
 private func hotwordContext() -> ContextSnapshot {
-  .init(focus: .init(applicationName: "Editor", bundleIdentifier: "example.editor", processIdentifier: 42,
-    focusedRole: "AXTextArea", selectedText: "Spore grammar", secureInput: false),
+  .init(
+    focus: .init(
+      applicationName: "Editor", bundleIdentifier: "example.editor", processIdentifier: 42,
+      focusedRole: "AXTextArea", selectedText: "Spore grammar", secureInput: false),
     clipboard: .init(plainText: "private-clipboard", changeCount: 123))
 }
 
 private func hotwordWorkflow() -> WorkflowDefinition {
-  .init(name: "Dictation", plan: .init(setup: .init(
-    speechRoute: .init(recognizerID: "local-speech"),
-    vocabularyBindings: [.init(collectionID: VocabularyCollection.personalID, uses: [.recognitionHints])]),
-    process: .init(steps: [.init(kind: .recognizeSpeech)]),
-    output: .init(actions: [.init(id: "system-clipboard.copy")])),
+  .init(
+    name: "Dictation",
+    plan: .init(
+      setup: .init(
+        speechRoute: .init(recognizerID: "local-speech"),
+        vocabularyBindings: [.init(collectionID: VocabularyCollection.personalID, uses: [.recognitionHints])]),
+      process: .init(steps: [.init(kind: .recognizeSpeech)]),
+      output: .init(actions: [.init(id: "system-clipboard.copy")])),
     ui: .init(symbolName: "waveform", accentColorName: "blue"))
 }
 
@@ -469,7 +504,8 @@ private actor HotwordCaptureProbe: AudioCaptureService {
   init(ranking: HotwordRankingProbe) { self.ranking = ranking }
   func startCapture(_: AudioCaptureRequest) async throws { startedBeforeCloud = await ranking.requests.isEmpty }
   func finishCapture() async throws -> CapturedAudio {
-    try .init(durationSeconds: 1, format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
+    try .init(
+      durationSeconds: 1, format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
       inlineData: Data([0, 0]))
   }
   func cancelCapture() async {}
@@ -493,15 +529,21 @@ private actor HotwordCancellationBarrier {
     await withTaskCancellationHandler {
       await withCheckedContinuation { continuation in
         started = true
-        observers.forEach { $0.resume() }; observers = []
+        observers.forEach { $0.resume() }
+        observers = []
         if Task.isCancelled { continuation.resume() } else { suspended = continuation }
       }
       observedCancellation = Task.isCancelled
-    } onCancel: { Task { await self.release() } }
+    } onCancel: {
+      Task { await self.release() }
+    }
   }
   func waitUntilStarted() async {
     if started { return }
     await withCheckedContinuation { observers.append($0) }
   }
-  private func release() { suspended?.resume(); suspended = nil }
+  private func release() {
+    suspended?.resume()
+    suspended = nil
+  }
 }

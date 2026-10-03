@@ -27,8 +27,11 @@ final class QwenStreamingTextTests: XCTestCase {
     // Stats acknowledges all preceding events without sleeping or polling the reader task.
     func update(confirmed: String, provisional: String, sequence: UInt64) {
       events.continuation.yield(.transcriptUpdate(.init(confirmed: confirmed, provisional: provisional)))
-      events.continuation.yield(.stats(.init(encodedWindowCount: 1, totalAudioSeconds: 0,
-        tokensPerSecond: 0, realTimeFactor: 0, peakMemoryBytes: sequence)))
+      events.continuation.yield(
+        .stats(
+          .init(
+            encodedWindowCount: 1, totalAudioSeconds: 0,
+            tokensPerSecond: 0, realTimeFactor: 0, peakMemoryBytes: sequence)))
     }
     update(confirmed: "language English<asr_text>", provisional: "", sequence: 1)
     let first = await observations.next()

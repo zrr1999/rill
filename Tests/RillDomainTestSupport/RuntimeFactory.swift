@@ -7,30 +7,31 @@ import RillKnowledge
 import RillSpeech
 
 public func makeTestSessionCoordinator(
-        lane: WorkflowRunLane = .primary,
-        privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
-        recognizerRegistry: SpeechRecognizerRegistry,
-        transformerRegistry: TextTransformerRegistry,
-        textPolishingGate: (any TextPolishingGate)? = nil,
-        actionRegistry: OutputActionRegistry,
-        candidateResolver: CandidateResolver,
-        recordStore: RecordStore = RecordStore(),
-        recordDeliveryCoordinator: RecordDeliveryCoordinator? = nil,
-        eventBus: EventBus,
-        diagnostics: DiagnosticsRecorder? = nil,
-        runReceiptRecorder: WorkflowRunReceiptRecorder? = nil,
-        vocabularyRuleProvider: @escaping @Sendable () async throws -> [VocabularyRule] = { [] },
-        vocabularyCollectionProvider:
-            (@Sendable () async throws -> [VocabularyCollection])? = nil,
-        recognitionOptionsProvider: @escaping @Sendable (
-            WorkflowDefinition,
-            ContextSnapshot
-        ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
-        recognitionTimeoutPolicy: RecognitionTimeoutPolicy = .standard,
-        recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner =
-            ManagedTemporaryAudioCleanupOwner(),
-        defaultRecordDeliveryActionID: String = "system-clipboard.copy",
-        processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+  lane: WorkflowRunLane = .primary,
+  privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
+  recognizerRegistry: SpeechRecognizerRegistry,
+  transformerRegistry: TextTransformerRegistry,
+  textPolishingGate: (any TextPolishingGate)? = nil,
+  actionRegistry: OutputActionRegistry,
+  candidateResolver: CandidateResolver,
+  recordStore: RecordStore = RecordStore(),
+  recordDeliveryCoordinator: RecordDeliveryCoordinator? = nil,
+  eventBus: EventBus,
+  diagnostics: DiagnosticsRecorder? = nil,
+  runReceiptRecorder: WorkflowRunReceiptRecorder? = nil,
+  vocabularyRuleProvider: @escaping @Sendable () async throws -> [VocabularyRule] = { [] },
+  vocabularyCollectionProvider:
+    (@Sendable () async throws -> [VocabularyCollection])? = nil,
+  recognitionOptionsProvider:
+    @escaping @Sendable (
+      WorkflowDefinition,
+      ContextSnapshot
+    ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+  recognitionTimeoutPolicy: RecognitionTimeoutPolicy = .standard,
+  recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner =
+    ManagedTemporaryAudioCleanupOwner(),
+  defaultRecordDeliveryActionID: String = "system-clipboard.copy",
+  processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
 ) -> SessionCoordinator {
   SessionCoordinator(
     lane: lane,
@@ -57,44 +58,45 @@ public func makeTestSessionCoordinator(
 }
 
 public func makeTestRecordingSessionManager(
-    audioCaptureService: any AudioCaptureService,
-    hotkeyTap: any GlobalInputSource,
-    capturedAudioProcessingQueue: CapturedAudioProcessingQueue,
-    eventBus: EventBus,
-    diagnostics: DiagnosticsRecorder? = nil,
-    privacyRunGate: PrivacyRunGate? = nil,
-    workflowProvider: @escaping @Sendable () async -> [WorkflowDefinition],
-    contextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
-    privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
-    authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
-    focusIdentitySampleProvider: @escaping @Sendable () async -> FocusPrivacyIdentitySample = {
-      FocusPrivacyIdentitySample(
-        focus: ContextSnapshot.empty.focus,
-        applicationActivationRevision: 0
-      )
-    },
-    targetBoundAuthorizedContextProvider: (
-      @Sendable (
-        PrivacyPolicyDecision,
-        FocusPrivacyIdentitySample
-      ) async -> ContextSnapshot?
-    )? = nil,
-    recognitionOptionsProvider:
-      @escaping @Sendable (
-        WorkflowDefinition,
-        ContextSnapshot
-      ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
-    runPreflight: @escaping RecognitionRunPreflight = { _ in },
-    liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
-    longRecordingModeProvider: @escaping @Sendable () async -> Bool = { false },
-    recordingDurationLimitProvider: @escaping @Sendable () async -> RecordingDurationLimit = {
-      .fiveMinutes
-    },
-    recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
-    pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
-    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
-    recordingCueAction:
-      @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
+  audioCaptureService: any AudioCaptureService,
+  hotkeyTap: any GlobalInputSource,
+  capturedAudioProcessingQueue: CapturedAudioProcessingQueue,
+  eventBus: EventBus,
+  diagnostics: DiagnosticsRecorder? = nil,
+  privacyRunGate: PrivacyRunGate? = nil,
+  workflowProvider: @escaping @Sendable () async -> [WorkflowDefinition],
+  contextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
+  privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
+  authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
+  focusIdentitySampleProvider: @escaping @Sendable () async -> FocusPrivacyIdentitySample = {
+    FocusPrivacyIdentitySample(
+      focus: ContextSnapshot.empty.focus,
+      applicationActivationRevision: 0
+    )
+  },
+  targetBoundAuthorizedContextProvider: (
+    @Sendable (
+      PrivacyPolicyDecision,
+      FocusPrivacyIdentitySample
+    ) async -> ContextSnapshot?
+  )? = nil,
+  recognitionOptionsProvider:
+    @escaping @Sendable (
+      WorkflowDefinition,
+      ContextSnapshot
+    ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+  runPreflight: @escaping RecognitionRunPreflight = { _ in },
+  liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
+  longRecordingModeProvider: @escaping @Sendable () async -> Bool = { false },
+  recordingDurationLimitProvider: @escaping @Sendable () async -> RecordingDurationLimit = {
+    .fiveMinutes
+  },
+  recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
+  pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
+  deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
+  cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
+  recordingCueAction:
+    @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
 ) -> RecordingSessionManager {
   RecordingSessionManager(
     audioCaptureService: audioCaptureService,
@@ -116,32 +118,33 @@ public func makeTestRecordingSessionManager(
     recordingDurationLimitProvider: recordingDurationLimitProvider,
     recognizerDurationProvider: recognizerDurationProvider,
     pushToTalkGestureStateProvider: pushToTalkGestureStateProvider,
+    deferredReleaseSleep: deferredReleaseSleep,
     cleanupOwner: cleanupOwner,
     recordingCueAction: recordingCueAction
   )
 }
 
 public func makeTestWorkflowAudioRunController(
-    audioCaptureService: any AudioCaptureService,
-    capturedAudioProcessingQueue: CapturedAudioProcessingQueue,
-    diagnostics: DiagnosticsRecorder? = nil,
-    eventBus: EventBus? = nil,
-    privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
-    authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
-    recognitionOptionsProvider:
-      @escaping @Sendable (
-        WorkflowDefinition,
-        ContextSnapshot
-      ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
-    runPreflight: @escaping RecognitionRunPreflight = { _ in },
-    liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
-    recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
-    recordingDurationLimitProvider: @escaping @Sendable () async -> RecordingDurationLimit = {
-      .fiveMinutes
-    },
-    privacyRunGate: PrivacyRunGate? = nil,
-    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
-    recordingCueAction: @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
+  audioCaptureService: any AudioCaptureService,
+  capturedAudioProcessingQueue: CapturedAudioProcessingQueue,
+  diagnostics: DiagnosticsRecorder? = nil,
+  eventBus: EventBus? = nil,
+  privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
+  authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
+  recognitionOptionsProvider:
+    @escaping @Sendable (
+      WorkflowDefinition,
+      ContextSnapshot
+    ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+  runPreflight: @escaping RecognitionRunPreflight = { _ in },
+  liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
+  recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
+  recordingDurationLimitProvider: @escaping @Sendable () async -> RecordingDurationLimit = {
+    .fiveMinutes
+  },
+  privacyRunGate: PrivacyRunGate? = nil,
+  cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
+  recordingCueAction: @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
 ) -> WorkflowAudioRunController {
   WorkflowAudioRunController(
     audioCaptureService: audioCaptureService,
@@ -162,25 +165,26 @@ public func makeTestWorkflowAudioRunController(
 }
 
 public func makeTestFailedAudioRecoveryController(
-        store: any FailedAudioRecoveryStore,
-        sessionCoordinator: SessionCoordinator,
-        eventBus: EventBus,
-        diagnostics: DiagnosticsRecorder? = nil,
-        privacyRunGate: PrivacyRunGate? = nil,
-        privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
-        authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
-        recognitionOptionsProvider: @escaping @Sendable (
-            WorkflowDefinition,
-            ContextSnapshot
-        ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
-        runPreflight: @escaping RecognitionRunPreflight = { _ in },
-        currentDate: @escaping @Sendable () -> Date = { Date() },
-        removeManagedRecoveryTemporaryFile: @escaping @Sendable (CapturedAudio) throws -> Void = {
-            _ = try $0.removeManagedTemporaryFile()
-        },
-        cleanupRecoveryTemporaryFiles: @escaping @Sendable () async -> Bool = { true },
-        initialMaintenanceRetryInterval: TimeInterval = 5,
-        maximumMaintenanceRetryInterval: TimeInterval = 5 * 60
+  store: any FailedAudioRecoveryStore,
+  sessionCoordinator: SessionCoordinator,
+  eventBus: EventBus,
+  diagnostics: DiagnosticsRecorder? = nil,
+  privacyRunGate: PrivacyRunGate? = nil,
+  privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
+  authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
+  recognitionOptionsProvider:
+    @escaping @Sendable (
+      WorkflowDefinition,
+      ContextSnapshot
+    ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+  runPreflight: @escaping RecognitionRunPreflight = { _ in },
+  currentDate: @escaping @Sendable () -> Date = { Date() },
+  removeManagedRecoveryTemporaryFile: @escaping @Sendable (CapturedAudio) throws -> Void = {
+    _ = try $0.removeManagedTemporaryFile()
+  },
+  cleanupRecoveryTemporaryFiles: @escaping @Sendable () async -> Bool = { true },
+  initialMaintenanceRetryInterval: TimeInterval = 5,
+  maximumMaintenanceRetryInterval: TimeInterval = 5 * 60
 ) -> FailedAudioRecoveryController {
   FailedAudioRecoveryController(
     store: store,
@@ -201,25 +205,25 @@ public func makeTestFailedAudioRecoveryController(
 }
 
 public func makeTestCapturedAudioProcessingQueue(
-        sessionCoordinator: SessionCoordinator,
-        eventBus: EventBus,
-        diagnostics: DiagnosticsRecorder? = nil,
-        failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
-        benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController? = nil,
-        lane: CapturedAudioProcessingQueue.Lane = .interactive,
-        publishesSnapshots: Bool = true,
-        rejectedCapturedAudioRemoval: @escaping @Sendable (CapturedAudio) async throws -> Void = { _ = try $0.removeManagedTemporaryFile() },
-        rejectedCleanupInitialRetryDelay: Duration = .milliseconds(100),
-        rejectedCleanupMaximumRetryDelay: Duration = .seconds(5),
-        rejectedCleanupSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-        ownershipTransferObserver: @escaping @Sendable (UUID) async -> Void = { _ in }
+  sessionCoordinator: SessionCoordinator,
+  eventBus: EventBus,
+  diagnostics: DiagnosticsRecorder? = nil,
+  failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
+  corpusRecordingArchiveController: CorpusRecordingArchiveController? = nil,
+  lane: CapturedAudioProcessingQueue.Lane = .interactive,
+  publishesSnapshots: Bool = true,
+  rejectedCapturedAudioRemoval: @escaping @Sendable (CapturedAudio) async throws -> Void = { _ = try $0.removeManagedTemporaryFile() },
+  rejectedCleanupInitialRetryDelay: Duration = .milliseconds(100),
+  rejectedCleanupMaximumRetryDelay: Duration = .seconds(5),
+  rejectedCleanupSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+  ownershipTransferObserver: @escaping @Sendable (UUID) async -> Void = { _ in }
 ) -> CapturedAudioProcessingQueue {
   CapturedAudioProcessingQueue(
     sessionCoordinator: sessionCoordinator,
     eventBus: eventBus,
     diagnostics: diagnostics,
     failedAudioRecoveryController: failedAudioRecoveryController,
-    benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
+    corpusRecordingArchiveController: corpusRecordingArchiveController,
     lane: lane,
     publishesSnapshots: publishesSnapshots,
     rejectedCapturedAudioRemoval: rejectedCapturedAudioRemoval,

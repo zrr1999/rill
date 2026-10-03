@@ -202,13 +202,15 @@ enum SQLiteAuthenticatedSchemaFloor {
   ) throws -> UUID {
     _ = try readAndValidate(on: database, localDataProtector: localDataProtector)
     var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(
-      database,
-      "SELECT database_id FROM main.rill_authenticated_schema_floor WHERE id = 1;",
-      -1,
-      &statement,
-      nil
-    ) == SQLITE_OK, let statement else {
+    guard
+      sqlite3_prepare_v2(
+        database,
+        "SELECT database_id FROM main.rill_authenticated_schema_floor WHERE id = 1;",
+        -1,
+        &statement,
+        nil
+      ) == SQLITE_OK, let statement
+    else {
       throw SQLiteAuthenticatedSchemaFloorError.validationFailed
     }
     defer { sqlite3_finalize(statement) }
@@ -253,13 +255,15 @@ enum SQLiteAuthenticatedSchemaFloor {
       throw SQLiteAuthenticatedSchemaFloorError.installationFailed
     }
     var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(
-      database,
-      "UPDATE main.rill_authenticated_schema_floor SET schema_floor = ?, verification = ? WHERE id = 1 AND database_id = ?;",
-      -1,
-      &statement,
-      nil
-    ) == SQLITE_OK, let statement else {
+    guard
+      sqlite3_prepare_v2(
+        database,
+        "UPDATE main.rill_authenticated_schema_floor SET schema_floor = ?, verification = ? WHERE id = 1 AND database_id = ?;",
+        -1,
+        &statement,
+        nil
+      ) == SQLITE_OK, let statement
+    else {
       throw SQLiteAuthenticatedSchemaFloorError.installationFailed
     }
     defer { sqlite3_finalize(statement) }

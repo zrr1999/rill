@@ -289,7 +289,7 @@ struct StoredAppSettingsSnapshot: Sendable {
   let recordRetentionPeriod: String?
   let runHistoryRetentionPeriod: String?
   let failedAudioRecoveryEnabled: String?
-  let benchmarkRecordingArchiveEnabled: String?
+  let corpusRecordingArchiveEnabled: String?
   let builtinPushToTalkOutputMode: String?
   let longRecordingModeEnabled: String?
   let recordingDurationLimit: String?
@@ -471,7 +471,7 @@ extension AppModel {
     applyStoredPrivacySettings(settings)
     applyStoredHistoryRetentionSettings(settings)
     applyStoredFailedAudioRecoverySetting(settings)
-    benchmarkArchive.applyStored(settings.benchmarkRecordingArchiveEnabled, available: settings.persistentSettingsStoreWasAvailable)
+    corpusArchive.applyStored(settings.corpusRecordingArchiveEnabled, available: settings.persistentSettingsStoreWasAvailable)
     rebuildWorkflowLibrary()
     self.settings.isRestoringSettings = false
     synchronizeLocalSpeechSettingsSource()
@@ -549,13 +549,14 @@ extension AppModel {
         .recordRetentionPeriod
       )
     )
-    history.applyRunHistoryRetentionPeriod(resolvedHistoryRetentionPeriod(
-      settings.runHistoryRetentionPeriod,
-      isRecordSetting: false,
-      settingWasUnavailable: settings.unavailableSettingKeys.contains(
-        .runHistoryRetentionPeriod
-      )
-    ))
+    history.applyRunHistoryRetentionPeriod(
+      resolvedHistoryRetentionPeriod(
+        settings.runHistoryRetentionPeriod,
+        isRecordSetting: false,
+        settingWasUnavailable: settings.unavailableSettingKeys.contains(
+          .runHistoryRetentionPeriod
+        )
+      ))
     refreshHistoryRetentionSettingsErrorPresentation()
     loadHistory()
   }
@@ -817,13 +818,15 @@ extension AppModel {
     }
 
     if shouldApplyStoredSetting(.bufferOutputHotkey), let value = settings.bufferOutputHotkey,
-      case .keyboardShortcut = HotkeyBindingDescriptor(storageString: value) {
+      case .keyboardShortcut = HotkeyBindingDescriptor(storageString: value)
+    {
       applyBufferOutputHotkeyBinding(HotkeyBindingDescriptor(storageString: value))
     }
     if shouldApplyStoredSetting(.recordPanelHotkey) {
-      applyRecordPanelHotkeyBinding(HotkeyBindingDescriptor(
-        storageString: settings.recordPanelHotkey
-      ))
+      applyRecordPanelHotkeyBinding(
+        HotkeyBindingDescriptor(
+          storageString: settings.recordPanelHotkey
+        ))
     }
   }
 
@@ -837,9 +840,10 @@ extension AppModel {
 
     if shouldApplyStoredSetting(.ttsModel) {
       let storedModel = settings.ttsModel?.trimmingCharacters(in: .whitespacesAndNewlines)
-      applyTTSModelIdentifier(ttsModelOptions.contains(where: { $0.id == storedModel })
-        ? (storedModel ?? defaultTTSModelIdentifier)
-        : defaultTTSModelIdentifier)
+      applyTTSModelIdentifier(
+        ttsModelOptions.contains(where: { $0.id == storedModel })
+          ? (storedModel ?? defaultTTSModelIdentifier)
+          : defaultTTSModelIdentifier)
     }
 
     if shouldApplyStoredSetting(.builtinPushToTalkOutputMode),
@@ -852,8 +856,9 @@ extension AppModel {
     if shouldApplyStoredSetting(.longRecordingModeEnabled),
       let rawLongRecordingMode = settings.longRecordingModeEnabled
     {
-      applyLongRecordingModeEnabled(AppSettingsCodec.storedBoolean(
-        rawLongRecordingMode, defaultValue: false))
+      applyLongRecordingModeEnabled(
+        AppSettingsCodec.storedBoolean(
+          rawLongRecordingMode, defaultValue: false))
     }
 
     if shouldApplyStoredSetting(.recordingDurationLimit),
@@ -883,16 +888,18 @@ extension AppModel {
       applyLocalSpeechModel(model)
     }
     if shouldApplyStoredSetting(.localSpeechPrewarm), let prewarm = settings.localSpeechPrewarm {
-      applyLocalSpeechPrewarm(AppSettingsCodec.storedBoolean(
-        prewarm, defaultValue: LocalSpeechSettings().prewarm))
+      applyLocalSpeechPrewarm(
+        AppSettingsCodec.storedBoolean(
+          prewarm, defaultValue: LocalSpeechSettings().prewarm))
     }
     if shouldApplyStoredSetting(.enabledSpeechModels),
       let rawValue = settings.enabledSpeechModels,
       let values = try? AppSettingsCodec.loadDownloadedLocalSpeechModels(from: rawValue)
     {
-      applyEnabledSpeechModelIDs(Set(values).intersection(
-        speechModelResourceCatalog.map(\.id)
-      ))
+      applyEnabledSpeechModelIDs(
+        Set(values).intersection(
+          speechModelResourceCatalog.map(\.id)
+        ))
     }
     if shouldApplyStoredSetting(.residentSpeechModels),
       let rawValue = settings.residentSpeechModels,
@@ -1774,8 +1781,7 @@ extension AppModel {
     debounceDuration: Duration = .zero,
     operation: @escaping SettingsStoreWriteOperation
   ) {
-    settings.submit(key: key, category: category, debounce: debounceDuration, operation: operation)
-    { [weak self] in
+    settings.submit(key: key, category: category, debounce: debounceDuration, operation: operation) { [weak self] in
       self?.appendSettingsSaveFailureEvent()
     }
   }
@@ -1825,7 +1831,7 @@ extension AppModel {
     await self.settings.settingsReadTaskOwner.cancelAllAndDrain()
     await settings.waitForOpenAIVerificationTasks()
     await workflowLibrary.waitForWorkflowExplanationTasks()
-    await benchmarkArchive.waitForOperation()
+    await corpusArchive.waitForOperation()
   }
 
   public func drainPendingSettingsWritesForApplicationShutdown(

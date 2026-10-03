@@ -65,14 +65,11 @@ public actor WakeWordTriggerSource: TriggerSource {
   private let hub: SharedVoiceInputHub
   private let recognizer: any SpeechRecognizer
   private let recognitionOptionsProvider: @Sendable (WorkflowDefinition) async throws -> SpeechRecognitionRequestOptions
-  private let vadSessionFactory:
-    @Sendable () async -> (any LocalSpeechStreamingPreviewSession)?
+  private let vadSessionFactory: @Sendable () async -> (any LocalSpeechStreamingPreviewSession)?
   private nonisolated let eventStream: AsyncStream<WorkflowTriggerEvent>
-  private nonisolated let eventContinuation:
-    AsyncStream<WorkflowTriggerEvent>.Continuation
+  private nonisolated let eventContinuation: AsyncStream<WorkflowTriggerEvent>.Continuation
   private nonisolated let statusStreamValue: AsyncStream<WakeWordListeningStatus>
-  private nonisolated let statusContinuation:
-    AsyncStream<WakeWordListeningStatus>.Continuation
+  private nonisolated let statusContinuation: AsyncStream<WakeWordListeningStatus>.Continuation
 
   private var vadSession: (any LocalSpeechStreamingPreviewSession)?
   private var workflow: WorkflowDefinition?
@@ -94,7 +91,8 @@ public actor WakeWordTriggerSource: TriggerSource {
     hub: SharedVoiceInputHub,
     recognizer: any SpeechRecognizer,
     recognitionOptionsProvider: @escaping @Sendable (WorkflowDefinition) async throws -> SpeechRecognitionRequestOptions,
-    vadSessionFactory: @escaping @Sendable () async ->
+    vadSessionFactory:
+      @escaping @Sendable () async ->
       (any LocalSpeechStreamingPreviewSession)? = { nil }
   ) {
     self.hub = hub
@@ -227,10 +225,12 @@ public actor WakeWordTriggerSource: TriggerSource {
     do {
       _ = try vadSession.accept(samples: wakeWordSamples)
       let observations = vadSession.drainVoiceActivity()
-      let speechDuration = observations
+      let speechDuration =
+        observations
         .filter(\.isSpeech)
         .reduce(0) { $0 + $1.durationSeconds }
-      let silenceDuration = observations
+      let silenceDuration =
+        observations
         .filter { !$0.isSpeech }
         .reduce(0) { $0 + $1.durationSeconds }
 

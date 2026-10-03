@@ -45,7 +45,7 @@ private struct SelectedRecordInsertAction: OutputAction {
   }
 
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      let text = try record.requireText(for: id)
+    let text = try record.requireText(for: id)
     if let pasteboard {
       let descriptor = await pasteboard.currentClipboardDescriptor()
       let transaction = try await pasteboard.beginTemporaryClipboardWrite(
@@ -415,7 +415,8 @@ struct ClipboardCaptureLatencyTests {
     let lastCapture = Task { await controller.testingPollExternalClipboardIfNeeded(waitForPersistence: false) }
     let acceptanceDeadline = ContinuousClock.now + .seconds(2)
     while await controller.testingPendingClipboardCaptureCount() < count,
-          ContinuousClock.now < acceptanceDeadline { await Task.yield() }
+      ContinuousClock.now < acceptanceDeadline
+    { await Task.yield() }
     #expect(await controller.testingPendingClipboardCaptureCount() == count)
     #expect(pasteboard.payloadReadCount == count)
 
@@ -434,7 +435,8 @@ struct ClipboardCaptureLatencyTests {
     }
     let pauseDeadline = ContinuousClock.now + .seconds(2)
     while await controller.testingCaptureControlSnapshot().state != .pausing,
-          ContinuousClock.now < pauseDeadline { await Task.yield() }
+      ContinuousClock.now < pauseDeadline
+    { await Task.yield() }
     #expect(await controller.testingCaptureControlSnapshot().state == .pausing)
     await persistence.releaseWrite()
     await lastCapture.value
@@ -706,7 +708,8 @@ private actor ClipboardRetryPersistence: RecordCatalogPersistenceStore {
   func loadRecordCatalog() async throws -> RecordCatalogRead? { nil }
   func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws -> Data { throw RecordStoreError.recordUnavailable }
   func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
-    try await replaceRecordGraph(with: .init(expectedRevision: mutation.expectedRevision, graph: Data(), newPayloadBlobs: [], retainedPayloadBlobReferences: []))
+    try await replaceRecordGraph(
+      with: .init(expectedRevision: mutation.expectedRevision, graph: Data(), newPayloadBlobs: [], retainedPayloadBlobReferences: []))
   }
 
 }
@@ -717,8 +720,7 @@ private actor ClipboardBlockingPersistence: RecordCatalogPersistenceStore {
   private var observers: [CheckedContinuation<Void, Never>] = []
 
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
-  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64
-  {
+  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 {
     if !writeStarted {
       writeStarted = true
       for observer in observers { observer.resume() }
@@ -739,7 +741,8 @@ private actor ClipboardBlockingPersistence: RecordCatalogPersistenceStore {
   func loadRecordCatalog() async throws -> RecordCatalogRead? { nil }
   func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws -> Data { throw RecordStoreError.recordUnavailable }
   func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
-    try await replaceRecordGraph(with: .init(expectedRevision: mutation.expectedRevision, graph: Data(), newPayloadBlobs: [], retainedPayloadBlobReferences: []))
+    try await replaceRecordGraph(
+      with: .init(expectedRevision: mutation.expectedRevision, graph: Data(), newPayloadBlobs: [], retainedPayloadBlobReferences: []))
   }
 
 }

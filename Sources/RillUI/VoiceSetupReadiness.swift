@@ -180,8 +180,9 @@ extension AppModel {
     if readiness.isComplete {
       voiceSetupPresentation = .complete
     } else if voiceSetupPresentation == .waiting,
-              readiness.globalInput != .checking,
-              readiness.provider != .loading, readiness.privacy != .loading {
+      readiness.globalInput != .checking,
+      readiness.provider != .loading, readiness.privacy != .loading
+    {
       voiceSetupPresentation = .presented
     }
   }

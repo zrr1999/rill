@@ -16,11 +16,14 @@ struct RecordFilePreviewMetadata: Sendable {
     url.removeAllCachedResourceValues()
     let accessing = url.startAccessingSecurityScopedResource()
     defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-    guard let values = try? url.resourceValues(forKeys: [
-      .isRegularFileKey, .isDirectoryKey, .isReadableKey, .fileSizeKey, .localizedTypeDescriptionKey,
-    ]), values.isReadable == true,
-      values.isRegularFile == true || values.isDirectory == true else { return nil }
-    return .init(typeDescription: values.localizedTypeDescription,
+    guard
+      let values = try? url.resourceValues(forKeys: [
+        .isRegularFileKey, .isDirectoryKey, .isReadableKey, .fileSizeKey, .localizedTypeDescriptionKey,
+      ]), values.isReadable == true,
+      values.isRegularFile == true || values.isDirectory == true
+    else { return nil }
+    return .init(
+      typeDescription: values.localizedTypeDescription,
       byteCount: values.isRegularFile == true ? values.fileSize : nil,
       isDirectory: values.isDirectory == true)
   }
@@ -53,7 +56,8 @@ final class RecordFilePreviewModel {
     state = .available(metadata)
     if url.startAccessingSecurityScopedResource() { scopedURL = url }
     guard generatesThumbnail, !metadata.isDirectory else { return }
-    let request = QLThumbnailGenerator.Request(fileAt: url,
+    let request = QLThumbnailGenerator.Request(
+      fileAt: url,
       size: CGSize(width: 64, height: 64), scale: 2, representationTypes: .all)
     self.request = request
     let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
@@ -126,10 +130,15 @@ private struct RecordFilePreviewRow: View {
           Text(L10n.quickRecord(.fileUnavailable, language: language))
             .font(.caption).foregroundStyle(.secondary)
         case .available(let metadata):
-          Text([metadata.typeDescription, metadata.byteCount.map {
-            ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file)
-          }].compactMap { $0 }.joined(separator: " · "))
-            .font(.caption).foregroundStyle(.secondary)
+          Text(
+            [
+              metadata.typeDescription,
+              metadata.byteCount.map {
+                ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file)
+              },
+            ].compactMap { $0 }.joined(separator: " · ")
+          )
+          .font(.caption).foregroundStyle(.secondary)
         }
       }
       Spacer(minLength: 0)
@@ -171,13 +180,21 @@ struct RecordFilePreviewSheet: View {
         Text(urls[index].lastPathComponent).font(.headline).lineLimit(1).truncationMode(.middle)
         Spacer()
         if urls.count > 1 {
-          Button { index -= 1 } label: { Image(systemName: RillSystemSymbol.chevronLeft.rawValue) }
-            .disabled(index == 0)
-            .accessibilityLabel(L10n.quickRecord(.previousFile, language: language))
+          Button {
+            index -= 1
+          } label: {
+            Image(systemName: RillSystemSymbol.chevronLeft.rawValue)
+          }
+          .disabled(index == 0)
+          .accessibilityLabel(L10n.quickRecord(.previousFile, language: language))
           Text("\(index + 1) / \(urls.count)").monospacedDigit().foregroundStyle(.secondary)
-          Button { index += 1 } label: { Image(systemName: RillSystemSymbol.chevronRight.rawValue) }
-            .disabled(index == urls.count - 1)
-            .accessibilityLabel(L10n.quickRecord(.nextFile, language: language))
+          Button {
+            index += 1
+          } label: {
+            Image(systemName: RillSystemSymbol.chevronRight.rawValue)
+          }
+          .disabled(index == urls.count - 1)
+          .accessibilityLabel(L10n.quickRecord(.nextFile, language: language))
         }
         Button(L10n.quickRecord(.close, language: language)) { dismiss() }
           .keyboardShortcut(.cancelAction)
@@ -202,7 +219,8 @@ private struct RecordFileQuickLookContent: View {
       switch model.state {
       case .loading: ProgressView()
       case .unavailable:
-        ContentUnavailableView(L10n.quickRecord(.fileUnavailable, language: language),
+        ContentUnavailableView(
+          L10n.quickRecord(.fileUnavailable, language: language),
           systemImage: RillSystemSymbol.doc.rawValue)
       case .available: RecordQuickLookView(url: url)
       }

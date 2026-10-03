@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import subprocess
 import sys
 import tomllib  # type: ignore[import-not-found]
 import uuid
@@ -147,7 +148,7 @@ def main() -> int:
         manifest = load_manifest()
         outputs = {
             JSON_OUTPUT: json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-            SWIFT_OUTPUT: render_swift_catalog(manifest),
+            SWIFT_OUTPUT: format_generated_swift(render_swift_catalog(manifest)),
         }
         if args.check:
             return check_outputs(outputs)
@@ -635,6 +636,20 @@ def swift_workflow_symbol(value: str) -> str:
     except KeyError as error:
         raise SourceError(f"unsupported Rill-owned workflow symbol: {value}") from error
     return f"WorkflowUISymbol.{member}.rawValue"
+
+
+def format_generated_swift(source: str) -> str:
+    completed = subprocess.run(
+        ["swift", "format", "--configuration", str(ROOT / ".swift-format")],
+        input=source,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or f"exit {completed.returncode}"
+        raise SourceError(f"swift format failed: {detail}")
+    return completed.stdout
 
 
 def check_outputs(outputs: Mapping[Path, str]) -> int:

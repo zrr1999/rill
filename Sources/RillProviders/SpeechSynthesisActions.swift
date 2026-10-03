@@ -64,7 +64,7 @@ public struct SpeakTextAction: OutputAction {
   }
 
   public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      let text = try record.requireText(for: id)
+    let text = try record.requireText(for: id)
     let configuration: SpeechActionConfiguration
     do {
       guard case .speech(let resolved) = try context.configuration(for: id) else {
@@ -72,7 +72,8 @@ public struct SpeakTextAction: OutputAction {
       }
       configuration = resolved
     } catch { return .failed(SpeechSynthesisActionError.invalidRequest.localizedDescription) }
-    let request = SpeechSynthesisRequest(runID: context.runID, text: text, provider: configuration.provider,
+    let request = SpeechSynthesisRequest(
+      runID: context.runID, text: text, provider: configuration.provider,
       modelID: configuration.model, voice: configuration.voice, language: configuration.language)
     guard request.isValid else {
       return .failed(SpeechSynthesisActionError.invalidRequest.localizedDescription)

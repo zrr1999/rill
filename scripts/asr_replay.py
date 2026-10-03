@@ -20,7 +20,7 @@ import time
 import uuid
 import wave
 
-import asr_benchmark
+import asr_run_data
 import build_driver
 
 
@@ -181,7 +181,7 @@ def replay_case(worker, case, path, duration, model, model_revision, keyterms, l
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != case["audio_sha256"]:
         raise ValueError("Fixture changed after validation.")
-    descriptor, temporary = tempfile.mkstemp(prefix="rill-benchmark-", suffix=".wav")
+    descriptor, temporary = tempfile.mkstemp(prefix="rill-replay-", suffix=".wav")
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(data)
@@ -224,7 +224,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     receipt = build_driver.receipt_products(args.build_receipt, root)
     executable = Path(receipt["productsDirectory"]) / "RillSpeechWorker"
-    cases = asr_benchmark.read_corpus(args.corpus, require_references=False)
+    cases = asr_run_data.read_corpus(args.corpus, require_references=False)
     configuration_bytes = args.configuration.read_bytes()
     configuration = json.loads(configuration_bytes)
     model = configuration["model_id"]

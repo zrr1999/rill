@@ -30,7 +30,8 @@ private actor EnabledSpeechModelPreparationProbe {
 @MainActor
 final class TrustedLocalSpeechCatalogTests: XCTestCase {
   func testEmptyCatalogCannotEnableLocalSpeechThroughAnInjectedAvailabilityFlag() {
-    let harness = makeHarness(localSpeechTrustMaterialAvailable: true,
+    let harness = makeHarness(
+      localSpeechTrustMaterialAvailable: true,
       trustedLocalSpeechModels: [], defaultLocalSpeechModelIdentifier: nil)
     XCTAssertFalse(harness.model.localSpeechTrustMaterialAvailable)
     XCTAssertTrue(harness.model.workflowSelectableLocalSpeechModels.isEmpty)

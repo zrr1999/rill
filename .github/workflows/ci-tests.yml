@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       app: ${{ steps.scope.outputs.app }}
+      performance_workloads: ${{ steps.scope.outputs.performance_workloads }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -65,9 +66,11 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           app=true
+          performance_workloads=true
           if [[ "$EVENT_NAME" == pull_request ]]; then
             git diff --name-only --no-renames -z "$PR_BASE...$PR_HEAD" > "$RUNNER_TEMP/changed-paths"
             app=false
+            performance_workloads=false
             count=0
             while IFS= read -r -d '' path; do
               count=$((count + 1))
@@ -75,10 +78,14 @@ jobs:
                 docs/*.md|CONTRIBUTING.md|zensical.toml|wrangler.toml) ;;
                 *) app=true ;;
               esac
+              case "$path" in
+                Sources/RillCore/*|Sources/RillRecords/*|Sources/RillPersistence/*|Benchmarks/*|scripts/build_benchmarks.sh|.github/workflows/ci-tests.yml) performance_workloads=true ;;
+              esac
             done < "$RUNNER_TEMP/changed-paths"
-            if [[ "$count" == 0 ]]; then app=true; fi
+            if [[ "$count" == 0 ]]; then app=true; performance_workloads=true; fi
           fi
           echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "performance_workloads=$performance_workloads" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned Gitleaks for documentation-only changes
         if: ${{ steps.scope.outputs.app == 'false' }}
@@ -192,3 +199,16 @@ jobs:
         with:
           path: ${{ env.SWIFT_BUILD_CACHE_PATHS }}
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
+
+  record-workloads:
+    needs: docs
+    if: ${{ needs.docs.outputs.performance_workloads == 'true' }}
+    name: Record workload validation
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate performance workload correctness
+        run: bash scripts/build_benchmarks.sh

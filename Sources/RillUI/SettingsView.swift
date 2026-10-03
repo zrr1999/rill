@@ -5,20 +5,20 @@ enum SettingsDestructiveConfirmation: Sendable {
   case clipboardHistory
   case runHistory
   case failedAudioRecovery
-  case benchmarkRecordingArchive
+  case corpusRecordingArchive
   case sensitiveAppRule(UUID)
 }
 
 enum SettingsSheetDestination: Identifiable {
   case privacyNotice(PrivacyNoticeDocument)
-  case benchmarkArchive
+  case corpusArchive
 
   var id: String {
     switch self {
     case .privacyNotice:
       return "privacy-notice"
-    case .benchmarkArchive:
-      return "benchmark-archive"
+    case .corpusArchive:
+      return "corpus-archive"
     }
   }
 }
@@ -182,7 +182,10 @@ public struct SettingsView: View {
         case .general:
           Section { languageSection }
         case .input:
-          Section { builtinPushToTalkSection; recordPanelSection }
+          Section {
+            builtinPushToTalkSection
+            recordPanelSection
+          }
           if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
         case .voice:
           Section { speechEngineSection }
@@ -192,9 +195,12 @@ public struct SettingsView: View {
           Section {
             vocabularySection
             if let memory = model.contextMemory {
-              ContextMemorySettingsView(memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.settings.language, isExpanded: settingsDisclosureBinding(for: .contextMemory))
-                .id(SettingsSection.contextMemory)
-                .disclosureGroupStyle(settingsDisclosureStyle(for: .contextMemory))
+              ContextMemorySettingsView(
+                memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.settings.language,
+                isExpanded: settingsDisclosureBinding(for: .contextMemory)
+              )
+              .id(SettingsSection.contextMemory)
+              .disclosureGroupStyle(settingsDisclosureStyle(for: .contextMemory))
             }
           }
         case .privacy:
@@ -226,8 +232,8 @@ public struct SettingsView: View {
       switch destination {
       case .privacyNotice(let document):
         PrivacyNoticeSheet(document: document, language: model.settings.language)
-      case .benchmarkArchive:
-        BenchmarkRecordingArchiveSheet(model: model.benchmarkArchive, language: model.settings.language)
+      case .corpusArchive:
+        CorpusRecordingArchiveSheet(model: model.corpusArchive, language: model.settings.language)
       }
     }
     .confirmationDialog(
@@ -334,7 +340,7 @@ extension SettingsView {
 
       Divider()
 
-      Text(model.settings.language == .simplifiedChinese ? "输出下一项" : "Output Next").font(.headline)
+      Text(L10n.surface(.outputNext, language: model.settings.language)).font(.headline)
       HotkeyRecorderView(
         binding: model.settings.bufferOutputHotkeyBinding,
         language: model.settings.language,
@@ -343,16 +349,16 @@ extension SettingsView {
         commitRecordPanelShortcutRecording: { model.commitRecordPanelShortcutRecording($0, keyCode: $1) },
         onRecord: { model.setBufferOutputHotkeyShortcut($0) },
         onReset: { model.setBufferOutputHotkeyShortcut(.outputNext) },
-        commandLabel: model.settings.language == .simplifiedChinese ? "输出下一项快捷键" : "Output Next shortcut",
+        commandLabel: L10n.surface(.outputNextShortcut, language: model.settings.language),
         identifier: "settings.output-next-hotkey"
       )
       .disabled(model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
       if model.settings.bufferOutputHotkeyBinding == model.settings.recordPanelHotkeyBinding {
-        Text(model.settings.language == .simplifiedChinese ? "快捷键冲突：请修改其中一个绑定。" : "Shortcut conflict: change one binding.")
+        Text(L10n.surface(.shortcutConflictChangeOneBinding, language: model.settings.language))
           .foregroundStyle(.red)
       }
       Divider()
-      Text(model.settings.language == .simplifiedChinese ? "剪贴板面板" : "Clipboard panel").font(.headline)
+      Text(L10n.surface(.clipboardPanel, language: model.settings.language)).font(.headline)
       HotkeyRecorderView(
         binding: model.settings.recordPanelHotkeyBinding,
         language: model.settings.language,
@@ -464,7 +470,8 @@ extension SettingsView {
   }
 
   private func settingsDisclosureStyle(for section: SettingsSection) -> SettingsDisclosureStyle {
-    SettingsDisclosureStyle(section: section, keyboardFocus: $focusedSettingsSection,
+    SettingsDisclosureStyle(
+      section: section, keyboardFocus: $focusedSettingsSection,
       accessibilityFocus: $accessibilityFocusedSettingsSection)
   }
 
@@ -521,8 +528,7 @@ extension SettingsView {
     // Navigation scroll, not decorative motion: keep the fixed duration
     // easing so section positioning stays predictable.
     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-      if let item = request.item { proxy.scrollTo(item, anchor: .top) }
-      else { proxy.scrollTo(request.section, anchor: .top) }
+      if let item = request.item { proxy.scrollTo(item, anchor: .top) } else { proxy.scrollTo(request.section, anchor: .top) }
     }
     await waitForMainRunLoopDefaultMode()
     guard !Task.isCancelled, model.settingsNavigationRequest?.id == request.id else { return }
@@ -548,9 +554,9 @@ extension SettingsView {
         .settingsFailedAudioRecoveryClearConfirmation,
         language: model.settings.language
       )
-    case .benchmarkRecordingArchive:
+    case .corpusRecordingArchive:
       L10n.string(
-        .settingsBenchmarkRecordingArchiveClearConfirmation,
+        .settingsCorpusRecordingArchiveClearConfirmation,
         language: model.settings.language
       )
     case .sensitiveAppRule:
@@ -568,8 +574,8 @@ extension SettingsView {
       L10n.historySettingsText(.clearRun, language: model.settings.language)
     case .failedAudioRecovery:
       L10n.string(.settingsFailedAudioRecoveryClear, language: model.settings.language)
-    case .benchmarkRecordingArchive:
-      L10n.string(.settingsBenchmarkRecordingArchiveClear, language: model.settings.language)
+    case .corpusRecordingArchive:
+      L10n.string(.settingsCorpusRecordingArchiveClear, language: model.settings.language)
     case .sensitiveAppRule:
       L10n.privacyText(.deleteRule, language: model.settings.language)
     }
@@ -591,9 +597,9 @@ extension SettingsView {
         .settingsFailedAudioRecoveryClearConfirmationDetail,
         language: model.settings.language
       )
-    case .benchmarkRecordingArchive:
+    case .corpusRecordingArchive:
       L10n.string(
-        .settingsBenchmarkRecordingArchiveClearConfirmationDetail,
+        .settingsCorpusRecordingArchiveClearConfirmationDetail,
         language: model.settings.language
       )
     case .sensitiveAppRule:
@@ -614,8 +620,8 @@ extension SettingsView {
       model.clearRunHistory()
     case .failedAudioRecovery:
       model.clearFailedAudioRecoveries()
-    case .benchmarkRecordingArchive:
-      model.benchmarkArchive.clear()
+    case .corpusRecordingArchive:
+      model.corpusArchive.clear()
     case .sensitiveAppRule(let ruleID):
       if let rule = model.settings.privacyPolicySettings.sensitiveAppRules.first(where: {
         $0.id == ruleID
@@ -867,7 +873,7 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
   func makeBody(configuration: Configuration) -> some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 8) {
-        Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+        Image(systemName: configuration.isExpanded ? RillSystemSymbol.chevronDown.rawValue : RillSystemSymbol.chevronRight.rawValue)
           .font(.caption.weight(.semibold))
           .frame(width: 12)
           .accessibilityHidden(true)

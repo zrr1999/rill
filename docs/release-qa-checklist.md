@@ -162,8 +162,18 @@ clipboard-panel shortcut cases with Clipboard Capture both enabled and disabled.
       the explicit panel shortcut.
 - [ ] Push-to-talk press/release, event-tap interruption, and permission loss do
       not leave recording latched.
-- [ ] With Toggle Recording off, physical Fn release is the authoritative stop and
-      a new recording can start immediately after the microphone boundary closes.
+- [ ] With Toggle Recording off, release physical Fn about half a second before
+      finishing a phrase: the recording surface disappears immediately and stays
+      hidden while capture continues for 500 ms; the final words reach recognition. The stop cue plays
+      only after capture closes; a new recording can then start.
+- [ ] Re-press Fn during that 500 ms tail: the same recording continues without
+      another start cue, its surface reappears, and the next release receives a fresh 500 ms tail.
+- [ ] Hold Fn for 20, 60 and 120 seconds with a recognizer that permits that duration,
+      then release once: capture closes after the tail without another key press.
+      Repeat after an event-tap interruption and check that no recording remains latched.
+- [ ] During the tail, Esc, input/authorization loss and App shutdown stop capture
+      immediately without a stop cue or delayed output. A stale release timer must
+      not stop a subsequent recording.
 - [ ] With Toggle Recording on, Fn release does not stop; the second press stops
       exactly once. Local Qwen still stops automatically at 20 seconds; other
       recognizers retain their provider limits. Restore Toggle Recording off before
@@ -196,9 +206,10 @@ cannot be confused with deleting stored content.
 
 Complete the pass in both App languages.
 
-- [ ] All Records, collections, Activity, Workflows, and all six panes of the
-      independent Settings window have a coherent VoiceOver reading and focus order.
-      Settings → Data → Diagnostics remains accessible without changing the main route.
+- [ ] All Records, collections, Activity, Workflows, and all six settings panes in the
+      main window have a coherent VoiceOver reading and focus order. Back (⌘[) returns
+      to the page that was open before Settings. Settings → Data → Diagnostics remains
+      accessible without changing that saved route.
 - [ ] Restricted history previews expose only the same truncated text shown
       visually; disabled previews expose no body text.
 - [ ] Run History can move Older then Newer without duplicates or jumps, a new

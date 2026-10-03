@@ -7,46 +7,48 @@ import Foundation
 /// Consumers must reload `WorkflowRunReceiptRepository`; this value is never
 /// proof that the receipt is still present.
 public struct WorkflowRunReceiptRepositoryChange: Sendable, Equatable {
-    public let runID: UUID
-    public let terminalTimestamp: Date
-    /// The content-free logical coordinate captured by the accepted terminal write.
-    public let writeGeneration: RunHistoryWriteGeneration?
+  public let runID: UUID
+  public let terminalTimestamp: Date
+  /// The content-free logical coordinate captured by the accepted terminal write.
+  public let writeGeneration: RunHistoryWriteGeneration?
 
-    public init(
-        runID: UUID,
-        terminalTimestamp: Date,
-        writeGeneration: RunHistoryWriteGeneration? = nil
-    ) {
-        self.runID = runID
-        self.terminalTimestamp = terminalTimestamp
-        self.writeGeneration = writeGeneration
-    }
+  public init(
+    runID: UUID,
+    terminalTimestamp: Date,
+    writeGeneration: RunHistoryWriteGeneration? = nil
+  ) {
+    self.runID = runID
+    self.terminalTimestamp = terminalTimestamp
+    self.writeGeneration = writeGeneration
+  }
 }
 
 public enum RillEvent: Sendable, Equatable {
-    case runStarted(RunSnapshot)
-    case runStageChanged(run: WorkflowRunIdentity, stage: WorkflowRunStage)
-    case contextCaptured(run: WorkflowRunIdentity, snapshot: ContextSnapshot)
-    case recognitionCompleted(run: WorkflowRunIdentity, result: RecognitionResult)
-    case liveSubtitleUpdated(LiveSubtitleSnapshot)
-    case audioProcessingQueueUpdated(AudioProcessingQueueSnapshot)
-    case failedAudioRecoveryUpdated([FailedAudioRecoveryReceipt])
-    case failedAudioRecoveryUnavailable(runID: UUID, reason: FailedAudioRecoveryError)
-    case candidateResolutionRequested(CandidateResolutionCase)
-    case candidateResolutionFinished(run: WorkflowRunIdentity, caseID: UUID, resolvedText: String)
-    case transformationApplied(run: WorkflowRunIdentity, stepID: UUID, text: String)
-    case runTextStepRecorded(runID: UUID, step: WorkflowTextStep)
-    case actionExecuted(run: WorkflowRunIdentity, actionID: String, result: ActionResult)
-    case recordPanelRequested
-    case recordBufferOutputRequested
-    case recordBufferInputFailed(recordID: RecordID)
-    /// Invalidates subscriber snapshots after a terminal receipt is accepted.
-    /// Repository membership may already have changed again by delivery time.
-    case runReceiptRepositoryChanged(WorkflowRunReceiptRepositoryChange)
-    case runHistoryUpdated(WorkflowRunHistoryUpdate)
-    case runCompleted(WorkflowRunSummary)
-    case runDiscarded(runID: UUID)
-    case runCancelled(WorkflowRunCancelledSummary)
-    case runFailed(runID: UUID?, workflow: WorkflowPresentation?, message: String)
-    case diagnostic(DiagnosticEvent)
+  case runStarted(RunSnapshot)
+  case runStageChanged(run: WorkflowRunIdentity, stage: WorkflowRunStage)
+  case contextCaptured(run: WorkflowRunIdentity, snapshot: ContextSnapshot)
+  case recognitionCompleted(run: WorkflowRunIdentity, result: RecognitionResult)
+  case liveSubtitleUpdated(LiveSubtitleSnapshot)
+  /// Presentation intent only; capture remains cancellable during the release tail.
+  case recordingReleaseChanged(runID: UUID, isReleased: Bool)
+  case audioProcessingQueueUpdated(AudioProcessingQueueSnapshot)
+  case failedAudioRecoveryUpdated([FailedAudioRecoveryReceipt])
+  case failedAudioRecoveryUnavailable(runID: UUID, reason: FailedAudioRecoveryError)
+  case candidateResolutionRequested(CandidateResolutionCase)
+  case candidateResolutionFinished(run: WorkflowRunIdentity, caseID: UUID, resolvedText: String)
+  case transformationApplied(run: WorkflowRunIdentity, stepID: UUID, text: String)
+  case runTextStepRecorded(runID: UUID, step: WorkflowTextStep)
+  case actionExecuted(run: WorkflowRunIdentity, actionID: String, result: ActionResult)
+  case recordPanelRequested
+  case recordBufferOutputRequested
+  case recordBufferInputFailed(recordID: RecordID)
+  /// Invalidates subscriber snapshots after a terminal receipt is accepted.
+  /// Repository membership may already have changed again by delivery time.
+  case runReceiptRepositoryChanged(WorkflowRunReceiptRepositoryChange)
+  case runHistoryUpdated(WorkflowRunHistoryUpdate)
+  case runCompleted(WorkflowRunSummary)
+  case runDiscarded(runID: UUID)
+  case runCancelled(WorkflowRunCancelledSummary)
+  case runFailed(runID: UUID?, workflow: WorkflowPresentation?, message: String)
+  case diagnostic(DiagnosticEvent)
 }

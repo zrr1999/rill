@@ -2,394 +2,395 @@ import AppKit
 import SwiftUI
 
 struct GlobalSearchResultsView: View {
-    private static let emptyStateMinHeight: CGFloat = 320
+  private static let emptyStateMinHeight: CGFloat = 320
 
-    @AccessibilityFocusState private var accessibilityFocusedResultID: String?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Binding var query: String
-    let results: [GlobalSearchResult]
-    let selectedResultID: String?
-    let historySearchState: GlobalHistorySearchState
-    var recordSearchState: GlobalHistorySearchState = .idle
-    var hasMore = false
-    var onLoadMore: () -> Void = {}
-    var onRecordRetry: () -> Void = {}
-    let historyFailureActionTitle: String
-    let language: AppLanguage
-    let focusRequest: Int
-    let onMoveSelection: (Int) -> Void
-    let onSubmit: () -> Void
-    let onCancel: () -> Void
-    let onHistorySearchFailureAction: () -> Void
-    let onHighlight: (String) -> Void
-    let onSelect: (GlobalSearchDestination) -> Void
+  @AccessibilityFocusState private var accessibilityFocusedResultID: String?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Binding var query: String
+  let results: [GlobalSearchResult]
+  let selectedResultID: String?
+  let historySearchState: GlobalHistorySearchState
+  var recordSearchState: GlobalHistorySearchState = .idle
+  var hasMore = false
+  var onLoadMore: () -> Void = {}
+  var onRecordRetry: () -> Void = {}
+  let historyFailureActionTitle: String
+  let language: AppLanguage
+  let focusRequest: Int
+  let onMoveSelection: (Int) -> Void
+  let onSubmit: () -> Void
+  let onCancel: () -> Void
+  let onHistorySearchFailureAction: () -> Void
+  let onHighlight: (String) -> Void
+  let onSelect: (GlobalSearchDestination) -> Void
 
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: RillSpacing.dense) {
+        Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
+          .foregroundStyle(.secondary)
+          .accessibilityHidden(true)
 
-                GlobalSearchField(
-                    text: $query,
-                    prompt: GlobalSearchText.searchPrompt(language: language),
-                    focusRequest: focusRequest,
-                    onMoveSelection: onMoveSelection,
-                    onSubmit: onSubmit,
-                    onCancel: onCancel
-                )
-                .frame(minHeight: 28)
+        GlobalSearchField(
+          text: $query,
+          prompt: GlobalSearchText.searchPrompt(language: language),
+          focusRequest: focusRequest,
+          onMoveSelection: onMoveSelection,
+          onSubmit: onSubmit,
+          onCancel: onCancel
+        )
+        .frame(minHeight: 28)
 
-                Button(GlobalSearchText.cancel(language: language), action: onCancel)
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut(.cancelAction)
-                    .help(GlobalSearchText.cancelHelp(language: language))
-                    .accessibilityIdentifier("global-search.cancel")
+        Button(GlobalSearchText.cancel(language: language), action: onCancel)
+          .buttonStyle(.borderless)
+          .keyboardShortcut(.cancelAction)
+          .help(GlobalSearchText.cancelHelp(language: language))
+          .accessibilityIdentifier("global-search.cancel")
+      }
+      .padding(.horizontal, RillSpacing.section)
+      .padding(.vertical, 14)
+
+      Divider()
+
+      if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        Group {
+          if historySearchState == .searching {
+            HStack(spacing: 8) {
+              ProgressView()
+                .controlSize(.small)
+              Text(GlobalSearchText.historySearching(language: language))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              Spacer()
             }
             .padding(.horizontal, RillSpacing.section)
-            .padding(.vertical, 14)
+            .padding(.vertical, 8)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("global-search.history.loading")
+          } else if historySearchState == .failed {
+            HStack(spacing: 12) {
+              Label(
+                GlobalSearchText.historyUnavailable(language: language),
+                systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+              )
+              .font(.caption)
+              .foregroundStyle(.orange)
 
-            Divider()
+              Spacer(minLength: 12)
 
-            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Group {
-            if historySearchState == .searching {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(GlobalSearchText.historySearching(language: language))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, RillSpacing.section)
-                .padding(.vertical, 8)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("global-search.history.loading")
-            } else if historySearchState == .failed {
-                HStack(spacing: 12) {
-                    Label(
-                        GlobalSearchText.historyUnavailable(language: language),
-                        systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-
-                    Spacer(minLength: 12)
-
-                    Button(
-                        historyFailureActionTitle,
-                        action: onHistorySearchFailureAction
-                    )
-                    .buttonStyle(.borderless)
-                    .accessibilityIdentifier("global-search.history.retry")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, RillSpacing.section)
-                .padding(.vertical, 8)
-                .accessibilityIdentifier("global-search.history.error")
+              Button(
+                historyFailureActionTitle,
+                action: onHistorySearchFailureAction
+              )
+              .buttonStyle(.borderless)
+              .accessibilityIdentifier("global-search.history.retry")
             }
-                    else { Color.clear.frame(height: 32).accessibilityHidden(true) }
-                }
-                .frame(minHeight: 32)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, RillSpacing.section)
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("global-search.history.error")
+          } else {
+            Color.clear.frame(height: 32).accessibilityHidden(true)
+          }
+        }
+        .frame(minHeight: 32)
+      }
 
-            if recordSearchState == .searching || recordSearchState == .failed {
-                HStack {
-                    if recordSearchState == .searching { ProgressView().controlSize(.small) }
-                    Text(L10n.workspace(recordSearchState == .failed ? .recordsUnavailable : .recordsSearching, language: language))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    if recordSearchState == .failed {
-                        Button(GlobalSearchText.historyRetry(language: language), action: onRecordRetry)
-                    }
-                }.padding(.horizontal, RillSpacing.section).padding(.vertical, RillSpacing.row)
-            }
+      if recordSearchState == .searching || recordSearchState == .failed {
+        HStack {
+          if recordSearchState == .searching { ProgressView().controlSize(.small) }
+          Text(L10n.workspace(recordSearchState == .failed ? .recordsUnavailable : .recordsSearching, language: language))
+            .font(.caption).foregroundStyle(.secondary)
+          Spacer()
+          if recordSearchState == .failed {
+            Button(GlobalSearchText.historyRetry(language: language), action: onRecordRetry)
+          }
+        }.padding(.horizontal, RillSpacing.section).padding(.vertical, RillSpacing.row)
+      }
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    if results.isEmpty && (recordSearchState == .searching || historySearchState == .searching) {
-                        ProgressView(L10n.quickRecord(.searching, language: language))
-                            .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
-                    } else if results.isEmpty {
-                        ContentUnavailableView(
-                            GlobalSearchText.noResultsTitle(language: language),
-                            systemImage: RillSystemSymbol.magnifyingglass.rawValue,
-                            description: Text(
-                                GlobalSearchText.noResultsDescription(language: language)
-                            )
-                        )
-                        .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
-                        .accessibilityIdentifier("global-search.empty")
-                        if !query.isEmpty {
-                            Button(L10n.presentation(.clearSearch, language: language)) { query = "" }
-                                .buttonStyle(.borderless)
-                        }
-                    } else {
-                        LazyVStack(alignment: .leading, spacing: RillSpacing.section) {
-                            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(GlobalSearchText.quickDestinations(language: language))
-                                    .font(.title2.weight(.semibold))
-                                    .accessibilityAddTraits(.isHeader)
-                            }
-
-                            ForEach(GlobalSearchResultCategory.allCases, id: \.rawValue) { category in
-                                let categoryResults = results.filter { $0.category == category }
-                                if !categoryResults.isEmpty {
-                                    resultSection(category, results: categoryResults)
-                                }
-                            }
-                        }
-                        .padding(RillSpacing.panel)
-                        if hasMore {
-                            Button(L10n.workspace(.loadMore, language: language), action: onLoadMore)
-                                .disabled(recordSearchState == .searching || historySearchState == .searching)
-                                .padding()
-                        }
-                    }
-                }
-                .accessibilityIdentifier("global-search.results")
-                .onChange(of: selectedResultID) { _, selectedID in
-                    guard let selectedID else { return }
-                    // Navigation scroll, not decorative motion: keep the fixed
-                    // duration easing so result positioning stays predictable.
-                    if reduceMotion {
-                        proxy.scrollTo(selectedID, anchor: .center)
-                    } else {
-                        withAnimation(.easeInOut(duration: 0.12)) {
-                            proxy.scrollTo(selectedID, anchor: .center)
-                        }
-                    }
-                }
+      ScrollViewReader { proxy in
+        ScrollView {
+          if results.isEmpty && (recordSearchState == .searching || historySearchState == .searching) {
+            ProgressView(L10n.quickRecord(.searching, language: language))
+              .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
+          } else if results.isEmpty {
+            ContentUnavailableView(
+              GlobalSearchText.noResultsTitle(language: language),
+              systemImage: RillSystemSymbol.magnifyingglass.rawValue,
+              description: Text(
+                GlobalSearchText.noResultsDescription(language: language)
+              )
+            )
+            .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
+            .accessibilityIdentifier("global-search.empty")
+            if !query.isEmpty {
+              Button(L10n.presentation(.clearSearch, language: language)) { query = "" }
+                .buttonStyle(.borderless)
             }
+          } else {
+            LazyVStack(alignment: .leading, spacing: RillSpacing.section) {
+              if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(GlobalSearchText.quickDestinations(language: language))
+                  .font(.title2.weight(.semibold))
+                  .accessibilityAddTraits(.isHeader)
+              }
+
+              ForEach(GlobalSearchResultCategory.allCases, id: \.rawValue) { category in
+                let categoryResults = results.filter { $0.category == category }
+                if !categoryResults.isEmpty {
+                  resultSection(category, results: categoryResults)
+                }
+              }
+            }
+            .padding(RillSpacing.panel)
+            if hasMore {
+              Button(L10n.workspace(.loadMore, language: language), action: onLoadMore)
+                .disabled(recordSearchState == .searching || historySearchState == .searching)
+                .padding()
+            }
+          }
         }
-        .background(.background)
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.15),
-            value: historySearchState
-        )
-        .onKeyPress(.escape) {
-            onCancel()
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            onMoveSelection(-1)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            onMoveSelection(1)
-            return .handled
-        }
+        .accessibilityIdentifier("global-search.results")
         .onChange(of: selectedResultID) { _, selectedID in
-            accessibilityFocusedResultID = selectedID
-        }
-    }
-
-    private func resultSection(
-        _ category: GlobalSearchResultCategory,
-        results: [GlobalSearchResult]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(category.title(language: language))
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
-
-            ForEach(results) { result in
-                GlobalSearchResultRow(
-                    result: result,
-                    isSelected: result.id == selectedResultID,
-                    onHighlight: onHighlight,
-                    onSelect: onSelect
-                )
-                .id(result.id)
-                .accessibilityFocused(
-                    $accessibilityFocusedResultID,
-                    equals: result.id
-                )
+          guard let selectedID else { return }
+          // Navigation scroll, not decorative motion: keep the fixed
+          // duration easing so result positioning stays predictable.
+          if reduceMotion {
+            proxy.scrollTo(selectedID, anchor: .center)
+          } else {
+            withAnimation(.easeInOut(duration: 0.12)) {
+              proxy.scrollTo(selectedID, anchor: .center)
             }
+          }
         }
+      }
     }
+    .background(.background)
+    .animation(
+      reduceMotion ? nil : .easeOut(duration: 0.15),
+      value: historySearchState
+    )
+    .onKeyPress(.escape) {
+      onCancel()
+      return .handled
+    }
+    .onKeyPress(.upArrow) {
+      onMoveSelection(-1)
+      return .handled
+    }
+    .onKeyPress(.downArrow) {
+      onMoveSelection(1)
+      return .handled
+    }
+    .onChange(of: selectedResultID) { _, selectedID in
+      accessibilityFocusedResultID = selectedID
+    }
+  }
+
+  private func resultSection(
+    _ category: GlobalSearchResultCategory,
+    results: [GlobalSearchResult]
+  ) -> some View {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
+      Text(category.title(language: language))
+        .font(.headline)
+        .foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
+
+      ForEach(results) { result in
+        GlobalSearchResultRow(
+          result: result,
+          isSelected: result.id == selectedResultID,
+          onHighlight: onHighlight,
+          onSelect: onSelect
+        )
+        .id(result.id)
+        .accessibilityFocused(
+          $accessibilityFocusedResultID,
+          equals: result.id
+        )
+      }
+    }
+  }
 }
 
 private struct GlobalSearchField: NSViewRepresentable {
-    @Binding var text: String
-    let prompt: String
-    let focusRequest: Int
-    let onMoveSelection: (Int) -> Void
-    let onSubmit: () -> Void
-    let onCancel: () -> Void
+  @Binding var text: String
+  let prompt: String
+  let focusRequest: Int
+  let onMoveSelection: (Int) -> Void
+  let onSubmit: () -> Void
+  let onCancel: () -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
+  func makeCoordinator() -> Coordinator {
+    Coordinator(parent: self)
+  }
+
+  func makeNSView(context: Context) -> KeyRoutingSearchField {
+    let field = KeyRoutingSearchField()
+    field.delegate = context.coordinator
+    field.sendsSearchStringImmediately = true
+    field.sendsWholeSearchString = false
+    field.setAccessibilityIdentifier("global-search.field")
+    field.setAccessibilityLabel(prompt)
+    return field
+  }
+
+  func updateNSView(_ field: KeyRoutingSearchField, context: Context) {
+    context.coordinator.parent = self
+    if field.stringValue != text {
+      field.stringValue = text
+    }
+    field.placeholderString = prompt
+    field.setAccessibilityLabel(prompt)
+    field.onMoveSelection = onMoveSelection
+    field.onSubmit = onSubmit
+    field.onCancelSearch = onCancel
+    field.requestFocus(focusRequest)
+  }
+
+  final class Coordinator: NSObject, NSSearchFieldDelegate {
+    var parent: GlobalSearchField
+
+    init(parent: GlobalSearchField) {
+      self.parent = parent
     }
 
-    func makeNSView(context: Context) -> KeyRoutingSearchField {
-        let field = KeyRoutingSearchField()
-        field.delegate = context.coordinator
-        field.sendsSearchStringImmediately = true
-        field.sendsWholeSearchString = false
-        field.setAccessibilityIdentifier("global-search.field")
-        field.setAccessibilityLabel(prompt)
-        return field
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSSearchField else { return }
+      parent.text = field.stringValue
     }
 
-    func updateNSView(_ field: KeyRoutingSearchField, context: Context) {
-        context.coordinator.parent = self
-        if field.stringValue != text {
-            field.stringValue = text
-        }
-        field.placeholderString = prompt
-        field.setAccessibilityLabel(prompt)
-        field.onMoveSelection = onMoveSelection
-        field.onSubmit = onSubmit
-        field.onCancelSearch = onCancel
-        field.requestFocus(focusRequest)
+    func control(
+      _ control: NSControl,
+      textView: NSTextView,
+      doCommandBy commandSelector: Selector
+    ) -> Bool {
+      switch commandSelector {
+      case #selector(NSResponder.moveDown(_:)):
+        parent.onMoveSelection(1)
+        return true
+      case #selector(NSResponder.moveUp(_:)):
+        parent.onMoveSelection(-1)
+        return true
+      case #selector(NSResponder.insertNewline(_:)):
+        parent.onSubmit()
+        return true
+      case #selector(NSResponder.cancelOperation(_:)):
+        parent.onCancel()
+        return true
+      default:
+        return false
+      }
     }
-
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
-        var parent: GlobalSearchField
-
-        init(parent: GlobalSearchField) {
-            self.parent = parent
-        }
-
-        func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSSearchField else { return }
-            parent.text = field.stringValue
-        }
-
-        func control(
-            _ control: NSControl,
-            textView: NSTextView,
-            doCommandBy commandSelector: Selector
-        ) -> Bool {
-            switch commandSelector {
-            case #selector(NSResponder.moveDown(_:)):
-                parent.onMoveSelection(1)
-                return true
-            case #selector(NSResponder.moveUp(_:)):
-                parent.onMoveSelection(-1)
-                return true
-            case #selector(NSResponder.insertNewline(_:)):
-                parent.onSubmit()
-                return true
-            case #selector(NSResponder.cancelOperation(_:)):
-                parent.onCancel()
-                return true
-            default:
-                return false
-            }
-        }
-    }
+  }
 }
 
 private final class KeyRoutingSearchField: NSSearchField {
-    var onMoveSelection: ((Int) -> Void)?
-    var onSubmit: (() -> Void)?
-    var onCancelSearch: (() -> Void)?
-    private var requestedFocus = 0
-    private var appliedFocus = 0
+  var onMoveSelection: ((Int) -> Void)?
+  var onSubmit: (() -> Void)?
+  var onCancelSearch: (() -> Void)?
+  private var requestedFocus = 0
+  private var appliedFocus = 0
 
-    func requestFocus(_ generation: Int) {
-        requestedFocus = generation
-        applyRequestedFocusIfPossible()
-    }
+  func requestFocus(_ generation: Int) {
+    requestedFocus = generation
+    applyRequestedFocusIfPossible()
+  }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        applyRequestedFocusIfPossible()
-    }
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    applyRequestedFocusIfPossible()
+  }
 
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 125:
-            onMoveSelection?(1)
-        case 126:
-            onMoveSelection?(-1)
-        case 36, 76:
-            onSubmit?()
-        case 53:
-            onCancelSearch?()
-        default:
-            super.keyDown(with: event)
-        }
+  override func keyDown(with event: NSEvent) {
+    switch event.keyCode {
+    case 125:
+      onMoveSelection?(1)
+    case 126:
+      onMoveSelection?(-1)
+    case 36, 76:
+      onSubmit?()
+    case 53:
+      onCancelSearch?()
+    default:
+      super.keyDown(with: event)
     }
+  }
 
-    override func cancelOperation(_ sender: Any?) {
-        onCancelSearch?()
-    }
+  override func cancelOperation(_ sender: Any?) {
+    onCancelSearch?()
+  }
 
-    private func applyRequestedFocusIfPossible() {
-        guard requestedFocus != appliedFocus, let window else { return }
-        guard window.makeFirstResponder(self) else { return }
-        appliedFocus = requestedFocus
-    }
+  private func applyRequestedFocusIfPossible() {
+    guard requestedFocus != appliedFocus, let window else { return }
+    guard window.makeFirstResponder(self) else { return }
+    appliedFocus = requestedFocus
+  }
 }
 
 private struct GlobalSearchResultRow: View {
-    private static let iconSize: CGFloat = 24
+  private static let iconSize: CGFloat = 24
 
-    let result: GlobalSearchResult
-    let isSelected: Bool
-    let onHighlight: (String) -> Void
-    let onSelect: (GlobalSearchDestination) -> Void
+  let result: GlobalSearchResult
+  let isSelected: Bool
+  let onHighlight: (String) -> Void
+  let onSelect: (GlobalSearchDestination) -> Void
 
-    var body: some View {
-        Button {
-            onSelect(result.destination)
-        } label: {
-            HStack(alignment: .top, spacing: RillSpacing.card) {
-                Image(systemName: result.symbolName)
-                    .frame(width: Self.iconSize, height: Self.iconSize)
-                    .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .accentColor)
-                    .accessibilityHidden(true)
+  var body: some View {
+    Button {
+      onSelect(result.destination)
+    } label: {
+      HStack(alignment: .top, spacing: RillSpacing.card) {
+        Image(systemName: result.symbolName)
+          .frame(width: Self.iconSize, height: Self.iconSize)
+          .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .accentColor)
+          .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(result.title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .primary)
-                        .lineLimit(1)
-                    if let detail = result.detail {
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
-                            .lineLimit(1)
-                    }
-                    if let preview = result.preview {
-                        Text(preview)
-                            .font(.callout)
-                            .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
-                            .lineLimit(2)
-                    }
-                }
-
-                Spacer(minLength: 8)
-                Image(systemName: RillSystemSymbol.arrowForward.rawValue)
-                    .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
-                    .accessibilityHidden(true)
-            }
-            .padding(RillSpacing.card)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 3) {
+          Text(result.title)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .primary)
+            .lineLimit(1)
+          if let detail = result.detail {
+            Text(detail)
+              .font(.caption)
+              .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+              .lineLimit(1)
+          }
+          if let preview = result.preview {
+            Text(preview)
+              .font(.callout)
+              .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+              .lineLimit(2)
+          }
         }
-        .buttonStyle(.plain)
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: RillRadius.chip)
-                    .fill(Color(nsColor: .selectedContentBackgroundColor))
-            }
-        }
-        .onHover { isHovered in
-            if isHovered {
-                onHighlight(result.id)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(
-            isSelected ? AccessibilityTraits.isSelected : AccessibilityTraits()
-        )
-        .accessibilityIdentifier("global-search.result.\(result.id)")
+
+        Spacer(minLength: 8)
+        Image(systemName: RillSystemSymbol.arrowForward.rawValue)
+          .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+          .accessibilityHidden(true)
+      }
+      .padding(RillSpacing.card)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(Rectangle())
     }
+    .buttonStyle(.plain)
+    .background {
+      if isSelected {
+        RoundedRectangle(cornerRadius: RillRadius.chip)
+          .fill(Color(nsColor: .selectedContentBackgroundColor))
+      }
+    }
+    .onHover { isHovered in
+      if isHovered {
+        onHighlight(result.id)
+      }
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(
+      isSelected ? AccessibilityTraits.isSelected : AccessibilityTraits()
+    )
+    .accessibilityIdentifier("global-search.result.\(result.id)")
+  }
 }

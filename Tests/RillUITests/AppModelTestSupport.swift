@@ -44,7 +44,7 @@ struct UITestAction: OutputAction {
   }
 
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      _ = try record.requireText(for: id)
+    _ = try record.requireText(for: id)
     await log.increment()
     return .copiedToClipboard
   }
@@ -483,9 +483,10 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
   private let rejectsSaves: Bool
 
   init(records: [WorkflowFileRecord] = [], rejectsSaves: Bool = false) {
-    recordsByID = Dictionary(uniqueKeysWithValues: records.map {
-      ($0.workflow.id, $0)
-    })
+    recordsByID = Dictionary(
+      uniqueKeysWithValues: records.map {
+        ($0.workflow.id, $0)
+      })
     self.rejectsSaves = rejectsSaves
   }
 
@@ -504,7 +505,8 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
     isEnabled: Bool,
     replacing fileURL: URL?
   ) async throws -> URL {
-    let destination = fileURL
+    let destination =
+      fileURL
       ?? configurationDirectoryURL.appendingPathComponent(
         "\(workflow.id.uuidString.lowercased()).toml"
       )
@@ -618,11 +620,11 @@ func makeHarness(
   refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void = { _ in },
   loadFailedAudioRecoveryReceiptsAction:
     @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt] = { [] },
-  clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {},
-  refreshBenchmarkRecordingArchiveAction:
+  clearCorpusRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {},
+  refreshCorpusRecordingArchiveAction:
     @escaping @Sendable (Bool) async throws -> Void = { _ in },
-  benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)? = nil,
-  benchmarkCorpusExporter: (any BenchmarkCorpusExporting)? = nil,
+  corpusArchiveReader: (any CorpusRecordingArchiveReading)? = nil,
+  corpusExporter: (any CorpusExporting)? = nil,
   authorizeWorkflowRunAction:
     @escaping @Sendable (
       WorkflowDefinition
@@ -733,10 +735,10 @@ func makeHarness(
     clearFailedAudioRecoveryAction: clearFailedAudioRecoveryAction,
     refreshFailedAudioRecoveryAction: refreshFailedAudioRecoveryAction,
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
-    clearBenchmarkRecordingArchiveAction: clearBenchmarkRecordingArchiveAction,
-    refreshBenchmarkRecordingArchiveAction: refreshBenchmarkRecordingArchiveAction,
-    benchmarkArchiveReader: benchmarkArchiveReader,
-    benchmarkCorpusExporter: benchmarkCorpusExporter,
+    clearCorpusRecordingArchiveAction: clearCorpusRecordingArchiveAction,
+    refreshCorpusRecordingArchiveAction: refreshCorpusRecordingArchiveAction,
+    corpusArchiveReader: corpusArchiveReader,
+    corpusExporter: corpusExporter,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,
@@ -853,18 +855,18 @@ func waitForFailedAudioRecovery(_ harness: AppModelTestHarness) async {
 }
 
 func appModelTestTrustedLocalSpeechModels() -> [LocalSpeechModelDescriptor] {
-    [
-        LocalSpeechModelDescriptor(
-            id: "qwen3-asr-0.6b-mlx-8bit",
-            engine: .mlxAudioSwift,
-            englishName: "Qwen3-ASR 0.6B INT8",
-            simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
-        ),
-        LocalSpeechModelDescriptor(
-            id: "qwen3-asr-1.7b-mlx-8bit",
-            engine: .mlxAudioSwift,
-            englishName: "Qwen3-ASR 1.7B INT8",
-            simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
-        ),
-    ]
+  [
+    LocalSpeechModelDescriptor(
+      id: "qwen3-asr-0.6b-mlx-8bit",
+      engine: .mlxAudioSwift,
+      englishName: "Qwen3-ASR 0.6B INT8",
+      simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
+    ),
+    LocalSpeechModelDescriptor(
+      id: "qwen3-asr-1.7b-mlx-8bit",
+      engine: .mlxAudioSwift,
+      englishName: "Qwen3-ASR 1.7B INT8",
+      simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
+    ),
+  ]
 }

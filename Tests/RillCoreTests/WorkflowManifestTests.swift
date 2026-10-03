@@ -2,73 +2,73 @@ import XCTest
 @testable import RillCore
 
 final class WorkflowManifestTests: XCTestCase {
-    func testSpeechPresetMetadataIsTypedAndUnknownAvailabilityFailsClosed() {
-        var workflow = WorkflowDefinition(
-            name: "Streaming",
-            pipeline: PipelineDeclaration(
-                recognizerID: "sherpa-onnx.streaming",
-                outputActions: [OutputActionReference(id: "focused-application.insert")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "orange"),
-            metadata: [
-                WorkflowMetadataKey.speechMode: SpeechWorkflowMode.streamingDirect.rawValue
-            ]
+  func testSpeechPresetMetadataIsTypedAndUnknownAvailabilityFailsClosed() {
+    var workflow = WorkflowDefinition(
+      name: "Streaming",
+      pipeline: PipelineDeclaration(
+        recognizerID: "sherpa-onnx.streaming",
+        outputActions: [OutputActionReference(id: "focused-application.insert")]
+      ),
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "orange"),
+      metadata: [
+        WorkflowMetadataKey.speechMode: SpeechWorkflowMode.streamingDirect.rawValue
+      ]
+    )
+    XCTAssertEqual(workflow.speechMode, .streamingDirect)
+    XCTAssertEqual(workflow.availability, .active)
+
+    workflow.metadata[WorkflowMetadataKey.availability] = "future-value"
+    XCTAssertEqual(workflow.availability, .planned)
+  }
+
+  func testWorkflowDefaultEnabledMetadataDefaultsOnAndFailsClosed() {
+    var workflow = WorkflowDefinition(
+      name: "Default Enabled",
+      pipeline: PipelineDeclaration(
+        recognizerID: "sherpa-onnx.local",
+        outputActions: [OutputActionReference(id: "focused-application.insert")]
+      ),
+      ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
+    )
+
+    XCTAssertTrue(workflow.isEnabledByDefault)
+
+    workflow.metadata[WorkflowMetadataKey.defaultEnabled] = "false"
+    XCTAssertFalse(workflow.isEnabledByDefault)
+
+    workflow.metadata[WorkflowMetadataKey.defaultEnabled] = "invalid"
+    XCTAssertFalse(workflow.isEnabledByDefault)
+  }
+
+  func testManifestRoundTripPreservesMetadata() throws {
+    let workflow = WorkflowDefinition(
+      id: UUID(uuidString: "9B07CFCC-95DE-4EBA-A05F-AB2E8BE7DDB6")!,
+      name: "Manifest Workflow",
+      titleKey: .directDemoClipboard,
+      trigger: .wakeWord,
+      pipeline: PipelineDeclaration(
+        recognizerID: "demo.direct",
+        outputActions: [OutputActionReference(id: "system-clipboard.copy")]
+      ),
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"),
+      metadata: ["owner": "tests"]
+    )
+    let manifest = WorkflowManifest(
+      schemaVersion: 2,
+      voiceProfiles: [
+        VoiceProfile(
+          id: UUID(uuidString: "CBA8775A-0C88-4AC7-874A-0DB57D91F10D")!,
+          name: "Default",
+          defaultRecognizerID: "demo.direct"
         )
-        XCTAssertEqual(workflow.speechMode, .streamingDirect)
-        XCTAssertEqual(workflow.availability, .active)
+      ],
+      workflows: [workflow],
+      metadata: ["source": "unit-test"]
+    )
 
-        workflow.metadata[WorkflowMetadataKey.availability] = "future-value"
-        XCTAssertEqual(workflow.availability, .planned)
-    }
+    let data = try JSONEncoder().encode(manifest)
+    let decoded = try JSONDecoder().decode(WorkflowManifest.self, from: data)
 
-    func testWorkflowDefaultEnabledMetadataDefaultsOnAndFailsClosed() {
-        var workflow = WorkflowDefinition(
-            name: "Default Enabled",
-            pipeline: PipelineDeclaration(
-                recognizerID: "sherpa-onnx.local",
-                outputActions: [OutputActionReference(id: "focused-application.insert")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
-        )
-
-        XCTAssertTrue(workflow.isEnabledByDefault)
-
-        workflow.metadata[WorkflowMetadataKey.defaultEnabled] = "false"
-        XCTAssertFalse(workflow.isEnabledByDefault)
-
-        workflow.metadata[WorkflowMetadataKey.defaultEnabled] = "invalid"
-        XCTAssertFalse(workflow.isEnabledByDefault)
-    }
-
-    func testManifestRoundTripPreservesMetadata() throws {
-        let workflow = WorkflowDefinition(
-            id: UUID(uuidString: "9B07CFCC-95DE-4EBA-A05F-AB2E8BE7DDB6")!,
-            name: "Manifest Workflow",
-            titleKey: .directDemoClipboard,
-            trigger: .wakeWord,
-            pipeline: PipelineDeclaration(
-                recognizerID: "demo.direct",
-                outputActions: [OutputActionReference(id: "system-clipboard.copy")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"),
-            metadata: ["owner": "tests"]
-        )
-        let manifest = WorkflowManifest(
-            schemaVersion: 2,
-            voiceProfiles: [
-                VoiceProfile(
-                    id: UUID(uuidString: "CBA8775A-0C88-4AC7-874A-0DB57D91F10D")!,
-                    name: "Default",
-                    defaultRecognizerID: "demo.direct"
-                ),
-            ],
-            workflows: [workflow],
-            metadata: ["source": "unit-test"]
-        )
-
-        let data = try JSONEncoder().encode(manifest)
-        let decoded = try JSONDecoder().decode(WorkflowManifest.self, from: data)
-
-        XCTAssertEqual(decoded, manifest)
-    }
+    XCTAssertEqual(decoded, manifest)
+  }
 }

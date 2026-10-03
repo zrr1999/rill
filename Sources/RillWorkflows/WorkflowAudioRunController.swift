@@ -80,7 +80,7 @@ public actor WorkflowAudioRunController {
   private var captureSignalDrainTasks: [UUID: Task<Void, Never>] = [:]
   private var terminalCancellationTasks: [UUID: Task<Void, Never>] = [:]
   private var lifecycle: Lifecycle = .accepting
-  private var shutdownWaiters: [CheckedContinuation<Void, Never>] = []
+  private var shutdownWaiters = ShutdownWaiters()
   private var diagnosticTailTask: Task<Void, Never>?
   private var diagnosticQueueSealed = false
 
@@ -696,71 +696,35 @@ public actor WorkflowAudioRunController {
   ) async throws {
     var captureBoundaryCrossed = false
     do {
-      let deferredCapture = try await audioCaptureService.finishCaptureDeferred()
-      captureBoundaryCrossed = true
-      releaseCaptureBoundary(runID: runID)
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        return
-      }
-      do {
-        try await liveAudioSession.sealCapture()
-      } catch {
-        deferredCapture.cancel()
-        await discardManagedTemporaryCapture(deferredCapture, runID: runID)
-        throw error
-      }
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        return
-      }
-      await recordingCueAction(.stopped, stopCueToken)
-      stopCueToken.invalidate()
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(deferredCapture, liveAudioSession: liveAudioSession)
-        return
-      }
-      let authorizationLease = try await liveAudioSession.processingLeaseForEnqueue()
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        return
-      }
-      let ownershipTransfer = await capturedAudioProcessingQueue.enqueue(
-        authorizationLease: authorizationLease,
-        triggerEvent: triggerEvent,
-        deferredCapture: deferredCapture
+      let outcome = try await SealedCaptureHandoff.transfer(
+        finish: {
+          let capture = try await self.audioCaptureService.finishCaptureDeferred()
+          captureBoundaryCrossed = true
+          self.releaseCaptureBoundary(runID: runID)
+          return capture
+        },
+        owns: { self.ownsFinishingRun(runID: runID, operationID: operationID) && !Task.isCancelled },
+        ownsForQueue: { self.ownsFinishingRun(runID: runID, operationID: operationID) && !Task.isCancelled },
+        seal: { try await liveAudioSession.sealCapture() },
+        stoppedCue: {
+          await self.recordingCueAction(.stopped, stopCueToken)
+          stopCueToken.invalidate()
+        },
+        beforeLease: { _ in },
+        lease: { try await liveAudioSession.processingLeaseForEnqueue() },
+        enqueue: { authorizationLease, deferredCapture in
+          await self.capturedAudioProcessingQueue.enqueue(
+            authorizationLease: authorizationLease,
+            triggerEvent: triggerEvent,
+            deferredCapture: deferredCapture
+          )
+        },
+        discard: { await self.discard($0, liveAudioSession: liveAudioSession) },
+        discardAfterSealFailure: { await self.discardManagedTemporaryCapture($0, runID: runID) },
+        afterRejected: { self.removeFinishingRun(runID: runID, operationID: operationID) },
+        afterLostOwnership: { await self.capturedAudioProcessingQueue.cancel(runID: runID) }
       )
-      guard ownershipTransfer == .accepted else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        removeFinishingRun(runID: runID, operationID: operationID)
-        return
-      }
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await capturedAudioProcessingQueue.cancel(runID: runID)
-        return
-      }
+      guard case .queued = outcome else { return }
       removeFinishingRun(runID: runID, operationID: operationID)
       enqueueDiagnostic(
         level: .info,
@@ -846,9 +810,7 @@ public actor WorkflowAudioRunController {
       lifecycle = .shuttingDown
       invalidateRecordingCues()
     case .shuttingDown:
-      await withCheckedContinuation { continuation in
-        shutdownWaiters.append(continuation)
-      }
+      await withCheckedContinuation { shutdownWaiters.add($0) }
       return
     case .terminated:
       return
@@ -872,11 +834,7 @@ public actor WorkflowAudioRunController {
     diagnosticTailTask = nil
     await pendingDiagnosticTask?.value
     lifecycle = .terminated
-    let waiters = shutdownWaiters
-    shutdownWaiters.removeAll()
-    for waiter in waiters {
-      waiter.resume()
-    }
+    shutdownWaiters.resumeAll()
   }
 
   func handleLiveAuthorizationRevocation(
@@ -890,7 +848,7 @@ public actor WorkflowAudioRunController {
       workflow = currentWorkflow
       retireCaptureSignalSubscription(runID: runID)
     case .preparing(let currentRunID, let currentWorkflow) where currentRunID == runID,
-         .starting(let currentRunID, let currentWorkflow, _) where currentRunID == runID:
+      .starting(let currentRunID, let currentWorkflow, _) where currentRunID == runID:
       workflow = currentWorkflow
     default:
       return

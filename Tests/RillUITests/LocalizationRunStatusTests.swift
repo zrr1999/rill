@@ -12,6 +12,7 @@ final class LocalizationRunStatusTests: XCTestCase {
       XCTAssertFalse(english.isEmpty)
       XCTAssertFalse(simplifiedChinese.isEmpty)
       XCTAssertNotEqual(english, simplifiedChinese)
+      XCTAssertFalse(containsHan(english), english)
     }
   }
 
@@ -37,8 +38,8 @@ final class LocalizationRunStatusTests: XCTestCase {
       "唤醒听写"
     )
     XCTAssertEqual(
-      L10n.runText(.benchmarkClearFailed, language: .english),
-      "Encrypted benchmark recordings could not be cleared."
+      L10n.runText(.corpusClearFailed, language: .english),
+      "Encrypted corpus recordings could not be cleared."
     )
   }
 

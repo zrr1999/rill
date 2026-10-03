@@ -281,13 +281,15 @@ public final class RecordQuickPanelModel {
 
   public func searchByMeaning(downloadIfNeeded: Bool = false) {
     guard !isClosed, !isSearching, semanticState != .working, canSearchByMeaning,
-      let semanticSearch else { return }
+      let semanticSearch
+    else { return }
     cancelSemanticSearch()
     let requestID = UUID()
     semanticRequestID = requestID
     semanticState = .working
     semanticProgress = .preparing(0)
-    let query = RecordQuery(text: searchText, collectionID: collectionID,
+    let query = RecordQuery(
+      text: searchText, collectionID: collectionID,
       sourceBundleIdentifier: currentAppOnly ? sourceBundleIdentifier : nil,
       kind: kind, pinnedOnly: pinnedOnly)
     semanticTasks[requestID] = Task { [weak self] in
@@ -418,7 +420,8 @@ public final class RecordQuickPanelModel {
 
   public func comparisonReturnContext() -> RecordComparisonReturn? {
     guard let jev, !jev.candidateIDs.isEmpty, !jev.isWorking else { return nil }
-    return RecordComparisonReturn(query: jev.query, resultLimit: results.count, candidateIDs: jev.candidateIDs,
+    return RecordComparisonReturn(
+      query: jev.query, resultLimit: results.count, candidateIDs: jev.candidateIDs,
       semanticIDs: semanticResults.map(\.id), selectedID: selectedID,
       sourceBundleIdentifier: sourceBundleIdentifier, currentAppOnly: currentAppOnly,
       kind: kind, pinnedOnly: pinnedOnly, collectionID: collectionID)
@@ -445,7 +448,8 @@ public final class RecordQuickPanelModel {
     guard !isClosed else { return }
     if let context = pendingComparison,
       context.query != searchText || context.kind != kind || context.pinnedOnly != pinnedOnly
-        || context.currentAppOnly != currentAppOnly || context.collectionID != collectionID {
+        || context.currentAppOnly != currentAppOnly || context.collectionID != collectionID
+    {
       pendingComparison = nil
     }
     if offset == 0 {

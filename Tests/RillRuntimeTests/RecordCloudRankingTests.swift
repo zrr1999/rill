@@ -10,8 +10,10 @@ struct RecordCloudRankingTests {
   @Test func reviewIsBoundedAndDoesNotCallProviderUntilConfirmed() async throws {
     let (store, privacy, provider, service) = fixture()
     let record = try await store.ingest(draft(String(repeating: "中😀", count: 1_000)), into: [])
-    let file = try await store.ingest(.init(payload: .files([URL(fileURLWithPath: "/private/folder/report.pdf")]),
-      provenance: provenance()), into: [])
+    let file = try await store.ingest(
+      .init(
+        payload: .files([URL(fileURLWithPath: "/private/folder/report.pdf")]),
+        provenance: provenance()), into: [])
     let before = try await store.catalogSnapshot()
     let review = try await service.prepare(query: "report", recordIDs: [record.id, file.id])
     #expect(await provider.calls == 0)
@@ -111,10 +113,13 @@ struct RecordCloudRankingTests {
     let store = RecordStore()
     let privacy = PrivacyPolicySettingsSource(initialSettings: .defaults)
     let provider = RankingFixture(held: held)
-    let service = RecordCloudRanking(store: store, provider: provider, privacy: privacy, currentFocus: {
-      .init(applicationName: "Notes", bundleIdentifier: "example.target", processIdentifier: 123,
-        focusedRole: nil, selectedText: "", secureInput: false)
-    })
+    let service = RecordCloudRanking(
+      store: store, provider: provider, privacy: privacy,
+      currentFocus: {
+        .init(
+          applicationName: "Notes", bundleIdentifier: "example.target", processIdentifier: 123,
+          focusedRole: nil, selectedText: "", secureInput: false)
+      })
     return (store, privacy, provider, service)
   }
   private func provenance() -> RecordProvenance {
@@ -136,7 +141,8 @@ private actor RankingFixture: RecordRankingProvider {
     if held {
       await withCheckedContinuation { continuation in
         self.continuation = continuation
-        entered?.resume(); entered = nil
+        entered?.resume()
+        entered = nil
       }
     }
     return .init(scores: candidates.indices.map { $0 == 0 ? 0.2 : 1.8 }, model: "jev-1.13.0", inputTokens: 50, outputTokens: 10)
@@ -145,5 +151,8 @@ private actor RankingFixture: RecordRankingProvider {
     if continuation != nil { return }
     await withCheckedContinuation { entered = $0 }
   }
-  func release() { continuation?.resume(); continuation = nil }
+  func release() {
+    continuation?.resume()
+    continuation = nil
+  }
 }

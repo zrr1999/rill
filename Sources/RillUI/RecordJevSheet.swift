@@ -38,7 +38,10 @@ struct RecordJevSheet: View {
                       .monospacedDigit().accessibilityLabel(text(.score))
                       .accessibilityValue(result.response.scores[index].formatted(.number.precision(.fractionLength(2))))
                     Text("/ 2").foregroundStyle(.secondary)
-                    Button(text(.select)) { onSelect(candidate.id); model.invalidate() }
+                    Button(text(.select)) {
+                      onSelect(candidate.id)
+                      model.invalidate()
+                    }
                   }
                 }
                 Text(candidate.text).font(.system(.body, design: .monospaced))
@@ -51,8 +54,10 @@ struct RecordJevSheet: View {
         Text(text(.rubric)).font(.caption).foregroundStyle(.secondary)
       }
       if let result = model.result {
-        Text("\(result.response.model) · \(Int(result.elapsedMilliseconds)) ms · \(result.response.inputTokens) in / \(result.response.outputTokens) out tokens")
-          .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        Text(
+          "\(result.response.model) · \(Int(result.elapsedMilliseconds)) ms · \(result.response.inputTokens) in / \(result.response.outputTokens) out tokens"
+        )
+        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
       }
       if case .failed(let error) = model.state {
         Text(L10n.jevError(error, language: language)).foregroundStyle(.orange)
@@ -66,7 +71,10 @@ struct RecordJevSheet: View {
           .accessibilityIdentifier("records.jev-retry")
       }
       HStack {
-        if model.isWorking { ProgressView().controlSize(.small); Text(text(.working)).font(.caption) }
+        if model.isWorking {
+          ProgressView().controlSize(.small)
+          Text(text(.working)).font(.caption)
+        }
         Spacer()
         Button(text(.close)) { model.invalidate() }.keyboardShortcut(.cancelAction)
         if model.state == .review {

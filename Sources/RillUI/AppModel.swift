@@ -47,8 +47,11 @@ public final class AppModel {
   public internal(set) var settingsNavigationRequest: SettingsNavigationRequest?
   public var selectedSettingsPane: SettingsPane = .general
   public var voiceSetupPresentation: VoiceSetupPresentation = .waiting
-  public internal(set) var settingsPresentationGeneration = 0
-  var handledSettingsPresentationGeneration = 0
+  /// Settings replaces the main sidebar until the user returns or navigates elsewhere.
+  public internal(set) var isShowingSettings = false
+  /// Bumped only by `dismissSettings()`. Content navigation leaves settings without
+  /// asking the shell to reclaim the sidebar; typed destinations own that focus.
+  public internal(set) var settingsSidebarFocusRestoreGeneration: UInt64 = 0
   let recordInteractions: RecordInteractionServices
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
 
@@ -95,7 +98,7 @@ public final class AppModel {
   public let vocabulary: VocabularyLibraryModel
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 
-  public let benchmarkArchive: BenchmarkRecordingArchiveModel
+  public let corpusArchive: CorpusRecordingArchiveModel
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
   }
@@ -194,12 +197,10 @@ public final class AppModel {
   let localSpeechSettingsSource: LocalSpeechSettingsSource
   let settingsWriteDebounceDuration: Duration
   let historyRetentionMaintenanceInterval: Duration?
-  let synchronizeResidentSpeechModelsAction:
-    @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void
+  let synchronizeResidentSpeechModelsAction: @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void
   let prepareEnabledSpeechModelAction: @Sendable (_ modelID: String) async -> Void
   let setLocalSpeechRuntimeEnabledAction: @Sendable (Bool) -> Void
-  let startWorkflowAudioRunAction:
-    @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void
+  let startWorkflowAudioRunAction: @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void
   let finishWorkflowAudioRunAction: @Sendable () async throws -> Void
   let retryFailedAudioRecoveryAction:
     @Sendable (
@@ -209,8 +210,7 @@ public final class AppModel {
   let deleteFailedAudioRecoveryAction: @Sendable (UUID) async throws -> Void
   let clearFailedAudioRecoveryAction: @Sendable () async throws -> Void
   let refreshFailedAudioRecoveryAction: @Sendable (Bool) async throws -> Void
-  let loadFailedAudioRecoveryReceiptsAction:
-    @Sendable () async throws -> [FailedAudioRecoveryReceipt]
+  let loadFailedAudioRecoveryReceiptsAction: @Sendable () async throws -> [FailedAudioRecoveryReceipt]
   let authorizeWorkflowRunAction:
     @Sendable (
       WorkflowDefinition
@@ -251,7 +251,6 @@ public final class AppModel {
   var persistenceWrites: PersistenceWriteCoordinator { settings.writes }
   var clipboardUpdateDebounceTask: Task<Void, Never>?
   private(set) var hasBegunApplicationShutdown = false
-
 
   public init(
     workflows initialWorkflows: [WorkflowDefinition],
@@ -310,10 +309,10 @@ public final class AppModel {
     refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void,
     loadFailedAudioRecoveryReceiptsAction:
       @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt],
-    clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
-    refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
-    benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)?,
-    benchmarkCorpusExporter: (any BenchmarkCorpusExporting)?,
+    clearCorpusRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
+    refreshCorpusRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
+    corpusArchiveReader: (any CorpusRecordingArchiveReading)?,
+    corpusExporter: (any CorpusExporting)?,
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
@@ -362,11 +361,13 @@ public final class AppModel {
       effectiveLocalSpeechAvailability = declaredLocalSpeechAvailability
     }
     let exposesTrustedCatalog = effectiveLocalSpeechAvailability.isAvailable && catalogIsValid
-    let settings = SettingsPersistenceModel(store: settingsStore, language: language,
+    let settings = SettingsPersistenceModel(
+      store: settingsStore, language: language,
       verifyOpenAIConfiguration: verifyOpenAIConfigurationAction,
       configurationChanged: workflowLibraryChangedAction)
     self.settings = settings
-    self.workflowLibrary = WorkflowLibraryModel(workflows: initialWorkflows,
+    self.workflowLibrary = WorkflowLibraryModel(
+      workflows: initialWorkflows,
       settings: settings, explain: explainResolvedWorkflowAction)
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
@@ -402,7 +403,8 @@ public final class AppModel {
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
     self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary, maintenanceSleep: historyMaintenanceSleep)
-    self.voice = VoiceRunModel(settings: settings, resources: voiceResourceServices,
+    self.voice = VoiceRunModel(
+      settings: settings, resources: voiceResourceServices,
       supportedTTSModelIDs: Set(ttsModelOptions.map(\.id)),
       liveSubtitlePreparingHideDelay: liveSubtitlePreparingHideDelay,
       resourceAvailabilityChanged: workflowLibraryChangedAction,
@@ -414,15 +416,18 @@ public final class AppModel {
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
     self.settingsStore = settingsStore
-    self.vocabulary = VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource,
+    self.vocabulary = VocabularyLibraryModel(
+      settings: settings, source: vocabularyRuleSource,
       didChange: { [workflowLibrary] bindings in
         workflowLibrary.cancelWorkflowExplanation()
         workflowLibrary.rebuild(defaultVocabularyBindings: bindings)
         workflowLibraryChangedAction()
-      }, saveFailed: { [history] in
-        history.append(EventFeedEntry(
-          english: L10n.runText(.settingsSaveFailedRetry, language: .english),
-          simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
+      },
+      saveFailed: { [history] in
+        history.append(
+          EventFeedEntry(
+            english: L10n.runText(.settingsSaveFailedRetry, language: .english),
+            simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
       })
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
@@ -451,9 +456,10 @@ public final class AppModel {
     self.clearFailedAudioRecoveryAction = clearFailedAudioRecoveryAction
     self.refreshFailedAudioRecoveryAction = refreshFailedAudioRecoveryAction
     self.loadFailedAudioRecoveryReceiptsAction = loadFailedAudioRecoveryReceiptsAction
-    self.benchmarkArchive = BenchmarkRecordingArchiveModel(settings: settings, store: settingsStore,
-      reader: benchmarkArchiveReader, exporter: benchmarkCorpusExporter,
-      refresh: refreshBenchmarkRecordingArchiveAction, clear: clearBenchmarkRecordingArchiveAction)
+    self.corpusArchive = CorpusRecordingArchiveModel(
+      settings: settings, store: settingsStore,
+      reader: corpusArchiveReader, exporter: corpusExporter,
+      refresh: refreshCorpusRecordingArchiveAction, clear: clearCorpusRecordingArchiveAction)
     self.authorizeWorkflowRunAction = authorizeWorkflowRunAction
     self.writeClipboardTextAction = writeClipboardTextAction
     self.deliverNextRecordAction = deliverNextRecordAction
@@ -670,7 +676,7 @@ extension AppModel {
     hasBegunApplicationShutdown = true
     guard hasBegunApplicationShutdown, !oldValue else { return }
     history.hasBegunApplicationShutdown = true
-    benchmarkArchive.beginShutdown()
+    corpusArchive.beginShutdown()
     settings.beginShutdown()
     voice.stopResourcePreparationForApplicationShutdown()
     workflowLibrary.cancelWorkflowExplanation()
