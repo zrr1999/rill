@@ -167,10 +167,16 @@ check_record_domain_boundary() {
 
 run_swift_tests() {
   local native_tests='RillPlatformTests|RillUITests|RillAppTests'
+  local storage_stress='RillRuntimeTests.RecordCatalogStressTests'
+  local panel_stress='RillAppTests.ClipboardPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$native_tests|RillQualityEvaluations"
+  locked_swift test --parallel --num-workers 4 --skip "$native_tests|RillQualityEvaluations|$storage_stress"
   echo 'Running native platform, UI, and app tests serially...'
-  locked_swift test --skip-build --filter "$native_tests"
+  locked_swift test --skip-build --filter "$native_tests" --skip "$panel_stress"
+  echo 'Running 10,000-record storage performance tests in a fresh serial process...'
+  locked_swift test --skip-build --filter "$storage_stress"
+  echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
+  locked_swift test --skip-build --filter "$panel_stress"
 }
 
 run_script_tests() {
