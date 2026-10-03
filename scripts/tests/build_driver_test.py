@@ -37,6 +37,23 @@ class BuildDriverTests(unittest.TestCase):
             with self.assertRaises(build.BuildError):
                 build.main(["test-domain", "--scratch-path", ".build"])
 
+    def test_full_tests_compile_catalogs_and_keep_the_same_arena_for_filtered_runs(self):
+        invocations = []
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(build, "BuildContext") as context,
+        ):
+            for arguments in (
+                ["test", "--parallel", "--num-workers", "4"],
+                ["test", "--skip-build", "--filter", "RillUITests"],
+            ):
+                build.main(arguments)
+                invocations.append(context.call_args.args[2])
+            self.assertEqual(build.build_settings(invocations[0]), build.build_settings(invocations[1]))
+            self.assertEqual(build.option(invocations[0], ("--build-system",), None), "swiftbuild")
+            build.main(["test-domain", "--filter", "SessionCoordinatorTests"])
+            self.assertNotIn("--build-system", context.call_args.args[2])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
