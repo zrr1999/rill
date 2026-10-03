@@ -163,12 +163,24 @@ jobs:
       - name: Run preflight
         env:
           EVENT_NAME: ${{ github.event_name }}
+          RILL_UI_SNAPSHOT_DIR: ${{ github.workspace }}/.artifacts/ui-renders
+          RILL_RECORD_STRESS: "1"
         run: |
           if [[ "$EVENT_NAME" == pull_request ]]; then
             bash scripts/preflight.sh
           else
             bash scripts/preflight.sh --clean
           fi
+
+      - name: Save native render evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-renders-${{ github.sha }}
+          path: .artifacts/ui-renders/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Save Swift build arenas
         if: ${{ github.ref == 'refs/heads/main' && !cancelled() && steps.build-cache.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
@@ -187,5 +199,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.17"
       - name: Validate performance workload correctness
         run: bash scripts/build_benchmarks.sh
