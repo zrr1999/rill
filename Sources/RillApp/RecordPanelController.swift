@@ -1036,11 +1036,20 @@ private final class FloatingRecordPanel: NSPanel {
   }
 }
 
-private final class FloatingRecordHostingController<Content: View>: NSHostingController<Content> {
+private final class FloatingRecordHostingController<Content: View>: NSViewController {
+  private var rootView: Content
+
+  init(rootView: Content) {
+    self.rootView = rootView
+    super.init(nibName: nil, bundle: nil)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
   func replaceRootView(_ content: Content) {
     rootView = content
-    // loadView installs our first-click hosting view, which also owns a root.
-    (view as? FirstMouseHostingView<Content>)?.rootView = content
+    (viewIfLoaded as? FirstMouseHostingView<Content>)?.rootView = content
   }
 
   override func loadView() {
