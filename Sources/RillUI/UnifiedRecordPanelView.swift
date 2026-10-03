@@ -73,20 +73,25 @@ public struct UnifiedRecordPanelView<Records: View>: View {
         .controlSize(.regular).padding(.horizontal, 14).frame(height: 53)
       }
       notice
-      ZStack {
-        // Separate containers keep hidden panes out of the visible glass composite.
-        GlassEffectContainer(spacing: 8) { records }
-          .opacity(presentation.mode == .collections ? 1 : 0)
-          .allowsHitTesting(presentation.mode == .collections)
-          .disabled(presentation.mode != .collections || presentation.isCollapsed)
-          .accessibilityHidden(presentation.mode != .collections || presentation.isCollapsed)
-        GlassEffectContainer(spacing: 8) {
-          RecordBufferDraftView(model: model, onFinishEditing: onFinishEditing)
+      // Both panes fill the available viewport; neither needs to determine the
+      // other's ideal size during the window's initial layout.
+      GeometryReader { viewport in
+        ZStack {
+          // Separate containers keep hidden panes out of the visible glass composite.
+          GlassEffectContainer(spacing: 8) { records }
+            .opacity(presentation.mode == .collections ? 1 : 0)
+            .allowsHitTesting(presentation.mode == .collections)
+            .disabled(presentation.mode != .collections || presentation.isCollapsed)
+            .accessibilityHidden(presentation.mode != .collections || presentation.isCollapsed)
+          GlassEffectContainer(spacing: 8) {
+            RecordBufferDraftView(model: model, onFinishEditing: onFinishEditing)
+          }
+          .opacity(presentation.mode == .drafts ? 1 : 0)
+          .allowsHitTesting(presentation.mode == .drafts)
+          .disabled(presentation.mode != .drafts || presentation.isCollapsed)
+          .accessibilityHidden(presentation.mode != .drafts || presentation.isCollapsed)
         }
-        .opacity(presentation.mode == .drafts ? 1 : 0)
-        .allowsHitTesting(presentation.mode == .drafts)
-        .disabled(presentation.mode != .drafts || presentation.isCollapsed)
-        .accessibilityHidden(presentation.mode != .drafts || presentation.isCollapsed)
+        .frame(width: viewport.size.width, height: viewport.size.height)
       }
     }
   }

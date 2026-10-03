@@ -618,6 +618,41 @@ final class RecordPanelControllerTests: XCTestCase {
     await controller.shutdown()
   }
 
+  func testReopenedCapsuleObservesLanguageChangesAndReplacementModels() async throws {
+    let firstWorkspace = RecordWorkspaceModel(store: RecordStore())
+    let secondWorkspace = RecordWorkspaceModel(store: RecordStore())
+    let firstModel = makeModel(recordWorkspace: firstWorkspace)
+    let secondModel = makeModel(recordWorkspace: secondWorkspace)
+    let controller = RecordPanelController(
+      pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
+    let existing = Set(NSApp.windows.map(\.windowNumber))
+    func dragHandle(in view: NSView) -> NSView? {
+      if view.accessibilityIdentifier() == "record-panel.move-and-open" { return view }
+      return view.subviews.lazy.compactMap { dragHandle(in: $0) }.first
+    }
+    let visits: [(AppModel, AppLanguage)] = [
+      (firstModel, .english), (firstModel, .simplifiedChinese), (secondModel, .english),
+    ]
+    for (model, language) in visits {
+      model.applyLanguage(language)
+      controller.show(model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+      let capsule = try XCTUnwrap(
+        NSApp.windows.first { $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existing.contains($0.windowNumber) })
+      for _ in 0..<4 { await waitForMainRunLoopDefaultMode() }
+      capsule.contentView?.layoutSubtreeIfNeeded()
+      let handle = try XCTUnwrap(dragHandle(in: XCTUnwrap(capsule.contentView)))
+      XCTAssertEqual(handle.accessibilityLabel(), L10n.recordPanel(.moveAndOpen, language: language))
+      controller.collapse()
+      XCTAssertTrue(controller.presentation.isCollapsed)
+      XCTAssertTrue(handle.accessibilityPerformPress())
+      XCTAssertFalse(controller.presentation.isCollapsed)
+      controller.dismiss()
+    }
+    await controller.shutdown()
+    await firstWorkspace.shutdown()
+    await secondWorkspace.shutdown()
+  }
+
   func testWarmPanelReadyToSearchWithTenThousandRecords() async throws {
     guard ProcessInfo.processInfo.environment["RILL_RECORD_STRESS"] == "1" else {
       throw XCTSkip("Set RILL_RECORD_STRESS=1 to measure native panel presentation with 10,000 summaries.")

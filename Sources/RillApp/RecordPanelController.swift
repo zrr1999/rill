@@ -185,6 +185,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
   private var panel: NSPanel?
   private var capsulePanel: NSPanel?
+  private weak var capsuleModel: AppModel?
   let presentation = RecordPanelPresentation()
   private weak var appModel: AppModel?
   private var draftTarget: RecordBufferTextOutput.Target?
@@ -767,7 +768,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     presentation.isCollapsed = false
     capsule.orderFrontRegardless()
     if let screen = screen(containing: capsule.frame) {
-      panel.setFrame(RecordPanelPlacement.pageFrame(beside: capsule.frame, in: screen.visibleFrame), display: true)
+      let frame = RecordPanelPlacement.pageFrame(beside: capsule.frame, in: screen.visibleFrame)
+      if panel.frame != frame { panel.setFrame(frame, display: true) }
     }
     pasteTaskOwner.abortReservations()
     panelTransitionGeneration &+= 1
@@ -798,6 +800,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   }
 
   private func prepareCapsule(model: AppModel) {
+    guard capsulePanel == nil || capsuleModel !== model else { return }
+    capsuleModel = model
     let rootView = RecordPanelCapsuleView(
       model: model,
       onExpand: { [weak self] in
