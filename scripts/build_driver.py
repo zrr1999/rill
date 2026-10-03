@@ -333,8 +333,6 @@ class BuildContext:
         self, subcommand: str, arguments: list[str], *, quiet: bool = False
     ) -> str:
         command = ["swift", subcommand, "--force-resolved-versions"]
-        if subcommand == "test":
-            command += ["-Xswiftc", "-warnings-as-errors"]
         command += arguments + ["--scratch-path", str(self.scratch)]
         if quiet:
             return capture(command, self.root)

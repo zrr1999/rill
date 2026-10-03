@@ -90,6 +90,8 @@ Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/rele
 `swift test --filter` 只限定测试执行范围，不保证缩小首次编译范围。
 完整测试默认使用 `--build-system swiftbuild`，与 Release 一样编译 String Catalog；
 旧 native 引擎只复制 `.xcstrings`，不会生成运行时需要的 `.lproj` 资源。
+包内 Swift 目标通过 manifest 将全部告警视为错误；Debug/Release 负向编译测试守住此门禁。
+不再向依赖透传全局告警参数，避免 SwiftBuild 与依赖自身的告警处理冲突。
 CI 同时启用原生渲染导出和 10,000 条记录压力验收，并保存渲染产物；
 真实输入、VoiceOver 和多显示器交互仍按 macOS QA 清单单独验收。
 `test-domain` 从同一份 Package.swift 排除 App、UI、MLX 和原生验收测试目标，
