@@ -249,3 +249,9 @@ memberships. The correction has no collection membership, so saving it cannot
 trigger routing or repeat delivery. An operation ID makes retries idempotent;
 a deleted original is not resurrected. The workspace owns and drains the accepted
 write. Remembering vocabulary is a separate, scope-visible command.
+
+The quick panel tracks the latest catalog revision while a query is in flight.
+An initial stream snapshot does not restart that query. Before publishing, the
+page must cover the latest observed revision; restored comparison candidates
+must come from the same revision as the page. An older catalog snapshot cannot
+clear a collection selection made against a newer snapshot.
