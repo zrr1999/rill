@@ -462,8 +462,6 @@ for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
 done
 uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
-cleanup
-trap - EXIT INT TERM
 
 info "Running the test suite..."
 run_swift_tests
@@ -471,6 +469,24 @@ run_swift_tests
 info "Checking the working diff for whitespace errors..."
 git diff --check
 git diff --cached --check
+
+if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
+  info "Saving the verified preflight app for native interaction QA..."
+  mkdir -p "$RILL_PREFLIGHT_APP_DIR"
+  APP_ARCHIVE="Rill-preflight-$SOURCE_REVISION.zip"
+  [[ ! -e "$RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE" && ! -L "$RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE" ]] ||
+    error "Preflight app archive already exists: $RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE"
+  ditto -c -k --sequesterRsrc --keepParent \
+    "$PACKAGE_SMOKE_ROOT/Rill.app" "$RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE"
+  (
+    cd "$RILL_PREFLIGHT_APP_DIR"
+    shasum -a 256 "$APP_ARCHIVE" > "$APP_ARCHIVE.sha256"
+    printf 'source_revision=%s\nsource_dirty=%s\nbuild_kind=preflight\nsigning=ad-hoc\n' \
+      "$SOURCE_REVISION" "$SOURCE_DIRTY" > "$APP_ARCHIVE.source.txt"
+  )
+fi
+cleanup
+trap - EXIT INT TERM
 
 report_preflight_evidence
 info "Preflight passed"
