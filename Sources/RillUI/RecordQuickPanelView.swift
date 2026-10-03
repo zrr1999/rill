@@ -191,6 +191,10 @@ public struct RecordQuickPanelView: View {
       .accessibilityIdentifier("quick-records.actions")
     }
     .onAppear { if !model.isPreviewVisible { model.togglePreview() } }
+    .onChange(of: ObjectIdentifier(model)) { _, _ in
+      showsFilters = false
+      if !model.isPreviewVisible { model.togglePreview() }
+    }
     .onChange(of: model.selectedID) { _, _ in if !model.isPreviewVisible { model.togglePreview() } }
     .sheet(isPresented: $showsFilters) { filters }
     .accessibilityIdentifier("records.quick-panel")

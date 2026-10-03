@@ -483,45 +483,50 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       return true
     }
     digitSelectionHandler = digitSelection
-    let hostingController = FloatingRecordHostingController(
-      rootView: FloatingRecordView(
-        model: model, session: session, presentation: presentation,
-        onModeChange: { [weak self] in self?.selectMode($0) },
-        onFinishEditing: { [weak self] in self?.finishEditing() },
-        onInteractionChange: { [weak self] in self?.hover.refresh() },
-        deliverSelection: useSelectedRecord,
-        copySelection: { [weak self] subject in
-          guard let self,
-            let reservation = self.pasteTaskOwner.reserve(
-              prepare: { true },
-              action: { [weak self] in
-                let result = await copySelection(subject)
-                self?.handleReuseOutcome(result, session: session)
-              }, onAbort: nil
-            )
-          else { return }
-          self.pasteTaskOwner.start(reservation)
-        },
-        onShowRecord: { [weak self] in self?.hidePanel(restorePreviousApplication: false) },
-        onConfigureJev: { [weak self, weak model] in
-          guard let self, let model else { return }
-          self.prepareForSettings(model: model) { [weak self, weak model] context in
-            guard let self, let model, !self.hasBegunShutdown else { return }
-            self.show(
-              model: model, deliverSelection: deliverSelection, copySelection: copySelection,
-              onDeliveryAbort: onDeliveryAbort, restoring: context)
-          }
-        },
-        onClose: { [weak self] in self?.handleEscape() }
-      )
+    let rootView = FloatingRecordView(
+      model: model, session: session, presentation: presentation,
+      onModeChange: { [weak self] in self?.selectMode($0) },
+      onFinishEditing: { [weak self] in self?.finishEditing() },
+      onInteractionChange: { [weak self] in self?.hover.refresh() },
+      deliverSelection: useSelectedRecord,
+      copySelection: { [weak self] subject in
+        guard let self,
+          let reservation = self.pasteTaskOwner.reserve(
+            prepare: { true },
+            action: { [weak self] in
+              let result = await copySelection(subject)
+              self?.handleReuseOutcome(result, session: session)
+            }, onAbort: nil
+          )
+        else { return }
+        self.pasteTaskOwner.start(reservation)
+      },
+      onShowRecord: { [weak self] in self?.hidePanel(restorePreviousApplication: false) },
+      onConfigureJev: { [weak self, weak model] in
+        guard let self, let model else { return }
+        self.prepareForSettings(model: model) { [weak self, weak model] context in
+          guard let self, let model, !self.hasBegunShutdown else { return }
+          self.show(
+            model: model, deliverSelection: deliverSelection, copySelection: copySelection,
+            onDeliveryAbort: onDeliveryAbort, restoring: context)
+        }
+      },
+      onClose: { [weak self] in self?.handleEscape() }
     )
-    hostingController.sizingOptions = []
+    let hostingController: FloatingRecordHostingController<FloatingRecordView>
+    if let existing = panel?.contentViewController as? FloatingRecordHostingController<FloatingRecordView> {
+      existing.replaceRootView(rootView)
+      hostingController = existing
+    } else {
+      hostingController = FloatingRecordHostingController(rootView: rootView)
+      hostingController.sizingOptions = []
+    }
     prepareCapsule(model: model)
 
     if let panel {
       panel.title = L10n.quickRecord(.title, language: model.settings.language)
       (panel as? FloatingRecordPanel)?.onDigitPressed = digitSelection
-      panel.contentViewController = hostingController
+      if panel.contentViewController !== hostingController { panel.contentViewController = hostingController }
       if panel.isVisible {
         dismiss()
         return
@@ -794,22 +799,22 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   }
 
   private func prepareCapsule(model: AppModel) {
-    let hosting = FloatingRecordHostingController(
-      rootView: RecordPanelCapsuleView(
-        model: model,
-        onExpand: { [weak self] in
-          guard let self else { return }
-          self.selectMode(self.presentation.mode)
-        },
-        onClose: { [weak self] in self?.dismiss() },
-        onDrag: { [weak self] in self?.moveFloatingPanels(by: $0) },
-        onDragActivity: { [weak self] in self?.hover.setDragging($0) }
-      ))
-    hosting.sizingOptions = []
+    let rootView = RecordPanelCapsuleView(
+      model: model,
+      onExpand: { [weak self] in
+        guard let self else { return }
+        self.selectMode(self.presentation.mode)
+      },
+      onClose: { [weak self] in self?.dismiss() },
+      onDrag: { [weak self] in self?.moveFloatingPanels(by: $0) },
+      onDragActivity: { [weak self] in self?.hover.setDragging($0) }
+    )
     if let capsulePanel {
-      capsulePanel.contentViewController = hosting
+      (capsulePanel.contentViewController as? FloatingRecordHostingController<RecordPanelCapsuleView>)?.replaceRootView(rootView)
       return
     }
+    let hosting = FloatingRecordHostingController(rootView: rootView)
+    hosting.sizingOptions = []
     let capsule = RecordCapsulePanel(
       contentRect: NSRect(origin: .zero, size: RecordPanelPlacement.capsuleSize),
       styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -1086,6 +1091,12 @@ private final class FloatingRecordPanel: NSPanel {
 }
 
 private final class FloatingRecordHostingController<Content: View>: NSHostingController<Content> {
+  func replaceRootView(_ content: Content) {
+    rootView = content
+    // loadView installs our first-click hosting view, which also owns a root.
+    (view as? FirstMouseHostingView<Content>)?.rootView = content
+  }
+
   override func loadView() {
     let hosting = FirstMouseHostingView(rootView: rootView)
     hosting.sizingOptions = []
