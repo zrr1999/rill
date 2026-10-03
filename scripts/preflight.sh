@@ -183,7 +183,15 @@ run_swift_tests() {
   echo 'Running 10,000-record storage performance tests in a fresh serial process...'
   locked_swift test --skip-build --filter "$storage_stress"
   echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
-  locked_swift test --skip-build --filter "$panel_stress"
+  if locked_swift test --skip-build --filter "$panel_stress"; then
+    return
+  fi
+  info "Native panel stress failed; sampling one diagnostic replay"
+  if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
+    locked_swift test --skip-build --filter "$panel_stress"; then
+    info "Diagnostic replay also failed; the original failure remains authoritative"
+  fi
+  error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
 }
 
 run_script_tests() {

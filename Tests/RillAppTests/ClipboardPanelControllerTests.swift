@@ -631,6 +631,8 @@ final class RecordPanelControllerTests: XCTestCase {
     var timings: [Double] = []
     var showTimings: [Double] = []
     var layoutTimings: [Double] = []
+    let sampler = try samplePanelPresentationIfRequested()
+    defer { sampler?.waitUntilExit() }
     func seconds(_ duration: Duration) -> Double {
       let value = duration.components
       return Double(value.seconds) + Double(value.attoseconds) / 1e18
@@ -662,6 +664,20 @@ final class RecordPanelControllerTests: XCTestCase {
     XCTAssertLessThanOrEqual(
       p95, 0.150,
       "show_p95_ms=\(showTimings.sorted()[28] * 1000) layout_p95_ms=\(layoutTimings.sorted()[28] * 1000)")
+  }
+
+  private func samplePanelPresentationIfRequested() throws -> Process? {
+    guard let path = ProcessInfo.processInfo.environment["RILL_RECORD_PROFILE_DIR"] else { return nil }
+    let directory = URL(fileURLWithPath: path, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let sampler = Process()
+    sampler.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
+    sampler.arguments = [
+      String(ProcessInfo.processInfo.processIdentifier), "5", "1", "-file",
+      directory.appendingPathComponent("record-panel.sample.txt").path,
+    ]
+    try sampler.run()
+    return sampler
   }
 
   private func makeTarget(
