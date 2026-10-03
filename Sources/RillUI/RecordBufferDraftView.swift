@@ -128,7 +128,7 @@ public struct RecordBufferDraftView: View {
           .padding(.horizontal, 8).recordPanelSearchSurface().padding(.horizontal, 9)
           itemList
         }.frame(width: RecordPanelAppearance.sidebarWidth)
-          .recordPanelGlass(in: RecordPanelAppearance.paneShape)
+          .rillGlass(in: RecordPanelAppearance.paneShape)
         editor.frame(maxWidth: .infinity, maxHeight: .infinity)
           .background(RecordPanelAppearance.paper)
           .clipShape(RecordPanelAppearance.paneShape)
