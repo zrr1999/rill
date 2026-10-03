@@ -38,6 +38,11 @@ just ci             # 保留增量产物的完整门禁
 just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 ```
 
+完整测试先并行运行领域功能测试，再串行运行原生功能测试。两项一万条记录的
+性能测试各自在新的串行进程执行，避免与其他测试争用资源或继承窗口测试状态。
+存储压力测试与窗口就绪测试仍使用原有断言、Debug 构建和性能阈值；CI 通过
+`RILL_RECORD_STRESS=1` 启用它们，分组不减少验收项。
+
 `just check` 只运行 prek 内建检查、上游提供的 TOML、Actionlint 和 Typos
 检查，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
 完整历史扫描或项目策略测试。格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
