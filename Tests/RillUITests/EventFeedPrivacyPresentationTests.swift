@@ -4,6 +4,32 @@ import XCTest
 
 @MainActor
 final class EventFeedPrivacyPresentationTests: XCTestCase {
+  func testDeferredHeadersSwitchLanguageWithoutExposingBodyWhenPreviewIsDisabled() {
+    let step = WorkflowTextStep(
+      kind: .llmRewrite, outputText: "PRIVATE-%@", didChange: true,
+      durationMilliseconds: 1_234,
+      tokenUsage: .init(inputTokens: 1200, outputTokens: 0)
+    )
+    let header = HistoryTextStepPresentation.logHeaderResource(step)
+    let entry = EventFeedEntry(
+      privacyProtectedBody: "PRIVATE-%@", fullPrefix: header,
+      summaryPrefix: header, hiddenSummary: header
+    )
+    XCTAssertFalse(entry.english.contains("PRIVATE-%@"))
+    XCTAssertFalse(entry.simplifiedChinese.contains("PRIVATE-%@"))
+    for language in [AppLanguage.english, .simplifiedChinese, .english] {
+      let full = entry.presentation(for: language, historyPreviewMode: .full)
+      let hidden = entry.presentation(for: language, historyPreviewMode: .disabled)
+      XCTAssertTrue(full.text.contains("PRIVATE-%@"))
+      XCTAssertFalse(hidden.text.contains("PRIVATE-%@"))
+      XCTAssertFalse(hidden.accessibilityLabel.contains("PRIVATE-%@"))
+      XCTAssertTrue(hidden.text.contains("1200"))
+      XCTAssertTrue(hidden.text.contains(language == .english ? "Text cleanup" : "文本润色"))
+      XCTAssertTrue(hidden.text.contains(language == .english ? "1.234 s" : "1.234 秒"))
+      XCTAssertTrue(hidden.text.contains(language == .english ? "Not provided" : "未提供"))
+    }
+  }
+
   func testTokenUsageRemainsVisibleWithoutExposingTheStepText() async throws {
     let harness = makeHarness()
     await harness.model.waitForInitialVoiceConfiguration()

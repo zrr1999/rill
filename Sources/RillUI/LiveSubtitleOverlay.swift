@@ -363,19 +363,10 @@ enum LiveSubtitleInteractionPolicy {
     _ usage: LiveSubtitleNetworkUsage,
     language: AppLanguage
   ) -> String {
-    switch (usage, language) {
-    case (.offline, .english):
-      "On this Mac — processed locally"
-    case (.offline, .simplifiedChinese):
-      "本机 — 全程在本机处理"
-    case (.online, .english):
-      "Network steps — this workflow uses a network service"
-    case (.online, .simplifiedChinese):
-      "包含联网步骤 — 此工作流会使用网络服务"
-    case (.unknown, .english):
-      "Network use could not be determined"
-    case (.unknown, .simplifiedChinese):
-      "联网状态无法确定"
+    switch usage {
+    case .offline: L10n.resource("LiveSubtitleOverlay.On.this.Mac.processed.locally").string(for: language)
+    case .online: L10n.resource("LiveSubtitleOverlay.Network.steps.this.workflow.uses.a.network.service").string(for: language)
+    case .unknown: L10n.resource("LiveSubtitleOverlay.Network.use.could.not.be.determined").string(for: language)
     }
   }
 
@@ -383,13 +374,10 @@ enum LiveSubtitleInteractionPolicy {
     _ usage: LiveSubtitleNetworkUsage,
     language: AppLanguage
   ) -> String {
-    switch (usage, language) {
-    case (.offline, .english): "On this Mac"
-    case (.offline, .simplifiedChinese): "本机"
-    case (.online, .english): "Network steps"
-    case (.online, .simplifiedChinese): "包含联网步骤"
-    case (.unknown, .english): "Unknown"
-    case (.unknown, .simplifiedChinese): "未知"
+    switch usage {
+    case .offline: L10n.resource("LiveSubtitleOverlay.On.this.Mac").string(for: language)
+    case .online: L10n.resource("LiveSubtitleOverlay.Network.steps").string(for: language)
+    case .unknown: L10n.resource("LiveSubtitleOverlay.Unknown").string(for: language)
     }
   }
 

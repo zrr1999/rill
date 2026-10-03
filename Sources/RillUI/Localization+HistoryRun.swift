@@ -6,21 +6,14 @@ extension L10n {
     _ result: WorkflowActionResultCode,
     language: AppLanguage
   ) -> String {
-    switch (language, result) {
-    case (.english, .injected): "Inserted"
-    case (.simplifiedChinese, .injected): "已输入"
-    case (.english, .copiedToClipboard): "Copied"
-    case (.simplifiedChinese, .copiedToClipboard): "已复制"
-    case (.english, .storedRecord): "Saved to Records"
-    case (.simplifiedChinese, .storedRecord): "已存入记录"
-    case (.english, .externalOutput): "External output completed"
-    case (.simplifiedChinese, .externalOutput): "外部输出已完成"
-    case (.english, .skipped): "Skipped"
-    case (.simplifiedChinese, .skipped): "已跳过"
-    case (.english, .cancelled): "Cancelled"
-    case (.simplifiedChinese, .cancelled): "已取消"
-    case (.english, .failed): "Failed"
-    case (.simplifiedChinese, .failed): "失败"
+    switch result {
+    case .injected: return catalogString("workflowActionResult.injected", language: language)
+    case .copiedToClipboard: return catalogString("workflowActionResult.copiedToClipboard", language: language)
+    case .storedRecord: return catalogString("workflowActionResult.storedRecord", language: language)
+    case .externalOutput: return catalogString("workflowActionResult.externalOutput", language: language)
+    case .skipped: return catalogString("workflowActionResult.skipped", language: language)
+    case .cancelled: return catalogString("workflowActionResult.cancelled", language: language)
+    case .failed: return catalogString("workflowActionResult.failed", language: language)
     }
   }
 
@@ -30,15 +23,15 @@ extension L10n {
   ) -> String {
     switch termination {
     case .completed:
-      return language == .english ? "Completed" : "已完成"
+      return L10n.catalogString("Localization.HistoryRun.Completed", language: language)
     case .partiallyCompleted:
-      return language == .english ? "Partially completed" : "部分完成"
+      return L10n.catalogString("Localization.HistoryRun.Partially.completed", language: language)
     case .failed:
-      return language == .english ? "Failed" : "失败"
+      return L10n.catalogString("Localization.HistoryRun.Failed", language: language)
     case .cancelled:
-      return language == .english ? "Cancelled" : "已取消"
+      return L10n.catalogString("Localization.HistoryRun.Cancelled", language: language)
     case let .skipped(reason):
-      let outcome = language == .english ? "Skipped" : "已跳过"
+      let outcome = L10n.catalogString("Localization.HistoryRun.Skipped", language: language)
       return "\(outcome) — \(workflowRunSkipReason(reason, language: language))"
     }
   }
@@ -47,33 +40,20 @@ extension L10n {
     _ reason: WorkflowRunSkipCode,
     language: AppLanguage
   ) -> String {
-    switch (language, reason) {
-    case (.english, .workflowDisabled): "Workflow is disabled"
-    case (.simplifiedChinese, .workflowDisabled): "工作流已停用"
-    case (.english, .busy): "Rill is busy"
-    case (.simplifiedChinese, .busy): "Rill 正忙"
-    case (.english, .unsupported): "Workflow is not supported"
-    case (.simplifiedChinese, .unsupported): "当前不支持此工作流"
-    case (.english, .privacyBlocked): "Blocked by privacy settings"
-    case (.simplifiedChinese, .privacyBlocked): "已被隐私设置阻止"
-    case (.english, .eventKindMismatch): "Event type did not match"
-    case (.simplifiedChinese, .eventKindMismatch): "事件类型不匹配"
-    case (.english, .sourceCollectionMismatch): "Source collection did not match"
-    case (.simplifiedChinese, .sourceCollectionMismatch): "来源记录集不匹配"
-    case (.english, .excludedByCaptureTag): "Excluded by capture tag"
-    case (.simplifiedChinese, .excludedByCaptureTag): "已被捕获标签排除"
-    case (.english, .conditionFailed): "Trigger condition did not match"
-    case (.simplifiedChinese, .conditionFailed): "触发条件不匹配"
-    case (.english, .recordMissing): "Record is no longer available"
-    case (.simplifiedChinese, .recordMissing): "记录已不可用"
-    case (.english, .recordChanged): "Record changed before it could run"
-    case (.simplifiedChinese, .recordChanged): "记录在运行前已发生变化"
-    case (.english, .loopPrevented): "Automation loop prevented"
-    case (.simplifiedChinese, .loopPrevented): "已阻止自动化循环"
-    case (.english, .allActionsSkipped): "All actions were skipped"
-    case (.simplifiedChinese, .allActionsSkipped): "所有动作均已跳过"
-    case (.english, .unclassified): "Skip reason is unavailable"
-    case (.simplifiedChinese, .unclassified): "跳过原因不可用"
+    switch reason {
+    case .workflowDisabled: return catalogString("workflowRunSkipReason.workflowDisabled", language: language)
+    case .busy: return catalogString("workflowRunSkipReason.busy", language: language)
+    case .unsupported: return catalogString("workflowRunSkipReason.unsupported", language: language)
+    case .privacyBlocked: return catalogString("workflowRunSkipReason.privacyBlocked", language: language)
+    case .eventKindMismatch: return catalogString("workflowRunSkipReason.eventKindMismatch", language: language)
+    case .sourceCollectionMismatch: return catalogString("workflowRunSkipReason.sourceCollectionMismatch", language: language)
+    case .excludedByCaptureTag: return catalogString("workflowRunSkipReason.excludedByCaptureTag", language: language)
+    case .conditionFailed: return catalogString("workflowRunSkipReason.conditionFailed", language: language)
+    case .recordMissing: return catalogString("workflowRunSkipReason.recordMissing", language: language)
+    case .recordChanged: return catalogString("workflowRunSkipReason.recordChanged", language: language)
+    case .loopPrevented: return catalogString("workflowRunSkipReason.loopPrevented", language: language)
+    case .allActionsSkipped: return catalogString("workflowRunSkipReason.allActionsSkipped", language: language)
+    case .unclassified: return catalogString("workflowRunSkipReason.unclassified", language: language)
     }
   }
 
@@ -94,25 +74,16 @@ extension L10n {
     _ trigger: WorkflowRunTriggerKind,
     language: AppLanguage
   ) -> String {
-    switch (language, trigger) {
-    case (.english, .manual): "Manual"
-    case (.simplifiedChinese, .manual): "手动"
-    case (.english, .menuBar): "Menu bar"
-    case (.simplifiedChinese, .menuBar): "菜单栏"
-    case (.english, .hotkey): "Hotkey"
-    case (.simplifiedChinese, .hotkey): "快捷键"
-    case (.english, .wakeWord): "Wake word"
-    case (.simplifiedChinese, .wakeWord): "唤醒词"
-    case (.english, .recordCollectionEvent): "Collection event"
-    case (.simplifiedChinese, .recordCollectionEvent): "记录集事件"
-    case (.english, .recordDelivery): "Record delivery"
-    case (.simplifiedChinese, .recordDelivery): "记录投递"
-    case (.english, .recordUse): "Record use"
-    case (.simplifiedChinese, .recordUse): "记录使用"
-    case (.english, .recordReplay): "Record replay"
-    case (.simplifiedChinese, .recordReplay): "记录重放"
-    case (.english, .failedAudioRecovery): "Audio recovery"
-    case (.simplifiedChinese, .failedAudioRecovery): "录音恢复"
+    switch trigger {
+    case .manual: return catalogString("historyRunTrigger.manual", language: language)
+    case .menuBar: return catalogString("historyRunTrigger.menuBar", language: language)
+    case .hotkey: return catalogString("historyRunTrigger.hotkey", language: language)
+    case .wakeWord: return catalogString("historyRunTrigger.wakeWord", language: language)
+    case .recordCollectionEvent: return catalogString("historyRunTrigger.recordCollectionEvent", language: language)
+    case .recordDelivery: return catalogString("historyRunTrigger.recordDelivery", language: language)
+    case .recordUse: return catalogString("historyRunTrigger.recordUse", language: language)
+    case .recordReplay: return catalogString("historyRunTrigger.recordReplay", language: language)
+    case .failedAudioRecovery: return catalogString("historyRunTrigger.failedAudioRecovery", language: language)
     }
   }
 
@@ -120,31 +91,28 @@ extension L10n {
     _ bucket: WorkflowRunDurationBucket,
     language: AppLanguage
   ) -> String {
-    switch (language, bucket) {
-    case (.english, .under250ms): "under 250 ms"
-    case (.simplifiedChinese, .under250ms): "少于 250 毫秒"
-    case (.english, .ms250To999): "250–999 ms"
-    case (.simplifiedChinese, .ms250To999): "250–999 毫秒"
-    case (.english, .s1To4): "1–4 s"
-    case (.simplifiedChinese, .s1To4): "1–4 秒"
-    case (.english, .s5To14): "5–14 s"
-    case (.simplifiedChinese, .s5To14): "5–14 秒"
-    case (.english, .s15To59): "15–59 s"
-    case (.simplifiedChinese, .s15To59): "15–59 秒"
-    case (.english, .m1Plus): "1 min or more"
-    case (.simplifiedChinese, .m1Plus): "1 分钟以上"
-    case (.english, .unavailable): "duration unavailable"
-    case (.simplifiedChinese, .unavailable): "耗时不可用"
+    switch bucket {
+    case .under250ms: return catalogString("historyRunDurationBucket.under250ms", language: language)
+    case .ms250To999: return catalogString("historyRunDurationBucket.ms250To999", language: language)
+    case .s1To4: return catalogString("historyRunDurationBucket.s1To4", language: language)
+    case .s5To14: return catalogString("historyRunDurationBucket.s5To14", language: language)
+    case .s15To59: return catalogString("historyRunDurationBucket.s15To59", language: language)
+    case .m1Plus: return catalogString("historyRunDurationBucket.m1Plus", language: language)
+    case .unavailable: return catalogString("historyRunDurationBucket.unavailable", language: language)
     }
   }
 
   static func historyProcessingDuration(_ milliseconds: UInt64, language: AppLanguage) -> String {
+    historyProcessingDurationResource(milliseconds).string(for: language)
+  }
+
+  static func historyProcessingDurationResource(_ milliseconds: UInt64) -> LocalizedStringResource {
     if milliseconds < 1_000 {
-      return language == .english ? "\(milliseconds) ms" : "\(milliseconds) 毫秒"
+      return resource("history.duration.milliseconds", defaultValue: "\(String(milliseconds)) ms")
     }
     let fraction = String(format: "%03d", Int(milliseconds % 1_000))
     let seconds = "\(milliseconds / 1_000).\(fraction)"
-    return language == .english ? "\(seconds) s" : "\(seconds) 秒"
+    return resource("history.duration.seconds", defaultValue: "\(seconds) s")
   }
 
   /// Timeline status is a reason-free rollup of `WorkflowRunTermination`;
@@ -154,17 +122,12 @@ extension L10n {
     _ status: HistoryTimelineStatus,
     language: AppLanguage
   ) -> String {
-    switch (language, status) {
-    case (.english, .completed): "Completed"
-    case (.simplifiedChinese, .completed): "已完成"
-    case (.english, .partiallyCompleted): "Partially completed"
-    case (.simplifiedChinese, .partiallyCompleted): "部分完成"
-    case (.english, .failed): "Failed"
-    case (.simplifiedChinese, .failed): "失败"
-    case (.english, .cancelled): "Cancelled"
-    case (.simplifiedChinese, .cancelled): "已取消"
-    case (.english, .skipped): "Skipped"
-    case (.simplifiedChinese, .skipped): "已跳过"
+    switch status {
+    case .completed: return catalogString("historyRunStatus.completed", language: language)
+    case .partiallyCompleted: return catalogString("historyRunStatus.partiallyCompleted", language: language)
+    case .failed: return catalogString("historyRunStatus.failed", language: language)
+    case .cancelled: return catalogString("historyRunStatus.cancelled", language: language)
+    case .skipped: return catalogString("historyRunStatus.skipped", language: language)
     }
   }
 
@@ -172,7 +135,7 @@ extension L10n {
     _ key: HistoryTimelineTextKey,
     language: AppLanguage
   ) -> String {
-    historyTimelineTextTable[key]?.string(for: language) ?? key.rawValue
+    catalogString("historyTimeline.\(key.rawValue)", language: language)
   }
 
   static func historyTimelineAction(_ number: Int, language: AppLanguage) -> String {
@@ -199,11 +162,9 @@ extension L10n {
     _ role: LanguageModelTraceMessage.Role,
     language: AppLanguage
   ) -> String {
-    switch (language, role) {
-    case (.english, .user): "User"
-    case (.simplifiedChinese, .user): "用户"
-    case (.english, .assistant): "Assistant"
-    case (.simplifiedChinese, .assistant): "助手"
+    switch role {
+    case .user: return catalogString("historyTimelineMessageRole.user", language: language)
+    case .assistant: return catalogString("historyTimelineMessageRole.assistant", language: language)
     }
   }
 
@@ -211,46 +172,6 @@ extension L10n {
     String(format: historyTimelineText(.sentToLLMStepFormat, language: language), step)
   }
 
-  private static let historyTimelineTextTable: [HistoryTimelineTextKey: LocalizedText] = [
-    .actionDetailsTruncated: .init(
-      english: "Additional action details were omitted.",
-      simplifiedChinese: "其余动作详情已省略。"
-    ),
-    .actionFormat: .init(english: "Action %d", simplifiedChinese: "动作 %d"),
-    .copyFailureDetails: .init(
-      english: "Copy failure details",
-      simplifiedChinese: "复制失败详情"
-    ),
-    .executionDetailsUnavailable: .init(
-      english: "Execution details are unavailable for this older run.",
-      simplifiedChinese: "这条较早的运行没有可用的执行详情。"
-    ),
-    .llmAnswer: .init(english: "LLM answer", simplifiedChinese: "LLM 回答"),
-    .llmRequest: .init(english: "LLM request", simplifiedChinese: "LLM 请求"),
-    .llmRequestStepFormat: .init(
-      english: "LLM request · Step %d",
-      simplifiedChinese: "LLM 请求 · 第 %d 步"
-    ),
-    .model: .init(english: "Model", simplifiedChinese: "模型"),
-    .provider: .init(english: "Provider", simplifiedChinese: "提供商"),
-    .recognizedInputLegacy: .init(
-      english: "Recognized input (older record)",
-      simplifiedChinese: "识别输入（旧记录）"
-    ),
-    .returnedText: .init(english: "Returned text", simplifiedChinese: "返回文本"),
-    .sentMessageFormat: .init(
-      english: "Sent message · %@ %d",
-      simplifiedChinese: "发送消息 · %@ %d"
-    ),
-    .sentToLLM: .init(english: "Sent to LLM", simplifiedChinese: "发送给 LLM"),
-    .sentToLLMStepFormat: .init(
-      english: "Sent to LLM · Step %d",
-      simplifiedChinese: "发送给 LLM · 第 %d 步"
-    ),
-    .systemPrompt: .init(english: "System prompt", simplifiedChinese: "系统提示词"),
-    .workflowPrompt: .init(english: "Workflow prompt", simplifiedChinese: "工作流提示词"),
-    .workflowRunFallback: .init(english: "Workflow run", simplifiedChinese: "工作流运行"),
-  ]
 }
 
 enum HistoryTimelineTextKey: String, CaseIterable, Sendable {
@@ -281,23 +202,7 @@ enum HistoryRunDetailTextKey {
 
 extension L10n {
   static func historyRunDetail(_ key: HistoryRunDetailTextKey, language: AppLanguage) -> String {
-    let text: LocalizedText =
-      switch key {
-      case .recording: .init(english: "Recording length", simplifiedChinese: "录音时长")
-      case .transcription: .init(english: "Speech to text", simplifiedChinese: "语音转文字")
-      case .polishing: .init(english: "Polishing API", simplifiedChinese: "润色 API")
-      case .languageModel: .init(english: "Answer API", simplifiedChinese: "回答 API")
-      case .notRecorded: .init(english: "Not recorded", simplifiedChinese: "未记录")
-      case .diagnostics: .init(english: "Diagnostics", simplifiedChinese: "诊断")
-      case .noDiagnosticIssues: .init(english: "No warnings or errors.", simplifiedChinese: "没有警告或错误。")
-      case .showDiagnosticIssues: .init(english: "Show issues only", simplifiedChinese: "仅显示问题")
-      case .collapseDetails: .init(english: "Collapse details", simplifiedChinese: "收起详情")
-      case .noDiagnostics: .init(english: "No retained diagnostics for this run.", simplifiedChinese: "没有保留本次运行的诊断记录。")
-      case .legacyDiagnostics: .init(english: "This older entry has no run ID to link diagnostics.", simplifiedChinese: "这条旧记录没有运行标识，无法关联诊断。")
-      case .details: .init(english: "Execution details & diagnostics", simplifiedChinese: "执行详情与诊断")
-      case .textResults: .init(english: "Text processing results", simplifiedChinese: "文本处理结果")
-      }
-    return text.string(for: language)
+    catalogString("historyRunDetail.\(key.rawValue)", language: language)
   }
 
   static func historyMeasuredDuration(_ milliseconds: UInt64?, language: AppLanguage) -> String {
@@ -306,18 +211,18 @@ extension L10n {
   }
 
   static func historyShowAllDiagnostics(_ count: Int, language: AppLanguage) -> String {
-    language == .simplifiedChinese ? "显示全部（\(count)）" : "Show all (\(count))"
+    L10n.resource("Localization.HistoryRun.Show.all", defaultValue: "Show all (\(String(describing: count)))").string(for: language)
   }
 
   static func historyStepResult(_ result: WorkflowStepResultCode, language: AppLanguage) -> String {
-    let chinese = language == .simplifiedChinese
+
     switch result {
-    case .completed: return chinese ? "已完成" : "Completed"
-    case .thenBranch: return chinese ? "满足条件" : "Then branch"
-    case .elseBranch: return chinese ? "不满足条件" : "Else branch"
-    case .skipped: return chinese ? "已跳过" : "Skipped"
-    case .failed: return chinese ? "失败" : "Failed"
-    case .cancelled: return chinese ? "已取消" : "Cancelled"
+    case .completed: return L10n.resource("Localization.HistoryRun.Completed").string(for: language)
+    case .thenBranch: return L10n.resource("Localization.HistoryRun.Then.branch").string(for: language)
+    case .elseBranch: return L10n.resource("Localization.HistoryRun.Else.branch").string(for: language)
+    case .skipped: return L10n.resource("Localization.HistoryRun.Skipped").string(for: language)
+    case .failed: return L10n.resource("Localization.HistoryRun.Failed").string(for: language)
+    case .cancelled: return L10n.resource("Localization.HistoryRun.Cancelled").string(for: language)
     }
   }
 }

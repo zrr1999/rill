@@ -4,6 +4,7 @@ import Foundation
 
 let package = Package(
   name: "RillMacOS",
+  defaultLocalization: "en",
   platforms: [.macOS(.v26)],
   products: [
     .executable(name: "RillApp", targets: ["RillApp"]),
@@ -98,7 +99,8 @@ let package = Package(
     ),
     .target(
       name: "RillUI",
-      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"]),
+      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"],
+      resources: [.process("Resources")]),
     .executableTarget(
       name: "RillApp",
       dependencies: [

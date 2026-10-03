@@ -466,40 +466,26 @@ extension AppModel {
   }
 
   private func localizedPendingReason(_ reason: LocalHistoryMaintenancePendingReason) -> String {
-    switch (reason, self.settings.language) {
-    case (.logicalDeletionFailed, .english):
-      return "Some local history could not be removed. Retry cleanup."
-    case (.logicalDeletionFailed, .simplifiedChinese):
-      return "部分本地历史未能移除，请重试清理。"
-    case (.stateWriteFailed, .english):
-      return "Cleanup progress could not be saved. Retry cleanup."
-    case (.stateWriteFailed, .simplifiedChinese):
-      return "无法保存清理进度，请重试。"
-    case (.physicalPurgeFailed, .english):
-      return "Logical cleanup completed, but storage residue cleanup is pending."
-    case (.physicalPurgeFailed, .simplifiedChinese):
-      return "逻辑清理已完成，但存储残留清理仍待重试。"
-    case (.stateRemovalFailed, .english):
-      return "Cleanup completed, but its pending marker could not be removed. Retry cleanup."
-    case (.stateRemovalFailed, .simplifiedChinese):
-      return "清理已完成，但待处理标记未能移除，请重试。"
+    return switch reason {
+    case .logicalDeletionFailed:
+      L10n.resource("AppModel.HistoryMaintenance.Some.local.history.could.not.be.removed.Retry.cleanup").string(for: self.settings.language)
+    case .stateWriteFailed: L10n.resource("AppModel.HistoryMaintenance.Cleanup.progress.could.not.be.saved.Retry.cleanup").string(for: self.settings.language)
+    case .physicalPurgeFailed:
+      L10n.resource("AppModel.HistoryMaintenance.Logical.cleanup.completed.but.storage.residue.cleanup.is.pending").string(for: self.settings.language)
+    case .stateRemovalFailed:
+      L10n.resource("AppModel.HistoryMaintenance.Cleanup.completed.but.its.pending.marker.could.not.be.removed.Retry.cleanup").string(
+        for: self.settings.language)
     }
   }
 
   private func localizedBlockReason(_ reason: LocalHistoryMaintenanceBlockReason) -> String {
-    switch (reason, self.settings.language) {
-    case (.stateReadFailed, .english):
-      return "Cleanup state could not be read. History was left unchanged."
-    case (.stateReadFailed, .simplifiedChinese):
-      return "无法读取清理状态，历史记录保持不变。"
-    case (.invalidPendingState, .english):
-      return "Cleanup is blocked by an invalid pending state. History was left unchanged."
-    case (.invalidPendingState, .simplifiedChinese):
-      return "待处理清理状态无效，清理已阻断且历史记录保持不变。"
-    case (.stateWriteFailed, .english):
-      return "Cleanup intent could not be saved. History was left unchanged."
-    case (.stateWriteFailed, .simplifiedChinese):
-      return "无法保存清理意图，历史记录保持不变。"
+    return switch reason {
+    case .stateReadFailed:
+      L10n.resource("AppModel.HistoryMaintenance.Cleanup.state.could.not.be.read.History.was.left.unchanged").string(for: self.settings.language)
+    case .invalidPendingState:
+      L10n.resource("AppModel.HistoryMaintenance.Cleanup.is.blocked.by.an.invalid.pending.state.History.was.left.unchanged").string(for: self.settings.language)
+    case .stateWriteFailed:
+      L10n.resource("AppModel.HistoryMaintenance.Cleanup.intent.could.not.be.saved.History.was.left.unchanged").string(for: self.settings.language)
     }
   }
 }

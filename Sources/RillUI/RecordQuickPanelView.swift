@@ -348,9 +348,10 @@ public struct RecordQuickPanelView: View {
   private var semanticProgressText: String {
     switch model.semanticProgress {
     case .indexing(let completed, let total):
-      language == .english ? "Preparing records \(completed) / \(total)" : "正在准备记录 \(completed) / \(total)"
+      L10n.resource("RecordQuickPanelView.Preparing.records", defaultValue: "Preparing records \(String(describing: completed)) / \(String(describing: total))")
+        .string(for: language)
     case .preparing(let fraction) where fraction > 0 && fraction < 1:
-      language == .english ? "Downloading \(Int(fraction * 100))%" : "正在下载 \(Int(fraction * 100))%"
+      L10n.resource("RecordQuickPanelView.Downloading", defaultValue: "Downloading \(String(describing: Int(fraction * 100)))%").string(for: language)
     default: text(.preparingSearchModel)
     }
   }

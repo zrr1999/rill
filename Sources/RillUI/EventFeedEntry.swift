@@ -3,10 +3,10 @@ import RillCore
 
 public struct EventFeedEntry: Identifiable, Equatable, Sendable {
   private struct PrivacyProtectedContent: Equatable, Sendable {
-    let body: LocalizedText
-    let fullPrefix: LocalizedText
-    let summaryPrefix: LocalizedText
-    let hiddenSummary: LocalizedText
+    let body: String
+    let fullPrefix: LocalizedStringResource
+    let summaryPrefix: LocalizedStringResource
+    let hiddenSummary: LocalizedStringResource
   }
 
   public let id: UUID
@@ -23,10 +23,10 @@ public struct EventFeedEntry: Identifiable, Equatable, Sendable {
 
   init(
     id: UUID = UUID(),
-    privacyProtectedBody: LocalizedText,
-    fullPrefix: LocalizedText,
-    summaryPrefix: LocalizedText,
-    hiddenSummary: LocalizedText
+    privacyProtectedBody: String,
+    fullPrefix: LocalizedStringResource,
+    summaryPrefix: LocalizedStringResource,
+    hiddenSummary: LocalizedStringResource
   ) {
     self.id = id
     // Keep the legacy mode-unaware surface content-free. Body-bearing
@@ -63,7 +63,7 @@ public struct EventFeedEntry: Identifiable, Equatable, Sendable {
       )
     }
 
-    let body = content.body.string(for: language)
+    let body = content.body
     guard
       let preview = HistoryPreviewPresentation(
         text: body,

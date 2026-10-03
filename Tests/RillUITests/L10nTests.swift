@@ -3,6 +3,68 @@ import XCTest
 @testable import RillUI
 
 final class L10nTests: XCTestCase {
+  func testExplicitLanguageLookupSwitchesWithoutChangingSystemPreferences() {
+    for language in [AppLanguage.english, .simplifiedChinese, .english] {
+      XCTAssertEqual(
+        L10n.text(.settingsTitle, language: language),
+        language == .english ? "Settings" : "设置"
+      )
+      XCTAssertEqual(
+        L10n.string(.menuOpenMainWindow, language: language),
+        language == .english ? "Open Rill Main Window" : "打开 Rill 主窗口"
+      )
+    }
+  }
+
+  func testCatalogCoversEveryTypedTableKey() {
+    var keys = L10n.Key.allCases.map { "general.\($0.rawValue)" }
+    keys += L10n.InterfaceKey.allCases.map { "interface.\($0.rawValue)" }
+    keys += SurfaceText.allCases.map { "surface.\($0.rawValue)" }
+    keys += RecordTextKey.allCases.map { "record.\($0.rawValue)" }
+    keys += WorkflowTextKey.allCases.map { "workflow.\($0.rawValue)" }
+    keys += OverlayTextKey.allCases.map { "overlay.\($0.rawValue)" }
+    keys += RunStatusTextKey.allCases.map { "run.\($0.rawValue)" }
+    keys += SettingsTextKey.allCases.map { "settings.\($0.rawValue)" }
+    keys += PrivacySettingsTextKey.allCases.map { "privacy.\($0.rawValue)" }
+    keys += HistorySettingsTextKey.allCases.map { "historySettings.\($0.rawValue)" }
+    keys += HistoryTimelineTextKey.allCases.map { "historyTimeline.\($0.rawValue)" }
+    keys += CorpusArchiveTextKey.allCases.map { "corpusArchive.\($0.rawValue)" }
+    for language in AppLanguage.allCases {
+      for key in keys {
+        let text = L10n.catalogString(key, language: language)
+        XCTAssertNotEqual(text, key, "Missing translation: \(language), \(key)")
+        XCTAssertFalse(text.isEmpty, "Empty translation: \(language), \(key)")
+      }
+    }
+  }
+
+  func testCatalogPluralsPreserveCountFormattingAndArgumentOrder() {
+    for count in [0, 1, 2, 1200] {
+      XCTAssertEqual(L10n.itemCount(count, language: .english), "\(count) \(count == 1 ? "item" : "items")")
+      XCTAssertEqual(L10n.itemCount(count, language: .simplifiedChinese), "\(count) 个条目")
+      XCTAssertEqual(L10n.loadedRunCount(count, language: .english), "\(count) \(count == 1 ? "run" : "runs") loaded")
+      XCTAssertEqual(L10n.recordPanelCharacterCount(count, language: .english), "\(count) \(count == 1 ? "character" : "characters")")
+      XCTAssertEqual(
+        L10n.clipboardEntryAccessibilityValue(copyCount: count, groupName: "50% %@ 集合", language: .english),
+        "50% %@ 集合, \(count) saved \(count == 1 ? "item" : "items")"
+      )
+      XCTAssertEqual(
+        L10n.clipboardEntryAccessibilityValue(copyCount: count, groupName: "50% %@ 集合", language: .simplifiedChinese),
+        "50% %@ 集合，\(count) 个已保存条目"
+      )
+    }
+  }
+
+  func testInterpolatedPercentAndDeferredInputMethodErrors() {
+    let progress = L10n.resource("RecordQuickPanelView.Downloading", defaultValue: "Downloading \("50")%")
+    XCTAssertEqual(progress.string(for: .english), "Downloading 50%")
+    XCTAssertEqual(progress.string(for: .simplifiedChinese), "正在下载 50%")
+    let failure = L10n.resource("inputMethod.error.settingsUnsaved")
+    XCTAssertEqual(failure.string(for: .english), "Input method settings have not been saved. Try again.")
+    XCTAssertEqual(failure.string(for: .simplifiedChinese), "输入法设置尚未保存，请重试。")
+    XCTAssertEqual(failure.string(for: .english), "Input method settings have not been saved. Try again.")
+  }
+
   func testMenuStringsUseUnifiedLookup() throws {
     XCTAssertEqual(
       L10n.string(.menuOpenMainWindow, language: .english),
@@ -240,11 +302,8 @@ final class L10nTests: XCTestCase {
     }
 
     XCTAssertEqual(
-      L10n.localSpeechPreparationFailure(.generic),
-      LocalizedText(
-        english: "Local speech preparation failed. Try again from Speech settings.",
-        simplifiedChinese: "本地语音准备失败。请在语音设置中重试。"
-      )
+      L10n.localSpeechPreparationFailure(.generic).english,
+      "Local speech preparation failed. Try again from Speech settings."
     )
     XCTAssertEqual(
       LocalSpeechPreparationFailure(stage: .integrity).localizedDescription,

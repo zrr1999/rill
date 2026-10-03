@@ -408,6 +408,7 @@ RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkout
 
 info "Checking relocatable SwiftPM resource accessors..."
 verify_xcode_resource_accessor "RillMacOS_RillApp"
+verify_xcode_resource_accessor "RillMacOS_RillUI"
 
 info "Smoke-testing unsigned app bundle assembly..."
 SOURCE_REVISION="$(git rev-parse 'HEAD^{commit}')" ||
