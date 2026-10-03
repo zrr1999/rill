@@ -64,12 +64,21 @@ fi
 
 modules="$PWD/.artifacts/benchmarks/modules"
 mkdir -p "$modules"
+# Build the persistence dependency with its upstream SwiftPM settings and the
+# application's exact lock, then link those objects into the standalone workload.
+scripts/preflight.sh swift build --configuration release --target GRDB
+grdb_products="$(scripts/preflight.sh swift build --configuration release --show-bin-path)"
+grdb_module_map="$PWD/.artifacts/build/release/checkouts/GRDB.swift/Sources/GRDBSQLite/module.modulemap"
+grdb_objects=("$grdb_products"/GRDB.build/*.o)
+test -f "${grdb_objects[0]}"
+dependency_flags=(-I "$grdb_products/Modules" -Xcc "-fmodule-map-file=$grdb_module_map")
 for module in RillCore RillRecords RillPersistence; do
   "${compiler[@]}" -emit-library -static -emit-module -module-name "$module" \
-    -emit-module-path "$modules/$module.swiftmodule" -I "$modules" \
+    -emit-module-path "$modules/$module.swiftmodule" -I "$modules" "${dependency_flags[@]}" \
     Sources/"$module"/*.swift -o "$modules/lib$module.a"
 done
-"${benchmark_compiler[@]}" -I "$modules" -L "$modules" \
+"${benchmark_compiler[@]}" -I "$modules" -L "$modules" "${dependency_flags[@]}" \
+  "${grdb_objects[@]}" \
   -lRillRecords -lRillPersistence -lRillCore -lsqlite3 \
   Benchmarks/RecordBufferBenchmarks.swift Benchmarks/CodSpeedResults.swift Benchmarks/CodSpeedRecorder.swift \
   -o .artifacts/benchmarks/record-buffer

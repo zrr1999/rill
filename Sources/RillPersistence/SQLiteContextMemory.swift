@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import RillCore
 import SQLite3
 
@@ -11,8 +12,8 @@ private struct MemoryControl: Codable {
   var foregroundRequests: Int?
 }
 
-extension SQLitePersistenceStore: ContextMemoryRepository {
-  public func setContextAuthorization(_ id: UUID?) async throws {
+extension SQLitePersistenceSession {
+  func setContextAuthorization(_ id: UUID?) throws {
     try withImmediateTransaction {
       var control = try memoryControl()
       control.authorizationID = id
@@ -20,7 +21,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func recordForegroundContextRequest(authorization: ContextReferenceAuthorization, now: Date) async throws {
+  func recordForegroundContextRequest(authorization: ContextReferenceAuthorization, now: Date) throws {
     try withImmediateTransaction(authorization: authorization) {
       var control = try memoryControl()
       guard control.authorizationID == authorization.id else { throw ContextCorrectionError.authorizationChanged }
@@ -35,7 +36,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func memories() async throws -> [LongTermMemory] {
+  func memories() throws -> [LongTermMemory] {
     try readMemories().map { memory in
       var memory = memory
       memory.sourceHistoryDeleted = try memory.sources.allSatisfy {
@@ -45,7 +46,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func saveMemory(_ memory: LongTermMemory, expectedRevision: Int64) async throws {
+  func saveMemory(_ memory: LongTermMemory, expectedRevision: Int64) throws {
     guard memory.isValid else { throw ContextCorrectionError.invalidReference }
     try withImmediateTransaction {
       let existing = try readMemories().first { $0.id == memory.id }
@@ -68,7 +69,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func deleteMemory(id: UUID, expectedRevision: Int64) async throws {
+  func deleteMemory(id: UUID, expectedRevision: Int64) throws {
     try withImmediateTransaction {
       guard let memory = try readMemories().first(where: { $0.id == id }),
         memory.revision == expectedRevision
@@ -83,7 +84,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func relevantMemories(scope: ContextMemoryScope, now: Date) async throws -> [LongTermMemory] {
+  func relevantMemories(scope: ContextMemoryScope, now: Date) throws -> [LongTermMemory] {
     try withImmediateTransaction {
       let memories = try archiveExpiredMemories(now: now)
       let selected = memories.filter { $0.isRetrievable(in: scope, now: now) }.sorted {
@@ -102,7 +103,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func prepareMemoryBatch(authorizationID: UUID, allowedWorkflowIDs: Set<UUID>, excludedApplications: Set<String> = [], now: Date) async throws
+  func prepareMemoryBatch(authorizationID: UUID, allowedWorkflowIDs: Set<UUID>, excludedApplications: Set<String> = [], now: Date) throws
     -> MemoryConsolidationBatch?
   {
     try withImmediateTransaction {
@@ -129,7 +130,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
       func collectSources() throws -> [MemorySource] {
         var sources: [MemorySource] = []
         while true {
-          try Task.checkCancellation()
+          try checkCancellation()
           let pending = try pendingMemorySources(limit: 100)
           guard !pending.isEmpty else { return sources }
           for version in pending {
@@ -174,8 +175,8 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func commitMemoryBatch(_ batch: MemoryConsolidationBatch, result: MemoryConsolidationResult) async throws {
-    try Task.checkCancellation()
+  func commitMemoryBatch(_ batch: MemoryConsolidationBatch, result: MemoryConsolidationResult) throws {
+    try checkCancellation()
     try withImmediateTransaction(authorization: batch.authorization) {
       let control = try memoryControl()
       guard control.authorizationID == batch.authorizationID,
@@ -224,7 +225,7 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func memoryMaintenanceStatus(now: Date) async throws -> MemoryMaintenanceStatus {
+  func memoryMaintenanceStatus(now: Date) throws -> MemoryMaintenanceStatus {
     let control = try memoryControl()
     let pending = try memoryCount("SELECT COUNT(*) FROM context_memory_sources WHERE revision > processed_revision;")
     let skipped = try memoryCount("SELECT COUNT(*) FROM context_memory_sources WHERE skipped_reason IS NOT NULL;")
@@ -234,10 +235,10 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
       pendingSourceCount: pending, skippedSourceCount: skipped)
   }
 
-  public func appendScreenSummary(
+  func appendScreenSummary(
     _ summary: ScreenReferenceSummary, runID: UUID,
     generation: RunHistoryWriteGeneration, authorization: ContextReferenceAuthorization
-  ) async throws {
+  ) throws {
     guard summary.isValid else { throw ContextCorrectionError.invalidReference }
     try withImmediateTransaction(authorization: authorization) {
       guard try generationIsCurrent(generation), try memoryControl().authorizationID == authorization.id else {
@@ -255,13 +256,14 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
     }
   }
 
-  public func recordUserCorrection(_ correction: ConfirmedMemoryCorrection, recordID: UUID) async throws {
+  func recordUserCorrection(_ correction: ConfirmedMemoryCorrection, recordID: UUID) throws {
     guard correction.isValid else { throw ContextCorrectionError.invalidReference }
     try withImmediateTransaction {
       let statement = try prepare("SELECT COALESCE(run_id, id) FROM history_records WHERE id = ?;")
-      defer { sqlite3_finalize(statement) }
+      defer { withExtendedLifetime(statement) {} }
+
       try bind([.text(recordID.uuidString)], to: statement)
-      guard sqlite3_step(statement) == SQLITE_ROW,
+      guard sqlite3_step(statement.sqliteStatement) == SQLITE_ROW,
         let rawID = textColumn(in: statement, index: 0), let sourceID = UUID(uuidString: rawID),
         let record = try historyRecords(sourceID: sourceID).first(where: { $0.id == recordID }),
         var source = record.correctionSource
@@ -320,7 +322,8 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
 
   private func memoryReceiptTrigger(sourceID: UUID) throws -> WorkflowRunTriggerKind? {
     let statement = try prepare("SELECT run_id, timestamp, payload FROM workflow_run_receipts WHERE run_id = ? AND write_generation = ?;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.text(sourceID.uuidString), .int(try currentRunHistoryWriteGeneration().value)], to: statement)
     guard try memoryHasRow(statement) else { return nil }
     return try decodeRunReceipt(from: statement).trigger
@@ -334,7 +337,8 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
       FROM history_records WHERE COALESCE(run_id, id) = ? AND write_generation = ?
       ORDER BY write_ordinal DESC;
       """)
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.text(sourceID.uuidString), .int(try currentRunHistoryWriteGeneration().value)], to: statement)
     var records: [WorkflowResultRecord] = []
     while try memoryHasRow(statement) { records.append(try decodeHistoryRecord(from: statement)) }
@@ -348,24 +352,26 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
       WHERE revision > processed_revision AND source_id NOT IN (SELECT source_id FROM context_memory_exclusions)
       ORDER BY rowid LIMIT ?;
       """)
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.int(Int64(limit))], to: statement)
     var sources: [MemorySourceVersion] = []
     while try memoryHasRow(statement) {
       guard let rawID = textColumn(in: statement, index: 0), let id = UUID(uuidString: rawID) else {
         throw ContextCorrectionError.invalidReference
       }
-      sources.append(MemorySourceVersion(sourceID: id, revision: sqlite3_column_int64(statement, 1)))
+      sources.append(MemorySourceVersion(sourceID: id, revision: sqlite3_column_int64(statement.sqliteStatement, 1)))
     }
     return sources
   }
 
   private func currentMemorySourceVersion(_ id: UUID) throws -> MemorySourceVersion? {
     let statement = try prepare("SELECT revision FROM context_memory_sources WHERE source_id = ?;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.text(id.uuidString)], to: statement)
     guard try memoryHasRow(statement) else { return nil }
-    return MemorySourceVersion(sourceID: id, revision: sqlite3_column_int64(statement, 0))
+    return MemorySourceVersion(sourceID: id, revision: sqlite3_column_int64(statement.sqliteStatement, 0))
   }
 
   private func sourceExcluded(_ id: UUID) throws -> Bool {
@@ -383,7 +389,8 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
 
   private func readMemories() throws -> [LongTermMemory] {
     let statement = try prepare("SELECT id, payload FROM context_memories ORDER BY id;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     var memories: [LongTermMemory] = []
     while try memoryHasRow(statement) {
       guard let id = textColumn(in: statement, index: 0), let payload = textColumn(in: statement, index: 1) else {
@@ -409,7 +416,8 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
 
   private func memoryControl() throws -> MemoryControl {
     let statement = try prepare("SELECT payload FROM context_memory_control WHERE id = 1;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     if try !memoryHasRow(statement) { return MemoryControl() }
     guard let payload = textColumn(in: statement, index: 0) else { throw ContextCorrectionError.invalidReference }
     return try decoder.decode(
@@ -432,13 +440,14 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
 
   private func memorySQL(_ sql: String, _ bindings: [SQLiteBinding] = []) throws {
     let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind(bindings, to: statement)
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  private func memoryHasRow(_ statement: OpaquePointer?) throws -> Bool {
-    switch sqlite3_step(statement) {
+  private func memoryHasRow(_ statement: Statement) throws -> Bool {
+    switch sqlite3_step(statement.sqliteStatement) {
     case SQLITE_ROW: return true
     case SQLITE_DONE: return false
     default: throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
@@ -447,9 +456,10 @@ extension SQLitePersistenceStore: ContextMemoryRepository {
 
   private func memoryCount(_ sql: String, _ bindings: [SQLiteBinding] = []) throws -> Int {
     let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind(bindings, to: statement)
     try step(statement, expecting: SQLITE_ROW)
-    return Int(sqlite3_column_int64(statement, 0))
+    return Int(sqlite3_column_int64(statement.sqliteStatement, 0))
   }
 }

@@ -18,11 +18,11 @@ public enum SQLiteStoragePermissionError: Error, LocalizedError, Sendable, Equat
   }
 }
 
-extension SQLitePersistenceStore {
+extension SQLitePersistenceSession {
   /// Restricts the SQLite database and every sidecar that can contain database
   /// pages before any Keychain or migration failure can send the app into its
   /// session-only fallback.
-  public static func preparePrivateStorage(
+  static func preparePrivateStorage(
     at databaseURL: URL,
     fileManager: FileManager = .default
   ) throws {
