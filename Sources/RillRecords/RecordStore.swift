@@ -174,7 +174,10 @@ public actor RecordStore {
   private var buffersArePersisted = false
   private var bufferManifestNeedsUpgrade = false
 
-  private var graphState = GraphState()
+  private var graphState = GraphState() {
+    didSet { catalogSnapshotCache = nil }
+  }
+  private var catalogSnapshotCache: RecordCatalogSnapshot?
   private var reuseLeases: [UUID: RecordReuseLease] = [:]
   private var leasesByID: [UUID: LeaseState] = [:]
   private var leasedMembershipIDs: Set<RecordMembershipID> = []
@@ -198,7 +201,9 @@ public actor RecordStore {
   private var payloadCacheOrder: [RecordID] = []
   private var payloadCacheBytes = 0
   private var hasCatalogPersistence = false
-  private var admissionWasLimited = false
+  private var admissionWasLimited = false {
+    didSet { catalogSnapshotCache = nil }
+  }
   private var searchCache: [RecordID: RecordSearchDocument] = [:]
   private var searchCacheOrder: [RecordID] = []
   private var searchCacheBytes = 0
@@ -1243,12 +1248,15 @@ public actor RecordStore {
   }
 
   private func makeCatalogSnapshot() -> RecordCatalogSnapshot {
-    RecordCatalogSnapshot(
+    if let catalogSnapshotCache { return catalogSnapshotCache }
+    let snapshot = RecordCatalogSnapshot(
       revision: graphState.revision, records: graphState.recordOrder.compactMap(summary),
       collections: graphState.collectionOrder.compactMap { graphState.collectionsByID[$0] },
       captureRules: graphState.captureRules, deliveryRules: graphState.deliveryRules,
       capacity: RecordCapacity(
         count: graphState.recordsByID.count, byteCount: totalPayloadByteCount(), limits: storageLimits, admissionWasLimited: admissionWasLimited))
+    catalogSnapshotCache = snapshot
+    return snapshot
   }
 
   private func noteMutation() {
