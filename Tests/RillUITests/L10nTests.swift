@@ -28,6 +28,7 @@ final class L10nTests: XCTestCase {
     keys += PrivacySettingsTextKey.allCases.map { "privacy.\($0.rawValue)" }
     keys += HistorySettingsTextKey.allCases.map { "historySettings.\($0.rawValue)" }
     keys += HistoryTimelineTextKey.allCases.map { "historyTimeline.\($0.rawValue)" }
+    keys += HistoryRunDetailTextKey.allCases.map { "historyRunDetail.\($0.rawValue)" }
     keys += CorpusArchiveTextKey.allCases.map { "corpusArchive.\($0.rawValue)" }
     for language in AppLanguage.allCases {
       for key in keys {

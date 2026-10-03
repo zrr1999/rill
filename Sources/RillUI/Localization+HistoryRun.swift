@@ -194,7 +194,7 @@ enum HistoryTimelineTextKey: String, CaseIterable, Sendable {
   case workflowRunFallback
 }
 
-enum HistoryRunDetailTextKey {
+enum HistoryRunDetailTextKey: String, CaseIterable, Sendable {
   case recording, transcription, polishing, languageModel, notRecorded
   case diagnostics, noDiagnostics, legacyDiagnostics, details, textResults
   case noDiagnosticIssues, showDiagnosticIssues, collapseDetails
