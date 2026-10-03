@@ -252,6 +252,7 @@ public struct RecordQuickPanelView: View {
       }.padding(RillSpacing.panel)
     }
     .background(Color(nsColor: .windowBackgroundColor))
+    .onChange(of: ObjectIdentifier(model)) { _, _ in showsAdvancedSearch = false }
     .sheet(
       isPresented: Binding(
         get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })
