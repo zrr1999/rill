@@ -519,7 +519,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       hostingController = existing
     } else {
       hostingController = FloatingRecordHostingController(rootView: rootView)
-      hostingController.sizingOptions = []
     }
     prepareCapsule(model: model)
 
@@ -814,7 +813,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       return
     }
     let hosting = FloatingRecordHostingController(rootView: rootView)
-    hosting.sizingOptions = []
     let capsule = RecordCapsulePanel(
       contentRect: NSRect(origin: .zero, size: RecordPanelPlacement.capsuleSize),
       styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
