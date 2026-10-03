@@ -7,8 +7,8 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
   func testDeferredHeadersSwitchLanguageWithoutExposingBodyWhenPreviewIsDisabled() {
     let step = WorkflowTextStep(
       kind: .llmRewrite, outputText: "PRIVATE-%@", didChange: true,
-      durationMilliseconds: 1_234,
-      tokenUsage: .init(inputTokens: 1200, outputTokens: 0)
+      tokenUsage: .init(inputTokens: 1200, outputTokens: 0),
+      durationMilliseconds: 1_234
     )
     let header = HistoryTextStepPresentation.logHeaderResource(step)
     let entry = EventFeedEntry(
