@@ -168,9 +168,16 @@ check_record_domain_boundary() {
 run_swift_tests() {
   local native_tests='RillPlatformTests|RillUITests|RillAppTests'
   local storage_stress='RillRuntimeTests.RecordCatalogStressTests'
-  local panel_stress='RillAppTests.ClipboardPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
+  local panel_stress='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
+  local discovered_tests stress_filter
   echo 'Running domain tests in parallel...'
   locked_swift test --parallel --num-workers 4 --skip "$native_tests|RillQualityEvaluations|$storage_stress"
+  discovered_tests="$(locked_swift test list --skip-build)"
+  for stress_filter in "$storage_stress" "$panel_stress"; do
+    if ! grep -E "$stress_filter" <<< "$discovered_tests" >/dev/null; then
+      error "Required performance tests were not discovered: $stress_filter"
+    fi
+  done
   echo 'Running native platform, UI, and app tests serially...'
   locked_swift test --skip-build --filter "$native_tests" --skip "$panel_stress"
   echo 'Running 10,000-record storage performance tests in a fresh serial process...'
