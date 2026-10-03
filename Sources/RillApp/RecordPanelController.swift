@@ -1053,7 +1053,9 @@ private final class FloatingRecordHostingController<Content: View>: NSViewContro
   }
 
   override func loadView() {
-    view = FirstMouseHostingView(rootView: rootView)
+    let hosting = FirstMouseHostingView(rootView: rootView)
+    hosting.sizingOptions = []
+    view = hosting
   }
 }
 
