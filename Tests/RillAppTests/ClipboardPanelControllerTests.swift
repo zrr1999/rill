@@ -582,37 +582,40 @@ final class RecordPanelControllerTests: XCTestCase {
         .init(payload: .text("workspace \(index)"), provenance: .init(source: .init(kind: .user))), into: [RecordCollection.inboxID])
       let workspace = RecordWorkspaceModel(store: store)
       await workspace.refresh()
-      let probe = RecordPanelDeliveryProbe()
       let model = makeModel(recordWorkspace: workspace)
-      controller.show(
-        model: model,
-        deliverSelection: { subject, actionTarget in
-          await probe.record(subject, target: actionTarget)
-          return .delivered
-        }, onDeliveryAbort: {})
-      let window = try XCTUnwrap(
-        NSApp.windows.first {
-          $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
-        })
-      window.contentView?.layoutSubtreeIfNeeded()
-      let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-      while controller.quickPanelModel?.results.first?.id != record.id, ContinuousClock.now < deadline {
-        await Task.yield()
+      for _ in 0..<2 {
+        let probe = RecordPanelDeliveryProbe()
+        controller.show(
+          model: model,
+          deliverSelection: { subject, actionTarget in
+            await probe.record(subject, target: actionTarget)
+            return .delivered
+          }, onDeliveryAbort: {})
+        let window = try XCTUnwrap(
+          NSApp.windows.first {
+            $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+          })
+        window.contentView?.layoutSubtreeIfNeeded()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while controller.quickPanelModel?.results.first?.id != record.id, ContinuousClock.now < deadline {
+          await Task.yield()
+        }
+        window.contentView?.layoutSubtreeIfNeeded()
+        let field = try XCTUnwrap(searchField(in: XCTUnwrap(window.contentView)))
+        XCTAssertEqual(field.stringValue, "")
+        let event = try XCTUnwrap(
+          NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: "1",
+            charactersIgnoringModifiers: "1", isARepeat: false, keyCode: 18))
+        XCTAssertTrue(field.performKeyEquivalent(with: event))
+        await waitForPasteWork()
+        let result = await probe.snapshot()
+        XCTAssertEqual(result.subjects.map(\.recordID), [record.id])
+        XCTAssertEqual(result.targets, [target])
+        controller.quickPanelModel?.setSearchText("old visit query")
+        controller.dismiss()
       }
-      window.contentView?.layoutSubtreeIfNeeded()
-      let field = try XCTUnwrap(searchField(in: XCTUnwrap(window.contentView)))
-      XCTAssertEqual(field.stringValue, "")
-      let event = try XCTUnwrap(
-        NSEvent.keyEvent(
-          with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
-          windowNumber: window.windowNumber, context: nil, characters: "1",
-          charactersIgnoringModifiers: "1", isARepeat: false, keyCode: 18))
-      XCTAssertTrue(field.performKeyEquivalent(with: event))
-      await waitForPasteWork()
-      let result = await probe.snapshot()
-      XCTAssertEqual(result.subjects.map(\.recordID), [record.id])
-      XCTAssertEqual(result.targets, [target])
-      controller.dismiss()
       await workspace.shutdown()
     }
     await controller.shutdown()

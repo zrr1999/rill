@@ -184,6 +184,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   private static let focusRestoreSettleInterval: Duration = .milliseconds(80)
 
   private var panel: NSPanel?
+  private var pageContent: FloatingRecordContent?
   private var capsulePanel: NSPanel?
   private weak var capsuleModel: AppModel?
   let presentation = RecordPanelPresentation()
@@ -484,42 +485,60 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       return true
     }
     digitSelectionHandler = digitSelection
-    let rootView = FloatingRecordView(
-      model: model, session: session, presentation: presentation,
-      onModeChange: { [weak self] in self?.selectMode($0) },
-      onFinishEditing: { [weak self] in self?.finishEditing() },
-      onInteractionChange: { [weak self] in self?.hover.refresh() },
-      deliverSelection: useSelectedRecord,
-      copySelection: { [weak self] subject in
-        guard let self,
-          let reservation = self.pasteTaskOwner.reserve(
-            prepare: { true },
-            action: { [weak self] in
-              let result = await copySelection(subject)
-              self?.handleReuseOutcome(result, session: session)
-            }, onAbort: nil
-          )
-        else { return }
-        self.pasteTaskOwner.start(reservation)
-      },
-      onShowRecord: { [weak self] in self?.hidePanel(restorePreviousApplication: false) },
-      onConfigureJev: { [weak self, weak model] in
-        guard let self, let model else { return }
-        self.prepareForSettings(model: model) { [weak self, weak model] context in
-          guard let self, let model, !self.hasBegunShutdown else { return }
-          self.show(
-            model: model, deliverSelection: deliverSelection, copySelection: copySelection,
-            onDeliveryAbort: onDeliveryAbort, restoring: context)
-        }
-      },
-      onClose: { [weak self] in self?.handleEscape() }
-    )
+    let copyRecord: (RecordReuseSubject) -> Void = { [weak self] subject in
+      guard let self,
+        let reservation = self.pasteTaskOwner.reserve(
+          prepare: { true },
+          action: { [weak self] in
+            let result = await copySelection(subject)
+            self?.handleReuseOutcome(result, session: session)
+          }, onAbort: nil
+        )
+      else { return }
+      self.pasteTaskOwner.start(reservation)
+    }
+    let configureJev: () -> Void = { [weak self, weak model] in
+      guard let self, let model else { return }
+      self.prepareForSettings(model: model) { [weak self, weak model] context in
+        guard let self, let model, !self.hasBegunShutdown else { return }
+        self.show(
+          model: model, deliverSelection: deliverSelection, copySelection: copySelection,
+          onDeliveryAbort: onDeliveryAbort, restoring: context)
+      }
+    }
+    let content: FloatingRecordContent
+    let replacesPage: Bool
+    if let previous = pageContent, previous.model === model {
+      previous.session = session
+      previous.deliverSelection = useSelectedRecord
+      previous.copySelection = copyRecord
+      previous.onConfigureJev = configureJev
+      content = previous
+      replacesPage = false
+    } else {
+      content = FloatingRecordContent(
+        model: model, session: session, deliverSelection: useSelectedRecord,
+        copySelection: copyRecord, onConfigureJev: configureJev)
+      pageContent = content
+      replacesPage = true
+    }
     let hostingController: FloatingRecordHostingController<FloatingRecordView>
-    if let existing = panel?.contentViewController as? FloatingRecordHostingController<FloatingRecordView> {
-      existing.replaceRootView(rootView)
+    if let existing = panel?.contentViewController as? FloatingRecordHostingController<FloatingRecordView>, !replacesPage {
       hostingController = existing
     } else {
-      hostingController = FloatingRecordHostingController(rootView: rootView)
+      let rootView = FloatingRecordView(
+        content: content, presentation: presentation,
+        onModeChange: { [weak self] in self?.selectMode($0) },
+        onFinishEditing: { [weak self] in self?.finishEditing() },
+        onInteractionChange: { [weak self] in self?.hover.refresh() },
+        onShowRecord: { [weak self] in self?.hidePanel(restorePreviousApplication: false) },
+        onClose: { [weak self] in self?.handleEscape() })
+      if let existing = panel?.contentViewController as? FloatingRecordHostingController<FloatingRecordView> {
+        existing.replaceRootView(rootView)
+        hostingController = existing
+      } else {
+        hostingController = FloatingRecordHostingController(rootView: rootView)
+      }
     }
     prepareCapsule(model: model)
 
@@ -1121,43 +1140,72 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
   }
 }
 
-private struct FloatingRecordView: View {
+@MainActor @Observable
+private final class FloatingRecordContent {
   let model: AppModel
-  let session: RecordQuickPanelModel
+  var session: RecordQuickPanelModel
+  var deliverSelection: @MainActor @Sendable (RecordReuseSubject) -> Void
+  var copySelection: (RecordReuseSubject) -> Void
+  var onConfigureJev: () -> Void
+
+  init(
+    model: AppModel, session: RecordQuickPanelModel,
+    deliverSelection: @escaping @MainActor @Sendable (RecordReuseSubject) -> Void,
+    copySelection: @escaping (RecordReuseSubject) -> Void,
+    onConfigureJev: @escaping () -> Void
+  ) {
+    self.model = model
+    self.session = session
+    self.deliverSelection = deliverSelection
+    self.copySelection = copySelection
+    self.onConfigureJev = onConfigureJev
+  }
+}
+
+private struct FloatingRecordView: View {
+  let content: FloatingRecordContent
   let presentation: RecordPanelPresentation
   let onModeChange: (RecordPanelPresentation.Mode) -> Void
   let onFinishEditing: () -> Void
   let onInteractionChange: () -> Void
-  let deliverSelection: @MainActor @Sendable (RecordReuseSubject) -> Void
-  let copySelection: (RecordReuseSubject) -> Void
   let onShowRecord: () -> Void
-  let onConfigureJev: () -> Void
+  let onClose: () -> Void
+
+  var body: some View {
+    UnifiedRecordPanelView(
+      presentation: presentation, model: content.model,
+      onModeChange: onModeChange, onFinishEditing: onFinishEditing,
+      onInteractionChange: onInteractionChange
+    ) {
+      FloatingRecordCollectionsView(content: content, onShowRecord: onShowRecord, onClose: onClose)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
+  }
+}
+
+private struct FloatingRecordCollectionsView: View {
+  let content: FloatingRecordContent
+  let onShowRecord: () -> Void
   let onClose: () -> Void
   @Environment(\.openWindow) private var openWindow
 
   var body: some View {
-    UnifiedRecordPanelView(
-      presentation: presentation, model: model,
-      onModeChange: onModeChange, onFinishEditing: onFinishEditing,
-      onInteractionChange: onInteractionChange
-    ) {
-      RecordQuickPanelView(
-        model: session, language: model.settings.language, capturePaused: !model.settings.systemClipboardCaptureEnabled,
-        onPaste: deliverSelection, onCopy: copySelection,
-        onShowRecord: { id in
-          Task { await model.showRecord(id) }
-          onShowRecord()
-          NSApp.activate(ignoringOtherApps: true)
-          openWindow(id: "main")
-        }, onClose: onClose,
-        onConfigureJev: { request in
-          onConfigureJev()
-          model.showSettings(request.section, item: request.item)
-          NSApp.activate(ignoringOtherApps: true)
-          openWindow(id: "main")
-        }
-      )
-    }
-    .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
+    let model = content.model
+    RecordQuickPanelView(
+      model: content.session, language: model.settings.language, capturePaused: !model.settings.systemClipboardCaptureEnabled,
+      onPaste: content.deliverSelection, onCopy: content.copySelection,
+      onShowRecord: { id in
+        Task { await model.showRecord(id) }
+        onShowRecord()
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "main")
+      }, onClose: onClose,
+      onConfigureJev: { request in
+        content.onConfigureJev()
+        model.showSettings(request.section, item: request.item)
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "main")
+      }
+    )
   }
 }
