@@ -114,6 +114,7 @@ public final class RecordQuickPanelModel {
   private var searchGeneration: UInt64 = 0
   private var pendingComparison: RecordComparisonReturn?
   private var searchRevision: UInt64?
+  private var catalogRevision: UInt64?
   private var searchCursor: RecordSearchCursor?
 
   public init(
@@ -200,6 +201,7 @@ public final class RecordQuickPanelModel {
     selectedID = nil
     results = []
     searchRevision = nil
+    catalogRevision = nil
     preview = nil
     message = nil
     resume()
@@ -220,14 +222,18 @@ public final class RecordQuickPanelModel {
   }
 
   func receiveCatalogSnapshot(_ snapshot: RecordCatalogSnapshot) {
-    guard !isClosed else { return }
+    guard !isClosed, catalogRevision.map({ snapshot.revision >= $0 }) ?? true else { return }
+    catalogRevision = snapshot.revision
     capacity = snapshot.capacity
     collections = snapshot.collections
     if let collectionID, !collections.contains(where: { $0.id == collectionID }) {
       self.collectionID = nil
+      scheduleSearch()
+      return
     }
-    // The initial stream snapshot may arrive after a query has already published.
-    if searchRevision.map({ snapshot.revision > $0 }) ?? true { scheduleSearch() }
+    // An in-flight query checks this revision before publishing its page.
+    // The initial snapshot therefore need not cancel and restart that query.
+    if !isSearching, searchRevision.map({ snapshot.revision > $0 }) ?? true { scheduleSearch() }
   }
 
   public func stop() {
@@ -471,6 +477,19 @@ public final class RecordQuickPanelModel {
       do {
         let page = try await RecordSearch.page(in: store, query: query, after: cursor, limit: pageLimit)
         guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
+        var comparisonSnapshot: RecordCatalogSnapshot?
+        if self.pendingComparison != nil {
+          comparisonSnapshot = try await store.catalogSnapshot()
+          guard !Task.isCancelled, self.searchGeneration == generation else { return }
+        }
+        if let revision = self.catalogRevision, page.revision < revision {
+          self.scheduleSearch()
+          return
+        }
+        if let snapshot = comparisonSnapshot, snapshot.revision != page.revision {
+          self.scheduleSearch()
+          return
+        }
         if offset == 0 { self.results = page.records } else { self.results += page.records }
         self.nextOffset = page.nextOffset
         self.searchCursor = page.cursor
@@ -478,9 +497,7 @@ public final class RecordQuickPanelModel {
         if !self.selectableResults.contains(where: { $0.id == self.selectedID }) {
           self.selectedID = self.selectableResults.first?.id
         }
-        if let context = self.pendingComparison {
-          let snapshot = try await store.catalogSnapshot()
-          guard !Task.isCancelled, self.searchGeneration == generation else { return }
+        if let context = self.pendingComparison, let snapshot = comparisonSnapshot {
           self.pendingComparison = nil
           let available = snapshot.records.filter { record in
             (context.candidateIDs.contains(record.id) || context.semanticIDs.contains(record.id))
