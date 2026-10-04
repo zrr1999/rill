@@ -118,33 +118,20 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
   }
 
   public func unavailableWarning(language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      "Some saved \(englishName) settings could not be read. These controls are locked to preserve the original stored values."
-    case .simplifiedChinese:
-      "部分已保存的\(simplifiedChineseName)设置无法读取。相关控件已锁定，以保留原始存储值。"
-    }
+    L10n.resource(
+      "settings.unavailableWarning",
+      defaultValue: "Some saved \(nameResource) settings could not be read. These controls are locked to preserve the original stored values."
+    ).string(for: language)
   }
 
-  private var englishName: String {
+  private var nameResource: LocalizedStringResource {
     switch self {
-    case .interface: "interface"
-    case .systemClipboard: "clipboard"
-    case .speechRoute: "speech routing"
-    case .localSpeech: "local speech"
-    case .openAI: "LLM Provider"
-    case .input: "input"
-    }
-  }
-
-  private var simplifiedChineseName: String {
-    switch self {
-    case .interface: "界面"
-    case .systemClipboard: "剪贴板"
-    case .speechRoute: "语音路由"
-    case .localSpeech: "本地语音"
-    case .openAI: "LLM Provider"
-    case .input: "输入"
+    case .interface: L10n.resource("settings.domain.interface")
+    case .systemClipboard: L10n.resource("settings.domain.systemClipboard")
+    case .speechRoute: L10n.resource("settings.domain.speechRoute")
+    case .localSpeech: L10n.resource("settings.domain.localSpeech")
+    case .openAI: L10n.resource("settings.domain.openAI")
+    case .input: L10n.resource("settings.domain.input")
     }
   }
 }
@@ -157,12 +144,7 @@ enum ProviderSettingsPersistenceError: LocalizedError, Sendable, Equatable {
   }
 
   func message(language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      "Saved speech-provider settings are unavailable."
-    case .simplifiedChinese:
-      "已保存的语音服务设置不可用。"
-    }
+    return L10n.catalogString("AppModel.SettingsPersistence.Saved.speech.provider.settings.are.unavailable", language: language)
   }
 }
 
@@ -206,39 +188,20 @@ enum StoredSettingsLoadWarning: Sendable {
   case vocabularyRules
   case openAICredential
 
-  var presentation: LocalizedText {
+  var presentation: LocalizedStringResource {
     switch self {
     case .storedValuesUnavailable:
-      LocalizedText(
-        english:
-          "One or more stored settings could not be read. Affected features remain unavailable or use safe defaults.",
-        simplifiedChinese: "一个或多个已保存设置无法读取；受影响功能保持不可用或使用安全默认值。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.One.or.more.stored.settings.could.not.be.read.Affected.features.remain")
     case .customWorkflows:
-      LocalizedText(
-        english: "Custom workflows could not be loaded and were ignored.",
-        simplifiedChinese: "自定义工作流无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Custom.workflows.could.not.be.loaded.and.were.ignored")
     case .workflowEnabledStates:
-      LocalizedText(
-        english: "Workflow enabled states could not be loaded and were ignored.",
-        simplifiedChinese: "工作流启用状态无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Workflow.enabled.states.could.not.be.loaded.and.were.ignored")
     case .downloadedModelMetadata:
-      LocalizedText(
-        english: "Downloaded model metadata could not be loaded and was ignored.",
-        simplifiedChinese: "已下载模型的元数据无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Downloaded.model.metadata.could.not.be.loaded.and.was.ignored")
     case .vocabularyRules:
-      LocalizedText(
-        english: "Vocabulary rules could not be loaded and were ignored.",
-        simplifiedChinese: "词汇规则无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Vocabulary.rules.could.not.be.loaded.and.were.ignored")
     case .openAICredential:
-      LocalizedText(
-        english: "The LLM Provider credential could not be read from secure storage.",
-        simplifiedChinese: "无法从安全存储读取 LLM Provider 凭据。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.The.LLM.Provider.credential.could.not.be.read.from.secure.storage")
     }
   }
 }
@@ -1388,19 +1351,16 @@ extension AppModel {
   }
 
   private func unavailableStoredSettingsDomainMessage(_ domain: StoredSettingsDomain) -> String {
-    switch (self.settings.language, domain) {
-    case (.english, .workflowLibrary):
-      "The saved workflow library could not be loaded. Editing stays disabled to protect the existing data. Repair storage, then retry."
-    case (.simplifiedChinese, .workflowLibrary):
-      "无法加载已保存的工作流库。为保护现有数据，编辑保持停用。请修复存储后重试。"
-    case (.english, .downloadedModelMetadata):
-      "Downloaded local-model metadata could not be loaded. Rill will not overwrite it until storage is repaired and retried."
-    case (.simplifiedChinese, .downloadedModelMetadata):
-      "无法加载已下载本地模型的元数据。修复存储并重试前，Rill 不会覆盖该数据。"
-    case (.english, .vocabularyRules):
-      "The saved vocabulary rules could not be loaded. Editing stays disabled to protect the existing data. Repair storage, then retry."
-    case (.simplifiedChinese, .vocabularyRules):
-      "无法加载已保存的词汇规则。为保护现有数据，编辑保持停用。请修复存储后重试。"
+    switch domain {
+    case .workflowLibrary:
+      L10n.resource("AppModel.SettingsPersistence.The.saved.workflow.library.could.not.be.loaded.Editing.stays.disabled.to.protect.the").string(
+        for: self.settings.language)
+    case .downloadedModelMetadata:
+      L10n.resource("AppModel.SettingsPersistence.Downloaded.local.model.metadata.could.not.be.loaded.Rill.will.not.overwrite.it.until").string(
+        for: self.settings.language)
+    case .vocabularyRules:
+      L10n.resource("AppModel.SettingsPersistence.The.saved.vocabulary.rules.could.not.be.loaded.Editing.stays.disabled.to.protect.the").string(
+        for: self.settings.language)
     }
   }
 

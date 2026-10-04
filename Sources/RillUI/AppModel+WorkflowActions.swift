@@ -26,31 +26,16 @@ private enum WorkflowOperationFailureStage {
   case audioTranscription
   case recordReplay
 
-  var presentation: LocalizedText {
+  var presentation: LocalizedStringResource {
     switch self {
     case .workflowStart:
-      LocalizedText(
-        english: "Workflow could not start. Review Privacy and provider settings, then retry.",
-        simplifiedChinese: "工作流无法启动。请检查隐私与服务商设置后重试。"
-      )
+      L10n.resource("AppModel.WorkflowActions.Workflow.could.not.start.Review.Privacy.and.provider.settings.then.retry")
     case .audioCaptureStart:
-      LocalizedText(
-        english:
-          "Workflow recording could not start. Check microphone access and provider settings, then retry.",
-        simplifiedChinese: "无法开始工作流录音。请检查麦克风权限与服务商设置后重试。"
-      )
+      L10n.resource("AppModel.WorkflowActions.Workflow.recording.could.not.start.Check.microphone.access.and.provider.settings.then")
     case .audioTranscription:
-      LocalizedText(
-        english:
-          "The recorded workflow could not be transcribed. Check provider settings, then retry.",
-        simplifiedChinese: "无法转写这段工作流录音。请检查服务商设置后重试。"
-      )
+      L10n.resource("AppModel.WorkflowActions.The.recorded.workflow.could.not.be.transcribed.Check.provider.settings.then.retry")
     case .recordReplay:
-      LocalizedText(
-        english:
-          "The record could not be replayed. Review Privacy and workflow settings, then retry.",
-        simplifiedChinese: "无法重新运行这条记录。请检查隐私与工作流设置后重试。"
-      )
+      L10n.resource("AppModel.WorkflowActions.The.record.could.not.be.replayed.Review.Privacy.and.workflow.settings.then")
     }
   }
 }
@@ -306,13 +291,10 @@ extension AppModel {
     _ descriptor: LocalSpeechModelDescriptor
   ) -> String {
     let category: String =
-      switch (self.settings.language, descriptor.category) {
-      case (.english, .performance): "Performance"
-      case (.english, .intelligent): "Intelligent"
-      case (.english, .multilingual): "Multilingual"
-      case (_, .performance): "性能型"
-      case (_, .intelligent): "智能型"
-      case (_, .multilingual): "多语言"
+      switch descriptor.category {
+      case .performance: L10n.resource("AppModel.WorkflowActions.Performance").string(for: self.settings.language)
+      case .intelligent: L10n.resource("AppModel.WorkflowActions.Intelligent").string(for: self.settings.language)
+      case .multilingual: L10n.resource("AppModel.WorkflowActions.Multilingual").string(for: self.settings.language)
       }
     let capacity: String
     if descriptor.parameterCountMillions >= 1_000 {
@@ -589,54 +571,37 @@ extension AppModel {
     for issue: WorkflowExecutionSupportIssue,
     language: AppLanguage
   ) -> String {
-    switch (self.settings.language, issue) {
-    case (.english, .legacyClipboardAutomationUnsupported):
-      return
-        "Legacy collection-event workflows remain disabled; use record routes for production delivery."
-    case (.simplifiedChinese, .legacyClipboardAutomationUnsupported):
-      return "旧版记录集事件工作流已停用；生产投递请使用记录路由。"
-    case (.english, .invalidEventType):
-      return "This workflow declares an invalid event type and remains disabled."
-    case (.simplifiedChinese, .invalidEventType):
-      return "此工作流声明了无效事件类型，已保持停用。"
-    case (.english, .plannedCapabilityUnavailable):
-      return "This preset is planned but is not available in the current build."
-    case (.simplifiedChinese, .plannedCapabilityUnavailable):
-      return "此预设尚在规划中，当前版本不可用。"
-    case (.english, .missingProductionTransformer):
-      return "This workflow uses a text step that has no production transformer."
-    case (.simplifiedChinese, .missingProductionTransformer):
-      return "此工作流使用了尚未配置生产级 transformer 的文本步骤。"
-    case (.english, .unregisteredOutputAction(let actionID)):
-      return "This workflow uses an output action that is unavailable in this build: \(actionID)."
-    case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
-      return "此工作流使用了当前版本不可用的输出动作：\(actionID)。"
-    case (.english, .openAIUnavailable(_)):
-      return "Add an LLM Provider API key in Settings before enabling this workflow."
-    case (.simplifiedChinese, .openAIUnavailable(_)):
-      return "请先在设置中添加 API Key，再启用此工作流。"
-    case (.english, .openAIConfigurationInvalid):
-      return "Enter a valid OpenAI-compatible endpoint and model ID before enabling this workflow."
-    case (.simplifiedChinese, .openAIConfigurationInvalid):
-      return "请先填写有效的 OpenAI-compatible 地址与模型 ID，再启用此工作流。"
-    case (.english, .openAIVerificationFailed):
-      return "The current LLM configuration failed verification. Fix it or verify it again before enabling this workflow."
-    case (.simplifiedChinese, .openAIVerificationFailed):
-      return "当前 LLM 配置验证失败。请修复配置或重新验证后再启用此工作流。"
-    case (.english, .microphonePermissionRequired):
-      return "Grant microphone access before enabling wake-word listening."
-    case (.simplifiedChinese, .microphonePermissionRequired):
-      return "请先授予麦克风权限，再启用唤醒监听。"
-    case (.english, .wakeWordModelNotReady):
-      return "Prepare the selected local ASR model before enabling wake-word listening."
-    case (.simplifiedChinese, .wakeWordModelNotReady):
-      return "请先准备当前本地 ASR 模型，再启用唤醒监听。"
-    case (.english, .privacySettingsUnavailable):
-      return "Cloud privacy settings are unavailable. Repair them before enabling this assistant workflow."
-    case (.simplifiedChinese, .privacySettingsUnavailable):
-      return "云端隐私设置当前不可用。请修复后再启用语音助手工作流。"
-    case (_, .localSpeechUnavailable(let availability)):
-      return localSpeechWorkflowEnableError(availability, language: self.settings.language)
+    return switch issue {
+    case .legacyClipboardAutomationUnsupported:
+      L10n.resource("AppModel.WorkflowActions.Legacy.collection.event.workflows.remain.disabled.use.record.routes.for.production.delivery").string(
+        for: self.settings.language)
+    case .invalidEventType:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.declares.an.invalid.event.type.and.remains.disabled").string(for: self.settings.language)
+    case .plannedCapabilityUnavailable:
+      L10n.resource("AppModel.WorkflowActions.This.preset.is.planned.but.is.not.available.in.the.current.build").string(for: self.settings.language)
+    case .missingProductionTransformer:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.uses.a.text.step.that.has.no.production.transformer").string(for: self.settings.language)
+    case .unregisteredOutputAction(let actionID):
+      L10n.resource(
+        "AppModel.WorkflowActions.This.workflow.uses.an.output.action.that.is.unavailable.in.this.build",
+        defaultValue: "This workflow uses an output action that is unavailable in this build: \(String(describing: actionID))."
+      ).string(for: self.settings.language)
+    case .openAIUnavailable(_):
+      L10n.resource("AppModel.WorkflowActions.Add.an.LLM.Provider.API.key.in.Settings.before.enabling.this.workflow").string(for: self.settings.language)
+    case .openAIConfigurationInvalid:
+      L10n.resource("AppModel.WorkflowActions.Enter.a.valid.OpenAI.compatible.endpoint.and.model.ID.before.enabling.this.workflow").string(
+        for: self.settings.language)
+    case .openAIVerificationFailed:
+      L10n.resource("AppModel.WorkflowActions.The.current.LLM.configuration.failed.verification.Fix.it.or.verify.it.again.before.enabling").string(
+        for: self.settings.language)
+    case .microphonePermissionRequired:
+      L10n.resource("AppModel.WorkflowActions.Grant.microphone.access.before.enabling.wake.word.listening").string(for: self.settings.language)
+    case .wakeWordModelNotReady:
+      L10n.resource("AppModel.WorkflowActions.Prepare.the.selected.local.ASR.model.before.enabling.wake.word.listening").string(for: self.settings.language)
+    case .privacySettingsUnavailable:
+      L10n.resource("AppModel.WorkflowActions.Cloud.privacy.settings.are.unavailable.Repair.them.before.enabling.this.assistant.workflow").string(
+        for: self.settings.language)
+    case .localSpeechUnavailable(let availability): localSpeechWorkflowEnableError(availability, language: self.settings.language)
     }
   }
 
@@ -644,54 +609,35 @@ extension AppModel {
     for issue: WorkflowExecutionSupportIssue,
     language: AppLanguage
   ) -> String {
-    switch (self.settings.language, issue) {
-    case (.english, .legacyClipboardAutomationUnsupported):
-      return "This legacy clipboard event workflow is disabled and cannot run."
-    case (.simplifiedChinese, .legacyClipboardAutomationUnsupported):
-      return "此旧版记录集事件工作流已停用，无法运行。"
-    case (.english, .invalidEventType):
-      return "This workflow cannot run because its event type is invalid."
-    case (.simplifiedChinese, .invalidEventType):
-      return "此工作流的事件类型无效，无法运行。"
-    case (.english, .plannedCapabilityUnavailable):
-      return "This planned preset cannot run in the current build."
-    case (.simplifiedChinese, .plannedCapabilityUnavailable):
-      return "此规划中预设暂时无法运行。"
-    case (.english, .missingProductionTransformer):
-      return "This workflow cannot run because a production text transformer is missing."
-    case (.simplifiedChinese, .missingProductionTransformer):
-      return "此工作流缺少生产级文本 transformer，无法运行。"
-    case (.english, .unregisteredOutputAction(let actionID)):
-      return
-        "This workflow cannot run because no production output action is registered for \(actionID)."
-    case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
-      return "此工作流无法运行，因为没有为 \(actionID) 注册生产级输出动作。"
-    case (.english, .openAIUnavailable(_)):
-      return "LLM Provider is unavailable. Open Settings and save an API key."
-    case (.simplifiedChinese, .openAIUnavailable(_)):
-      return "LLM Provider当前不可用。请打开设置并保存 API Key。"
-    case (.english, .openAIConfigurationInvalid):
-      return "The OpenAI-compatible endpoint or model ID is invalid. Review Speech settings and retry."
-    case (.simplifiedChinese, .openAIConfigurationInvalid):
-      return "OpenAI-compatible 地址或模型 ID 无效。请检查语音设置后重试。"
-    case (.english, .openAIVerificationFailed):
-      return "The current LLM configuration failed verification. Review Speech settings and retry."
-    case (.simplifiedChinese, .openAIVerificationFailed):
-      return "当前 LLM 配置验证失败。请检查语音设置后重试。"
-    case (.english, .microphonePermissionRequired):
-      return "Wake-word listening requires microphone access."
-    case (.simplifiedChinese, .microphonePermissionRequired):
-      return "唤醒监听需要麦克风权限。"
-    case (.english, .wakeWordModelNotReady):
-      return "Wake-word listening requires the selected local ASR model to be ready."
-    case (.simplifiedChinese, .wakeWordModelNotReady):
-      return "唤醒监听需要先准备当前本地 ASR 模型。"
-    case (.english, .privacySettingsUnavailable):
-      return "Cloud privacy settings are unavailable, so this assistant workflow cannot run."
-    case (.simplifiedChinese, .privacySettingsUnavailable):
-      return "云端隐私设置当前不可用，因此语音助手工作流无法运行。"
-    case (_, .localSpeechUnavailable(let availability)):
-      return localSpeechWorkflowRunError(availability, language: self.settings.language)
+    return switch issue {
+    case .legacyClipboardAutomationUnsupported:
+      L10n.resource("AppModel.WorkflowActions.This.legacy.clipboard.event.workflow.is.disabled.and.cannot.run").string(for: self.settings.language)
+    case .invalidEventType:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.its.event.type.is.invalid").string(for: self.settings.language)
+    case .plannedCapabilityUnavailable:
+      L10n.resource("AppModel.WorkflowActions.This.planned.preset.cannot.run.in.the.current.build").string(for: self.settings.language)
+    case .missingProductionTransformer:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.a.production.text.transformer.is.missing").string(for: self.settings.language)
+    case .unregisteredOutputAction(let actionID):
+      L10n.resource(
+        "AppModel.WorkflowActions.This.workflow.cannot.run.because.no.production.output.action.is.registered.for",
+        defaultValue: "This workflow cannot run because no production output action is registered for \(String(describing: actionID))."
+      ).string(for: self.settings.language)
+    case .openAIUnavailable(_):
+      L10n.resource("AppModel.WorkflowActions.LLM.Provider.is.unavailable.Open.Settings.and.save.an.API.key").string(for: self.settings.language)
+    case .openAIConfigurationInvalid:
+      L10n.resource("AppModel.WorkflowActions.The.OpenAI.compatible.endpoint.or.model.ID.is.invalid.Review.Speech.settings.and.retry").string(
+        for: self.settings.language)
+    case .openAIVerificationFailed:
+      L10n.resource("AppModel.WorkflowActions.The.current.LLM.configuration.failed.verification.Review.Speech.settings.and.retry").string(
+        for: self.settings.language)
+    case .microphonePermissionRequired:
+      L10n.resource("AppModel.WorkflowActions.Wake.word.listening.requires.microphone.access").string(for: self.settings.language)
+    case .wakeWordModelNotReady:
+      L10n.resource("AppModel.WorkflowActions.Wake.word.listening.requires.the.selected.local.ASR.model.to.be.ready").string(for: self.settings.language)
+    case .privacySettingsUnavailable:
+      L10n.resource("AppModel.WorkflowActions.Cloud.privacy.settings.are.unavailable.so.this.assistant.workflow.cannot.run").string(for: self.settings.language)
+    case .localSpeechUnavailable(let availability): localSpeechWorkflowRunError(availability, language: self.settings.language)
     }
   }
 
@@ -699,22 +645,14 @@ extension AppModel {
     _ availability: LocalSpeechAvailability,
     language: AppLanguage
   ) -> String {
-    switch (self.settings.language, availability) {
-    case (.english, .architectureUnsupported):
-      return
-        "This build does not include a compatible local speech worker. Enable a supported local model before enabling this workflow."
-    case (.simplifiedChinese, .architectureUnsupported):
-      return
-        "此构建未包含兼容的本地语音 worker。启用此工作流前，请先启用受支持的本地模型。"
-    case (.english, .trustMaterialUnavailable):
-      return
-        "This build has no reviewed local speech model. Choose Cloud speech before enabling this workflow."
-    case (.simplifiedChinese, .trustMaterialUnavailable):
-      return "当前版本没有经审核的本地语音模型。请先将此工作流改为云端识别。"
-    case (.english, .available):
-      return "Local speech is currently unavailable for this workflow."
-    case (.simplifiedChinese, .available):
-      return "本地语音当前无法用于此工作流。"
+    return switch availability {
+    case .architectureUnsupported:
+      L10n.resource("AppModel.WorkflowActions.This.build.does.not.include.a.compatible.local.speech.worker.Enable.a.supported.local").string(
+        for: self.settings.language)
+    case .trustMaterialUnavailable:
+      L10n.resource("AppModel.WorkflowActions.This.build.has.no.reviewed.local.speech.model.Choose.Cloud.speech.before.enabling.this").string(
+        for: self.settings.language)
+    case .available: L10n.resource("AppModel.WorkflowActions.Local.speech.is.currently.unavailable.for.this.workflow").string(for: self.settings.language)
     }
   }
 
@@ -722,22 +660,15 @@ extension AppModel {
     _ availability: LocalSpeechAvailability,
     language: AppLanguage
   ) -> String {
-    switch (self.settings.language, availability) {
-    case (.english, .architectureUnsupported):
-      return
-        "This workflow cannot run because the compatible local speech worker is unavailable. Enable a supported local model and retry."
-    case (.simplifiedChinese, .architectureUnsupported):
-      return
-        "此工作流无法运行，因为兼容的本地语音 worker 不可用。请启用受支持的本地模型后重试。"
-    case (.english, .trustMaterialUnavailable):
-      return
-        "This workflow cannot run because this build has no reviewed local speech model. Choose Cloud speech and retry."
-    case (.simplifiedChinese, .trustMaterialUnavailable):
-      return "此工作流无法运行，因为当前版本没有经审核的本地语音模型。请选择云端识别后重试。"
-    case (.english, .available):
-      return "This workflow cannot run because local speech is currently unavailable."
-    case (.simplifiedChinese, .available):
-      return "此工作流无法运行，因为本地语音当前不可用。"
+    return switch availability {
+    case .architectureUnsupported:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.the.compatible.local.speech.worker.is.unavailable.Enable.a").string(
+        for: self.settings.language)
+    case .trustMaterialUnavailable:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.this.build.has.no.reviewed.local.speech.model.Choose").string(
+        for: self.settings.language)
+    case .available:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.local.speech.is.currently.unavailable").string(for: self.settings.language)
     }
   }
 

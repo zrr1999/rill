@@ -37,6 +37,23 @@ class BuildDriverTests(unittest.TestCase):
             with self.assertRaises(build.BuildError):
                 build.main(["test-domain", "--scratch-path", ".build"])
 
+    def test_full_tests_compile_catalogs_and_keep_the_same_arena_for_filtered_runs(self):
+        invocations = []
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(build, "BuildContext") as context,
+        ):
+            for arguments in (
+                ["test", "--parallel", "--num-workers", "4"],
+                ["test", "--skip-build", "--filter", "RillUITests"],
+            ):
+                build.main(arguments)
+                invocations.append(context.call_args.args[2])
+            self.assertEqual(build.build_settings(invocations[0]), build.build_settings(invocations[1]))
+            self.assertEqual(build.option(invocations[0], ("--build-system",), None), "swiftbuild")
+            build.main(["test-domain", "--filter", "SessionCoordinatorTests"])
+            self.assertNotIn("--build-system", context.call_args.args[2])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -167,16 +184,47 @@ class BuildDriverTests(unittest.TestCase):
             self.context.swift("test", ["--filter", "SomeTest"], quiet=True)
         command = capture.call_args.args[0]
         self.assertEqual(
-            command[:5],
+            command[:3],
             [
                 "swift",
                 "test",
                 "--force-resolved-versions",
-                "-Xswiftc",
-                "-warnings-as-errors",
             ],
         )
         self.assertIn("--scratch-path", command)
+        self.assertNotIn("-warnings-as-errors", command)
+
+    def test_real_manifest_rejects_first_party_swift_warnings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = (build.PROJECT / "Package.swift").read_text()
+            # Keep the real target and its settings; remove unrelated dependencies
+            # so this negative compilation only exercises the package warning gate.
+            manifest += """
+package.dependencies = []
+package.products = []
+package.targets.removeAll { $0.name != "RillCore" }
+"""
+            (root / "Package.swift").write_text(manifest)
+            source = root / "Sources/RillCore/Warning.swift"
+            source.parent.mkdir(parents=True)
+            source.write_text('#warning("Rill warning gate regression fixture")\n')
+            for configuration in ("debug", "release"):
+                with self.subTest(configuration=configuration):
+                    result = subprocess.run(
+                        [
+                            "swift", "build", "--package-path", str(root),
+                            "--build-system", "native", "-c", configuration,
+                        ],
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(
+                        "error: Rill warning gate regression fixture",
+                        result.stdout + result.stderr,
+                    )
 
     def test_first_compile_failure_keeps_partial_incremental_outputs(self):
         partial = self.context.scratch / "out/partial.o"

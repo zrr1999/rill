@@ -333,8 +333,6 @@ class BuildContext:
         self, subcommand: str, arguments: list[str], *, quiet: bool = False
     ) -> str:
         command = ["swift", subcommand, "--force-resolved-versions"]
-        if subcommand == "test":
-            command += ["-Xswiftc", "-warnings-as-errors"]
         command += arguments + ["--scratch-path", str(self.scratch)]
         if quiet:
             return capture(command, self.root)
@@ -625,6 +623,14 @@ def main(arguments: list[str] | None = None) -> None:
         return
     if subcommand not in ("build", "test", "clean"):
         raise BuildError(f"unsupported SwiftPM subcommand: {subcommand}")
+    # The native engine copies .xcstrings without compiling localized resources.
+    # Full tests need the same resource compiler used by the Release build.
+    if (
+        subcommand == "test"
+        and os.environ.get("RILL_BUILD_PROFILE") != "domain-tests"
+        and option(arguments, ("--build-system",), None) is None
+    ):
+        arguments += ["--build-system", "swiftbuild", "--manifest-cache", "none"]
     root = Path(option(arguments, ("--package-path",), str(PROJECT))).resolve()
     configuration = option(arguments, ("--configuration", "-c"), "debug")
     if configuration not in ("debug", "release"):

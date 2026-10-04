@@ -42,83 +42,47 @@ enum RecordPanelText: CaseIterable {
 
 extension L10n {
   static func recordPanel(_ key: RecordPanelText, language: AppLanguage) -> String {
-    switch (key, language) {
-    case (.drafts, .english): "Drafts"
-    case (.drafts, .simplifiedChinese): "待发"
-    case (.collections, .english): "Collections"
-    case (.collections, .simplifiedChinese): "记录集"
-    case (.panelContent, .english): "Panel content"
-    case (.panelContent, .simplifiedChinese): "面板内容"
-    case (.keepOpen, .english): "Keep open"
-    case (.keepOpen, .simplifiedChinese): "保持显示"
-    case (.keepOpenHelp, .english): "Keep this page open when the pointer leaves or you switch apps"
-    case (.keepOpenHelp, .simplifiedChinese): "鼠标移出或切换应用时保持页面展开"
-    case (.outputStatus, .english): "Output status"
-    case (.outputStatus, .simplifiedChinese): "输出状态"
-    case (.done, .english): "Done"
-    case (.done, .simplifiedChinese): "完成"
-    case (.review, .english): "Review"
-    case (.review, .simplifiedChinese): "查看"
-    case (.previousOutputNeedsConfirmation, .english): "Previous output needs confirmation"
-    case (.previousOutputNeedsConfirmation, .simplifiedChinese): "上一条输出结果待确认"
-    case (.localContent, .english): "Content stays on this Mac"
-    case (.localContent, .simplifiedChinese): "内容保存在本机"
-    case (.deliveredButNotSaved, .english): "Delivered; state not saved"
-    case (.deliveredButNotSaved, .simplifiedChinese): "已输出，状态尚未保存"
-    case (.confirmInsertion, .english): "Check the target before confirming insertion."
-    case (.confirmInsertion, .simplifiedChinese): "检查目标中的内容，再确认输出结果。"
-    case (.retrySave, .english): "Retry save"
-    case (.retrySave, .simplifiedChinese): "重试保存"
-    case (.inserted, .english): "Inserted"
-    case (.inserted, .simplifiedChinese): "已插入"
-    case (.retryItem, .english): "Retry item"
-    case (.retryItem, .simplifiedChinese): "重试此项"
-    case (.moveAndOpen, .english): "Drafts. Drag to move; hover to open."
-    case (.moveAndOpen, .simplifiedChinese): "待发，拖动以移动，停留以展开"
-    case (.needsAttention, .english): "Needs attention"
-    case (.needsAttention, .simplifiedChinese): "有内容待处理"
-    case (.closeFloatingWindow, .english): "Close floating window"
-    case (.closeFloatingWindow, .simplifiedChinese): "关闭悬浮窗"
-    case (.draftSources, .english): "Draft sources"
-    case (.draftSources, .simplifiedChinese): "待发来源"
-    case (.configureDraftSources, .english): "Draft sources…"
-    case (.configureDraftSources, .simplifiedChinese): "待发来源…"
-    case (.draftList, .english): "Drafts"
-    case (.draftList, .simplifiedChinese): "待发列表"
-    case (.newDraft, .english): "New draft"
-    case (.newDraft, .simplifiedChinese): "新建草稿"
-    case (.newItem, .english): "New"
-    case (.newItem, .simplifiedChinese): "新建"
-    case (.draftOptions, .english): "Draft options"
-    case (.draftOptions, .simplifiedChinese): "待发选项"
-    case (.searchDrafts, .english): "Search drafts"
-    case (.searchDrafts, .simplifiedChinese): "搜索待发"
-    case (.sendWhenReady, .english): "Send when ready"
-    case (.sendWhenReady, .simplifiedChinese): "准备好后发送"
-    case (.doneEditing, .english): "Done editing"
-    case (.doneEditing, .simplifiedChinese): "完成编辑"
-    case (.copy, .english): "Copy"
-    case (.copy, .simplifiedChinese): "复制"
-    case (.send, .english): "Send"
-    case (.send, .simplifiedChinese): "发送"
-    case (.noMatchingDrafts, .english): "No matching drafts"
-    case (.noMatchingDrafts, .simplifiedChinese): "没有匹配的待发项"
-    case (.reviewEdits, .english): "Review edits"
-    case (.reviewEdits, .simplifiedChinese): "查看差异"
-    case (.reviewResults, .english): "Review results"
-    case (.reviewResults, .simplifiedChinese): "有结果待应用"
-    case (.collection, .english): "Collection"
-    case (.collection, .simplifiedChinese): "记录集"
-    case (.allRecords, .english): "All Records"
-    case (.allRecords, .simplifiedChinese): "全部记录"
-    case (.searchAndFilterOptions, .english): "Search and filter options"
-    case (.searchAndFilterOptions, .simplifiedChinese): "搜索与筛选选项"
-    case (.addToDrafts, .english): "Add to Drafts"
-    case (.addToDrafts, .simplifiedChinese): "加入待发"
+    switch key {
+    case .drafts: return catalogString("recordPanel.drafts", language: language)
+    case .collections: return catalogString("recordPanel.collections", language: language)
+    case .panelContent: return catalogString("recordPanel.panelContent", language: language)
+    case .keepOpen: return catalogString("recordPanel.keepOpen", language: language)
+    case .keepOpenHelp: return catalogString("recordPanel.keepOpenHelp", language: language)
+    case .outputStatus: return catalogString("recordPanel.outputStatus", language: language)
+    case .done: return catalogString("recordPanel.done", language: language)
+    case .review: return catalogString("recordPanel.review", language: language)
+    case .previousOutputNeedsConfirmation: return catalogString("recordPanel.previousOutputNeedsConfirmation", language: language)
+    case .localContent: return catalogString("recordPanel.localContent", language: language)
+    case .deliveredButNotSaved: return catalogString("recordPanel.deliveredButNotSaved", language: language)
+    case .confirmInsertion: return catalogString("recordPanel.confirmInsertion", language: language)
+    case .retrySave: return catalogString("recordPanel.retrySave", language: language)
+    case .inserted: return catalogString("recordPanel.inserted", language: language)
+    case .retryItem: return catalogString("recordPanel.retryItem", language: language)
+    case .moveAndOpen: return catalogString("recordPanel.moveAndOpen", language: language)
+    case .needsAttention: return catalogString("recordPanel.needsAttention", language: language)
+    case .closeFloatingWindow: return catalogString("recordPanel.closeFloatingWindow", language: language)
+    case .draftSources: return catalogString("recordPanel.draftSources", language: language)
+    case .configureDraftSources: return catalogString("recordPanel.configureDraftSources", language: language)
+    case .draftList: return catalogString("recordPanel.draftList", language: language)
+    case .newDraft: return catalogString("recordPanel.newDraft", language: language)
+    case .newItem: return catalogString("recordPanel.newItem", language: language)
+    case .draftOptions: return catalogString("recordPanel.draftOptions", language: language)
+    case .searchDrafts: return catalogString("recordPanel.searchDrafts", language: language)
+    case .sendWhenReady: return catalogString("recordPanel.sendWhenReady", language: language)
+    case .doneEditing: return catalogString("recordPanel.doneEditing", language: language)
+    case .copy: return catalogString("recordPanel.copy", language: language)
+    case .send: return catalogString("recordPanel.send", language: language)
+    case .noMatchingDrafts: return catalogString("recordPanel.noMatchingDrafts", language: language)
+    case .reviewEdits: return catalogString("recordPanel.reviewEdits", language: language)
+    case .reviewResults: return catalogString("recordPanel.reviewResults", language: language)
+    case .collection: return catalogString("recordPanel.collection", language: language)
+    case .allRecords: return catalogString("recordPanel.allRecords", language: language)
+    case .searchAndFilterOptions: return catalogString("recordPanel.searchAndFilterOptions", language: language)
+    case .addToDrafts: return catalogString("recordPanel.addToDrafts", language: language)
     }
   }
 
   static func recordPanelCharacterCount(_ count: Int, language: AppLanguage) -> String {
-    language == .simplifiedChinese ? "\(count) 字" : "\(count) \(count == 1 ? "character" : "characters")"
+    L10n.pluralString("count.characters", language: language, count)
   }
 }

@@ -167,10 +167,31 @@ check_record_domain_boundary() {
 
 run_swift_tests() {
   local native_tests='RillPlatformTests|RillUITests|RillAppTests'
+  local storage_stress='RillRuntimeTests.RecordCatalogStressTests'
+  local panel_stress='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
+  local discovered_tests stress_filter
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$native_tests|RillQualityEvaluations"
+  locked_swift test --parallel --num-workers 4 --skip "$native_tests|RillQualityEvaluations|$storage_stress"
+  discovered_tests="$(locked_swift test list --skip-build)"
+  for stress_filter in "$storage_stress" "$panel_stress"; do
+    if ! grep -E "$stress_filter" <<< "$discovered_tests" >/dev/null; then
+      error "Required performance tests were not discovered: $stress_filter"
+    fi
+  done
   echo 'Running native platform, UI, and app tests serially...'
-  locked_swift test --skip-build --filter "$native_tests"
+  locked_swift test --skip-build --filter "$native_tests" --skip "$panel_stress"
+  echo 'Running 10,000-record storage performance tests in a fresh serial process...'
+  locked_swift test --skip-build --filter "$storage_stress"
+  echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
+  if locked_swift test --skip-build --filter "$panel_stress"; then
+    return
+  fi
+  info "Native panel stress failed; sampling one diagnostic replay"
+  if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
+    locked_swift test --skip-build --filter "$panel_stress"; then
+    info "Diagnostic replay also failed; the original failure remains authoritative"
+  fi
+  error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
 }
 
 run_script_tests() {
@@ -408,6 +429,7 @@ RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkout
 
 info "Checking relocatable SwiftPM resource accessors..."
 verify_xcode_resource_accessor "RillMacOS_RillApp"
+verify_xcode_resource_accessor "RillMacOS_RillUI"
 
 info "Smoke-testing unsigned app bundle assembly..."
 SOURCE_REVISION="$(git rev-parse 'HEAD^{commit}')" ||
@@ -440,8 +462,6 @@ for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
 done
 uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
-cleanup
-trap - EXIT INT TERM
 
 info "Running the test suite..."
 run_swift_tests
@@ -449,6 +469,24 @@ run_swift_tests
 info "Checking the working diff for whitespace errors..."
 git diff --check
 git diff --cached --check
+
+if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
+  info "Saving the verified preflight app for native interaction QA..."
+  mkdir -p "$RILL_PREFLIGHT_APP_DIR"
+  APP_ARCHIVE="Rill-preflight-$SOURCE_REVISION.zip"
+  [[ ! -e "$RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE" && ! -L "$RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE" ]] ||
+    error "Preflight app archive already exists: $RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE"
+  ditto -c -k --sequesterRsrc --keepParent \
+    "$PACKAGE_SMOKE_ROOT/Rill.app" "$RILL_PREFLIGHT_APP_DIR/$APP_ARCHIVE"
+  (
+    cd "$RILL_PREFLIGHT_APP_DIR"
+    shasum -a 256 "$APP_ARCHIVE" > "$APP_ARCHIVE.sha256"
+    printf 'source_revision=%s\nsource_dirty=%s\nbuild_kind=preflight\nsigning=ad-hoc\n' \
+      "$SOURCE_REVISION" "$SOURCE_DIRTY" > "$APP_ARCHIVE.source.txt"
+  )
+fi
+cleanup
+trap - EXIT INT TERM
 
 report_preflight_evidence
 info "Preflight passed"

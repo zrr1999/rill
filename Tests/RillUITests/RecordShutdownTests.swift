@@ -6,6 +6,27 @@ import XCTest
 
 @MainActor
 final class RecordShutdownTests: XCTestCase {
+  func testStoppedQuickPanelDiscardsAStoreFailureThatIgnoresCancellation() async {
+    let persistence = SuspendedRecordRead()
+    let model = RecordQuickPanelModel(store: RecordStore(persistence: persistence))
+    model.setSearchText("pending query")
+    await persistence.waitUntilBlocked()
+    var waiting = false
+    let pending = Task {
+      waiting = true
+      await model.waitForSearch()
+    }
+    while !waiting { await Task.yield() }
+    model.stop()
+    await persistence.failRead()
+    await pending.value
+    XCTAssertNil(model.message)
+    XCTAssertTrue(model.results.isEmpty)
+    XCTAssertNil(model.selectedID)
+    XCTAssertFalse(model.isSearching)
+    await model.shutdown()
+  }
+
   func testWorkspaceShutdownDrainsAcceptedMetadataAndRejectsNewEdits() async throws {
     let persistence = SuspendedRecordWrite()
     let store = RecordStore(persistence: persistence)
@@ -93,6 +114,33 @@ final class RecordShutdownTests: XCTestCase {
       payload: .text("finish accepted work"),
       provenance: .init(source: .init(kind: .systemClipboard)))
   }
+}
+
+private actor SuspendedRecordRead: RecordGraphPersistenceStore {
+  private var read: CheckedContinuation<RecordGraphPersistenceReadSnapshot, Error>?
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot {
+    try await withCheckedThrowingContinuation { continuation in
+      read = continuation
+      let waiting = waiters
+      waiters.removeAll()
+      for waiter in waiting { waiter.resume() }
+    }
+  }
+
+  func waitUntilBlocked() async {
+    guard read == nil else { return }
+    await withCheckedContinuation { waiters.append($0) }
+  }
+
+  func failRead() {
+    read?.resume(throwing: CocoaError(.fileReadCorruptFile))
+    read = nil
+  }
+
+  func removeRecordGraph() async throws -> RecordGraphRemovalResult { .removed }
+  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { 0 }
 }
 
 private actor SuspendedRecordWrite: RecordGraphPersistenceStore {
