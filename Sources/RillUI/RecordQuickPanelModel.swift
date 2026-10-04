@@ -473,9 +473,17 @@ public final class RecordQuickPanelModel {
     let cursor = offset == 0 ? nil : searchCursor
     let pageLimit = max(50, pendingComparison?.resultLimit ?? 50)
     isSearching = true
+    // Start the store read while AppKit prepares the panel on the main actor.
+    let pageTask = Task.detached(priority: .userInitiated) { [store] in
+      try await RecordSearch.page(in: store, query: query, after: cursor, limit: pageLimit)
+    }
     searchTask = Task { [weak self, store] in
       do {
-        let page = try await RecordSearch.page(in: store, query: query, after: cursor, limit: pageLimit)
+        let page = try await withTaskCancellationHandler {
+          try await pageTask.value
+        } onCancel: {
+          pageTask.cancel()
+        }
         guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
         var comparisonSnapshot: RecordCatalogSnapshot?
         if self.pendingComparison != nil {
