@@ -192,7 +192,24 @@ public struct RecordQuickPanelView: View {
     }
     .onAppear { if !model.isPreviewVisible { model.togglePreview() } }
     .onChange(of: model.selectedID) { _, _ in if !model.isPreviewVisible { model.togglePreview() } }
-    .sheet(isPresented: $showsFilters) { filters }
+    .sheet(
+      isPresented: Binding(
+        get: { showsFilters || model.jev?.isPresented == true },
+        set: {
+          if !$0 {
+            showsFilters = false
+            model.jev?.invalidate()
+          }
+        })
+    ) {
+      if let jev = model.jev, jev.isPresented {
+        RecordJevSheet(
+          model: jev, language: language, onSelect: model.selectJevCandidate,
+          onConfigure: onConfigureJev, onRetry: model.compareWithJev)
+      } else {
+        filters
+      }
+    }
     .accessibilityIdentifier("records.quick-panel")
   }
 
@@ -233,15 +250,10 @@ public struct RecordQuickPanelView: View {
         Text(text(.files)).tag(RecordPayloadKind?.some(.files))
       }
       if model.canSearchByMeaning { semanticControls }
-      if let jev = model.jev {
+      if model.jev != nil {
         Button(L10n.jev(.open, language: language)) { model.compareWithJev() }
           .disabled(!model.canCompareWithJev)
           .accessibilityIdentifier("records.jev-review")
-          .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
-            RecordJevSheet(
-              model: jev, language: language, onSelect: model.selectJevCandidate,
-              onConfigure: onConfigureJev, onRetry: model.compareWithJev)
-          }
       }
       RecordCapacityView(capacity: model.capacity, language: language) {
         Task { await model.cleanup.request() }
