@@ -9,6 +9,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 BUILD_DIR=""
 SOURCE_REVISION=""
 SOURCE_DIRTY="false"
+SOURCE_FINGERPRINT=""
 CLEAN_BUILD=false
 WORKER_CACHE="auto"
 RAW_BUILD_DIR=""
@@ -71,25 +72,29 @@ verify_toolchain_versions() {
 
 report_preflight_evidence() {
   info \
-    "Preflight evidence: class=working-source source_revision=$SOURCE_REVISION source_dirty=$SOURCE_DIRTY"
+    "Preflight evidence: class=working-source source_revision=$SOURCE_REVISION source_dirty=$SOURCE_DIRTY source_fingerprint=$SOURCE_FINGERPRINT"
+}
+
+preflight_source() {
+  uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" \
+    preflight-source "$1" "$PROJECT_DIR" "$REPORT_DIR/source.json"
 }
 
 start_preflight_report() {
   local report_root="${RILL_PREFLIGHT_REPORT_DIR:-$PROJECT_DIR/.artifacts/preflight}"
-  local source_status=""
+  local source_metadata=""
   mkdir -p "$report_root"
   report_root="$(cd "$report_root" && pwd -P)"
   REPORT_DIR="$(mktemp -d "$report_root/run.XXXXXX")"
-  SOURCE_REVISION="$(git -C "$PROJECT_DIR" rev-parse 'HEAD^{commit}')"
-  source_status="$(git -C "$PROJECT_DIR" status --porcelain=v1 --untracked-files=normal)"
-  if [[ -n "$source_status" ]]; then
-    SOURCE_DIRTY="true"
-  fi
+  source_metadata="$(preflight_source snapshot)"
+  read -r SOURCE_REVISION SOURCE_DIRTY SOURCE_FINGERPRINT <<<"$source_metadata"
   {
     printf '# Rill preflight\n\n'
     printf -- '- Started (UTC): `%s`\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf -- '- Source revision: `%s`\n' "$SOURCE_REVISION"
     printf -- '- Source dirty: `%s`\n' "$SOURCE_DIRTY"
+    printf -- '- Source fingerprint: `%s`\n' "$SOURCE_FINGERPRINT"
+    printf -- '- Source baseline: `source.json` (verified before and after each stage)\n'
     printf -- '- PR base: `%s`\n' "${RILL_PR_BASE_SHA:-not applicable}"
     printf -- '- PR head: `%s`\n' "${RILL_PR_HEAD_SHA:-not applicable}"
     printf -- '- Clean build: `%s`\n' "$CLEAN_BUILD"
@@ -122,7 +127,11 @@ run_preflight_stage() {
   fi
   info "Stage $CURRENT_STAGE started"
   # A conditional around this pipeline would disable errexit inside stage functions.
-  "$@" 2>&1 | tee "$REPORT_DIR/$CURRENT_STAGE.log"
+  {
+    preflight_source verify
+    "$@"
+    preflight_source verify
+  } 2>&1 | tee "$REPORT_DIR/$CURRENT_STAGE.log"
   record_preflight_stage 0 passed
 }
 

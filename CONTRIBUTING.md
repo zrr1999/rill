@@ -216,9 +216,13 @@ git diff --cached --check
 5. 工作区 diff 检查。
 
 每次完整预检在 `.artifacts/preflight/run.*/` 保存阶段日志与 `summary.md`，摘要包含
-源码提交、dirty 状态、阶段耗时、退出码，以及 CI 提供的 PR base/head。PR CI 的源码
+源码提交、dirty 状态、源码指纹、阶段耗时、退出码，以及 CI 提供的 PR base/head。PR CI 的源码
 提交可能是 GitHub 生成的合并提交，应同时保留 head/base，不能把两者混为一谈。
-`RILL_PREFLIGHT_REPORT_DIR` 可以指定报告根目录；重复运行创建独立子目录。
+预检开始时将源码基线保存为 `source.json`，每个阶段前后核对 HEAD、Git 状态、
+tracked + untracked(nonignored) 文件内容与修改记录；发生漂移即失败并停止后续阶段。
+即使文件随后恢复原文，也要从稳定输入重新运行。开始前已有的修改可以参与预检，
+但全程必须保持稳定，报告会如实标记 dirty；报告不是仅凭提交 SHA 得出的验收结论。
+`RILL_PREFLIGHT_REPORT_DIR` 可以指定被 Git 忽略或位于工作区外的报告根目录；重复运行创建独立子目录。
 CI 无论预检成功或失败都会汇总并上传已有报告，保留 14 天。初始化或前置安装失败
 时可能没有预检报告，应查看对应的 Actions 步骤；摘要中没有出现的阶段表示未执行。
 查看 `toolchain.log` 确认版本，查看首个失败阶段的日志定位问题；已有的构建缓存损坏

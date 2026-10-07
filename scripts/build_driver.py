@@ -237,6 +237,59 @@ def source_inputs(root: Path) -> dict[str, str]:
     return inputs
 
 
+def preflight_source_state(root: Path) -> dict[str, object]:
+    inputs = source_inputs(root)
+    observations = {}
+    for name in inputs:
+        try:
+            metadata = (root / name).lstat()
+        except FileNotFoundError:
+            observations[name] = None
+        else:
+            # A write followed by a revert must invalidate tests that ran in between.
+            observations[name] = [
+                metadata.st_mode,
+                metadata.st_ino,
+                metadata.st_mtime_ns,
+                metadata.st_ctime_ns,
+            ]
+    return {
+        "revision": capture(["git", "rev-parse", "HEAD^{commit}"], root),
+        "status": capture(
+            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root
+        ),
+        "sourceFingerprint": digest(inputs),
+        "observations": observations,
+    }
+
+
+def preflight_source(arguments: list[str]) -> None:
+    parser = argparse.ArgumentParser(description="Capture or verify preflight source inputs.")
+    parser.add_argument("operation", choices=("snapshot", "verify"))
+    parser.add_argument("root", type=Path)
+    parser.add_argument("snapshot", type=Path)
+    options = parser.parse_args(arguments)
+    root = options.root.resolve()
+    snapshot = options.snapshot.resolve()
+    if snapshot.is_relative_to(root):
+        ignored = subprocess.run(
+            ["git", "check-ignore", "--quiet", "--", str(snapshot)], cwd=root
+        )
+        if ignored.returncode:
+            raise BuildError("Preflight reports must be outside the checkout or Git-ignored")
+    state = preflight_source_state(root)
+    expected = (
+        preflight_source_state(root)
+        if options.operation == "snapshot"
+        else json.loads(snapshot.read_text())
+    )
+    if state != expected:
+        raise BuildError("Source changed during preflight; retry from stable inputs")
+    if options.operation == "snapshot":
+        write_json(snapshot, state)
+        print(state["revision"], str(bool(state["status"])).lower(), state["sourceFingerprint"])
+
+
 def file_manifest(root: Path) -> dict[str, dict[str, object]]:
     result = {}
     for path in sorted(root.rglob("*")):
@@ -579,6 +632,9 @@ def main(arguments: list[str] | None = None) -> None:
     subcommand, *arguments = arguments
     if os.environ.get("RILL_BUILD_PROFILE"):
         raise BuildError("Select test-domain through the build driver; full builds cannot inherit a reduced graph")
+    if subcommand == "preflight-source":
+        preflight_source(arguments)
+        return
     if subcommand == "test-domain":
         if option(arguments, ("--scratch-path", "--build-path"), None) is not None:
             raise BuildError("Domain tests own their isolated build directory")
