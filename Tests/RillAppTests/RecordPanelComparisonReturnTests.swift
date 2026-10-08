@@ -13,7 +13,8 @@ import RillWorkflows
 final class RecordPanelComparisonReturnTests: XCTestCase {
   func testSettingsReturnPresentsRebuiltComparisonInTheMountedPanelWithoutSending() async throws {
     _ = NSApplication.shared
-    if !NSApp.isRunning {
+    // XCTest drives the run loop without NSApplication.run().
+    if NSApp.activationPolicy() == .prohibited {
       NSApp.setActivationPolicy(.accessory)
       NSApp.finishLaunching()
     }
@@ -58,6 +59,20 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
       await workspace.shutdown()
     }
     controller.show(model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    let page = try XCTUnwrap(
+      NSApp.windows.first {
+        $0.identifier?.rawValue == "record-panel.page" && $0.isVisible
+      })
+    addTeardownBlock { @MainActor in
+      let sheet = page.attachedSheet
+      controller.quickPanelModel?.jev?.invalidate()
+      let deadline = ContinuousClock.now.advanced(by: .seconds(4))
+      while page.attachedSheet != nil || sheet?.isVisible == true, ContinuousClock.now < deadline {
+        await waitForMainRunLoopDefaultMode()
+      }
+      XCTAssertNil(page.attachedSheet)
+      XCTAssertFalse(sheet?.isVisible == true)
+    }
     let original = try XCTUnwrap(controller.quickPanelModel)
     original.setSearchText("git")
     original.setKind(.text)
@@ -83,10 +98,6 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
     XCTAssertEqual(restored.kind, .text)
     XCTAssertNotEqual(restored.jev?.review?.id, oldReview.id)
     XCTAssertEqual(restored.jev?.review?.candidates.map(\.id), [record.id])
-    let page = try XCTUnwrap(
-      NSApp.windows.first {
-        $0.identifier?.rawValue == "record-panel.page" && $0.isVisible
-      })
     try await waitUntil { page.attachedSheet?.isVisible == true }
     let sheet = try XCTUnwrap(page.attachedSheet)
     XCTAssertNotNil(sheet.contentView)
