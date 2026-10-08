@@ -31,6 +31,7 @@ just fmt            # 按 .swift-format（两空格缩进）格式化所有受 G
 just check
 just build          # 默认只构建 Debug RillApp
 just test
+just test-desktop   # 在已解锁的交互式桌面验证窗口焦点与键盘路由
 scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
 just validate-performance-workloads # 校验离线性能工作负载；CodSpeed 用法见 Benchmarks/README.md
@@ -192,10 +193,34 @@ RillApp           组合根
 
 ## 测试
 
+AppKit 是应用使用的原生界面框架；XCTest 是断言和测试运行框架；XCUITest 通过
+辅助功能接口从应用外部操作 UI。本仓库当前的窗口测试是 XCTest 内直接调用 AppKit，
+不使用 XCUITest。创建窗口、检查布局或直接操作响应者，不等于验证真实前台键盘焦点。
+
+| 入口 | 覆盖范围 | 桌面要求 |
+| --- | --- | --- |
+| `just test` | 领域逻辑与不依赖前台交互的 AppKit / UI 集成 | 可锁屏；仍需 macOS 图形会话 |
+| `just test-desktop` | 真实窗口焦点切换、应用级键盘事件路由 | 已解锁且无其他 UI 自动化争抢焦点 |
+| `just ci` | 上述两组测试、仓库检查与 Release 验证 | 桌面测试必需；不可用即失败 |
+
+依赖真实键盘焦点的 XCTest 方法使用 `testDesktop…` 前缀，并在任何应用窗口操作前
+使用 `guard try await requireInteractiveDesktop() else { return }`。辅助函数用独立的普通
+AppKit panel 探测键盘焦点；失败时记录 `XCTFail` 并返回 false，停止该用例的后续操作。
+这会使测试失败，不跳过测试，也不把应用自身的焦点断言当成环境探测。
+探测成功后仍须断言被测窗口确实取得焦点，避免只检查内部响应者而产生假通过。
+环境探测失败不证明锁屏是唯一原因，还应检查会话和并发 UI 操作。
+
+领域 XCTest 继续使用 4 个 worker；原生和桌面 XCTest 保持原有的串行执行方式，
+Swift Testing 用例保留框架默认并发。不传 `--parallel` 不代表 Swift Testing 也串行。
+完整预检的 `desktop-tests` 阶段复用 Debug 构建，不重复编译。
+单独的 `just test-desktop` 会按需构建。`just test` 成功只表示非桌面用例通过，不能替代完整 CI。
+新增测试按实际依赖分类；延时、取消和状态转换优先用可控时钟或 barrier 验证，
+仅将必须穿过真实桌面的最小交互留给桌面测试。Fn、真实 IME 和辅助功能仍按验收清单验证。
+
 开发时可以先运行定向测试：
 
 ```bash
-scripts/preflight.sh swift test --filter MainShellFocusIntegrationTests
+scripts/preflight.sh swift test --filter MainShellFocusIntegrationTests --skip '/testDesktop'
 scripts/preflight.sh swift test --filter SessionCoordinatorTests
 ```
 
@@ -211,9 +236,10 @@ git diff --cached --check
 
 1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
 2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
-3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行原生平台、UI 和 App 测试。测试命令和并发设置与 `just test` 相同。
-4. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
-5. 工作区 diff 检查。
+3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试，与 `just test` 相同。
+4. `desktop-tests` 验证真实桌面交互；环境不可用时本次完整门禁失败，后续阶段不运行。
+5. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
+6. 工作区 diff 检查。
 
 每次完整预检在 `.artifacts/preflight/run.*/` 保存阶段日志与 `summary.md`，摘要包含
 源码提交、dirty 状态、源码指纹、阶段耗时、退出码，以及 CI 提供的 PR base/head。PR CI 的源码

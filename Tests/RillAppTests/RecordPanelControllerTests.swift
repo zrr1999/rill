@@ -65,7 +65,8 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testFocusLossDuringPresentationEventuallyDismissesPanel() async throws {
+  func testDesktopFocusLossDuringPresentationEventuallyDismissesPanel() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let otherWindow = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
       styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -84,7 +85,8 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testRegainingFocusCancelsPendingDismissal() async throws {
+  func testDesktopRegainingFocusCancelsPendingDismissal() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let otherWindow = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
       styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)

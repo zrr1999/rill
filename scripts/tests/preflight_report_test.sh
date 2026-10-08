@@ -5,6 +5,53 @@ PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd -P)"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rill-preflight-tests.XXXXXX")"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
+# Exercise selection through the actual runners, including a desktop test outside a native target.
+cat >"$TEST_ROOT/selection.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+source "$1/scripts/preflight.sh"
+locked_swift() {
+  local filter='.' skip='^$' test_id
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --filter) filter="$2"; shift ;;
+      --skip) skip="$2"; shift ;;
+    esac
+    shift
+  done
+  while IFS= read -r test_id; do
+    if [[ "$test_id" =~ $filter && ! "$test_id" =~ $skip ]]; then
+      echo "$test_id" >>"$FIXTURE_TRACE"
+    fi
+  done <"$FIXTURE_TESTS"
+}
+case "$2" in
+  regular) run_swift_tests ;;
+  desktop) run_desktop_swift_tests ;;
+esac
+SH
+cat >"$TEST_ROOT/test-ids" <<'TESTS'
+RillRuntimeTests.SessionTests/testStarts
+RillRuntimeTests.SessionTests/testDesktopCapture
+RillAppTests.PanelTests/testLayout
+RillAppTests.PanelTests/testDesktopFocus
+RillUITests.ShellTests/testLayout
+RillUITests.ShellTests/testDesktopFocus
+RillPlatformTests.NativeTests/testPlatform
+RillQualityEvaluations.Evaluation/testQuality
+RillQualityEvaluations.Evaluation/testDesktopQuality
+TESTS
+for selection in regular desktop; do
+  env FIXTURE_TRACE="$TEST_ROOT/$selection-trace" FIXTURE_TESTS="$TEST_ROOT/test-ids" \
+    "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" "$selection" >"$TEST_ROOT/$selection-output" 2>&1
+done
+grep -Ev '/testDesktop|RillQualityEvaluations' "$TEST_ROOT/test-ids" >"$TEST_ROOT/regular-expected"
+grep '/testDesktop' "$TEST_ROOT/test-ids" | grep -v RillQualityEvaluations >"$TEST_ROOT/desktop-expected"
+cmp "$TEST_ROOT/regular-expected" "$TEST_ROOT/regular-trace"
+cmp "$TEST_ROOT/desktop-expected" "$TEST_ROOT/desktop-trace"
+grep -Fq 'Desktop interaction was not tested' "$TEST_ROOT/regular-output"
+echo 'PASS: regular and desktop runners partition tests without losing or duplicating coverage'
+
 cat >"$TEST_ROOT/fixture.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -54,12 +101,13 @@ check_preflight_toolchain() { fixture_stage; }
 check_repository() { fixture_stage; }
 run_domain_swift_tests() { fixture_stage; }
 run_native_swift_tests() { fixture_stage; }
+run_desktop_swift_tests() { fixture_stage; }
 check_release() { fixture_stage; }
 check_working_diff() { fixture_stage; }
 run_preflight
 SH
 
-stages=(toolchain repository domain-tests native-tests release working-diff)
+stages=(toolchain repository domain-tests native-tests desktop-tests release working-diff)
 for failed_stage in none "${stages[@]}"; do
   fixture="$TEST_ROOT/$failed_stage"
   mkdir -p "$fixture/reports with spaces"
@@ -122,6 +170,7 @@ check_preflight_toolchain() { :; }
 check_repository() { :; }
 run_domain_swift_tests() { :; }
 run_native_swift_tests() { :; }
+run_desktop_swift_tests() { :; }
 locked_swift() {
   echo "$PACKAGE_SMOKE_ROOT" >"$FIXTURE_TRACE"
   return 47
