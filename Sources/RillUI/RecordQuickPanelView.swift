@@ -163,7 +163,7 @@ public struct RecordQuickPanelView: View {
             placeholder: text(.search), onMove: model.moveSelection, onSubmit: pasteSelection,
             onDigit: { if let subject = model.subject(at: $0) { onPaste(subject) } }, onCancel: onClose
           )
-          .padding(.horizontal, 6).recordPanelSearchSurface().padding(.horizontal, 9)
+          .frame(height: 30).padding(.horizontal, 15)
           resultList
         }.frame(width: RecordPanelAppearance.sidebarWidth)
           .recordPanelGlass(in: RecordPanelAppearance.paneShape)
