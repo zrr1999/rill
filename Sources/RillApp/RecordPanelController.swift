@@ -787,7 +787,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     panel.orderFrontRegardless()
     if activate { panel.makeKey() }
     NSAnimationContext.runAnimationGroup { context in
-      context.duration = 0.15
+      context.duration = 0.10
       context.timingFunction = CAMediaTimingFunction(name: .easeOut)
       panel.animator().alphaValue = 1
     }
@@ -834,8 +834,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     if let frameAutosaveName { capsule.setFrameUsingName(frameAutosaveName) }
     capsule.setContentSize(RecordPanelPlacement.capsuleSize)
     if let screen = screen(containing: capsule.frame) {
-      let offset = RecordPanelPlacement.translation(.zero, capsule: capsule.frame, page: nil, in: screen.visibleFrame)
-      capsule.setFrameOrigin(NSPoint(x: capsule.frame.minX + offset.x, y: capsule.frame.minY + offset.y))
+      let placement = RecordPanelPlacement.movingFrames(.zero, capsule: capsule.frame, page: nil, in: screen.visibleFrame)
+      capsule.setFrameOrigin(placement.capsule.origin)
     }
     capsulePanel = capsule
   }
@@ -854,10 +854,10 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         ?? screen(containing: capsule.frame)
     else { return }
     let pageFrame = panel?.isVisible == true ? panel?.frame : nil
-    let movement = RecordPanelPlacement.translation(delta, capsule: capsule.frame, page: pageFrame, in: screen.visibleFrame)
-    capsule.setFrameOrigin(NSPoint(x: capsule.frame.minX + movement.x, y: capsule.frame.minY + movement.y))
-    if let pageFrame {
-      panel?.setFrameOrigin(NSPoint(x: pageFrame.minX + movement.x, y: pageFrame.minY + movement.y))
+    let placement = RecordPanelPlacement.movingFrames(delta, capsule: capsule.frame, page: pageFrame, in: screen.visibleFrame)
+    capsule.setFrameOrigin(placement.capsule.origin)
+    if let pageFrame = placement.page {
+      panel?.setFrameOrigin(pageFrame.origin)
     }
   }
 

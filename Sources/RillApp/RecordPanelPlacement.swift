@@ -20,21 +20,30 @@ enum RecordPanelPlacement {
       width: size.width, height: size.height)
   }
 
-  static func translation(
+  static func movingFrames(
     _ delta: NSPoint, capsule: NSRect, page: NSRect?,
     in visibleFrame: NSRect
-  ) -> NSPoint {
+  ) -> (capsule: NSRect, page: NSRect?) {
     let group = page.map { capsule.union($0) } ?? capsule
     let bounds = visibleFrame.insetBy(dx: margin, dy: margin)
-    return NSPoint(
-      x: clamp(delta.x, bounds.minX - group.minX, bounds.maxX - group.maxX),
-      y: clamp(delta.y, bounds.minY - group.minY, bounds.maxY - group.maxY))
+    let verticalMovement = clamp(delta.y, bounds.minY - group.minY, bounds.maxY - group.maxY)
+    var movedCapsule = capsule
+    movedCapsule.origin = NSPoint(
+      x: clamp(capsule.minX + delta.x, bounds.minX, bounds.maxX - capsule.width),
+      y: capsule.minY + verticalMovement)
+    let movedPage = page.map { page in
+      NSRect(
+        x: clamp(movedCapsule.midX - page.width / 2, bounds.minX, bounds.maxX - page.width),
+        y: page.minY + verticalMovement,
+        width: page.width, height: page.height)
+    }
+    return (movedCapsule, movedPage)
   }
 
   static func contains(_ point: NSPoint, capsule: NSRect, page: NSRect?) -> Bool {
-    if capsule.contains(point) { return true }
+    if capsule.insetBy(dx: -6, dy: -6).contains(point) { return true }
     guard let page else { return false }
-    if page.contains(point) { return true }
+    if page.insetBy(dx: -6, dy: -6).contains(point) { return true }
     let lower: NSRect, upper: NSRect
     if page.maxY <= capsule.minY {
       lower = page
