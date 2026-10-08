@@ -2,6 +2,7 @@
 import AppKit
 import SwiftUI
 import RillCore
+import RillTestSupport
 import XCTest
 
 @testable import RillRecords
@@ -1003,13 +1004,19 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     XCTAssertFalse(isResponder(window.firstResponder, inside: sidebar))
   }
 
-  func testWindowKeyCyclePreservesLiveDetailFocusWithoutSidebarRearm() async throws {
-    _ = NSApplication.shared
+  func testDesktopWindowKeyCyclePreservesLiveDetailFocusWithoutSidebarRearm() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let harness = makeHarness()
-    let window = makeWindow(model: harness.model)
-    let alternateWindow = NSWindow(
+    harness.model.voiceSetupPresentation = .dismissed
+    // Nonactivating panels exercise real key transitions without activating the command-line test host.
+    let window = NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
+      styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
+    window.contentView = NSHostingView(rootView: MainShellView(model: harness.model))
+    window.makeKeyAndOrderFront(nil)
+    let alternateWindow = NSPanel(
       contentRect: NSRect(x: 40, y: 40, width: 240, height: 160),
-      styleMask: [.titled],
+      styleMask: [.titled, .nonactivatingPanel],
       backing: .buffered,
       defer: false
     )
@@ -1020,6 +1027,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     }
 
     await settle(window)
+    XCTAssertTrue(window.isKeyWindow)
     let sidebar = try XCTUnwrap(sidebarTable(in: window))
     let detailFocusProbe = FocusProbeView(frame: .zero)
     window.contentView?.addSubview(detailFocusProbe)
@@ -1028,6 +1036,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
 
     alternateWindow.makeKeyAndOrderFront(nil)
     await settle(alternateWindow)
+    XCTAssertTrue(alternateWindow.isKeyWindow)
     XCTAssertTrue(
       window.firstResponder === detailFocusProbe,
       "Resigning key status must retain the main window's stored responder."
@@ -1036,6 +1045,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     window.makeKeyAndOrderFront(nil)
     await settle(window)
 
+    XCTAssertTrue(window.isKeyWindow)
     XCTAssertTrue(
       window.firstResponder === detailFocusProbe,
       "Becoming key again must restore the stored detail responder without a sidebar repair."

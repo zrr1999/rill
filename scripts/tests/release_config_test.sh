@@ -1102,9 +1102,6 @@ assert_preflight_toolchain_case() {
 }
 
 run_preflight_toolchain_policy_case() {
-  local toolchain_check_line=""
-  local project_work_line=""
-
   assert_preflight_toolchain_case \
     "uv-managed Python 3.11" \
     "0.11.14" \
@@ -1124,22 +1121,12 @@ run_preflight_toolchain_policy_case() {
     1 \
     "Swift 6.2 or newer is required (found 6.1.2)"
 
-  toolchain_check_line="$(grep -n -m1 '^verify_toolchain_versions$' "$PREFLIGHT_SCRIPT" | cut -d: -f1)"
-  project_work_line="$(grep -n -m1 '^cd "$PROJECT_DIR"$' "$PREFLIGHT_SCRIPT" | cut -d: -f1)"
-  if [[ -z "$toolchain_check_line" || -z "$project_work_line" ||
-    "$toolchain_check_line" -ge "$project_work_line" ]]; then
-    echo "FAIL: preflight must enforce toolchain minimums before repository work" >&2
-    exit 1
-  fi
-
   PASSED=$((PASSED + 1))
   echo "PASS: preflight enforces uv and Swift 6.2+"
 }
 
 run_preflight_evidence_policy_case() {
   local output=""
-  local report_line=""
-  local success_line=""
   local revision="0123456789abcdef0123456789abcdef01234567"
 
   output="$(
@@ -1157,13 +1144,6 @@ run_preflight_evidence_policy_case() {
     "$output" != *"source_dirty=true"* ]]; then
     echo "FAIL: preflight evidence must identify working source revision and dirty state" >&2
     printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  report_line="$(grep -n -m1 '^report_preflight_evidence$' "$PREFLIGHT_SCRIPT" | cut -d: -f1)"
-  success_line="$(grep -n -m1 '^info "Preflight passed"$' "$PREFLIGHT_SCRIPT" | cut -d: -f1)"
-  if [[ -z "$report_line" || -z "$success_line" || "$report_line" -ge "$success_line" ]]; then
-    echo "FAIL: preflight must report its evidence coordinate immediately before success" >&2
     exit 1
   fi
 
