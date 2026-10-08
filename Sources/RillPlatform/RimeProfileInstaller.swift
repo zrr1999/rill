@@ -88,6 +88,8 @@ public struct RimeProfileInstaller: Sendable {
     guard flock(importLock, LOCK_EX | LOCK_NB) == 0 else {
       throw RimeProfileImportError.installationBusy
     }
+    // A descriptor inherited during concurrent process launch must not extend this installation's lock.
+    defer { _ = flock(importLock, LOCK_UN) }
     // An existing installation takes precedence over migration preconditions.
     if source != nil,
       files.fileExists(atPath: destination.path) || files.fileExists(atPath: application.path)

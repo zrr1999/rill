@@ -1005,7 +1005,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
   }
 
   func testDesktopWindowKeyCyclePreservesLiveDetailFocusWithoutSidebarRearm() async throws {
-    try await requireInteractiveDesktop()
+    guard try await requireInteractiveDesktop() else { return }
     let harness = makeHarness()
     harness.model.voiceSetupPresentation = .dismissed
     // Nonactivating panels exercise real key transitions without activating the command-line test host.

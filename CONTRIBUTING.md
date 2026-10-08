@@ -204,13 +204,15 @@ AppKit 是应用使用的原生界面框架；XCTest 是断言和测试运行框
 | `just ci` | 上述两组测试、仓库检查与 Release 验证 | 桌面测试必需；不可用即失败 |
 
 依赖真实键盘焦点的 XCTest 方法使用 `testDesktop…` 前缀，并在任何应用窗口操作前
-调用 `requireInteractiveDesktop()`。辅助函数用独立的普通 AppKit panel 探测键盘焦点；
-失败时报告环境前置条件未满足并抛错，不跳过测试，也不把应用自身的焦点断言当成环境探测。
+使用 `guard try await requireInteractiveDesktop() else { return }`。辅助函数用独立的普通
+AppKit panel 探测键盘焦点；失败时记录 `XCTFail` 并返回 false，停止该用例的后续操作。
+这会使测试失败，不跳过测试，也不把应用自身的焦点断言当成环境探测。
 探测成功后仍须断言被测窗口确实取得焦点，避免只检查内部响应者而产生假通过。
 环境探测失败不证明锁屏是唯一原因，还应检查会话和并发 UI 操作。
 
-领域测试继续使用 4 个 worker 并行运行；原生和桌面测试保持原有的串行执行方式，
-避免共享应用窗口互相抢焦点。完整预检的 `desktop-tests` 阶段复用 Debug 构建，不重复编译。
+领域 XCTest 继续使用 4 个 worker；原生和桌面 XCTest 保持原有的串行执行方式，
+Swift Testing 用例保留框架默认并发。不传 `--parallel` 不代表 Swift Testing 也串行。
+完整预检的 `desktop-tests` 阶段复用 Debug 构建，不重复编译。
 单独的 `just test-desktop` 会按需构建。`just test` 成功只表示非桌面用例通过，不能替代完整 CI。
 新增测试按实际依赖分类；延时、取消和状态转换优先用可控时钟或 barrier 验证，
 仅将必须穿过真实桌面的最小交互留给桌面测试。Fn、真实 IME 和辅助功能仍按验收清单验证。
