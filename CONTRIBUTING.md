@@ -207,7 +207,40 @@ git diff --check
 git diff --cached --check
 ```
 
-`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，保留现有增量产物，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。`just ci-clean` / `scripts/preflight.sh --clean` 在开始时分别清理 Debug 和 Release；GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可恢复由工具链、依赖和构建驱动分键的 SwiftPM 缓存，并经过相同的构建指纹及完整门禁验证。只有 main 保存完整 SwiftPM 构建缓存；PR 只恢复缓存，避免多个 PR 的大体积快照挤占默认分支的共享基线。预检不能替代在 macOS 26 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
+`scripts/preflight.sh` 按以下顺序运行，任一阶段失败即停止，不执行后续阶段：
+
+1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
+2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
+3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行原生平台、UI 和 App 测试。测试命令和并发设置与 `just test` 相同。
+4. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
+5. 工作区 diff 检查。
+
+每次完整预检在 `.artifacts/preflight/run.*/` 保存阶段日志与 `summary.md`，摘要包含
+源码提交、dirty 状态、源码指纹、阶段耗时、退出码，以及 CI 提供的 PR base/head。PR CI 的源码
+提交可能是 GitHub 生成的合并提交，应同时保留 head/base，不能把两者混为一谈。
+预检开始时将源码基线保存为 `source.json`，每个阶段前后核对 HEAD、Git 状态、
+tracked + untracked(nonignored) 文件内容与修改记录；发生漂移即失败并停止后续阶段。
+即使文件随后恢复原文，也要从稳定输入重新运行。开始前已有的修改可以参与预检，
+但全程必须保持稳定，报告会如实标记 dirty；报告不是仅凭提交 SHA 得出的验收结论。
+`RILL_PREFLIGHT_REPORT_DIR` 可以指定被 Git 忽略或位于工作区外的报告根目录；重复运行创建独立子目录。
+CI 无论预检成功或失败都会汇总并上传已有报告，保留 14 天。初始化或前置安装失败
+时可能没有预检报告，应查看对应的 Actions 步骤；摘要中没有出现的阶段表示未执行。
+查看 `toolchain.log` 确认版本，查看首个失败阶段的日志定位问题；已有的构建缓存损坏
+重试仍由构建驱动负责，预检不会自动重跑断言失败或崩溃的测试。
+
+依赖安全检查使用 reviewed baseline；CI 另行运行 live OSV exact-commit 查询，避免把
+可用网络伪装成本地确定性门禁。固定版本的 Gitleaks 扫描完整 Git 历史与
+tracked + untracked(nonignored) 当前源码快照。当前源码扫描拒绝 symlink 与非普通文件，
+并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描
+期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过
+审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。
+
+`just ci-clean` / `scripts/preflight.sh --clean` 在编译前分别清理 Debug 和 Release；
+GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可恢复由工具链、依赖
+和构建驱动分键的 SwiftPM 缓存，并经过相同的构建指纹及完整门禁验证。只有 main
+保存完整 SwiftPM 构建缓存；PR 只恢复缓存，避免多个 PR 的大体积快照挤占默认分支
+的共享基线。预检不能替代在 macOS 26 的 Apple Silicon 真机上验证最终公证包，也
+不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 
@@ -301,6 +334,11 @@ ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本�
   PR 标题必须使用英文；描述可使用中文。
 - 一个提交表达一个可审阅的意图，说明最终行为和实际测试结果。
   人工验收未完成时明确记录，不能用单元测试或本地开发签名代替。
+- 验证记录包含命令、实际工具链、执行结果或测试数量，以及对应提交与 CI 链接；
+  本地检查和托管 CI 分别记录。等待当前提交的检查全部结束后再报告 CI 通过。
+- 依赖 PR 从底层修复、验证，再按依赖顺序向上传播；同一根因在上层重复失败时，
+  先定位拥有该改动的底层 PR。更新 base 或 head 后重新确认检查对应的提交，并重新
+  运行受影响验证，不沿用旧提交的绿色结果。未完成的原生验收继续明确列出。
 - 原创贡献使用项目的 AGPL-3.0-only 许可；引入第三方代码时保留其原始
   版权和许可声明，并同步对应的来源证据。
 

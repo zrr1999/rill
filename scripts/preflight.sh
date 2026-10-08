@@ -4,15 +4,20 @@
 #
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 BUILD_DIR=""
 SOURCE_REVISION=""
 SOURCE_DIRTY="false"
+SOURCE_FINGERPRINT=""
 CLEAN_BUILD=false
 WORKER_CACHE="auto"
 RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
+NATIVE_TESTS='RillPlatformTests|RillUITests|RillAppTests'
+REPORT_DIR=""
+CURRENT_STAGE=""
+STAGE_STARTED=0
 
 info() { echo "▸ $*"; }
 error() {
@@ -67,7 +72,82 @@ verify_toolchain_versions() {
 
 report_preflight_evidence() {
   info \
-    "Preflight evidence: class=working-source source_revision=$SOURCE_REVISION source_dirty=$SOURCE_DIRTY"
+    "Preflight evidence: class=working-source source_revision=$SOURCE_REVISION source_dirty=$SOURCE_DIRTY source_fingerprint=$SOURCE_FINGERPRINT"
+}
+
+preflight_source() {
+  uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" \
+    preflight-source "$1" "$PROJECT_DIR" "$REPORT_DIR/source.json"
+}
+
+start_preflight_report() {
+  local report_root="${RILL_PREFLIGHT_REPORT_DIR:-$PROJECT_DIR/.artifacts/preflight}"
+  local source_metadata=""
+  mkdir -p "$report_root"
+  report_root="$(cd "$report_root" && pwd -P)"
+  REPORT_DIR="$(mktemp -d "$report_root/run.XXXXXX")"
+  source_metadata="$(preflight_source snapshot)"
+  read -r SOURCE_REVISION SOURCE_DIRTY SOURCE_FINGERPRINT <<<"$source_metadata"
+  {
+    printf '# Rill preflight\n\n'
+    printf -- '- Started (UTC): `%s`\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf -- '- Source revision: `%s`\n' "$SOURCE_REVISION"
+    printf -- '- Source dirty: `%s`\n' "$SOURCE_DIRTY"
+    printf -- '- Source fingerprint: `%s`\n' "$SOURCE_FINGERPRINT"
+    printf -- '- Source baseline: `source.json` (verified before and after each stage)\n'
+    printf -- '- PR base: `%s`\n' "${RILL_PR_BASE_SHA:-not applicable}"
+    printf -- '- PR head: `%s`\n' "${RILL_PR_HEAD_SHA:-not applicable}"
+    printf -- '- Clean build: `%s`\n' "$CLEAN_BUILD"
+    printf -- '- Toolchain and OS versions: `toolchain.log`\n\n'
+    printf '| Stage | Result | Seconds | Exit code |\n'
+    printf '| --- | --- | ---: | ---: |\n'
+  } >"$REPORT_DIR/summary.md"
+  info "Preflight reports: $REPORT_DIR"
+}
+
+record_preflight_stage() {
+  local status="$1"
+  local result="$2"
+  local elapsed=$(( $(date +%s) - STAGE_STARTED ))
+  printf '| %s | %s | %s | %s |\n' "$CURRENT_STAGE" "$result" "$elapsed" "$status" \
+    >>"$REPORT_DIR/summary.md"
+  info "Stage $CURRENT_STAGE: $result (${elapsed}s, exit $status)"
+  CURRENT_STAGE=""
+  if [[ "${GITHUB_ACTIONS:-}" == true ]]; then
+    echo '::endgroup::'
+  fi
+}
+
+run_preflight_stage() {
+  CURRENT_STAGE="$1"
+  shift
+  STAGE_STARTED="$(date +%s)"
+  if [[ "${GITHUB_ACTIONS:-}" == true ]]; then
+    printf '::group::Preflight: %s\n' "$CURRENT_STAGE"
+  fi
+  info "Stage $CURRENT_STAGE started"
+  # A conditional around this pipeline would disable errexit inside stage functions.
+  {
+    preflight_source verify
+    "$@"
+    preflight_source verify
+  } 2>&1 | tee "$REPORT_DIR/$CURRENT_STAGE.log"
+  record_preflight_stage 0 passed
+}
+
+finish_preflight_report() {
+  local status="$1"
+  local result=passed
+  trap - EXIT
+  set +e
+  if [[ -n "$CURRENT_STAGE" ]]; then
+    record_preflight_stage "$status" failed
+  fi
+  if [[ "$status" -ne 0 ]]; then result=failed; fi
+  printf '\nResult: **%s** (exit %s). Stages absent from the table were not run.\n' \
+    "$result" "$status" >>"$REPORT_DIR/summary.md"
+  info "Preflight reports: $REPORT_DIR"
+  exit "$status"
 }
 
 verify_xcode_resource_accessor() {
@@ -91,12 +171,6 @@ verify_xcode_resource_accessor() {
     error "Resource accessor contains a machine-local build path: $bundle_name"
   fi
 }
-
-# Keep pure preflight helpers sourceable so release-policy tests exercise the
-# same uv-managed Python and Swift minimums used by the actual build.
-if [[ "${BASH_SOURCE[0]-}" != "$0" ]]; then
-  return 0
-fi
 
 locked_swift() {
   uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
@@ -165,12 +239,19 @@ check_record_domain_boundary() {
   echo "Record domain boundary check passed"
 }
 
-run_swift_tests() {
-  local native_tests='RillPlatformTests|RillUITests|RillAppTests'
+run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$native_tests|RillQualityEvaluations"
+  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|RillQualityEvaluations"
+}
+
+run_native_swift_tests() {
   echo 'Running native platform, UI, and app tests serially...'
-  locked_swift test --skip-build --filter "$native_tests"
+  locked_swift test --skip-build --filter "$NATIVE_TESTS"
+}
+
+run_swift_tests() {
+  run_domain_swift_tests
+  run_native_swift_tests
 }
 
 run_script_tests() {
@@ -192,6 +273,8 @@ run_script_tests() {
   uv run --no-build --locked --script "$test_dir/worker_cache_test.py"
   echo 'Testing release configuration...'
   bash "$test_dir/release_config_test.sh"
+  echo 'Testing preflight stage reporting...'
+  bash "$test_dir/preflight_report_test.sh"
   echo 'Testing GitHub Release drafts...'
   bash "$test_dir/github_release_test.sh"
   echo 'Testing app icon generation...'
@@ -297,6 +380,140 @@ check_commit_messages() {
   trap - EXIT
 }
 
+check_preflight_toolchain() {
+  require_command git
+  require_command codesign
+  require_command uv
+  require_command swift
+  verify_toolchain_versions
+
+  xcodebuild -version
+  xcrun --show-sdk-version
+  xcrun --show-sdk-build-version
+  sw_vers
+}
+
+check_repository() {
+  info "Checking shell syntax..."
+  check_shell_syntax "$PROJECT_DIR"
+
+  info "Checking repository release artifact hygiene..."
+  check_release_artifact_hygiene "$PROJECT_DIR"
+
+  info "Checking Swift module dependencies..."
+  uv run --no-build --locked --script "$SCRIPT_DIR/check_module_boundaries.py"
+
+  info "Checking Record domain boundary..."
+  check_record_domain_boundary
+
+  info "Running script policy tests..."
+  run_script_tests
+
+  info "Checking independent input method data packaging..."
+  uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
+
+  info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
+  uv run --script "$SCRIPT_DIR/check_dependency_security.py"
+
+  info "Scanning Git history and the current source snapshot for secrets..."
+  bash "$SCRIPT_DIR/check_secrets.sh"
+
+  if $CLEAN_BUILD; then
+    locked_swift clean
+    locked_swift clean --configuration release
+  fi
+
+  info "Checking generated built-in workflow artifacts..."
+  uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
+
+  info "Checking performance benchmark workloads..."
+  bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only
+}
+
+check_release() {
+  PACKAGE_SMOKE_ROOT="$(mktemp -d)"
+  cleanup() {
+    rm -rf "$PACKAGE_SMOKE_ROOT"
+  }
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
+  info "Building the release configuration..."
+  locked_swift release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
+  BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field productsDirectory)"
+  RAW_BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field buildDirectory)"
+
+  info "Checking arm64 release executable architectures..."
+  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillApp"
+  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillSpeechWorker"
+
+  info "Checking locked third-party license and notice provenance..."
+  RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
+    uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
+
+  info "Checking relocatable SwiftPM resource accessors..."
+  verify_xcode_resource_accessor "RillMacOS_RillApp"
+
+  info "Smoke-testing unsigned app bundle assembly..."
+  "$SCRIPT_DIR/assemble_app_bundle.sh" \
+    --build-result "$BUILD_RESULT" \
+    --app-bundle "$PACKAGE_SMOKE_ROOT/Rill.app" \
+    --version "0.0.0" \
+    --build-number "0" \
+    --build-kind "preflight" \
+    --source-revision "$SOURCE_REVISION" \
+    --source-dirty "$SOURCE_DIRTY" \
+    --version-label "0.0.0-preflight+${SOURCE_REVISION:0:12}"
+  codesign --force --sign - \
+    "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/$MLX_RESOURCE_BUNDLE_NAME"
+  codesign --force --options runtime --sign - \
+    "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
+  uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" \
+    --sign-existing "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
+  codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
+  codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
+  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
+
+  for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
+    cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" ||
+      error "Packaged project document does not match $document"
+  done
+  uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
+    "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
+  cleanup
+  trap - EXIT INT TERM
+}
+
+check_working_diff() {
+  info "Checking the working diff for whitespace errors..."
+  git diff --check
+  git diff --cached --check
+}
+
+run_preflight() {
+  start_preflight_report
+  trap 'finish_preflight_report "$?"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  run_preflight_stage toolchain check_preflight_toolchain
+  cd "$PROJECT_DIR"
+  run_preflight_stage repository check_repository
+  run_preflight_stage domain-tests run_domain_swift_tests
+  run_preflight_stage native-tests run_native_swift_tests
+  run_preflight_stage release check_release
+  run_preflight_stage working-diff check_working_diff
+
+  report_preflight_evidence
+  info "Preflight passed"
+}
+
+# Source the real orchestration and helpers in policy tests without running the gate.
+if [[ "${BASH_SOURCE[0]-}" != "$0" ]]; then
+  return 0
+fi
+
 case "${1-}" in
 test)
   run_swift_tests
@@ -344,111 +561,4 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-require_command git
-require_command codesign
-require_command uv
-require_command swift
-verify_toolchain_versions
-
-cd "$PROJECT_DIR"
-
-info "Checking shell syntax..."
-check_shell_syntax "$PROJECT_DIR"
-
-info "Checking repository release artifact hygiene..."
-check_release_artifact_hygiene "$PROJECT_DIR"
-
-info "Checking Swift module dependencies..."
-uv run --no-build --locked --script "$SCRIPT_DIR/check_module_boundaries.py"
-
-info "Checking Record domain boundary..."
-check_record_domain_boundary
-
-info "Running script policy tests..."
-run_script_tests
-
-info "Checking independent input method data packaging..."
-uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
-
-info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
-uv run --script "$SCRIPT_DIR/check_dependency_security.py"
-
-info "Scanning Git history and the current source snapshot for secrets..."
-bash "$SCRIPT_DIR/check_secrets.sh"
-
-if $CLEAN_BUILD; then
-  locked_swift clean
-  locked_swift clean --configuration release
-fi
-
-info "Checking generated built-in workflow artifacts..."
-uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
-
-info "Checking performance benchmark workloads..."
-bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only
-
-PACKAGE_SMOKE_ROOT="$(mktemp -d)"
-cleanup() {
-  rm -rf "$PACKAGE_SMOKE_ROOT"
-}
-trap cleanup EXIT INT TERM
-BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
-info "Building the release configuration..."
-locked_swift release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
-BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field productsDirectory)"
-RAW_BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field buildDirectory)"
-
-info "Checking arm64 release executable architectures..."
-bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillApp"
-bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillSpeechWorker"
-
-info "Checking locked third-party license and notice provenance..."
-RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
-  uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
-
-info "Checking relocatable SwiftPM resource accessors..."
-verify_xcode_resource_accessor "RillMacOS_RillApp"
-
-info "Smoke-testing unsigned app bundle assembly..."
-SOURCE_REVISION="$(git rev-parse 'HEAD^{commit}')" ||
-  error "Cannot determine the preflight source revision"
-if [[ -n "$(git status --porcelain=v1 --untracked-files=normal)" ]]; then
-  SOURCE_DIRTY="true"
-fi
-"$SCRIPT_DIR/assemble_app_bundle.sh" \
-  --build-result "$BUILD_RESULT" \
-  --app-bundle "$PACKAGE_SMOKE_ROOT/Rill.app" \
-  --version "0.0.0" \
-  --build-number "0" \
-  --build-kind "preflight" \
-  --source-revision "$SOURCE_REVISION" \
-  --source-dirty "$SOURCE_DIRTY" \
-  --version-label "0.0.0-preflight+${SOURCE_REVISION:0:12}"
-codesign --force --sign - \
-  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/$MLX_RESOURCE_BUNDLE_NAME"
-codesign --force --options runtime --sign - \
-  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
-uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" \
-  --sign-existing "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
-codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
-codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
-"$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
-
-for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
-  cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" ||
-    error "Packaged project document does not match $document"
-done
-uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
-  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
-cleanup
-trap - EXIT INT TERM
-
-info "Running the test suite..."
-run_swift_tests
-
-info "Checking the working diff for whitespace errors..."
-git diff --check
-git diff --cached --check
-
-report_preflight_evidence
-info "Preflight passed"
+run_preflight
