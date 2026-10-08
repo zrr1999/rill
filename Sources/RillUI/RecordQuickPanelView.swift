@@ -95,6 +95,11 @@ public struct RecordCleanupSheet: View {
 }
 
 public struct RecordQuickPanelView: View {
+  private enum PresentedSheet: String, Identifiable {
+    case filters, comparison
+    var id: Self { self }
+  }
+
   @State private var showsFilters = false
   @Bindable private var model: RecordQuickPanelModel
   private let language: AppLanguage
@@ -193,16 +198,19 @@ public struct RecordQuickPanelView: View {
     .onAppear { if !model.isPreviewVisible { model.togglePreview() } }
     .onChange(of: model.selectedID) { _, _ in if !model.isPreviewVisible { model.togglePreview() } }
     .sheet(
-      isPresented: Binding(
-        get: { showsFilters || model.jev?.isPresented == true },
+      item: Binding(
+        get: {
+          if model.jev?.isPresented == true { return PresentedSheet.comparison }
+          return showsFilters ? PresentedSheet.filters : nil
+        },
         set: {
-          if !$0 {
+          if $0 == nil {
             showsFilters = false
             model.jev?.invalidate()
           }
         })
-    ) {
-      if let jev = model.jev, jev.isPresented {
+    ) { sheet in
+      if sheet == .comparison, let jev = model.jev {
         RecordJevSheet(
           model: jev, language: language, onSelect: model.selectJevCandidate,
           onConfigure: onConfigureJev, onRetry: model.compareWithJev)
