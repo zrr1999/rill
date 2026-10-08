@@ -27,9 +27,13 @@ docs-serve port="8000":
 build product="RillApp":
     scripts/preflight.sh swift build --product {{quote(product)}}
 
-# Run the locked Swift test suite.
+# Run domain and native tests that do not require desktop interaction.
 test:
     scripts/preflight.sh test
+
+# Test real window focus and keyboard routing in an unlocked macOS session.
+test-desktop:
+    scripts/preflight.sh test-desktop
 
 # Test build, release, security, and asset scripts without building the app.
 test-scripts:

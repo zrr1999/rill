@@ -15,6 +15,7 @@ WORKER_CACHE="auto"
 RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 NATIVE_TESTS='RillPlatformTests|RillUITests|RillAppTests'
+DESKTOP_TESTS='/testDesktop'
 REPORT_DIR=""
 CURRENT_STAGE=""
 STAGE_STARTED=0
@@ -241,17 +242,23 @@ check_record_domain_boundary() {
 
 run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|RillQualityEvaluations"
+  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations"
 }
 
 run_native_swift_tests() {
-  echo 'Running native platform, UI, and app tests serially...'
-  locked_swift test --skip-build --filter "$NATIVE_TESTS"
+  echo 'Running native platform, UI, and app tests without desktop interaction...'
+  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS"
+}
+
+run_desktop_swift_tests() {
+  echo 'Running desktop tests; an unlocked interactive macOS session is required...'
+  locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip RillQualityEvaluations
 }
 
 run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
+  info 'Desktop interaction was not tested. Run just test-desktop in an unlocked session; just ci requires both suites.'
 }
 
 run_script_tests() {
@@ -502,6 +509,7 @@ run_preflight() {
   run_preflight_stage repository check_repository
   run_preflight_stage domain-tests run_domain_swift_tests
   run_preflight_stage native-tests run_native_swift_tests
+  run_preflight_stage desktop-tests run_desktop_swift_tests --skip-build
   run_preflight_stage release check_release
   run_preflight_stage working-diff check_working_diff
 
@@ -517,6 +525,10 @@ fi
 case "${1-}" in
 test)
   run_swift_tests
+  exit
+  ;;
+test-desktop)
+  run_desktop_swift_tests
   exit
   ;;
 test-scripts)
@@ -553,7 +565,7 @@ while [[ "$#" -gt 0 ]]; do
   case "$1" in
   --clean) CLEAN_BUILD=true; WORKER_CACHE="off" ;;
   --help | -h)
-    echo "Usage: $0 [--clean] | test | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | syntax [ROOT] | hygiene [ROOT]"
+    echo "Usage: $0 [--clean] | test | test-desktop | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | syntax [ROOT] | hygiene [ROOT]"
     exit 0
     ;;
   *) error "Unknown argument: $1" ;;

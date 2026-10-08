@@ -161,7 +161,8 @@ final class RecordPanelControllerTests: XCTestCase {
     await workspace.shutdown()
   }
 
-  func testOpeningAndReopeningRoutesTypingToSearchWithoutAnExtraClick() async throws {
+  func testDesktopOpeningAndReopeningRoutesTypingToSearchWithoutAnExtraClick() async throws {
+    try await requireInteractiveDesktop()
     let store = RecordStore()
     _ = try await store.ingest(.init(payload: .text("searchable history"), provenance: .init(source: .init(kind: .systemClipboard))), into: [])
     let model = makeModel(recordWorkspace: RecordWorkspaceModel(store: store))
