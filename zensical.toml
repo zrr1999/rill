@@ -75,13 +75,29 @@ pymdownx.superfences.custom_fences = [
 ]
 
 # 发布 /llms.txt 与逐页 Markdown，并为“复制为 Markdown”提供内容。
-# 暂存目录只含 nav 页面，glob 随 nav 变化；许可清单篇幅大且不是使用说明，不收录。
+# 只显式收录 nav 中的使用说明与参考页，顺序与 nav 一致；许可、第三方与
+# 数据来源清单（THIRD_PARTY_NOTICES、LOCAL_MODEL_NOTICES、输入法依赖）不收录。
 [project.plugins.llmstxt]
 markdown_description = "Rill 是本地优先的 macOS 语音输入工具，提供 Record 记录与可配置工作流。"
 
 [project.plugins.llmstxt.sections]
-"文档" = ["README.md", "docs/*.md"]
-"隐私与安全" = ["PRIVACY.md", "SECURITY.md"]
+"使用指南" = [
+  "README.md",
+  "docs/usage.md",
+  "docs/voice.md",
+  "docs/input-method.md",
+  "docs/records.md",
+  "docs/workflows.md",
+  "docs/vocabulary-memory.md",
+  "docs/privacy-data.md",
+  "docs/troubleshooting.md",
+]
+"参考" = [
+  "docs/reference.md",
+  "docs/workflow-toml.md",
+  "PRIVACY.md",
+  "SECURITY.md",
+]
 
 [project.validation]
 invalid_links = true
