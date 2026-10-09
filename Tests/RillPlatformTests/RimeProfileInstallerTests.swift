@@ -1,9 +1,43 @@
+import Darwin
 import Foundation
 import Testing
 
 @testable import RillPlatform
 
 struct RimeProfileInstallerTests {
+  @Test @MainActor func completedInstallationReleasesADuplicatedLockDescriptor() async throws {
+    let fixture = try Fixture()
+    defer { fixture.remove() }
+    let installer = RimeProfileInstaller(helperBundle: fixture.helper)
+    let lockPath = fixture.destination.deletingLastPathComponent()
+      .appendingPathComponent("input-method-import.lock").path
+    var inheritedLock: Int32 = -1
+    defer { if inheritedLock >= 0 { close(inheritedLock) } }
+    try await installer.prepareInstallation(
+      importing: nil, to: fixture.destination, application: fixture.application,
+      inputMethodIsStopped: {
+        if inheritedLock >= 0 { return true }
+        var lockInfo = stat()
+        guard lstat(lockPath, &lockInfo) == 0 else { return false }
+        for descriptor in 0..<getdtablesize() {
+          var info = stat()
+          if fstat(descriptor, &info) == 0,
+            info.st_dev == lockInfo.st_dev, info.st_ino == lockInfo.st_ino
+          {
+            // Model a descriptor inherited by another process between fork and exec.
+            inheritedLock = dup(descriptor)
+            return inheritedLock >= 0
+          }
+        }
+        return false
+      })
+    try #require(inheritedLock >= 0)
+    try await installer.prepareInstallation(
+      importing: nil, to: fixture.destination, application: fixture.application,
+      inputMethodIsStopped: { true })
+    #expect(FileManager.default.fileExists(atPath: fixture.application.path))
+  }
+
   @Test func freshInstallationUsesOnlyBundledDataEvenWhenSquirrelIsRunning() async throws {
     let fixture = try Fixture()
     defer { fixture.remove() }
