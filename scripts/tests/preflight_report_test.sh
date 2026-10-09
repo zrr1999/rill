@@ -12,6 +12,10 @@ set -euo pipefail
 source "$1/scripts/preflight.sh"
 locked_swift() {
   local filter='.' skip='^$' test_id
+  if [[ "$*" == 'test list --skip-build' ]]; then
+    cat "$FIXTURE_TESTS"
+    return
+  fi
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --filter) filter="$2"; shift ;;
@@ -24,6 +28,9 @@ locked_swift() {
       echo "$test_id" >>"$FIXTURE_TRACE"
     fi
   done <"$FIXTURE_TESTS"
+  if [[ "$filter" == "$PANEL_STRESS" && "${FIXTURE_FAIL_PANEL:-}" == true && -z "${RILL_RECORD_PROFILE_DIR:-}" ]]; then
+    return 47
+  fi
 }
 case "$2" in
   regular) run_swift_tests ;;
@@ -40,6 +47,8 @@ RillUITests.ShellTests/testDesktopFocus
 RillPlatformTests.NativeTests/testPlatform
 RillQualityEvaluations.Evaluation/testQuality
 RillQualityEvaluations.Evaluation/testDesktopQuality
+RillRuntimeTests.RecordCatalogStressTests/testCatalog
+RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords
 TESTS
 for selection in regular desktop; do
   env FIXTURE_TRACE="$TEST_ROOT/$selection-trace" FIXTURE_TESTS="$TEST_ROOT/test-ids" \
@@ -51,6 +60,22 @@ cmp "$TEST_ROOT/regular-expected" "$TEST_ROOT/regular-trace"
 cmp "$TEST_ROOT/desktop-expected" "$TEST_ROOT/desktop-trace"
 grep -Fq 'Desktop interaction was not tested' "$TEST_ROOT/regular-output"
 echo 'PASS: regular and desktop runners partition tests without losing or duplicating coverage'
+
+grep -v RecordCatalogStressTests "$TEST_ROOT/test-ids" >"$TEST_ROOT/missing-stress-ids"
+if env FIXTURE_TRACE="$TEST_ROOT/missing-trace" FIXTURE_TESTS="$TEST_ROOT/missing-stress-ids" \
+  "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" regular >"$TEST_ROOT/missing-output" 2>&1; then
+  echo 'FAIL: missing performance tests passed discovery' >&2
+  exit 1
+fi
+grep -Fq 'Required performance tests were not discovered' "$TEST_ROOT/missing-output"
+if env FIXTURE_FAIL_PANEL=true FIXTURE_TRACE="$TEST_ROOT/failed-panel-trace" FIXTURE_TESTS="$TEST_ROOT/test-ids" \
+  "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" regular >"$TEST_ROOT/failed-panel-output" 2>&1; then
+  echo 'FAIL: diagnostic replay concealed the original performance failure' >&2
+  exit 1
+fi
+[[ "$(grep -c testWarmPanelReadyToSearchWithTenThousandRecords "$TEST_ROOT/failed-panel-trace")" == 2 ]]
+grep -Fq 'Native panel stress failed; diagnostic samples' "$TEST_ROOT/failed-panel-output"
+echo 'PASS: performance discovery and diagnostic replay remain fail-closed'
 
 cat >"$TEST_ROOT/fixture.sh" <<'SH'
 #!/usr/bin/env bash

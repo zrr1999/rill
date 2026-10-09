@@ -8,6 +8,30 @@ import XCTest
 @testable import RillRecords
 
 final class RecordCatalogTests: XCTestCase {
+  func testCatalogSnapshotsKeepTheirValuesAcrossMetadataAndMembershipChanges() async throws {
+    let store = RecordStore()
+    let record = try await store.ingest(draft("snapshot"), into: [RecordCollection.inboxID])
+    let before = try await store.catalogSnapshot()
+    let stream = try await store.catalogStream()
+    var iterator = stream.makeAsyncIterator()
+    let initial = await iterator.next()
+    XCTAssertEqual(initial?.records, before.records)
+    _ = try await store.updateMetadata(recordID: record.id, tags: ["updated"], isPinned: true)
+    let afterMetadata = try await store.catalogSnapshot()
+    let observedMetadata = await iterator.next()
+    XCTAssertEqual(observedMetadata?.records, afterMetadata.records)
+    XCTAssertEqual(afterMetadata.records.first?.metadata.tags, ["updated"])
+    XCTAssertEqual(before.records.first?.metadata.tags, [])
+    XCTAssertEqual(before.records.first?.metadata.isPinned, false)
+    let membership = try XCTUnwrap(record.memberships.first)
+    try await store.removeMembership(membership.id, expectedRevision: membership.revision)
+    let afterRemoval = try await store.catalogSnapshot()
+    let observedRemoval = await iterator.next()
+    XCTAssertEqual(observedRemoval?.records, afterRemoval.records)
+    XCTAssertEqual(afterRemoval.records.first?.memberships, [])
+    XCTAssertEqual(before.records.first?.memberships, [membership])
+  }
+
   func testBufferSettlementPersistsUsageAndRejectsOrphanActivityAtomically() async throws {
     let fixture = try fixture()
     let store = RecordStore(persistence: fixture.persistence)
@@ -224,11 +248,14 @@ final class RecordCatalogTests: XCTestCase {
     limits.maximumTotalPayloadByteCount = 8
     let store = RecordStore(storageLimits: limits)
     _ = try await store.ingest(draft("12345"), into: [])
+    let beforeAdmissionFailure = try await store.catalogSnapshot()
+    XCTAssertFalse(beforeAdmissionFailure.capacity.isCaptureLimited)
     do {
       _ = try await store.ingest(draft("6789"), into: [])
       XCTFail("Encoded bytes exceed remaining capacity")
     } catch let error as RecordStoreError { XCTAssertEqual(error, .totalPayloadLimitReached) }
     let limited = try await store.catalogSnapshot()
+    XCTAssertEqual(limited.revision, beforeAdmissionFailure.revision)
     XCTAssertEqual(limited.records.count, 1)
     XCTAssertTrue(limited.capacity.isCaptureLimited)
     XCTAssertFalse(limited.capacity.isFull)
@@ -318,13 +345,16 @@ final class RecordCatalogTests: XCTestCase {
     let firstStore = RecordStore(persistence: fixture.persistence)
     _ = try await firstStore.ingest(draft("first"), into: [])
     let staleStore = RecordStore(persistence: fixture.persistence)
-    _ = try await staleStore.catalogSnapshot()
+    let staleSnapshot = try await staleStore.catalogSnapshot()
     _ = try await firstStore.ingest(draft("second"), into: [])
     let before = try rawBlobs(at: fixture.url)
     do {
       _ = try await staleStore.ingest(draft("stale"), into: [])
       XCTFail("Expected CAS failure")
     } catch let error as RecordStoreError { XCTAssertEqual(error, .persistenceUnavailable) }
+    let rolledBack = try await staleStore.catalogSnapshot()
+    XCTAssertEqual(rolledBack.records, staleSnapshot.records)
+    XCTAssertEqual(rolledBack.revision, staleSnapshot.revision)
     XCTAssertEqual(try rawBlobs(at: fixture.url), before)
     let restarted = RecordStore(persistence: fixture.persistence)
     let records = try await restarted.catalogSnapshot().records

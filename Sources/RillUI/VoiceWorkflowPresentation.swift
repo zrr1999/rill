@@ -159,12 +159,11 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     let privacyLabel = L10n.privacyText(PrivacySettingsTextKey.routeDetailLabel, language: language)
     let privacy = privacyRouteShortValue(language: language)
 
-    switch language {
-    case .english:
-      return "Mode: \(style) · Speech: \(route) · Language: \(languageTitle) · Trigger: \(triggerTitle) · Output: \(output) · \(privacyLabel): \(privacy)"
-    case .simplifiedChinese:
-      return "模式：\(style) · 识别：\(route) · 语言：\(languageTitle) · 触发：\(triggerTitle) · 输出：\(output) · \(privacyLabel)：\(privacy)"
-    }
+    return L10n.resource(
+      "VoiceWorkflowPresentation.Mode.Speech.Language.Trigger.Output",
+      defaultValue:
+        "Mode: \(String(describing: style)) · Speech: \(String(describing: route)) · Language: \(String(describing: languageTitle)) · Trigger: \(String(describing: triggerTitle)) · Output: \(String(describing: output)) · \(String(describing: privacyLabel)): \(String(describing: privacy))"
+    ).string(for: language)
   }
 
   func menuTitle(workflowName: String, language: AppLanguage) -> String {

@@ -39,6 +39,11 @@ just ci             # 保留增量产物的完整门禁
 just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 ```
 
+完整测试先并行运行领域功能测试，再串行运行原生功能测试。两项一万条记录的
+性能测试各自在新的串行进程执行，避免与其他测试争用资源或继承窗口测试状态。
+存储压力测试与窗口就绪测试仍使用原有断言、Debug 构建和性能阈值；CI 通过
+`RILL_RECORD_STRESS=1` 启用它们，分组不减少验收项。
+
 `just check` 只运行 prek 内建检查、上游提供的 TOML、Actionlint 和 Typos
 检查，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
 完整历史扫描或项目策略测试。格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
@@ -82,6 +87,8 @@ gitleaks version
 ## 构建目录与增量验证
 
 Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/release`。
+完整图的 Debug 构建与测试统一使用 SwiftBuild，编译 String Catalog 并保留同一增量构建目录；
+`test-domain` 继续使用原生构建引擎和独立目录。
 构建、清理和产物快照由统一入口按配置加锁；不要在另一进程构建时手工删除目录，
 也不要在 worktree 之间复制或软链接 SwiftPM 的构建数据库。工具链、SDK、Metal、
 锁文件、Package 声明或构建参数变化会使相应配置失效；普通源文件变化由 SwiftPM
@@ -89,6 +96,16 @@ Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/rele
 
 `just build RillApp` 适合 App/UI 日常修改，不编译语音 worker 和 MLX。
 `swift test --filter` 只限定测试执行范围，不保证缩小首次编译范围。
+完整测试默认使用 `--build-system swiftbuild`，与 Release 一样编译 String Catalog；
+旧 native 引擎只复制 `.xcstrings`，不会生成运行时需要的 `.lproj` 资源。
+包内 Swift 目标通过 manifest 将全部告警视为错误；Debug/Release 负向编译测试守住此门禁。
+不再向依赖透传全局告警参数，避免 SwiftBuild 与依赖自身的告警处理冲突。
+CI 同时启用原生渲染导出和 10,000 条记录压力验收，并保存渲染产物；
+真实输入、VoiceOver 和多显示器交互仍按 macOS QA 清单单独验收。
+面板重开复用原生宿主视图，同时创建新的搜索会话并替换投递回调；
+原生回归覆盖跨工作区重开后的输入和投递，压力测试保留 150 ms 门槛并报告呈现、布局耗时。
+窗口压力检查失败后，预检额外重放一次并用系统 `sample` 采集该测试进程的调用栈，
+随原生渲染产物保存。诊断重放不改变原检查的失败结果，也不参与通过判定。
 `test-domain` 从同一份 Package.swift 排除 App、UI、MLX 和原生验收测试目标，
 保留领域测试所需的依赖，并使用独立的 `.artifacts/build/domain-tests`。锁文件校验不变；
 完整 CI 仍使用未裁剪的生产图。该模式不替代 `just ci` 或 Release 模型验收。

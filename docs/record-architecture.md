@@ -93,6 +93,12 @@ SQLite schema 14 stores encrypted catalog nodes and immutable payload blobs
 separately. The catalog holds headers and previews; payloads are loaded on demand
 through a bounded cache. Metadata-only changes retain the payload ciphertext.
 
+`RecordStore` also reuses one immutable catalog snapshot while its graph and
+admission state remain unchanged. Reopening a panel or adding an observer does
+not rebuild every summary. Any graph mutation, including rollback and buffer
+delivery activity, invalidates the snapshot; admission failures invalidate it
+even when the graph revision does not change. Publication still follows commit.
+
 Record headers store a SHA-256 of the canonical payload bytes. Headers written
 before the digest existed are filled from the stored payload on the next
 non-derived ingest and committed with that graph write. A failed commit rolls
@@ -239,3 +245,9 @@ memberships. The correction has no collection membership, so saving it cannot
 trigger routing or repeat delivery. An operation ID makes retries idempotent;
 a deleted original is not resurrected. The workspace owns and drains the accepted
 write. Remembering vocabulary is a separate, scope-visible command.
+
+The quick panel tracks the latest catalog revision while a query is in flight.
+An initial stream snapshot does not restart that query. Before publishing, the
+page must cover the latest observed revision; restored comparison candidates
+must come from the same revision as the page. An older catalog snapshot cannot
+clear a collection selection made against a newer snapshot.

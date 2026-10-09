@@ -12,92 +12,31 @@ struct LocalPersistenceStatusPresentation: Sendable, Equatable {
     status: LocalPersistenceStatus,
     language: AppLanguage
   ) -> LocalPersistenceStatusPresentation? {
-    switch (status, language) {
-    case (.ready, _):
-      return nil
-    case (
-      .readyWithNotice(.alternateDataProtectionKeyRetained),
-      .english
-    ):
+    switch status {
+    case .ready: return nil
+    case .readyWithNotice(.alternateDataProtectionKeyRetained):
       return LocalPersistenceStatusPresentation(
-        bannerTitle: "Local storage is protected",
-        bannerMessage:
-          "Rill found an additional local data protection key and retained both "
-          + "keys to avoid deleting data. Saved data remains available and changes "
-          + "continue to be saved. No action is required, and no saved data was reset "
-          + "or deleted.",
+        bannerTitle: L10n.catalogString("localPersistence.alternateDataProtectionKeyRetained.bannerTitle", language: language),
+        bannerMessage: L10n.catalogString("localPersistence.alternateDataProtectionKeyRetained.bannerMessage", language: language),
         actionTitle: nil,
-        menuTitle: "Additional protection key retained",
-        menuDetail: "Local storage remains active; both protected keys were kept for safety."
+        menuTitle: L10n.catalogString("localPersistence.alternateDataProtectionKeyRetained.menuTitle", language: language),
+        menuDetail: L10n.catalogString("localPersistence.alternateDataProtectionKeyRetained.menuDetail", language: language)
       )
-    case (
-      .readyWithNotice(.alternateDataProtectionKeyRetained),
-      .simplifiedChinese
-    ):
+    case .sessionOnly(reason: .persistentStorageUnavailable):
       return LocalPersistenceStatusPresentation(
-        bannerTitle: "本地存储已受保护",
-        bannerMessage:
-          "Rill 发现了另一把本地数据保护密钥。为避免删除数据，两把密钥均已保留；已保存"
-          + "的数据仍可使用，后续更改也会继续保存。无需执行任何操作，已有数据未被重置或删除。",
-        actionTitle: nil,
-        menuTitle: "已保留另一把数据保护密钥",
-        menuDetail: "本地存储仍正常工作；为确保数据安全，两把受保护密钥均已保留。"
+        bannerTitle: L10n.catalogString("localPersistence.persistentStorageUnavailable.bannerTitle", language: language),
+        bannerMessage: L10n.catalogString("localPersistence.persistentStorageUnavailable.bannerMessage", language: language),
+        actionTitle: L10n.catalogString("localPersistence.persistentStorageUnavailable.actionTitle", language: language),
+        menuTitle: L10n.catalogString("localPersistence.persistentStorageUnavailable.menuTitle", language: language),
+        menuDetail: L10n.catalogString("localPersistence.persistentStorageUnavailable.menuDetail", language: language)
       )
-    case (
-      .sessionOnly(reason: .persistentStorageUnavailable),
-      .english
-    ):
+    case .sessionOnly(reason: .keychainTemporarilyUnavailable):
       return LocalPersistenceStatusPresentation(
-        bannerTitle: "Local data is session-only",
-        bannerMessage:
-          "History, records and collections, settings, and other local changes "
-          + "from this session will not be saved after Rill quits. Existing saved "
-          + "data was not reset or deleted.",
-        actionTitle: "View Storage Settings",
-        menuTitle: "Session-only storage",
-        menuDetail: "History, clipboard, and settings changes are not being saved."
-      )
-    case (
-      .sessionOnly(reason: .persistentStorageUnavailable),
-      .simplifiedChinese
-    ):
-      return LocalPersistenceStatusPresentation(
-        bannerTitle: "本地数据仅在本次会话中可用",
-        bannerMessage:
-          "本次会话中的运行历史、记录与记录集、设置及其他本地更改不会在 Rill "
-          + "退出后保存；已有数据未被重置或删除。",
-        actionTitle: "查看存储设置",
-        menuTitle: "存储仅限本次会话",
-        menuDetail: "历史记录、剪贴板和设置更改当前不会保存。"
-      )
-    case (
-      .sessionOnly(reason: .keychainTemporarilyUnavailable),
-      .english
-    ):
-      return LocalPersistenceStatusPresentation(
-        bannerTitle: "Unlock your Mac to restore local storage",
-        bannerMessage:
-          "Rill could not access its local data protection key. This session's "
-          + "history, records and collections, settings, and other local changes "
-          + "will not be saved. Unlock your Mac, then quit and reopen Rill. "
-          + "Existing saved data was not reset or deleted.",
-        actionTitle: "View Storage Settings",
-        menuTitle: "Local storage is locked",
-        menuDetail: "Unlock your Mac, then quit and reopen Rill to restore saving."
-      )
-    case (
-      .sessionOnly(reason: .keychainTemporarilyUnavailable),
-      .simplifiedChinese
-    ):
-      return LocalPersistenceStatusPresentation(
-        bannerTitle: "解锁 Mac 以恢复本地存储",
-        bannerMessage:
-          "Rill 无法访问本地数据保护密钥。本次会话中的运行历史、记录与记录集、设置"
-          + "及其他本地更改不会保存。请解锁 Mac，然后退出并重新打开 Rill；已有数据未被"
-          + "重置或删除。",
-        actionTitle: "查看存储设置",
-        menuTitle: "本地存储已锁定",
-        menuDetail: "请解锁 Mac，然后退出并重新打开 Rill 以恢复保存。"
+        bannerTitle: L10n.catalogString("localPersistence.keychainTemporarilyUnavailable.bannerTitle", language: language),
+        bannerMessage: L10n.catalogString("localPersistence.keychainTemporarilyUnavailable.bannerMessage", language: language),
+        actionTitle: L10n.catalogString("localPersistence.keychainTemporarilyUnavailable.actionTitle", language: language),
+        menuTitle: L10n.catalogString("localPersistence.keychainTemporarilyUnavailable.menuTitle", language: language),
+        menuDetail: L10n.catalogString("localPersistence.keychainTemporarilyUnavailable.menuDetail", language: language)
       )
     }
   }

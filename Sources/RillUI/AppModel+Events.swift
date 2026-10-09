@@ -15,99 +15,78 @@ private enum EventFeedPrivacyBodyKind {
   case runCompleted
   case failure
 
-  var fullPrefix: LocalizedText {
+  var fullPrefix: LocalizedStringResource {
     switch self {
     case .processingStep(let step):
-      return LocalizedText(
-        english: HistoryTextStepPresentation.logHeader(step, language: .english),
-        simplifiedChinese: HistoryTextStepPresentation.logHeader(step, language: .simplifiedChinese)
-      )
+      return HistoryTextStepPresentation.logHeaderResource(step)
     case .recognition:
-      return LocalizedText(english: "Recognition: ", simplifiedChinese: "识别结果：")
+      return L10n.resource("AppModel.Events.Recognition.prefix")
     case .resolution:
-      return LocalizedText(english: "Resolution completed: ", simplifiedChinese: "消歧完成：")
+      return L10n.resource("AppModel.Events.Resolution.completed.prefix")
     case .transformation:
-      return LocalizedText(english: "Transformation applied: ", simplifiedChinese: "文本处理完成：")
+      return L10n.resource("AppModel.Events.Transformation.applied.prefix")
     case .action(let actionID):
-      return LocalizedText(
-        english: "Action \(actionID): ",
-        simplifiedChinese: "动作 \(actionID)："
-      )
+      return L10n.resource("event.actionPrefix", defaultValue: "Action \(actionID): ")
     case .runCompleted:
-      return LocalizedText(english: "Run completed: ", simplifiedChinese: "工作流完成：")
+      return L10n.resource("AppModel.Events.Run.completed.prefix")
     case .failure:
-      return LocalizedText(english: "Failure: ", simplifiedChinese: "失败：")
+      return L10n.resource("AppModel.Events.Failure.prefix")
     }
   }
 
-  var summaryPrefix: LocalizedText {
+  var summaryPrefix: LocalizedStringResource {
     switch self {
     case .processingStep:
       return fullPrefix
     case .recognition:
-      return LocalizedText(english: "Recognition summary: ", simplifiedChinese: "识别摘要：")
+      return L10n.resource("AppModel.Events.Recognition.summary.prefix")
     case .resolution:
-      return LocalizedText(english: "Resolution summary: ", simplifiedChinese: "消歧摘要：")
+      return L10n.resource("AppModel.Events.Resolution.summary.prefix")
     case .transformation:
-      return LocalizedText(english: "Transformation summary: ", simplifiedChinese: "文本处理摘要：")
+      return L10n.resource("AppModel.Events.Transformation.summary.prefix")
     case .action(let actionID):
-      return LocalizedText(
-        english: "Action \(actionID) result summary: ",
-        simplifiedChinese: "动作 \(actionID) 结果摘要："
-      )
+      return L10n.resource("event.actionSummary", defaultValue: "Action \(actionID) result summary: ")
     case .runCompleted:
-      return LocalizedText(english: "Run result summary: ", simplifiedChinese: "运行结果摘要：")
+      return L10n.resource("AppModel.Events.Run.result.summary.prefix")
     case .failure:
-      return LocalizedText(english: "Failure summary: ", simplifiedChinese: "失败摘要：")
+      return L10n.resource("AppModel.Events.Failure.summary.prefix")
     }
   }
 
-  var hiddenSummary: LocalizedText {
+  var hiddenSummary: LocalizedStringResource {
     switch self {
     case .processingStep:
       return fullPrefix
     case .recognition:
-      return LocalizedText(english: "Recognition completed.", simplifiedChinese: "识别已完成。")
+      return L10n.resource("AppModel.Events.Recognition.completed")
     case .resolution:
-      return LocalizedText(english: "Resolution completed.", simplifiedChinese: "消歧已完成。")
+      return L10n.resource("AppModel.Events.Resolution.completed")
     case .transformation:
-      return LocalizedText(
-        english: "Text transformation completed.",
-        simplifiedChinese: "文本处理已完成。"
-      )
+      return L10n.resource("AppModel.Events.Text.transformation.completed")
     case .action(let actionID):
-      return LocalizedText(
-        english: "Action \(actionID) finished.",
-        simplifiedChinese: "动作 \(actionID) 已结束。"
-      )
+      return L10n.resource("event.actionFinished", defaultValue: "Action \(actionID) finished.")
     case .runCompleted:
-      return LocalizedText(english: "Run completed.", simplifiedChinese: "工作流已完成。")
+      return L10n.resource("AppModel.Events.Run.completed")
     case .failure:
-      return LocalizedText(english: "Run failed.", simplifiedChinese: "工作流失败。")
+      return L10n.resource("AppModel.Events.Run.failed")
     }
   }
 }
 
-private func actionResultPresentation(_ result: ActionResult) -> LocalizedText {
+private func actionResultPresentation(_ result: ActionResult) -> LocalizedStringResource {
   switch result {
   case .injected:
-    LocalizedText(english: "Text was inserted.", simplifiedChinese: "文本已输入。")
+    L10n.resource("AppModel.Events.Text.was.inserted")
   case .copiedToClipboard:
-    LocalizedText(english: "Text was copied to the clipboard.", simplifiedChinese: "文本已复制到剪贴板。")
+    L10n.resource("AppModel.Events.Text.was.copied.to.the.clipboard")
   case .storedRecord:
-    LocalizedText(english: "Text was stored as a record.", simplifiedChinese: "文本已存为记录。")
+    L10n.resource("AppModel.Events.Text.was.stored.as.a.record")
   case .externalOutput:
-    LocalizedText(english: "External output completed.", simplifiedChinese: "外部输出已完成。")
+    L10n.resource("AppModel.Events.External.output.completed")
   case .skipped:
-    LocalizedText(
-      english: "An output action was skipped. Review the workflow, then retry if needed.",
-      simplifiedChinese: "一个输出动作已跳过。请检查工作流，必要时重试。"
-    )
+    L10n.resource("AppModel.Events.An.output.action.was.skipped.Review.the.workflow.then.retry.if.needed")
   case .failed:
-    LocalizedText(
-      english: "An output action failed. Open Diagnostics for a safe summary, then retry.",
-      simplifiedChinese: "一个输出动作失败。请在诊断中查看安全摘要后重试。"
-    )
+    L10n.resource("AppModel.Events.An.output.action.failed.Open.Diagnostics.for.a.safe.summary.then.retry")
   }
 }
 
@@ -138,17 +117,10 @@ extension AppModel {
     )
     for event in events {
       if event.name == .sessionTransformFallback {
-        append(
-          english: "Text cleanup was skipped; the complete text before cleanup was retained.",
-          simplifiedChinese: "未完成智能整理，已保留整理前的完整文本。"
-        )
+        append(L10n.resource("event.notice.Text.cleanup.was.skipped.the.complete.text.before.cleanup.was.retained"))
         continue
       }
-      append(
-        english: "[\(L10n.subsystem(event.subsystem, language: .english))] \(event.message)",
-        simplifiedChinese:
-          "[\(L10n.subsystem(event.subsystem, language: .simplifiedChinese))] \(event.message)"
-      )
+      append(L10n.resource("event.diagnostic", defaultValue: "[\(L10n.subsystemResource(event.subsystem))] \(event.message)"))
     }
   }
 
@@ -180,10 +152,7 @@ extension AppModel {
       voice.lastLiveSubtitleMeterRefreshAt = nil
     }
     voice.refreshLiveSubtitlePresentation()
-    append(
-      english: "Recording stopped.",
-      simplifiedChinese: "录音已停止。"
-    )
+    append(L10n.resource("event.notice.Recording.stopped"))
   }
 
   func startListening() {
@@ -284,10 +253,7 @@ extension AppModel {
       voice.begin(run)
       self.voice.workflowAudioRunState = .idle
       lastFailure = nil
-      append(
-        english: "Run started: \(L10n.workflowName(run.workflow, language: .english))",
-        simplifiedChinese: "工作流开始：\(L10n.workflowName(run.workflow, language: .simplifiedChinese))"
-      )
+      append(L10n.resource("event.runStarted", defaultValue: "Run started: \(L10n.workflowNameResource(run.workflow))"))
     case .runReceiptRepositoryChanged(let change):
       history.noteNewRunAvailableForHistoryBrowsing()
       // The event is only an invalidation edge. A clear may have removed
@@ -300,17 +266,12 @@ extension AppModel {
       voice.updateStage(stage, from: identity)
     case .contextCaptured(_, let context):
       let appName = context.focus.applicationName ?? "Unknown"
-      append(
-        english: "Context captured from \(appName)",
-        simplifiedChinese: "已捕获上下文：\(appName)"
-      )
+      append(L10n.resource("event.contextCaptured", defaultValue: "Context captured from \(appName)"))
     case .recognitionCompleted(let identity, let recognition):
       voice.updateText(recognition.bestText, from: identity)
       guard pendingRuns.isEmpty else { break }
       appendPrivacyProtectedBody(
-        english: recognition.bestText,
-        simplifiedChinese: recognition.bestText,
-        kind: .recognition
+        body: recognition.bestText, kind: .recognition
       )
     case .liveSubtitleUpdated(let snapshot):
       voice.applyLiveSubtitleUpdate(snapshot)
@@ -336,24 +297,19 @@ extension AppModel {
       self.voice.failedAudioRecoveryError = failedAudioRecoveryUnavailableMessage(reason)
     case .candidateResolutionRequested(let candidateCase):
       self.voice.pendingResolution = candidateCase
-      append(
-        english: "Candidate resolution requested",
-        simplifiedChinese: "已请求候选词消歧"
-      )
+      append(L10n.resource("event.notice.Candidate.resolution.requested"))
     case .candidateResolutionFinished(let identity, _, let resolvedText):
       if self.voice.pendingResolution?.runID == identity.runID { self.voice.pendingResolution = nil }
       voice.updateText(resolvedText, from: identity)
       guard pendingRuns.isEmpty else { break }
       appendPrivacyProtectedBody(
-        english: resolvedText,
-        simplifiedChinese: resolvedText,
-        kind: .resolution
+        body: resolvedText, kind: .resolution
       )
     case .runTextStepRecorded(let runID, let step):
       guard pendingRuns[runID]?.trigger.isVoiceCapture == true else { return }
       if let text = step.outputText {
         appendPrivacyProtectedBody(
-          english: text, simplifiedChinese: text, kind: .processingStep(step)
+          body: text, kind: .processingStep(step)
         )
       } else {
         let summary = EventFeedPrivacyBodyKind.processingStep(step).hiddenSummary
@@ -363,9 +319,7 @@ extension AppModel {
       voice.updateText(text, from: identity)
       guard pendingRuns.isEmpty else { break }
       appendPrivacyProtectedBody(
-        english: text,
-        simplifiedChinese: text,
-        kind: .transformation
+        body: text, kind: .transformation
       )
     case .actionExecuted(_, _, let result):
       let presentation = actionResultPresentation(result)
@@ -376,11 +330,7 @@ extension AppModel {
     case .recordBufferOutputRequested:
       recordWorkspace.buffers.outputAction(nil)
     case .recordBufferInputFailed:
-      let message = LocalizedText(
-        english:
-          "A copied item was saved in All Records but was not added to pending output. Select the record and use Add to in the Output buffers menu to retry.",
-        simplifiedChinese: "一条复制内容已保存在全部记录，但未加入待输出容器。请选中该记录，在待输出容器菜单中选择“加入”重试。"
-      )
+      let message = L10n.resource("AppModel.Events.A.copied.item.was.saved.in.All.Records.but.was.not.added")
       append(english: message.english, simplifiedChinese: message.simplifiedChinese)
       recordWorkspace.buffers.showMessageAction?(message.string(for: settings.language))
     case .recordPanelRequested:
@@ -391,10 +341,7 @@ extension AppModel {
         loadHistory()
       case .sessionOnly(let record):
         cacheHistoryRecord(record)
-        append(
-          english: "History persistence is unavailable. This run is visible only for the current session.",
-          simplifiedChinese: "历史记录持久化不可用；这次运行仅在当前会话中可见。"
-        )
+        append(L10n.resource("event.notice.History.persistence.is.unavailable.This.run.is.visible.only.for.the.current"))
       }
     case .runCompleted(let summary):
       let ownsPresentation = self.voice.activeRunID == summary.runID
@@ -411,18 +358,13 @@ extension AppModel {
       if ownsPresentation { lastFailure = nil }
       if summary.trigger.isVoiceCapture {
         appendPrivacyProtectedBody(
-          english: summary.finalText,
-          simplifiedChinese: summary.finalText,
-          kind: .runCompleted
+          body: summary.finalText, kind: .runCompleted
         )
       } else {
         // Record payloads already have their own store.
         // Their closed invocation kind is authoritative even when the
         // selected workflow happens to declare a speech recognizer.
-        append(
-          english: "Non-voice run completed.",
-          simplifiedChinese: "非语音工作流已完成。"
-        )
+        append(L10n.resource("event.notice.Non.voice.run.completed"))
       }
       voice.scheduleLiveSubtitleHide()
     case .runDiscarded(let runID):
@@ -458,14 +400,7 @@ extension AppModel {
       if self.voice.pendingResolution?.runID == summary.runID {
         self.voice.pendingResolution = nil
       }
-      append(
-        english: summary.wasPartiallyCompleted
-          ? "Run cancelled after partial completion."
-          : "Run cancelled.",
-        simplifiedChinese: summary.wasPartiallyCompleted
-          ? "工作流在部分完成后已取消。"
-          : "工作流已取消。"
-      )
+      append(L10n.resource(summary.wasPartiallyCompleted ? "event.partiallyCancelled" : "event.cancelled"))
       voice.scheduleLiveSubtitleHide()
     case .runFailed(let failedRunID, _, let message):
       let failurePresentation = RunFailurePresentation.localizedText(for: message)
@@ -510,21 +445,20 @@ extension AppModel {
     return true
   }
 
+  private func append(_ resource: LocalizedStringResource) {
+    append(EventFeedEntry(english: resource.english, simplifiedChinese: resource.simplifiedChinese))
+  }
+
   func append(english: String, simplifiedChinese: String) {
     append(EventFeedEntry(english: english, simplifiedChinese: simplifiedChinese))
   }
 
   private func appendPrivacyProtectedBody(
-    english: String,
-    simplifiedChinese: String,
-    kind: EventFeedPrivacyBodyKind
+    body: String, kind: EventFeedPrivacyBodyKind
   ) {
     append(
       EventFeedEntry(
-        privacyProtectedBody: LocalizedText(
-          english: english,
-          simplifiedChinese: simplifiedChinese
-        ),
+        privacyProtectedBody: body,
         fullPrefix: kind.fullPrefix,
         summaryPrefix: kind.summaryPrefix,
         hiddenSummary: kind.hiddenSummary
@@ -605,10 +539,7 @@ extension AppModel {
           self.reconcileRunDerivedPresentation(with: [])
         }
         self.history.historyLoadState = .failed(.repositoryUnavailable)
-        self.append(
-          english: "History repository is unavailable.",
-          simplifiedChinese: "历史记录仓库不可用。"
-        )
+        self.append(L10n.resource("event.notice.History.repository.is.unavailable"))
       }
     }
     self.history.historyProjectionLoadTasks[taskID] = task
@@ -666,10 +597,7 @@ extension AppModel {
         else {
           return
         }
-        self.append(
-          english: "Run receipt repository is unavailable.",
-          simplifiedChinese: "运行收据仓库不可用。"
-        )
+        self.append(L10n.resource("event.notice.Run.receipt.repository.is.unavailable"))
       }
     }
     self.history.historyProjectionLoadTasks[taskID] = task
