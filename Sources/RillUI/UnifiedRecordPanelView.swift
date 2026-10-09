@@ -100,7 +100,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
         } label: {
           if selected {
             modeLabel(mode, selected: true)
-              .recordPanelGlass(in: Capsule(), interactive: true)
+              .rillGlass(in: Capsule(), interactive: true)
               .glassEffectID("mode-selection", in: modeGlass)
               .glassEffectTransition(reduceMotion ? .identity : .matchedGeometry)
           } else {

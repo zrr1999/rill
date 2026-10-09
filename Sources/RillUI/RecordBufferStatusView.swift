@@ -86,61 +86,69 @@ struct RecordBufferToolbar: View {
   private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   var body: some View {
-    HStack {
-      Button(action: workspace.buffers.openEditorAction) {
-        HStack(spacing: 8) {
-          Label(text(.drafts), systemImage: RillSystemSymbol.tray.rawValue)
-            .fixedSize()
-          Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit().fixedSize()
-          Text(
-            workspace.buffers.snapshot?.nextHeader?.preview
-              ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processingStatus))
-          )
-          .foregroundStyle(.secondary).lineLimit(1)
-          .frame(maxWidth: .infinity, alignment: .leading)
+    GlassEffectContainer(spacing: RillSpacing.row) {
+      HStack(spacing: RillSpacing.panel) {
+        Button(action: workspace.buffers.openEditorAction) {
+          HStack(spacing: RillSpacing.row) {
+            Label(text(.drafts), systemImage: RillSystemSymbol.tray.rawValue)
+              .fixedSize()
+            Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)")
+              .monospacedDigit().foregroundStyle(.secondary).fixedSize()
+          }
         }
-      }
-      .buttonStyle(.borderless)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .accessibilityIdentifier("records.open-drafts")
-      Menu {
-        ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
-          if summary.buffer.policy == .set {
-            Button("{} \(summary.buffer.name) (\(summary.count))") {
-              setEntries = []
-              selectedSet = summary.id
-              Task {
-                let entries = await workspace.buffers.entries(in: summary.id)
-                guard selectedSet == summary.id else { return }
-                setEntries = entries
+        .buttonStyle(.glass)
+        .controlSize(.large)
+        .accessibilityIdentifier("records.open-drafts")
+        Text(
+          workspace.buffers.snapshot?.nextHeader?.preview
+            ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processingStatus))
+        )
+        .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        Menu {
+          ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
+            if summary.buffer.policy == .set {
+              Button("{} \(summary.buffer.name) (\(summary.count))") {
+                setEntries = []
+                selectedSet = summary.id
+                Task {
+                  let entries = await workspace.buffers.entries(in: summary.id)
+                  guard selectedSet == summary.id else { return }
+                  setEntries = entries
+                }
+              }
+            } else {
+              Toggle(
+                "\(summary.buffer.policy == .stack ? "()" : "[]") \(summary.buffer.name) (\(summary.count))",
+                isOn: Binding(
+                  get: { summary.buffer.isEnabled },
+                  set: { workspace.buffers.setEnabled($0, buffer: summary.buffer) }))
+            }
+          }
+          Divider()
+          if let recordID = workspace.selectedRecordID {
+            ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
+              Button(text(.addTo) + summary.buffer.name) {
+                workspace.buffers.enqueue(recordID, bufferID: summary.id)
               }
             }
-          } else {
-            Toggle(
-              "\(summary.buffer.policy == .stack ? "()" : "[]") \(summary.buffer.name) (\(summary.count))",
-              isOn: Binding(
-                get: { summary.buffer.isEnabled },
-                set: { workspace.buffers.setEnabled($0, buffer: summary.buffer) }))
           }
-        }
-        Divider()
-        if let recordID = workspace.selectedRecordID {
-          ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
-            Button(text(.addTo) + summary.buffer.name) {
-              workspace.buffers.enqueue(recordID, bufferID: summary.id)
-            }
+          Button(text(.newSet)) {
+            workspace.buffers.createSet(name: text(.reusableItems))
           }
+        } label: {
+          Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
         }
-        Button(text(.newSet)) {
-          workspace.buffers.createSet(name: text(.reusableItems))
-        }
-      } label: {
-        Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
+        .help(text(.manageOutputBuffers))
+        .accessibilityLabel(text(.manageOutputBuffers))
+        .menuIndicator(.hidden)
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
       }
-      .help(text(.manageOutputBuffers))
-      .accessibilityLabel(text(.manageOutputBuffers))
     }
-    .padding(RillSpacing.dense)
+    .padding(.horizontal, RillSpacing.panel)
+    .padding(.vertical, RillSpacing.row)
     .task { workspace.buffers.start() }
     .popover(
       isPresented: Binding(get: { selectedSet != nil }, set: { if !$0 { selectedSet = nil } })

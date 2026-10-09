@@ -137,8 +137,8 @@ text, selection, and status use their native semantic roles.
 | Primary accent | `Color.accentColor` | Primary actions, selected custom controls, pending-content entry |
 | Primary text | `.primary`, `NSColor.labelColor` | Labels, content, and the normal recording waveform |
 | Supporting text | `.secondary`, `NSColor.secondaryLabelColor` | Sources, time, save state, keyboard hints, recognition hypothesis |
-| Window surface | `NSColor.windowBackgroundColor` | Opaque workspace/panel base and recorder transparency fallback |
-| Control surface | `NSColor.controlBackgroundColor` | Floating header/strip accessibility fallback and key hints |
+| Window surface | `NSColor.windowBackgroundColor` | Opaque workspace and panel base |
+| Control surface | `NSColor.controlBackgroundColor` | Shared glass accessibility surface and key hints |
 | Editor surface | `NSColor.textBackgroundColor` with `NSColor.textColor` | Native editable draft text |
 | Separation | `NSColor.separatorColor`, native `Divider` | Boundaries between controls and content |
 | Selection | Native `List(selection:)` and native controls | Emphasized and inactive selection, including the corresponding text color |
@@ -208,8 +208,9 @@ is the window subtitle; mounted hidden panes preserve drafts while remaining
 outside hit testing and accessibility navigation.
 
 Main-window navigation keeps All Records, Activity, and Workflows in one top
-group, Collections below, and Settings in the bottom inset. A single toolbar
-search opens grouped results. The Records compact Back path preserves selection;
+group, Collections below, and a glass Settings button in the bottom safe-area
+bar. `ToolbarSpacer` separates global search from the contextual toolbar actions.
+A single toolbar search opens grouped results. The Records compact Back path preserves selection;
 exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
@@ -234,22 +235,29 @@ and [material hierarchy](https://developer.apple.com/design/human-interface-guid
 Apply translucent material to navigation and controls without lowering the
 opacity of their text or icons.
 
-The preserved recorder uses `.thinMaterial` with a semantic window-color tint.
-Reduce Transparency changes it to an opaque window background. Increase Contrast
-strengthens its tint and separator border. For the unified panel's custom glass,
-either Reduce Transparency or Increase Contrast selects an opaque control
-background. Native materials and glass buttons also retain their system
-accessibility adaptations.
+The recorder and floating workspace share [RillGlass](Sources/RillUI/RillGlass.swift).
+It applies native regular Liquid Glass directly to the custom surface. Reduce
+Transparency or Increase Contrast selects an opaque control background. Glass
+buttons retain the system's accessibility adaptations. The recorder retains its
+fixed compact and expanded frames, waveform, network disclosure, countdown,
+continue action, and Esc hint. System glass supplies its depth; no custom tint,
+outline, or additional shadow is layered over the surface. The native floating
+panels use `NSPanel.hasShadow`.
 
-The recorder has one soft black shadow and a separator stroke; its exact shadow,
-tint, and border values are in the sidecar. The floating panel uses
-`NSPanel.hasShadow`. Shared cards use quaternary tonal fills through
-`RillCardProminence`, not a shadow stack.
+Main-window Drafts, Copy, Settings, and workflow actions use native glass button
+styles. Primary workflow and explicit output actions use `.glassProminent`.
+The Drafts entry stays above the nested record splits. `safeAreaBar` keeps record
+inspector actions, the global search field, settings heading, and workflow actions
+visible beside scrolling content.
+`scrollEdgeEffectStyle(.soft)` lets that content recede under its controls.
+Settings keeps grouped native forms and a semantic heading for each pane;
+Activity gives its history heading a stronger type hierarchy. Shared content
+cards retain quaternary tonal fills through `RillCardProminence`.
 
 Reduce Motion disables the custom card/selection transitions, panel fades, and
 meter interpolation. The recorder's geometry transition has one AppKit owner.
-Motion constants and their source symbols are recorded in the sidecar; none of
-these transitions delays capture, editing, or output authorization.
+Motion constants stay with their owning implementation; none of these
+transitions delays capture, editing, or output authorization.
 
 ## Shapes
 
@@ -266,7 +274,8 @@ silhouette and the space reserved for timer, Esc hint, and near-limit action.
 
 ### Native actions and navigation
 
-Use native buttons and menus. Explicit output uses `.borderedProminent`;
+Use native buttons and menus. Main-window and floating-workspace output uses
+`.glassProminent`;
 secondary copy and administration remain separate actions. Compact panel controls
 use `.controlSize(.small)`. Records keeps Copy reachable and secondary actions in
 the More menu. Selection, hover, keyboard focus, and inactive-window appearance
@@ -328,9 +337,11 @@ The capsule retains its position under `RillRecordCapsule`. Hover opens a separa
 opening. Crossing the gap keeps the page visible, and leaving both windows starts
 a 220ms delay, with 6pt tolerance around each window edge. Returning cancels the
 close timer. Editing, pointer presses, composition, sheets, and pinning hold the
-page open. Dragging preserves the page size, vertical side, and gap; each window
-is clamped horizontally on its own, so the capsule can reach the 12pt screen
-margin after the page reaches its boundary. The page has no collapse
+page open. Each window is clamped horizontally on its own, so the capsule can
+reach the 12pt screen margin after the page reaches its boundary. Vertical dragging
+keeps the current page side while it fits, moves the page below a capsule near the
+top or above one near the bottom, and preserves a 14pt gap. Limited space reduces
+page height; normal height returns when space is available. The page has no collapse
 button, and content changes never move its controls. These behaviors are owned by
 [RecordPanelController](Sources/RillApp/RecordPanelController.swift).
 

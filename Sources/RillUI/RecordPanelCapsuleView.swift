@@ -59,7 +59,7 @@ public struct RecordPanelCapsuleView: View {
     }
     .padding(.leading, 14).padding(.trailing, 8)
     .frame(width: 260, height: 48)
-    .recordPanelGlass(in: Capsule(), interactive: true)
+    .rillGlass(in: Capsule(), interactive: true)
     .accessibilityIdentifier("record-panel.capsule")
   }
 

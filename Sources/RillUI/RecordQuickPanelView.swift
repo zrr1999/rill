@@ -166,7 +166,7 @@ public struct RecordQuickPanelView: View {
           .frame(height: 30).padding(.horizontal, 15)
           resultList
         }.frame(width: RecordPanelAppearance.sidebarWidth)
-          .recordPanelGlass(in: RecordPanelAppearance.paneShape)
+          .rillGlass(in: RecordPanelAppearance.paneShape)
         contentPreview
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .background(RecordPanelAppearance.paper)
