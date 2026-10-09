@@ -5,12 +5,26 @@ enum RecordPanelPlacement {
   static let pageSize = NSSize(width: 668, height: 468)
   static let gap: CGFloat = 14
   static let margin: CGFloat = 12
+  private static let sideSwitchHysteresis: CGFloat = 24
 
-  static func pageFrame(beside capsule: NSRect, in visibleFrame: NSRect) -> NSRect {
+  static func pageFrame(beside capsule: NSRect, in visibleFrame: NSRect, prefersBelow: Bool? = nil) -> NSRect {
     let bounds = visibleFrame.insetBy(dx: margin, dy: margin)
     let below = max(0, capsule.minY - gap - bounds.minY)
     let above = max(0, bounds.maxY - capsule.maxY - gap)
-    let opensBelow = below >= pageSize.height || below >= above
+    let opensBelow: Bool
+    if let prefersBelow {
+      let preferredSpace = prefersBelow ? below : above
+      let otherSpace = prefersBelow ? above : below
+      if preferredSpace >= pageSize.height {
+        opensBelow = prefersBelow
+      } else if otherSpace >= pageSize.height || otherSpace > preferredSpace + sideSwitchHysteresis {
+        opensBelow = !prefersBelow
+      } else {
+        opensBelow = prefersBelow
+      }
+    } else {
+      opensBelow = below >= pageSize.height || below >= above
+    }
     let size = NSSize(
       width: min(pageSize.width, bounds.width),
       height: min(pageSize.height, opensBelow ? below : above))
@@ -24,18 +38,13 @@ enum RecordPanelPlacement {
     _ delta: NSPoint, capsule: NSRect, page: NSRect?,
     in visibleFrame: NSRect
   ) -> (capsule: NSRect, page: NSRect?) {
-    let group = page.map { capsule.union($0) } ?? capsule
     let bounds = visibleFrame.insetBy(dx: margin, dy: margin)
-    let verticalMovement = clamp(delta.y, bounds.minY - group.minY, bounds.maxY - group.maxY)
     var movedCapsule = capsule
     movedCapsule.origin = NSPoint(
       x: clamp(capsule.minX + delta.x, bounds.minX, bounds.maxX - capsule.width),
-      y: capsule.minY + verticalMovement)
+      y: clamp(capsule.minY + delta.y, bounds.minY, bounds.maxY - capsule.height))
     let movedPage = page.map { page in
-      NSRect(
-        x: clamp(movedCapsule.midX - page.width / 2, bounds.minX, bounds.maxX - page.width),
-        y: page.minY + verticalMovement,
-        width: page.width, height: page.height)
+      pageFrame(beside: movedCapsule, in: visibleFrame, prefersBelow: page.maxY <= capsule.minY)
     }
     return (movedCapsule, movedPage)
   }

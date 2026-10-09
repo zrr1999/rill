@@ -857,7 +857,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     let placement = RecordPanelPlacement.movingFrames(delta, capsule: capsule.frame, page: pageFrame, in: screen.visibleFrame)
     capsule.setFrameOrigin(placement.capsule.origin)
     if let pageFrame = placement.page {
-      panel?.setFrameOrigin(pageFrame.origin)
+      panel?.setFrame(pageFrame, display: true)
     }
   }
 

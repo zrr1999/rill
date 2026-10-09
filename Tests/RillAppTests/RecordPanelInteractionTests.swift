@@ -194,21 +194,67 @@ struct RecordPanelInteractionTests {
     }
   }
 
-  @Test func movingAnExpandedPairPreservesSizesAndVerticalSeparationAtAnEdge() {
+  @Test(arguments: [false, true])
+  func draggingToTheOppositeVerticalEdgeFlipsThePageWithoutConstrainingTheCapsule(toTop: Bool) {
     let screen = NSRect(x: -1440, y: 0, width: 1440, height: 900)
-    let capsule = NSRect(x: -850, y: 730, width: 260, height: 48)
+    let bounds = screen.insetBy(dx: RecordPanelPlacement.margin, dy: RecordPanelPlacement.margin)
+    let capsule = NSRect(x: -850, y: toTop ? bounds.minY : bounds.maxY - 48, width: 260, height: 48)
     let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
     let moved = RecordPanelPlacement.movingFrames(
-      NSPoint(x: 2000, y: -2000),
+      NSPoint(x: 2000, y: toTop ? 2000 : -2000),
       capsule: capsule, page: page, in: screen)
     let movedCapsule = moved.capsule
     let movedPage = moved.page!
     #expect(screen.contains(movedCapsule.union(movedPage)))
     #expect(movedCapsule.size == capsule.size)
     #expect(movedPage.size == page.size)
-    #expect(movedPage.minY - movedCapsule.minY == page.minY - capsule.minY)
+    #expect(movedCapsule.minY == (toTop ? bounds.maxY - capsule.height : bounds.minY))
+    #expect(toTop ? movedPage.maxY == movedCapsule.minY - 14 : movedPage.minY == movedCapsule.maxY + 14)
     #expect(movedCapsule.maxX == screen.maxX - RecordPanelPlacement.margin)
     #expect(movedPage.maxX == movedCapsule.maxX)
+  }
+
+  @Test func crossingTheScreenMidpointKeepsThePageOnScreenWithoutSideJitter() {
+    let screen = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let bounds = screen.insetBy(dx: RecordPanelPlacement.margin, dy: RecordPanelPlacement.margin)
+    let capsule = NSRect(x: 590, y: bounds.minY, width: 260, height: 48)
+    let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
+    var placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: screen.midY - capsule.midY), capsule: capsule, page: page, in: screen)
+    #expect(placement.page!.minY == placement.capsule.maxY + 14)
+    #expect(placement.page!.height < RecordPanelPlacement.pageSize.height)
+
+    for movement in [5.0, -10.0, 5.0] {
+      placement = RecordPanelPlacement.movingFrames(
+        NSPoint(x: 0, y: movement), capsule: placement.capsule, page: placement.page, in: screen)
+      #expect(placement.page!.minY == placement.capsule.maxY + 14)
+      #expect(bounds.contains(placement.page!))
+    }
+    placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: 20), capsule: placement.capsule, page: placement.page, in: screen)
+    #expect(placement.page!.maxY == placement.capsule.minY - 14)
+    placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: -25), capsule: placement.capsule, page: placement.page, in: screen)
+    #expect(placement.page!.maxY == placement.capsule.minY - 14)
+    #expect(bounds.contains(placement.page!))
+
+    placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: 2000), capsule: placement.capsule, page: placement.page, in: screen)
+    #expect(placement.capsule.maxY == bounds.maxY)
+    #expect(placement.page!.size == RecordPanelPlacement.pageSize)
+    #expect(placement.page!.maxY == placement.capsule.minY - 14)
+    #expect(bounds.contains(placement.page!))
+  }
+
+  @Test(arguments: [false, true])
+  func draggingIntoSpaceForEitherSideKeepsTheExistingSide(opensAbove: Bool) {
+    let screen = NSRect(x: 0, y: 0, width: 1440, height: 1400)
+    let capsule = NSRect(x: 590, y: opensAbove ? 12 : 1340, width: 260, height: 48)
+    let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
+    let moved = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: screen.midY - capsule.midY), capsule: capsule, page: page, in: screen)
+    #expect(moved.page!.size == page.size)
+    #expect(opensAbove ? moved.page!.minY == moved.capsule.maxY + 14 : moved.page!.maxY == moved.capsule.minY - 14)
   }
 
   @Test(
