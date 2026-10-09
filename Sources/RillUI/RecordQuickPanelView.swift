@@ -94,12 +94,13 @@ public struct RecordCleanupSheet: View {
 
 }
 
-enum RecordQuickPanelLayoutPolicy {
-  static func usesSidePreview(width: CGFloat) -> Bool { width >= 760 }
-}
-
 public struct RecordQuickPanelView: View {
-  @State private var showsAdvancedSearch = false
+  private enum PresentedSheet: String, Identifiable {
+    case filters, comparison
+    var id: Self { self }
+  }
+
+  @State private var showsFilters = false
   @Bindable private var model: RecordQuickPanelModel
   private let language: AppLanguage
   private let onPaste: (RecordReuseSubject) -> Void
@@ -127,149 +128,182 @@ public struct RecordQuickPanelView: View {
 
   public var body: some View {
     VStack(spacing: 0) {
-      RecordSearchField(
-        text: Binding(get: { model.searchText }, set: { model.setSearchText($0) }), placeholder: text(.search), onMove: model.moveSelection,
-        onSubmit: pasteSelection,
-        onDigit: { index in
-          guard let subject = model.subject(at: index) else { return }
-          onPaste(subject)
-        },
-        onCancel: {
-          if model.isPreviewVisible { model.closePreview() } else { onClose() }
-        }
-      )
-      .frame(height: 30)
-      .padding(RillSpacing.panel)
-      HStack(spacing: RillSpacing.row) {
-        Picker(
-          L10n.surface(.collection, language: language),
-          selection: Binding(
-            get: { model.collectionID }, set: { model.setCollection($0) })
-        ) {
-          Text(L10n.surface(.allRecords, language: language)).tag(RecordCollectionID?.none)
-          ForEach(model.collections) { collection in
-            Text(collection.name).tag(Optional(collection.id))
-          }
-        }
-        .labelsHidden().frame(maxWidth: 170)
-        .accessibilityIdentifier("quick-records.collection")
-        Toggle(text(.pinned), isOn: Binding(get: { model.pinnedOnly }, set: { model.setPinnedOnly($0) })).toggleStyle(.button)
-        Toggle(text(.currentApp), isOn: Binding(get: { model.currentAppOnly }, set: { model.setCurrentAppOnly($0) })).toggleStyle(.button).disabled(
-          !model.canFilterCurrentApp)
-        Picker(text(.allTypes), selection: Binding(get: { model.kind }, set: { model.setKind($0) })) {
-          Text(text(.allTypes)).tag(RecordPayloadKind?.none)
-          Text(text(.text)).tag(RecordPayloadKind?.some(.text))
-          Text(text(.image)).tag(RecordPayloadKind?.some(.image))
-          Text(text(.files)).tag(RecordPayloadKind?.some(.files))
-        }.labelsHidden().frame(width: 115)
-        Spacer()
-        if model.isSearching {
-          ProgressView().controlSize(.small).accessibilityLabel(text(.searching))
-        }
-        Button(action: model.togglePreview) {
-          Image(systemName: RillSystemSymbol.docTextMagnifyingglass.rawValue)
-        }
-        .help(text(.preview)).accessibilityLabel(text(.preview)).disabled(
-          model.selectedRecord == nil && !model.isPreviewVisible)
+      HStack(spacing: RecordPanelAppearance.paneInset) {
+        VStack(spacing: 9) {
+          HStack(spacing: 4) {
+            Menu {
+              Picker(
+                panelText(.collection),
+                selection: Binding(
+                  get: { model.collectionID }, set: { model.setCollection($0) })
+              ) {
+                Text(panelText(.allRecords)).tag(RecordCollectionID?.none)
+                ForEach(model.collections) { Text($0.name).tag(Optional($0.id)) }
+              }.pickerStyle(.inline)
+            } label: {
+              Text(
+                model.collections.first(where: { $0.id == model.collectionID })?.name
+                  ?? panelText(.allRecords)
+              ).lineLimit(1)
+            }
+            .menuStyle(.borderlessButton).font(.system(size: 11)).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("quick-records.collection")
+            Button {
+              showsFilters = true
+            } label: {
+              Image(systemName: RillSystemSymbol.sliderHorizontal3.rawValue)
+            }
+            .buttonStyle(.borderless).font(.system(size: 12)).frame(width: 28, height: 28)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel(panelText(.searchAndFilterOptions))
+          }.controlSize(.small).frame(height: 25).padding(.horizontal, 13).padding(.top, 10)
+          RecordSearchField(
+            text: Binding(get: { model.searchText }, set: { model.setSearchText($0) }),
+            placeholder: text(.search), onMove: model.moveSelection, onSubmit: pasteSelection,
+            onDigit: { if let subject = model.subject(at: $0) { onPaste(subject) } }, onCancel: onClose
+          )
+          .frame(height: 30).padding(.horizontal, 15)
+          resultList
+        }.frame(width: RecordPanelAppearance.sidebarWidth)
+          .recordPanelGlass(in: RecordPanelAppearance.paneShape)
+        contentPreview
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .background(RecordPanelAppearance.paper)
+          .clipShape(RecordPanelAppearance.paneShape)
       }
-      .controlSize(.small)
-      .padding(.horizontal, RillSpacing.panel)
-      .padding(.bottom, RillSpacing.row)
-      if model.canSearchByMeaning || model.jev != nil {
-        DisclosureGroup(text(.advancedSearch), isExpanded: $showsAdvancedSearch) {
-          if model.canSearchByMeaning { semanticControls }
-          if let jev = model.jev {
-            HStack {
-              Button(L10n.jev(.open, language: language)) { model.compareWithJev() }
-                .disabled(!model.canCompareWithJev)
-                .accessibilityIdentifier("records.jev-review")
-              Spacer()
-            }
-            .controlSize(.small).padding(.horizontal, RillSpacing.panel).padding(.bottom, RillSpacing.row)
-            .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
-              RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate, onConfigure: onConfigureJev, onRetry: model.compareWithJev)
-            }
-          }
+      .padding(RecordPanelAppearance.paneInset)
+      HStack(spacing: 8) {
+        Text(statusText).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+        Spacer(minLength: 0)
+        addToDrafts.frame(width: 88)
+        Button(text(.copy)) {
+          if let subject = model.selectedRecord?.reuseSubject { onCopy(subject) }
+        }.buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
+          .frame(width: 60, height: 32).disabled(model.selectedRecord == nil)
+          .accessibilityIdentifier("quick-records.copy")
+        Button(action: pasteSelection) {
+          Text(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language))
+            .lineLimit(1)
         }
-        .font(.caption)
-        .padding(.horizontal, RillSpacing.panel)
-        .padding(.bottom, RillSpacing.row)
+        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
+        .tint(.accentColor).frame(width: 84, height: 32).disabled(model.selectedRecord == nil)
+        .help(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language))
+        .accessibilityIdentifier("quick-records.insert")
       }
-      Divider()
-      GeometryReader { geometry in
-        if RecordQuickPanelLayoutPolicy.usesSidePreview(width: geometry.size.width), model.isPreviewVisible {
-          HSplitView {
-            resultList.frame(minWidth: 300, idealWidth: 360)
-            contentPreview(compact: false)
-              .padding(RillSpacing.panel).frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
-          }
-        } else {
-          VStack(spacing: 0) {
-            resultList
-            if model.isPreviewVisible {
-              Divider()
-              contentPreview(compact: true)
-                .frame(maxHeight: 180).padding(RillSpacing.row)
-            }
-          }
-        }
-      }
-      Divider()
-      VStack(alignment: .leading, spacing: RillSpacing.row) {
-        if capturePaused { Text(text(.capturePaused)).font(.caption).foregroundStyle(.secondary) }
-        if let message = model.cleanup.plan == nil
-          ? (model.cleanup.message ?? model.message) : model.message
-        {
-          Text(text(message)).font(.caption).foregroundStyle(
-            message == .copied ? Color.secondary : Color.orange)
-        }
-        HStack {
-          Text("↑↓").foregroundStyle(.secondary).accessibilityHidden(true)
-          Text(text(.paste) + " ↩").font(.caption).foregroundStyle(.secondary)
-          Spacer()
-          Menu {
-            ForEach(model.buffers.snapshot?.buffers ?? []) { summary in
-              Button(summary.buffer.name) {
-                if let id = model.selectedID { model.buffers.enqueue(id, bufferID: summary.id) }
-              }
-            }
-          } label: {
-            Label(L10n.surface(.addToDrafts, language: language), systemImage: RillSystemSymbol.textBadgePlus.rawValue)
-          }
-          .disabled(model.selectedID == nil)
-          .accessibilityIdentifier("quick-records.add-to-drafts")
-          Button(text(.copy)) {
-            if let subject = model.selectedRecord?.reuseSubject { onCopy(subject) }
-          }
-          .disabled(model.selectedRecord == nil)
-          Button(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language), action: pasteSelection)
-            .buttonStyle(.borderedProminent).disabled(model.selectedRecord == nil)
-        }
-        .controlSize(.small)
-        RecordCapacityView(capacity: model.capacity, language: language) {
-          Task { await model.cleanup.request() }
-        }
-      }.padding(RillSpacing.panel)
+      .font(.system(size: 12)).controlSize(.large)
+      .padding(.horizontal, 15).frame(height: 56)
+      .accessibilityIdentifier("quick-records.actions")
     }
-    .background(Color(nsColor: .windowBackgroundColor))
+    .onAppear { if !model.isPreviewVisible { model.togglePreview() } }
+    .onChange(of: model.selectedID) { _, _ in if !model.isPreviewVisible { model.togglePreview() } }
     .sheet(
-      isPresented: Binding(
-        get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })
-    ) {
-      RecordCleanupSheet(model: model.cleanup, language: language)
+      item: Binding(
+        get: {
+          if model.jev?.isPresented == true { return PresentedSheet.comparison }
+          return showsFilters ? PresentedSheet.filters : nil
+        },
+        set: {
+          if $0 == nil {
+            showsFilters = false
+            model.jev?.invalidate()
+          }
+        })
+    ) { sheet in
+      if sheet == .comparison, let jev = model.jev {
+        RecordJevSheet(
+          model: jev, language: language, onSelect: model.selectJevCandidate,
+          onConfigure: onConfigureJev, onRetry: model.compareWithJev)
+      } else {
+        filters
+      }
     }
     .accessibilityIdentifier("records.quick-panel")
   }
 
-  private func contentPreview(compact: Bool) -> some View {
-    ScrollView {
+  private var statusText: String {
+    if let message = model.cleanup.plan == nil ? (model.cleanup.message ?? model.message) : model.message {
+      return text(message)
+    }
+    if model.capacity.isCaptureLimited { return text(.capacityFull) }
+    if model.capacity.isWarning { return text(.capacityWarning) }
+    return capturePaused ? text(.capturePaused) : text(.paste) + " ↩"
+  }
+
+  private var addToDrafts: some View {
+    Menu {
+      ForEach(model.buffers.snapshot?.buffers ?? []) { summary in
+        Button(summary.buffer.name) {
+          if let id = model.selectedID { model.buffers.enqueue(id, bufferID: summary.id) }
+        }
+      }
+    } label: {
+      Text(panelText(.addToDrafts))
+    }
+    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+    .font(.system(size: 12)).foregroundStyle(Color.accentColor).frame(height: 32)
+    .disabled(model.selectedID == nil)
+    .accessibilityIdentifier("quick-records.add-to-drafts")
+  }
+
+  private var filters: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Toggle(text(.pinned), isOn: Binding(get: { model.pinnedOnly }, set: { model.setPinnedOnly($0) }))
+      Toggle(text(.currentApp), isOn: Binding(get: { model.currentAppOnly }, set: { model.setCurrentAppOnly($0) }))
+        .disabled(!model.canFilterCurrentApp)
+      Picker(text(.allTypes), selection: Binding(get: { model.kind }, set: { model.setKind($0) })) {
+        Text(text(.allTypes)).tag(RecordPayloadKind?.none)
+        Text(text(.text)).tag(RecordPayloadKind?.some(.text))
+        Text(text(.image)).tag(RecordPayloadKind?.some(.image))
+        Text(text(.files)).tag(RecordPayloadKind?.some(.files))
+      }
+      if model.canSearchByMeaning { semanticControls }
+      if model.jev != nil {
+        Button(L10n.jev(.open, language: language)) { model.compareWithJev() }
+          .disabled(!model.canCompareWithJev)
+          .accessibilityIdentifier("records.jev-review")
+      }
+      RecordCapacityView(capacity: model.capacity, language: language) {
+        Task { await model.cleanup.request() }
+      }
+      HStack {
+        Spacer()
+        Button(panelText(.done)) { showsFilters = false }
+      }
+    }.padding(20).frame(width: 440)
+      .sheet(isPresented: Binding(get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })) {
+        RecordCleanupSheet(model: model.cleanup, language: language)
+      }
+  }
+
+  private var contentPreview: some View {
+    Group {
       if let preview = model.preview {
-        RecordContentPreview(record: preview.record, language: language, imageHeight: compact ? 120 : 240)
-          .frame(maxWidth: .infinity, alignment: .leading)
-      } else if model.isLoadingPreview || model.isSearching {
-        ProgressView().controlSize(.small)
+        VStack(alignment: .leading, spacing: 0) {
+          VStack(alignment: .leading, spacing: 4) {
+            Text(text(.preview)).font(.system(size: 17, weight: .medium)).lineLimit(1)
+            HStack(spacing: 5) {
+              if let application = preview.record.provenance.sourceApplicationName { Text(application) }
+              Text(preview.record.createdAt, style: .relative)
+            }.font(.system(size: 11)).foregroundStyle(.secondary)
+          }.padding(.horizontal, 22).padding(.top, 18).frame(height: 72, alignment: .top)
+          ScrollView {
+            RecordContentPreview(record: preview.record, language: language, imageHeight: 240)
+              .font(.system(size: 14)).lineSpacing(7)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 22).padding(.bottom, 18)
+          }
+        }
       } else {
-        Text(text(.recordUnavailable)).foregroundStyle(.secondary)
+        VStack {
+          Spacer()
+          if model.isLoadingPreview || model.isSearching {
+            ProgressView().controlSize(.small)
+          } else {
+            Text(text(.recordUnavailable)).font(.system(size: 12)).foregroundStyle(.secondary)
+          }
+          Spacer()
+        }
       }
     }
   }
@@ -292,6 +326,7 @@ public struct RecordQuickPanelView: View {
         }
       }
       .listStyle(.inset)
+      .scrollContentBackground(.hidden)
       .overlay {
         if model.selectableResults.isEmpty && !model.isSearching && model.semanticState != .working {
           ContentUnavailableView(
@@ -354,6 +389,7 @@ public struct RecordQuickPanelView: View {
 
   private func selectableRow(_ item: RecordSummary, index: Int) -> some View {
     row(item, index: index).tag(item.id).id(item.id)
+      .listRowSeparator(.hidden)
       .onTapGesture(count: 2) { onPaste(item.reuseSubject) }
       .contextMenu {
         Button(text(.preview)) {
@@ -369,35 +405,30 @@ public struct RecordQuickPanelView: View {
       }
   }
 
+  private func panelText(_ key: RecordPanelText) -> String { L10n.recordPanel(key, language: language) }
   private func text(_ key: QuickRecordText) -> String { L10n.quickRecord(key, language: language) }
   private func pasteSelection() {
     if let subject = model.selectedRecord?.reuseSubject { onPaste(subject) }
   }
 
   private func row(_ item: RecordSummary, index: Int) -> some View {
-    HStack(spacing: RillSpacing.row) {
-      Image(
-        systemName: item.header.kind == .image
-          ? RillSystemSymbol.photo.rawValue
-          : (item.header.kind == .files
-            ? RillSystemSymbol.docOnDoc.rawValue : RillSystemSymbol.textAlignLeft.rawValue)
-      )
-      .frame(width: 24).foregroundStyle(.secondary)
+    HStack(spacing: 6) {
       VStack(alignment: .leading, spacing: 4) {
-        Text(item.header.kind == .image ? text(.image) : item.header.preview).lineLimit(2)
-        HStack(spacing: RillSpacing.row) {
+        Text(item.header.kind == .image ? text(.image) : item.header.preview)
+          .font(.system(size: 12, weight: .medium)).lineLimit(1)
+        HStack(spacing: 5) {
           if item.metadata.isPinned { Image(systemName: RillSystemSymbol.pinFill.rawValue) }
           Text(item.header.provenance.sourceApplicationName ?? "").lineLimit(1)
           Text(item.header.createdAt, style: .relative)
-        }.font(.caption).foregroundStyle(.secondary)
+        }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
       }
-      Spacer(minLength: RillSpacing.row)
+      Spacer(minLength: 0)
       if index < 9 {
-        Text("⌘\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        Text("⌘\(index + 1)").font(.system(size: 10).monospacedDigit()).foregroundStyle(.tertiary)
           .accessibilityHidden(true)
       }
     }
-    .padding(.vertical, 5)
+    .frame(minHeight: 43).padding(.vertical, 5)
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
     .accessibilityAction(named: Text(text(.paste))) { onPaste(item.reuseSubject) }
@@ -418,6 +449,9 @@ struct RecordSearchField: NSViewRepresentable {
     field.delegate = context.coordinator
     field.placeholderString = placeholder
     field.sendsSearchStringImmediately = true
+    field.drawsBackground = false
+    field.controlSize = .small
+    field.font = .systemFont(ofSize: 12)
     field.onDigit = onDigit
     field.setAccessibilityIdentifier("records.quick-search")
     return field

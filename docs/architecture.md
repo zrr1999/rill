@@ -82,7 +82,7 @@ drain separately from the clipboard polling lifecycle.
 | --- | --- | --- |
 | Records, memberships, buffers, routes, leases, and persistence revision | `RecordStore` | Commands commit before publishing catalog updates or collection events. |
 | Pending draft text, revisions and speech suggestions | `RecordStore` | Drafts belong to exact buffer entries; sending derives an immutable Record and replaces that entry atomically. |
-| Unified panel mode, visibility, placement, target capture and focus | `RecordPanelController` | One window keeps Collections and Drafts mounted. Source preferences restore a non-key strip; each editing visit freezes its target, and sending keeps the strip visible. |
+| Unified panel mode, visibility, placement, target capture and focus | `RecordPanelController` | One controller owns a fixed non-key capsule and a separate page keeping Collections and Drafts mounted. Hover never captures a target or resizes the capsule; each explicit editing visit freezes its target, and draft sending keeps the capsule visible. |
 | Draft selection, native composition and unsaved edits | `RecordBufferDraftModel` | One editing session retains local text on failure and drains accepted saves at shutdown; panel visibility does not own persistence. |
 | SQLite connection and transactions | `SQLitePersistenceStore` | Settings, history, and catalog extensions share one actor and connection. A transaction never suspends between statements. |
 | Active workflow recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |

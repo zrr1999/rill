@@ -18,8 +18,19 @@ final class UIRenderEvidenceTests: XCTestCase {
     let output = URL(fileURLWithPath: directory)
     try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
     let store = RecordStore()
-    let ids = try await seedRecords(store)
-    _ = try await store.enqueueRecord(ids.last!.1, in: RecordBuffer.speechID)
+    _ = try await seedRecords(store)
+    let drafts: [(String, RecordBufferID)] = [
+      ("会议记录\n\n明天下午三点讨论设计稿。\n\n先确认悬浮窗的交互，再整理页面里的内容和操作顺序。", RecordBuffer.speechID),
+      ("待整理片段\n\n把零散的想法放在这里，准备好后再发送。", RecordBuffer.speechID),
+      ("项目链接\n\nhttps://example.com/design-notes", RecordBuffer.clipboardID),
+    ]
+    for (text, bufferID) in drafts {
+      let record = try await store.ingest(
+        .init(
+          payload: .text(text),
+          provenance: .init(source: .init(kind: .user))), into: [])
+      _ = try await store.enqueueRecord(record.id, in: bufferID)
+    }
     let workspace = RecordWorkspaceModel(store: store)
     let model = makeHarness(recordWorkspace: workspace).model
     let session = workspace.makeQuickPanelModel()
@@ -39,29 +50,40 @@ final class UIRenderEvidenceTests: XCTestCase {
         let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
         for mode in RecordPanelPresentation.Mode.allCases {
           presentation.mode = mode
-          for width in [620.0, 820.0] {
-            let view = UnifiedRecordPanelView(
-              presentation: presentation, model: model,
-              onModeChange: { presentation.mode = $0 }, onCollapse: {}, onExpand: {}, onClose: {}
-            ) {
-              RecordQuickPanelView(
-                model: session, language: language, capturePaused: false,
-                onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in })
-            }
-            try await render(
-              view, size: NSSize(width: width, height: 600), dark: dark, floating: true,
-              to: output.appendingPathComponent("unified-\(mode.rawValue)-\(variant)-\(Int(width)).png"))
-          }
-        }
-        presentation.isCollapsed = true
-        try await render(
-          UnifiedRecordPanelView(
+          let view = UnifiedRecordPanelView(
             presentation: presentation, model: model,
-            onModeChange: { _ in }, onCollapse: {}, onExpand: {}, onClose: {}
-          ) { Color.clear },
-          size: NSSize(width: 320, height: 56), dark: dark, floating: true,
-          to: output.appendingPathComponent("pending-strip-\(variant).png"))
-        presentation.isCollapsed = false
+            onModeChange: { presentation.mode = $0 }
+          ) {
+            RecordQuickPanelView(
+              model: session, language: language, capturePaused: false,
+              onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in })
+          }
+          for size in [NSSize(width: 620, height: 320), NSSize(width: 668, height: 468), NSSize(width: 820, height: 560)] {
+            try await render(
+              view, size: size, dark: dark, floating: true,
+              to: output.appendingPathComponent("unified-\(mode.rawValue)-\(variant)-\(Int(size.width)).png"))
+          }
+          let scene = ZStack {
+            LinearGradient(
+              colors: dark
+                ? [Color(red: 0.16, green: 0.22, blue: 0.3), Color(red: 0.29, green: 0.24, blue: 0.33)]
+                : [Color(red: 0.77, green: 0.85, blue: 0.91), Color(red: 0.89, green: 0.83, blue: 0.83)],
+              startPoint: .topTrailing, endPoint: .bottomLeading)
+            VStack(spacing: 14) {
+              RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {})
+              view.frame(width: 668, height: 468)
+                .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
+            }
+          }
+          try await render(
+            scene, size: NSSize(width: 760, height: 610), dark: dark,
+            focusWindow: true, floating: true,
+            to: output.appendingPathComponent("floating-scene-\(mode.rawValue)-\(variant).png"))
+        }
+        try await render(
+          RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {}),
+          size: NSSize(width: 260, height: 48), dark: dark, floating: true,
+          to: output.appendingPathComponent("pending-capsule-\(variant).png"))
         try await render(
           VoiceSetupView(model: model), size: NSSize(width: 500, height: 360), dark: dark,
           to: output.appendingPathComponent("setup-\(variant).png"))
@@ -430,7 +452,7 @@ final class UIRenderEvidenceTests: XCTestCase {
     view.sizingOptions = []
     let window: NSWindow =
       floating
-      ? NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+      ? RenderPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
       : NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     if floating {
       window.isOpaque = false
@@ -470,8 +492,11 @@ final class UIRenderEvidenceTests: XCTestCase {
             && $0.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier
         })
       let configuration = SCStreamConfiguration()
-      configuration.width = Int(window.frame.width * window.backingScaleFactor)
-      configuration.height = Int(window.frame.height * window.backingScaleFactor)
+      let scale =
+        ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_SCALE"].flatMap(Double.init)
+        ?? window.backingScaleFactor
+      configuration.width = Int(window.frame.width * scale)
+      configuration.height = Int(window.frame.height * scale)
       configuration.showsCursor = false
       configuration.capturesAudio = false
       configuration.ignoreShadowsSingleWindow = true
@@ -488,4 +513,8 @@ final class UIRenderEvidenceTests: XCTestCase {
     try png.write(to: url)
 
   }
+}
+
+private final class RenderPanel: NSPanel {
+  override var canBecomeKey: Bool { true }
 }

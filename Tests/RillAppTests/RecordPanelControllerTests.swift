@@ -50,7 +50,8 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     RecordPanelController(
       pasteTargetProvider: { nil },
       pasteTargetRestorer: { _ in false },
-      reduceMotionProvider: { reduceMotion }
+      reduceMotionProvider: { reduceMotion },
+      pointerLocationProvider: { NSPoint(x: -100_000, y: -100_000) }
     )
   }
 
@@ -65,7 +66,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testDesktopFocusLossDuringPresentationEventuallyDismissesPanel() async throws {
+  func testDesktopFocusLossDuringPresentationEventuallyLeavesOnlyTheCapsule() async throws {
     guard try await requireInteractiveDesktop() else { return }
     let otherWindow = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
@@ -77,11 +78,12 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     XCTAssertTrue(otherWindow.isKeyWindow)
     XCTAssertTrue(controller.isVisible)
 
-    let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-    while controller.isVisible, ContinuousClock.now < deadline {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+    while !controller.presentation.isCollapsed, ContinuousClock.now < deadline {
       try await Task.sleep(for: .milliseconds(10))
     }
-    XCTAssertFalse(controller.isVisible, "A panel that lost keyboard focus must not remain over the typing target")
+    XCTAssertTrue(controller.presentation.isCollapsed, "The page should leave the typing target unobstructed")
+    XCTAssertTrue(controller.isVisible, "The separate capsule stays available")
     await controller.shutdown()
   }
 
@@ -96,7 +98,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
     let panel = try XCTUnwrap(
       NSApp.windows.first {
-        $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+        $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
       })
     otherWindow.makeKeyAndOrderFront(nil)
     XCTAssertTrue(otherWindow.isKeyWindow)
@@ -121,7 +123,50 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testAnimatedDismissKeepsPanelVisibleUntilFadeCompletes() async throws {
+  func testEscapeCollapsesThePageWithItsPersistentPreview() async throws {
+    let controller = makeController(reduceMotion: true)
+    let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
+    controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+    let panel = try XCTUnwrap(
+      NSApp.windows.first {
+        $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+      })
+    let session = try XCTUnwrap(controller.quickPanelModel)
+    if !session.isPreviewVisible { session.togglePreview() }
+    panel.cancelOperation(nil)
+    XCTAssertTrue(controller.presentation.isCollapsed)
+    XCTAssertTrue(controller.isVisible)
+    XCTAssertTrue(session.isPreviewVisible, "The fixed preview remains ready for the next opening")
+    await controller.shutdown()
+  }
+
+  func testDesktopCapsuleAccessibilityPressActivatesAnAlreadyHoveredPage() async throws {
+    guard try await requireInteractiveDesktop() else { return }
+    let controller = makeController(reduceMotion: true)
+    let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
+    controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+    controller.collapse()
+    controller.expand(activate: false)
+    XCTAssertFalse(controller.isKey)
+    let capsule = try XCTUnwrap(
+      NSApp.windows.first {
+        $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+      })
+    let frame = capsule.frame
+    func handle(in view: NSView) -> NSView? {
+      if view.accessibilityIdentifier() == "record-panel.move-and-open" { return view }
+      return view.subviews.lazy.compactMap { handle(in: $0) }.first
+    }
+    for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
+    let control = try XCTUnwrap(handle(in: XCTUnwrap(capsule.contentView)))
+    XCTAssertTrue(control.accessibilityPerformPress())
+    XCTAssertTrue(controller.isKey)
+    XCTAssertEqual(capsule.frame, frame)
+    await controller.shutdown()
+  }
+
+  func testDesktopAnimatedDismissKeepsPanelVisibleUntilFadeCompletes() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let controller = makeController(reduceMotion: false)
 
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
