@@ -38,7 +38,7 @@ struct RecordPanelInteractionTests {
     try #require(dragActivity.isEmpty)
     #expect(harness.frames.page == nil)
     await harness.clock.waitForPendingCount(1)
-    #expect(harness.clock.lastDelay == .milliseconds(300))
+    #expect(harness.clock.lastDelay == .milliseconds(120))
     harness.clock.advance()
     #expect(await actions.next() == .expanded)
   }
@@ -48,7 +48,7 @@ struct RecordPanelInteractionTests {
     var actions = harness.actions.makeAsyncIterator()
     harness.controller.pointerMoved(to: harness.handlePoint)
     await harness.clock.waitForPendingCount(1)
-    #expect(harness.clock.lastDelay == .milliseconds(300))
+    #expect(harness.clock.lastDelay == .milliseconds(120))
     #expect(harness.frames.page == nil)
     harness.clock.advance()
     #expect(await actions.next() == .expanded)
@@ -60,7 +60,7 @@ struct RecordPanelInteractionTests {
     let harness = HoverHarness(expanded: true)
     harness.controller.pointerMoved(to: .zero)
     await harness.clock.waitForPendingCount(1)
-    #expect(harness.clock.lastDelay == .milliseconds(700))
+    #expect(harness.clock.lastDelay == .milliseconds(220))
     let page = harness.frames.page!
     harness.controller.pointerMoved(
       to: NSPoint(
@@ -71,6 +71,38 @@ struct RecordPanelInteractionTests {
     harness.controller.pointerMoved(to: NSPoint(x: page.midX, y: page.midY))
     #expect(harness.clock.pendingCount == 0)
     harness.controller.stop()
+  }
+
+  @Test func passingOverTheCapsuleDoesNotOpenItLater() async {
+    let harness = HoverHarness()
+    defer { harness.controller.stop() }
+    harness.controller.pointerMoved(to: harness.handlePoint)
+    await harness.clock.waitForPendingCount(1)
+    harness.controller.pointerMoved(to: .zero)
+    await harness.clock.waitForPendingCount(0)
+    harness.clock.advance()
+    #expect(harness.frames.page == nil)
+  }
+
+  @Test func smallBoundaryJitterAndReturningCancelTheExitDeadline() async {
+    let harness = HoverHarness(expanded: true)
+    defer { harness.controller.stop() }
+    var actions = harness.actions.makeAsyncIterator()
+    let page = harness.frames.page!
+    harness.controller.pointerMoved(to: NSPoint(x: page.maxX + 4, y: page.midY))
+    #expect(harness.clock.pendingCount == 0)
+    harness.controller.pointerMoved(to: NSPoint(x: page.maxX + 12, y: page.midY))
+    await harness.clock.waitForPendingCount(1)
+    harness.controller.pointerMoved(to: NSPoint(x: page.midX, y: page.midY))
+    await harness.clock.waitForPendingCount(0)
+    harness.clock.advance()
+    #expect(harness.collapseCount == 0)
+    harness.controller.pointerMoved(to: .zero)
+    await harness.clock.waitForPendingCount(1)
+    #expect(harness.clock.lastDelay == .milliseconds(220))
+    harness.clock.advance()
+    #expect(await actions.next() == .collapsed)
+    #expect(harness.collapseCount == 1)
   }
 
   @Test func pressingAndEditingHoldThePageUntilReleased() async {
@@ -162,20 +194,110 @@ struct RecordPanelInteractionTests {
     }
   }
 
-  @Test func movingAnExpandedPairPreservesSizesAndRelativePlacementAtAnEdge() {
+  @Test(arguments: [false, true])
+  func draggingToTheOppositeVerticalEdgeFlipsThePageWithoutConstrainingTheCapsule(toTop: Bool) {
     let screen = NSRect(x: -1440, y: 0, width: 1440, height: 900)
-    let capsule = NSRect(x: -850, y: 730, width: 260, height: 48)
+    let bounds = screen.insetBy(dx: RecordPanelPlacement.margin, dy: RecordPanelPlacement.margin)
+    let capsule = NSRect(x: -850, y: toTop ? bounds.minY : bounds.maxY - 48, width: 260, height: 48)
     let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
-    let delta = RecordPanelPlacement.translation(
-      NSPoint(x: 2000, y: -2000),
+    let moved = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 2000, y: toTop ? 2000 : -2000),
       capsule: capsule, page: page, in: screen)
-    let movedCapsule = capsule.offsetBy(dx: delta.x, dy: delta.y)
-    let movedPage = page.offsetBy(dx: delta.x, dy: delta.y)
+    let movedCapsule = moved.capsule
+    let movedPage = moved.page!
     #expect(screen.contains(movedCapsule.union(movedPage)))
     #expect(movedCapsule.size == capsule.size)
     #expect(movedPage.size == page.size)
-    #expect(movedPage.minY - movedCapsule.minY == page.minY - capsule.minY)
-    #expect(movedPage.midX - movedCapsule.midX == page.midX - capsule.midX)
+    #expect(movedCapsule.minY == (toTop ? bounds.maxY - capsule.height : bounds.minY))
+    #expect(toTop ? movedPage.maxY == movedCapsule.minY - 14 : movedPage.minY == movedCapsule.maxY + 14)
+    #expect(movedCapsule.maxX == screen.maxX - RecordPanelPlacement.margin)
+    #expect(movedPage.maxX == movedCapsule.maxX)
+  }
+
+  @Test func crossingTheScreenMidpointKeepsThePageOnScreenWithoutSideJitter() {
+    let screen = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let bounds = screen.insetBy(dx: RecordPanelPlacement.margin, dy: RecordPanelPlacement.margin)
+    let capsule = NSRect(x: 590, y: bounds.minY, width: 260, height: 48)
+    let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
+    var placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: screen.midY - capsule.midY), capsule: capsule, page: page, in: screen)
+    #expect(placement.page!.minY == placement.capsule.maxY + 14)
+    #expect(placement.page!.height < RecordPanelPlacement.pageSize.height)
+
+    for movement in [5.0, -10.0, 5.0] {
+      placement = RecordPanelPlacement.movingFrames(
+        NSPoint(x: 0, y: movement), capsule: placement.capsule, page: placement.page, in: screen)
+      #expect(placement.page!.minY == placement.capsule.maxY + 14)
+      #expect(bounds.contains(placement.page!))
+    }
+    placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: 20), capsule: placement.capsule, page: placement.page, in: screen)
+    #expect(placement.page!.maxY == placement.capsule.minY - 14)
+    placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: -25), capsule: placement.capsule, page: placement.page, in: screen)
+    #expect(placement.page!.maxY == placement.capsule.minY - 14)
+    #expect(bounds.contains(placement.page!))
+
+    placement = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: 2000), capsule: placement.capsule, page: placement.page, in: screen)
+    #expect(placement.capsule.maxY == bounds.maxY)
+    #expect(placement.page!.size == RecordPanelPlacement.pageSize)
+    #expect(placement.page!.maxY == placement.capsule.minY - 14)
+    #expect(bounds.contains(placement.page!))
+  }
+
+  @Test(arguments: [false, true])
+  func draggingIntoSpaceForEitherSideKeepsTheExistingSide(opensAbove: Bool) {
+    let screen = NSRect(x: 0, y: 0, width: 1440, height: 1400)
+    let capsule = NSRect(x: 590, y: opensAbove ? 12 : 1340, width: 260, height: 48)
+    let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
+    let moved = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 0, y: screen.midY - capsule.midY), capsule: capsule, page: page, in: screen)
+    #expect(moved.page!.size == page.size)
+    #expect(opensAbove ? moved.page!.minY == moved.capsule.maxY + 14 : moved.page!.maxY == moved.capsule.minY - 14)
+  }
+
+  @Test(
+    arguments: [
+      NSRect(x: 0, y: 24, width: 1440, height: 850),
+      NSRect(x: -1280, y: 70, width: 1280, height: 700),
+      NSRect(x: 200, y: -900, width: 1024, height: 768),
+    ], [false, true])
+  func capsuleReachesEitherEdgeWhileThePageRemainsReadable(_ screen: NSRect, opensAbove: Bool) {
+    let bounds = screen.insetBy(dx: RecordPanelPlacement.margin, dy: RecordPanelPlacement.margin)
+    let capsule = NSRect(
+      x: screen.midX - 130, y: opensAbove ? bounds.minY : bounds.maxY - 48,
+      width: 260, height: 48)
+    let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
+    for horizontalMovement in [-2000.0, 2000.0] {
+      let moved = RecordPanelPlacement.movingFrames(
+        NSPoint(x: horizontalMovement, y: 0), capsule: capsule, page: page, in: screen)
+      let movedPage = moved.page!
+      #expect(moved.capsule.minX == (horizontalMovement < 0 ? bounds.minX : bounds.maxX - capsule.width))
+      #expect(bounds.contains(movedPage))
+      #expect(movedPage.size == page.size)
+      #expect(movedPage.minY == page.minY)
+      #expect(!movedPage.intersects(moved.capsule))
+      let gapPoint = NSPoint(
+        x: moved.capsule.midX,
+        y: opensAbove ? moved.capsule.maxY + 7 : moved.capsule.minY - 7)
+      #expect(RecordPanelPlacement.contains(gapPoint, capsule: moved.capsule, page: movedPage))
+      let returned = RecordPanelPlacement.movingFrames(
+        NSPoint(x: capsule.minX - moved.capsule.minX, y: 0),
+        capsule: moved.capsule, page: movedPage, in: screen)
+      #expect(returned.capsule == capsule)
+      #expect(returned.page == page)
+    }
+  }
+
+  @Test func collapsedCapsuleUsesItsOwnScreenBounds() {
+    let screen = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let moved = RecordPanelPlacement.movingFrames(
+      NSPoint(x: 2000, y: -2000), capsule: NSRect(x: 500, y: 760, width: 260, height: 48),
+      page: nil, in: screen)
+    #expect(moved.page == nil)
+    #expect(moved.capsule.maxX == screen.maxX - RecordPanelPlacement.margin)
+    #expect(moved.capsule.minY == screen.minY + RecordPanelPlacement.margin)
   }
 }
 

@@ -333,10 +333,15 @@ it. The displayed target remains controller-owned and is revalidated at the
 output boundary. A persistent strip does not authorize reuse of a stale target.
 
 The capsule retains its position under `RillRecordCapsule`. Hover opens a separate
-668×468pt page after 300ms; available screen space may reduce its size before
+668×468pt page after 120ms; available screen space may reduce its size before
 opening. Crossing the gap keeps the page visible, and leaving both windows starts
-a 700ms delay. Editing, pointer presses, composition, sheets, and pinning hold the
-page open. Dragging moves the two windows together. The page has no collapse
+a 220ms delay, with 6pt tolerance around each window edge. Returning cancels the
+close timer. Editing, pointer presses, composition, sheets, and pinning hold the
+page open. Each window is clamped horizontally on its own, so the capsule can
+reach the 12pt screen margin after the page reaches its boundary. Vertical dragging
+keeps the current page side while it fits, moves the page below a capsule near the
+top or above one near the bottom, and preserves a 14pt gap. Limited space reduces
+page height; normal height returns when space is available. The page has no collapse
 button, and content changes never move its controls. These behaviors are owned by
 [RecordPanelController](Sources/RillApp/RecordPanelController.swift).
 

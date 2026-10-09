@@ -107,7 +107,7 @@ final class RecordPanelHoverController {
       }
       guard openTask == nil else { return }
       openTask = Task { [weak self, wait] in
-        do { try await wait(.milliseconds(300)) } catch { return }
+        do { try await wait(.milliseconds(120)) } catch { return }
         guard !Task.isCancelled, let self else { return }
         self.openTask = nil
         guard let frames = self.frames(), self.shouldExpand(frames) else { return }
@@ -123,7 +123,7 @@ final class RecordPanelHoverController {
       }
       guard closeTask == nil else { return }
       closeTask = Task { [weak self, wait] in
-        do { try await wait(.milliseconds(700)) } catch { return }
+        do { try await wait(.milliseconds(220)) } catch { return }
         guard !Task.isCancelled, let self else { return }
         self.closeTask = nil
         guard let frames = self.frames(), self.shouldCollapse(frames) else { return }

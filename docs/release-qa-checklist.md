@@ -495,16 +495,25 @@ is established per app and content type; see [continuous output](continuous-outp
 
 ### Editable pending drafts
 
-- [ ] Hover the freely placed capsule for 300ms: the separate page opens without
+- [ ] Hover the freely placed capsule for 120ms: the separate page opens without
       moving or resizing the capsule, stealing focus, or capturing an output target.
       Drag from the capsule before the delay: it moves without opening the page.
-- [ ] Cross the gap to the page and return during the 700ms exit delay. The page
+- [ ] Cross the gap to the page and return during the 220ms exit delay. The page
       stays open. Keep a button pressed or edit with the pointer outside: it must
       not collapse. Verify Keep open, attached sheets, and physical IME candidates.
+      Small movements within 6pt of the page edge must not start dismissal; a quick
+      pass over the capsule must not open it after the pointer has already left.
 - [ ] Change modes, counts, selections and output status while preparing to click
       Copy or Send. Window geometry and the bottom action positions stay fixed.
-      Drag the open pair near every screen edge and across displays: no automatic
-      side flip or resize occurs during the drag. Reopen after a display change.
+- [ ] Drag the open pair near every screen edge and across displays. The capsule
+      reaches the 12pt screen margin independently of the wider page. Near the top,
+      the page moves below the capsule; near the bottom, it moves above. Keep the
+      current side while the full page fits, and keep a 14pt gap without overlap.
+      When neither side fits, limit the page height to available space and switch
+      only when the other side has more than 24pt extra space; small movements
+      near the midpoint must not repeatedly flip it. Restore normal height when
+      space returns. Reopen after a display change. Physical IME composition and
+      attached sheets must prevent dragging.
 - [ ] Check capsule drag/close and keyboard or VoiceOver expansion. No separate
       collapse button is present; Escape and pointer exit retain their own behavior.
 - [ ] Enable voice collection and clipboard collection separately, both in Settings

@@ -66,7 +66,8 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testFocusLossDuringPresentationEventuallyLeavesOnlyTheCapsule() async throws {
+  func testDesktopFocusLossDuringPresentationEventuallyLeavesOnlyTheCapsule() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let otherWindow = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
       styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -86,7 +87,8 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testRegainingFocusCancelsPendingDismissal() async throws {
+  func testDesktopRegainingFocusCancelsPendingDismissal() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let otherWindow = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
       styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -138,7 +140,8 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testCapsuleAccessibilityPressActivatesAnAlreadyHoveredPage() async throws {
+  func testDesktopCapsuleAccessibilityPressActivatesAnAlreadyHoveredPage() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let controller = makeController(reduceMotion: true)
     let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
@@ -162,7 +165,8 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
-  func testAnimatedDismissKeepsPanelVisibleUntilFadeCompletes() async throws {
+  func testDesktopAnimatedDismissKeepsPanelVisibleUntilFadeCompletes() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     let controller = makeController(reduceMotion: false)
 
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})

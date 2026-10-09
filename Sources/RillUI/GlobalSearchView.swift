@@ -342,31 +342,31 @@ private struct GlobalSearchResultRow: View {
       HStack(alignment: .top, spacing: RillSpacing.card) {
         Image(systemName: result.symbolName)
           .frame(width: Self.iconSize, height: Self.iconSize)
-          .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .accentColor)
+          .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .accentColor)
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 3) {
           Text(result.title)
             .font(.body.weight(.semibold))
-            .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .primary)
+            .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
             .lineLimit(1)
           if let detail = result.detail {
             Text(detail)
               .font(.caption)
-              .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+              .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
               .lineLimit(1)
           }
           if let preview = result.preview {
             Text(preview)
               .font(.callout)
-              .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+              .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
               .lineLimit(2)
           }
         }
 
         Spacer(minLength: 8)
         Image(systemName: RillSystemSymbol.arrowForward.rawValue)
-          .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+          .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
           .accessibilityHidden(true)
       }
       .padding(RillSpacing.card)

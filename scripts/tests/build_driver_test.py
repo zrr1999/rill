@@ -37,22 +37,31 @@ class BuildDriverTests(unittest.TestCase):
             with self.assertRaises(build.BuildError):
                 build.main(["test-domain", "--scratch-path", ".build"])
 
-    def test_full_tests_compile_catalogs_and_keep_the_same_arena_for_filtered_runs(self):
-        invocations = []
+    def test_build_and_tests_compile_catalogs_without_cleaning_shared_outputs(self):
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch.object(build, "BuildContext") as context,
+            patch.object(build, "toolchain_identity", return_value={"swift": "fixture"}),
+            patch.object(build.BuildContext, "swift", return_value="") as swift,
+            patch.object(build.BuildContext, "clean") as clean,
         ):
+            output = self.root / ".build/compiled-output"
             for arguments in (
+                ["build", "--product", "RillApp"],
                 ["test", "--parallel", "--num-workers", "4"],
                 ["test", "--skip-build", "--filter", "RillUITests"],
+                ["build", "--product", "RillApp"],
             ):
-                build.main(arguments)
-                invocations.append(context.call_args.args[2])
-            self.assertEqual(build.build_settings(invocations[0]), build.build_settings(invocations[1]))
-            self.assertEqual(build.option(invocations[0], ("--build-system",), None), "swiftbuild")
-            build.main(["test-domain", "--filter", "SessionCoordinatorTests"])
-            self.assertNotIn("--build-system", context.call_args.args[2])
+                build.main(arguments + ["--package-path", str(self.root)])
+                self.assertEqual(build.option(swift.call_args.args[1], ("--build-system",), None), "swiftbuild")
+                if output.exists():
+                    self.assertEqual(output.read_text(), "compiled")
+                else:
+                    output.write_text("compiled")
+            clean.assert_not_called()
+            build.main(["build", "--build-system", "native", "--package-path", str(self.root)])
+            self.assertEqual(build.option(swift.call_args.args[1], ("--build-system",), None), "native")
+            build.main(["test-domain", "--filter", "SessionCoordinatorTests", "--package-path", str(self.root)])
+            self.assertNotIn("--build-system", swift.call_args.args[1])
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

@@ -95,6 +95,11 @@ public struct RecordCleanupSheet: View {
 }
 
 public struct RecordQuickPanelView: View {
+  private enum PresentedSheet: String, Identifiable {
+    case filters, comparison
+    var id: Self { self }
+  }
+
   @State private var showsFilters = false
   @Bindable private var model: RecordQuickPanelModel
   private let language: AppLanguage
@@ -158,7 +163,7 @@ public struct RecordQuickPanelView: View {
             placeholder: text(.search), onMove: model.moveSelection, onSubmit: pasteSelection,
             onDigit: { if let subject = model.subject(at: $0) { onPaste(subject) } }, onCancel: onClose
           )
-          .padding(.horizontal, 6).recordPanelSearchSurface().padding(.horizontal, 9)
+          .frame(height: 30).padding(.horizontal, 15)
           resultList
         }.frame(width: RecordPanelAppearance.sidebarWidth)
           .rillGlass(in: RecordPanelAppearance.paneShape)
@@ -196,7 +201,27 @@ public struct RecordQuickPanelView: View {
       if !model.isPreviewVisible { model.togglePreview() }
     }
     .onChange(of: model.selectedID) { _, _ in if !model.isPreviewVisible { model.togglePreview() } }
-    .sheet(isPresented: $showsFilters) { filters }
+    .sheet(
+      item: Binding(
+        get: {
+          if model.jev?.isPresented == true { return PresentedSheet.comparison }
+          return showsFilters ? PresentedSheet.filters : nil
+        },
+        set: {
+          if $0 == nil {
+            showsFilters = false
+            model.jev?.invalidate()
+          }
+        })
+    ) { sheet in
+      if sheet == .comparison, let jev = model.jev {
+        RecordJevSheet(
+          model: jev, language: language, onSelect: model.selectJevCandidate,
+          onConfigure: onConfigureJev, onRetry: model.compareWithJev)
+      } else {
+        filters
+      }
+    }
     .accessibilityIdentifier("records.quick-panel")
   }
 
@@ -237,15 +262,10 @@ public struct RecordQuickPanelView: View {
         Text(text(.files)).tag(RecordPayloadKind?.some(.files))
       }
       if model.canSearchByMeaning { semanticControls }
-      if let jev = model.jev {
+      if model.jev != nil {
         Button(L10n.jev(.open, language: language)) { model.compareWithJev() }
           .disabled(!model.canCompareWithJev)
           .accessibilityIdentifier("records.jev-review")
-          .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
-            RecordJevSheet(
-              model: jev, language: language, onSelect: model.selectJevCandidate,
-              onConfigure: onConfigureJev, onRetry: model.compareWithJev)
-          }
       }
       RecordCapacityView(capacity: model.capacity, language: language) {
         Task { await model.cleanup.request() }
