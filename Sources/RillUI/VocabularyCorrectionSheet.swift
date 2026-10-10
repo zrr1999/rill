@@ -387,15 +387,13 @@ public struct VocabularyCorrectionSheet: View {
     case .created:
       recordMemoryCorrection(rule)
       model.append(
-        english: L10n.string(.vocabularyCorrectionCreated, language: .english),
-        simplifiedChinese: L10n.string(.vocabularyCorrectionCreated, language: .simplifiedChinese)
+        L10n.resource("general.vocabularyCorrectionCreated")
       )
       dismiss()
     case .reused:
       recordMemoryCorrection(rule)
       model.append(
-        english: L10n.string(.vocabularyCorrectionReused, language: .english),
-        simplifiedChinese: L10n.string(.vocabularyCorrectionReused, language: .simplifiedChinese)
+        L10n.resource("general.vocabularyCorrectionReused")
       )
       dismiss()
     case .conflict:

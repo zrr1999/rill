@@ -577,10 +577,7 @@ extension AppModelTests {
     harness.model.voice.lastCompletedText = "transcript-before-clear"
     harness.model.lastFailure = "failure-before-clear"
     harness.model.history.eventFeed = [
-      EventFeedEntry(
-        english: "content-before-clear",
-        simplifiedChinese: "清理前内容"
-      )
+      EventFeedEntry("content-before-clear")
     ]
     harness.model.voice.liveSubtitleSnapshot = LiveSubtitleSnapshot(
       runID: UUID(),

@@ -45,12 +45,7 @@ extension L10n {
     englishDescription: String,
     language: AppLanguage
   ) -> String {
-    switch language {
-    case .english:
-      englishDescription
-    case .simplifiedChinese:
-      workflowText(.workflowWakePhraseInvalid, language: language)
-    }
+    resource("workflow.workflowWakePhraseInvalid", defaultValue: "\(englishDescription)").string(for: language)
   }
 
 }

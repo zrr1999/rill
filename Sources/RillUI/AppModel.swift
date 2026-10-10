@@ -426,8 +426,7 @@ public final class AppModel {
       saveFailed: { [history] in
         history.append(
           EventFeedEntry(
-            english: L10n.runText(.settingsSaveFailedRetry, language: .english),
-            simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
+            L10n.resource("run.settingsSaveFailedRetry")))
       })
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore

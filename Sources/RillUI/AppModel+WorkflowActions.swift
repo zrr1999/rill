@@ -406,18 +406,14 @@ extension AppModel {
       for: workflow,
       includeRuntimeAvailability: true
     ) {
-      lastFailure = workflowRunError(for: issue, language: self.settings.language)
-      append(
-        english: workflowRunError(for: issue, language: .english),
-        simplifiedChinese: workflowRunError(for: issue, language: .simplifiedChinese)
-      )
+      lastFailure = workflowRunError(for: issue).string(for: self.settings.language)
+      append(workflowRunError(for: issue))
       return
     }
     guard isWorkflowEnabled(workflow) else {
       lastFailure = L10n.runText(.runWorkflowDisabledNotice, language: self.settings.language)
       append(
-        english: L10n.runText(.runWorkflowDisabledNotice, language: .english),
-        simplifiedChinese: L10n.runText(.runWorkflowDisabledNotice, language: .simplifiedChinese)
+        L10n.resource("run.runWorkflowDisabledNotice")
       )
       return
     }
@@ -426,11 +422,7 @@ extension AppModel {
     {
       lastFailure = L10n.runText(.speechRoutingSettingsUnavailable, language: self.settings.language)
       append(
-        english: L10n.runText(.speechRoutingSettingsUnavailable, language: .english),
-        simplifiedChinese: L10n.runText(
-          .speechRoutingSettingsUnavailable,
-          language: .simplifiedChinese
-        )
+        L10n.resource("run.speechRoutingSettingsUnavailable")
       )
       return
     }
@@ -443,8 +435,7 @@ extension AppModel {
     else {
       lastFailure = L10n.runText(.workflowRoutingUnresolvable, language: self.settings.language)
       append(
-        english: L10n.runText(.workflowRoutingUnresolvable, language: .english),
-        simplifiedChinese: L10n.runText(.workflowRoutingUnresolvable, language: .simplifiedChinese)
+        L10n.resource("run.workflowRoutingUnresolvable")
       )
       return
     }
@@ -606,38 +597,35 @@ extension AppModel {
   }
 
   private func workflowRunError(
-    for issue: WorkflowExecutionSupportIssue,
-    language: AppLanguage
-  ) -> String {
+    for issue: WorkflowExecutionSupportIssue
+  ) -> LocalizedStringResource {
     return switch issue {
     case .legacyClipboardAutomationUnsupported:
-      L10n.resource("AppModel.WorkflowActions.This.legacy.clipboard.event.workflow.is.disabled.and.cannot.run").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.legacy.clipboard.event.workflow.is.disabled.and.cannot.run")
     case .invalidEventType:
-      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.its.event.type.is.invalid").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.its.event.type.is.invalid")
     case .plannedCapabilityUnavailable:
-      L10n.resource("AppModel.WorkflowActions.This.planned.preset.cannot.run.in.the.current.build").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.planned.preset.cannot.run.in.the.current.build")
     case .missingProductionTransformer:
-      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.a.production.text.transformer.is.missing").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.a.production.text.transformer.is.missing")
     case .unregisteredOutputAction(let actionID):
       L10n.resource(
         "AppModel.WorkflowActions.This.workflow.cannot.run.because.no.production.output.action.is.registered.for",
         defaultValue: "This workflow cannot run because no production output action is registered for \(String(describing: actionID))."
-      ).string(for: self.settings.language)
+      )
     case .openAIUnavailable(_):
-      L10n.resource("AppModel.WorkflowActions.LLM.Provider.is.unavailable.Open.Settings.and.save.an.API.key").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.LLM.Provider.is.unavailable.Open.Settings.and.save.an.API.key")
     case .openAIConfigurationInvalid:
-      L10n.resource("AppModel.WorkflowActions.The.OpenAI.compatible.endpoint.or.model.ID.is.invalid.Review.Speech.settings.and.retry").string(
-        for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.The.OpenAI.compatible.endpoint.or.model.ID.is.invalid.Review.Speech.settings.and.retry")
     case .openAIVerificationFailed:
-      L10n.resource("AppModel.WorkflowActions.The.current.LLM.configuration.failed.verification.Review.Speech.settings.and.retry").string(
-        for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.The.current.LLM.configuration.failed.verification.Review.Speech.settings.and.retry")
     case .microphonePermissionRequired:
-      L10n.resource("AppModel.WorkflowActions.Wake.word.listening.requires.microphone.access").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Wake.word.listening.requires.microphone.access")
     case .wakeWordModelNotReady:
-      L10n.resource("AppModel.WorkflowActions.Wake.word.listening.requires.the.selected.local.ASR.model.to.be.ready").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Wake.word.listening.requires.the.selected.local.ASR.model.to.be.ready")
     case .privacySettingsUnavailable:
-      L10n.resource("AppModel.WorkflowActions.Cloud.privacy.settings.are.unavailable.so.this.assistant.workflow.cannot.run").string(for: self.settings.language)
-    case .localSpeechUnavailable(let availability): localSpeechWorkflowRunError(availability, language: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Cloud.privacy.settings.are.unavailable.so.this.assistant.workflow.cannot.run")
+    case .localSpeechUnavailable(let availability): localSpeechWorkflowRunError(availability)
     }
   }
 
@@ -657,18 +645,15 @@ extension AppModel {
   }
 
   private func localSpeechWorkflowRunError(
-    _ availability: LocalSpeechAvailability,
-    language: AppLanguage
-  ) -> String {
+    _ availability: LocalSpeechAvailability
+  ) -> LocalizedStringResource {
     return switch availability {
     case .architectureUnsupported:
-      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.the.compatible.local.speech.worker.is.unavailable.Enable.a").string(
-        for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.the.compatible.local.speech.worker.is.unavailable.Enable.a")
     case .trustMaterialUnavailable:
-      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.this.build.has.no.reviewed.local.speech.model.Choose").string(
-        for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.this.build.has.no.reviewed.local.speech.model.Choose")
     case .available:
-      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.local.speech.is.currently.unavailable").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.local.speech.is.currently.unavailable")
     }
   }
 
@@ -743,10 +728,7 @@ extension AppModel {
         self.voice.isRunning = false
         let failure = WorkflowOperationFailureStage.workflowStart.presentation
         self.lastFailure = failure.string(for: self.settings.language)
-        self.append(
-          english: failure.english,
-          simplifiedChinese: failure.simplifiedChinese
-        )
+        self.append(failure)
       }
     }
     self.voice.pendingInteractiveWorkflowTask = task
@@ -770,11 +752,7 @@ extension AppModel {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.voice.workflowAudioRunState = .recording(workflowID: workflow.id)
           self.append(
-            english: L10n.runText(.recordingStartedAutoStop, language: .english),
-            simplifiedChinese: L10n.runText(
-              .recordingStartedAutoStop,
-              language: .simplifiedChinese
-            )
+            L10n.resource("run.recordingStartedAutoStop")
           )
         }
       } catch is CancellationError {
@@ -795,10 +773,7 @@ extension AppModel {
           if draftInput != nil || workflow.metadata[WorkflowMetadataKey.collectSpeech] == "true" {
             self.recordWorkspace.buffers.editor.reportRecordingFailure()
           }
-          self.append(
-            english: failure.english,
-            simplifiedChinese: failure.simplifiedChinese
-          )
+          self.append(failure)
         }
       }
     }
@@ -825,10 +800,7 @@ extension AppModel {
           self.voice.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioTranscription.presentation
           self.lastFailure = failure.string(for: self.settings.language)
-          self.append(
-            english: failure.english,
-            simplifiedChinese: failure.simplifiedChinese
-          )
+          self.append(failure)
         }
       }
     }
@@ -1246,14 +1218,7 @@ extension AppModel {
     persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
-      english: String(
-        format: L10n.runText(.workflowSavedFormat, language: .english),
-        workflow.name
-      ),
-      simplifiedChinese: String(
-        format: L10n.runText(.workflowSavedFormat, language: .simplifiedChinese),
-        workflow.name
-      )
+      L10n.resource("run.workflowSavedFormat", defaultValue: "Workflow saved: \(workflow.name)")
     )
   }
 
@@ -1310,14 +1275,7 @@ extension AppModel {
     persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
-      english: String(
-        format: L10n.runText(.workflowRemovedFormat, language: .english),
-        workflow.name
-      ),
-      simplifiedChinese: String(
-        format: L10n.runText(.workflowRemovedFormat, language: .simplifiedChinese),
-        workflow.name
-      )
+      L10n.resource("run.workflowRemovedFormat", defaultValue: "Workflow removed: \(workflow.name)")
     )
   }
 
@@ -1351,14 +1309,7 @@ extension AppModel {
     persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
-      english: String(
-        format: L10n.runText(.builtInWorkflowRestoredFormat, language: .english),
-        localizedWorkflowName(for: defaultWorkflow)
-      ),
-      simplifiedChinese: String(
-        format: L10n.runText(.builtInWorkflowRestoredFormat, language: .simplifiedChinese),
-        localizedWorkflowName(for: defaultWorkflow)
-      )
+      L10n.resource("run.builtInWorkflowRestoredFormat", defaultValue: "Built-in workflow restored: \(localizedWorkflowName(for: defaultWorkflow))")
     )
   }
 

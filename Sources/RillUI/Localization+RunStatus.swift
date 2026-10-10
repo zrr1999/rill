@@ -6,24 +6,12 @@ extension L10n {
     catalogString("run.\(key.rawValue)", language: language)
   }
 
-  static func runHistoryRetentionReadFailed(
-    isRecordSetting: Bool,
-    language: AppLanguage
-  ) -> String {
-    String(
-      format: runText(.historyRetentionReadFailedFormat, language: language),
-      runHistoryRetentionDomain(isRecordSetting: isRecordSetting, language: language)
-    )
+  static func runHistoryRetentionReadFailed(isRecordSetting: Bool) -> LocalizedStringResource {
+    resource(isRecordSetting ? "run.historyRetentionReadFailed.clipboard" : "run.historyRetentionReadFailed.runs")
   }
 
-  static func runHistoryRetentionInvalid(
-    isRecordSetting: Bool,
-    language: AppLanguage
-  ) -> String {
-    String(
-      format: runText(.historyRetentionInvalidFormat, language: language),
-      runHistoryRetentionDomain(isRecordSetting: isRecordSetting, language: language)
-    )
+  static func runHistoryRetentionInvalid(isRecordSetting: Bool) -> LocalizedStringResource {
+    resource(isRecordSetting ? "run.historyRetentionInvalid.clipboard" : "run.historyRetentionInvalid.runs")
   }
 
   static func runWakeWordWorkflowSaveFailed(
@@ -38,16 +26,6 @@ extension L10n {
     language: AppLanguage
   ) -> String {
     String(format: runText(.wakeWordSettingsSaveFailedFormat, language: language), detail)
-  }
-
-  private static func runHistoryRetentionDomain(
-    isRecordSetting: Bool,
-    language: AppLanguage
-  ) -> String {
-    runText(
-      isRecordSetting ? .historyRetentionDomainClipboard : .historyRetentionDomainRunAndDiagnostic,
-      language: language
-    )
   }
 
 }
@@ -70,10 +48,6 @@ enum RunStatusTextKey: String, CaseIterable, Sendable {
   case diagnosticsRepositoryUnavailable
   case failedRecordingNotRetainedFormat
   case failedRecoverySettingInvalid
-  case historyRetentionDomainClipboard
-  case historyRetentionDomainRunAndDiagnostic
-  case historyRetentionInvalidFormat
-  case historyRetentionReadFailedFormat
   case localHistoryUpdatedFormat
   case localSpeechHardwareMemoryRecommendedFormat
   case localSpeechHardwareMemoryRequiredFormat

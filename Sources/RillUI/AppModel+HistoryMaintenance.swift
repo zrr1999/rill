@@ -287,11 +287,7 @@ extension AppModel {
         )
         self.refreshHistoryRetentionSettingsErrorPresentation()
         self.append(
-          english: L10n.runText(.retentionSaveFailedNotice, language: .english),
-          simplifiedChinese: L10n.runText(
-            .retentionSaveFailedNotice,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.retentionSaveFailedNotice")
         )
       }
     }
@@ -348,18 +344,10 @@ extension AppModel {
       self.history.localHistoryMaintenanceBlockedReason = nil
       if counts.totalRemovedCount > 0 || counts.preservedActiveRecordCount > 0 {
         append(
-          english: String(
-            format: L10n.runText(.localHistoryUpdatedFormat, language: .english),
-            counts.totalRemovedCount,
-            counts.preservedActiveRecordCount
-          ),
-          simplifiedChinese: String(
-            format: L10n.runText(
-              .localHistoryUpdatedFormat,
-              language: .simplifiedChinese
-            ),
-            counts.totalRemovedCount,
-            counts.preservedActiveRecordCount
+          L10n.resource(
+            "run.localHistoryUpdatedFormat",
+            defaultValue:
+              "Local history updated: removed \(String(counts.totalRemovedCount)), preserved \(String(counts.preservedActiveRecordCount)) active clipboard item(s)."
           )
         )
       }
