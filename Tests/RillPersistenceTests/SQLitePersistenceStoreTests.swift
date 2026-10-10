@@ -556,6 +556,55 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
   }
 
+  func testCancellationInsideGRDBQueueRollsBackScreenSummaryBeforeCommit() async throws {
+    let directoryURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directoryURL) }
+    let databaseURL = directoryURL.appendingPathComponent("rill-cancel-before-commit.sqlite")
+    let baseProtector = try testProtector(byte: 0x5A)
+    let setupStore = try SQLitePersistenceStore(databaseURL: databaseURL, localDataProtector: baseProtector)
+    let authorization = ContextReferenceAuthorization(providerFingerprint: "fixture")
+    let record = WorkflowResultRecord(
+      runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "Cancellation"),
+      finalText: "Original transcript", timestamp: Date(timeIntervalSince1970: 100), outcome: .completed,
+      correctionSource: .init(
+        preMappingText: "Original transcript", context: .init(),
+        references: .init(image: .sent, imageSummary: .pending)), trigger: .hotkey)
+    try await setupStore.save(record)
+    try await setupStore.setContextAuthorization(authorization.id)
+    let generation = try await setupStore.captureRunHistoryWriteGeneration()
+    let originalCiphertext = try rawHistoryValue(column: "correction_source_json", recordID: record.id, at: databaseURL)
+    let blockingProtector = BlockingHistorySealProtector(base: baseProtector)
+    defer { blockingProtector.unblock() }
+    let writingStore = try SQLitePersistenceStore(databaseURL: databaseURL, localDataProtector: blockingProtector)
+    let runID = try XCTUnwrap(record.runID)
+    let summary = ScreenReferenceSummary(terms: ["Late screen term"], observations: [])
+    let write = Task {
+      try await writingStore.appendScreenSummary(
+        summary, runID: runID, generation: generation, authorization: authorization)
+    }
+    // appendScreenSummary encrypts the replacement inside its immediate transaction.
+    await blockingProtector.waitUntilBlocked()
+    write.cancel()
+    blockingProtector.unblock()
+    do {
+      try await write.value
+      XCTFail("Cancellation on the GRDB queue must roll back before COMMIT.")
+    } catch {
+      XCTAssertTrue(error is CancellationError)
+    }
+    XCTAssertTrue(authorization.isValid)
+    XCTAssertEqual(try rawHistoryValue(column: "correction_source_json", recordID: record.id, at: databaseURL), originalCiphertext)
+    let reopened = try SQLitePersistenceStore(databaseURL: databaseURL, localDataProtector: baseProtector)
+    let afterCancellation = try await reopened.records(matching: .all)
+    XCTAssertEqual(afterCancellation, [record])
+    // The same connection must leave the aborted transaction and accept a fresh write.
+    try await writingStore.appendScreenSummary(
+      summary, runID: runID, generation: generation, authorization: authorization)
+    let afterRetry = try await reopened.records(matching: .all)
+    XCTAssertEqual(afterRetry.first?.correctionSource?.references?.screenSummary, summary)
+  }
+
   func testConcurrentLogicalClearRejectsWriteIntentCapturedBeforeGenerationAdvance() async throws {
     let directoryURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
