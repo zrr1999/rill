@@ -7,6 +7,7 @@
 ## 计划
 
 - [Rill 架构、ASR 与产品质量改进](plans/improvement-plan.md)
+- [通用能力复用续接（2026-10-10）](plans/common-capability-reuse-2026-10-10.md)
 
 ## 研究
 

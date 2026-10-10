@@ -405,11 +405,7 @@ extension AppModel {
           language: self.settings.language
         )
         self.append(
-          english: L10n.runText(.configurationStorageUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .configurationStorageUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.configurationStorageUnavailable")
         )
       }
     }
@@ -465,10 +461,7 @@ extension AppModel {
     loadFailedAudioRecoveryReceipts()
     for warning in settings.loadWarnings {
       let presentation = warning.presentation
-      append(
-        english: presentation.english,
-        simplifiedChinese: presentation.simplifiedChinese
-      )
+      append(presentation)
     }
     performLocalHistoryRetention(startPeriodicMaintenanceAfterCompletion: true)
     if shouldPrepareLocalSpeechModel {
@@ -537,11 +530,7 @@ extension AppModel {
     default:
       self.voice.failedAudioRecoveryEnabled = false
       append(
-        english: L10n.runText(.failedRecoverySettingInvalid, language: .english),
-        simplifiedChinese: L10n.runText(
-          .failedRecoverySettingInvalid,
-          language: .simplifiedChinese
-        )
+        L10n.resource("run.failedRecoverySettingInvalid")
       )
     }
   }
@@ -558,14 +547,7 @@ extension AppModel {
         self.history.runHistoryRetentionSettingIsInvalid = true
       }
       append(
-        english: L10n.runHistoryRetentionReadFailed(
-          isRecordSetting: isRecordSetting,
-          language: .english
-        ),
-        simplifiedChinese: L10n.runHistoryRetentionReadFailed(
-          isRecordSetting: isRecordSetting,
-          language: .simplifiedChinese
-        )
+        L10n.runHistoryRetentionReadFailed(isRecordSetting: isRecordSetting)
       )
       return .forever
     }
@@ -579,14 +561,7 @@ extension AppModel {
         self.history.runHistoryRetentionSettingIsInvalid = true
       }
       append(
-        english: L10n.runHistoryRetentionInvalid(
-          isRecordSetting: isRecordSetting,
-          language: .english
-        ),
-        simplifiedChinese: L10n.runHistoryRetentionInvalid(
-          isRecordSetting: isRecordSetting,
-          language: .simplifiedChinese
-        )
+        L10n.runHistoryRetentionInvalid(isRecordSetting: isRecordSetting)
       )
       return .forever
     }
@@ -1067,11 +1042,7 @@ extension AppModel {
         }
         self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
         self.append(
-          english: L10n.runText(.savedSettingsAvailableAgain, language: .english),
-          simplifiedChinese: L10n.runText(
-            .savedSettingsAvailableAgain,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.savedSettingsAvailableAgain")
         )
       } catch is CancellationError {
         return
@@ -1085,11 +1056,7 @@ extension AppModel {
         }
         self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
         self.append(
-          english: L10n.runText(.savedSettingsStillUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .savedSettingsStillUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.savedSettingsStillUnavailable")
         )
       }
     }
@@ -1161,11 +1128,7 @@ extension AppModel {
           AppSettingsCodec.openAICredentialAvailability(for: credential)
         self.workflowLibraryChangedAction()
         self.append(
-          english: L10n.runText(.openAISettingsAvailableAgain, language: .english),
-          simplifiedChinese: L10n.runText(
-            .openAISettingsAvailableAgain,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.openAISettingsAvailableAgain")
         )
       } catch is CancellationError {
         return
@@ -1181,11 +1144,7 @@ extension AppModel {
         self.settings.openAICredentialAvailability = .inaccessible
         self.workflowLibraryChangedAction()
         self.append(
-          english: L10n.runText(.openAISettingsStillUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .openAISettingsStillUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.openAISettingsStillUnavailable")
         )
       }
     }
@@ -1431,11 +1390,7 @@ extension AppModel {
         self.settings.isRetryingUnavailableSettingsDomains = false
         self.refreshUnavailableStoredSettingsDomainErrors()
         self.append(
-          english: L10n.runText(.protectedSettingsStillUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .protectedSettingsStillUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.protectedSettingsStillUnavailable")
         )
       }
     }
@@ -1513,11 +1468,7 @@ extension AppModel {
 
     if recoveredAnyDomain {
       append(
-        english: L10n.runText(.protectedSettingsReloaded, language: .english),
-        simplifiedChinese: L10n.runText(
-          .protectedSettingsReloaded,
-          language: .simplifiedChinese
-        )
+        L10n.resource("run.protectedSettingsReloaded")
       )
     }
   }
@@ -1574,11 +1525,7 @@ extension AppModel {
         }
         self.history.diagnosticsLoadState = .failed
         self.append(
-          english: L10n.runText(.diagnosticsRepositoryUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .diagnosticsRepositoryUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.diagnosticsRepositoryUnavailable")
         )
       }
     }
@@ -1696,8 +1643,7 @@ extension AppModel {
         self.settings.openAICredentialAvailability = .inaccessible
       }
       append(
-        english: L10n.runText(.credentialSaveFailed, language: .english),
-        simplifiedChinese: L10n.runText(.credentialSaveFailed, language: .simplifiedChinese)
+        L10n.resource("run.credentialSaveFailed")
       )
       return
     }
@@ -1728,8 +1674,7 @@ extension AppModel {
           self.workflowLibraryChangedAction()
         }
         self.append(
-          english: L10n.runText(.credentialSaveFailed, language: .english),
-          simplifiedChinese: L10n.runText(.credentialSaveFailed, language: .simplifiedChinese)
+          L10n.resource("run.credentialSaveFailed")
         )
       }
     }
@@ -1752,8 +1697,7 @@ extension AppModel {
 
   func appendSettingsSaveFailureEvent() {
     append(
-      english: L10n.runText(.settingsSaveFailedRetry, language: .english),
-      simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)
+      L10n.resource("run.settingsSaveFailedRetry")
     )
   }
 
@@ -2051,8 +1995,7 @@ extension AppModel {
   func persistPrivacyPolicySettings() {
     settings.persistPrivacyPolicySettings { [weak self] in
       self?.append(
-        english: L10n.runText(.privacySaveFailedRetry, language: .english),
-        simplifiedChinese: L10n.runText(.privacySaveFailedRetry, language: .simplifiedChinese))
+        L10n.resource("run.privacySaveFailedRetry"))
     }
   }
 
