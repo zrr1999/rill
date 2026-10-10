@@ -66,8 +66,11 @@ modules="$PWD/.artifacts/benchmarks/modules"
 mkdir -p "$modules"
 # Build the persistence dependency with its upstream SwiftPM settings and the
 # application's exact lock, then link those objects into the standalone workload.
-scripts/preflight.sh swift build --configuration release --target GRDB
-grdb_products="$(scripts/preflight.sh swift build --configuration release --show-bin-path)"
+# The native engine keeps the per-target object and module layout read below;
+# the build driver otherwise selects SwiftBuild for string catalog resources.
+grdb_build=(scripts/preflight.sh swift build --build-system native --configuration release)
+"${grdb_build[@]}" --target GRDB
+grdb_products="$("${grdb_build[@]}" --show-bin-path)"
 grdb_module_map="$PWD/.artifacts/build/release/checkouts/GRDB.swift/Sources/GRDBSQLite/module.modulemap"
 grdb_objects=("$grdb_products"/GRDB.build/*.o)
 test -f "${grdb_objects[0]}"
