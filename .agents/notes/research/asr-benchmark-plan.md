@@ -1,8 +1,5 @@
 # ASR Dogfood Benchmark 计划
 
-> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
-> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../../docs/usage.md)。
-
 > 来源：`docs/competitive-research.md` 与 `docs/technology-selection.md`。
 > 目标：用小样本、低成本的真实使用数据，帮助 Rill 决定本地 ASR 引擎与模型优先级。
 
