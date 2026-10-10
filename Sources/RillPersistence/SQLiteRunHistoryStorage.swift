@@ -1,24 +1,23 @@
 import Foundation
+import GRDB
 import RillCore
 import SQLite3
 
-extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, WorkflowRunReceiptMaintaining, WorkflowRunTerminalRepository,
-  RunHistoryBrowsing
-{
-  public func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
+extension SQLitePersistenceSession {
+  func captureRunHistoryWriteGeneration() throws -> RunHistoryWriteGeneration {
     try currentRunHistoryWriteGeneration()
   }
 
-  public func save(_ record: WorkflowResultRecord) async throws {
+  func save(_ record: WorkflowResultRecord) throws {
     let generation = try currentRunHistoryWriteGeneration()
     let prepared = try prepareHistoryRecord(record)
     try withImmediateTransaction { try saveHistoryRecord(prepared, generation: generation) }
   }
 
-  public func save(
+  func save(
     _ record: WorkflowResultRecord,
     generation: RunHistoryWriteGeneration
-  ) async throws {
+  ) throws {
     let prepared = try prepareHistoryRecord(record)
     try withImmediateTransaction { try saveHistoryRecord(prepared, generation: generation) }
   }
@@ -112,7 +111,7 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       """
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
 
     try bind(
       [
@@ -159,7 +158,7 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
         && outcome == record.outcome
         && trigger == record.trigger
         && generation == requestedGeneration
-        && hasNonemptyFinalText == SQLitePersistenceStore.hasNonemptyBody(record.finalText)
+        && hasNonemptyFinalText == SQLitePersistenceSession.hasNonemptyBody(record.finalText)
     }
   }
 
@@ -174,9 +173,10 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       WHERE id = ?;
       """
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.text(recordID.uuidString)], to: statement)
-    switch sqlite3_step(statement) {
+    switch sqlite3_step(statement.sqliteStatement) {
     case SQLITE_DONE:
       return nil
     case SQLITE_ROW:
@@ -222,7 +222,7 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       }
       let generation: RunHistoryWriteGeneration
       do {
-        generation = try RunHistoryWriteGeneration(sqlite3_column_int64(statement, 6))
+        generation = try RunHistoryWriteGeneration(sqlite3_column_int64(statement.sqliteStatement, 6))
       } catch {
         throw SQLitePersistenceError.decodingRow(
           "History identity contained an invalid generation."
@@ -231,12 +231,12 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       return StoredHistoryIdentity(
         runID: runID,
         workflowID: workflowID,
-        timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-        isRecordRelated: sqlite3_column_int64(statement, 3) != 0,
+        timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement.sqliteStatement, 2)),
+        isRecordRelated: sqlite3_column_int64(statement.sqliteStatement, 3) != 0,
         outcome: outcome,
         trigger: trigger,
         generation: generation,
-        hasNonemptyFinalText: sqlite3_column_int64(statement, 7) != 0
+        hasNonemptyFinalText: sqlite3_column_int64(statement.sqliteStatement, 7) != 0
       )
     default:
       throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
@@ -257,7 +257,8 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       WHERE id = ?;
       """
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind(
       [
         .text(protectedFallbackName),
@@ -277,7 +278,7 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     }
   }
 
-  public func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
+  func records(matching query: HistoryQuery) throws -> [WorkflowResultRecord] {
     if query.limit == 0 { return [] }
     let resultLimit = query.limit.flatMap { $0 >= 0 ? $0 : nil }
     let currentGeneration = try currentRunHistoryWriteGeneration()
@@ -346,20 +347,16 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       sql += " ORDER BY timestamp DESC, id ASC LIMIT ? OFFSET ?"
 
       let statement = try prepare(sql)
+      defer { withExtendedLifetime(statement) {} }
       var batchBindings = bindings
       batchBindings.append(.int(scanBatchSize))
       batchBindings.append(.int(scanOffset))
-      do {
-        try bind(batchBindings, to: statement)
-      } catch {
-        sqlite3_finalize(statement)
-        throw error
-      }
+      try bind(batchBindings, to: statement)
 
       var scannedRowCount: Int64 = 0
       do {
         while true {
-          let stepResult = sqlite3_step(statement)
+          let stepResult = sqlite3_step(statement.sqliteStatement)
           if stepResult == SQLITE_DONE { break }
           guard stepResult == SQLITE_ROW else {
             throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
@@ -376,10 +373,9 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
           }
         }
       } catch {
-        sqlite3_finalize(statement)
+
         throw error
       }
-      sqlite3_finalize(statement)
 
       scanOffset += scannedRowCount
       exhaustedStorage = scannedRowCount < scanBatchSize
@@ -389,23 +385,23 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     return records
   }
 
-  public func insertTerminal(_ receipt: WorkflowRunReceipt) async throws {
+  func insertTerminal(_ receipt: WorkflowRunReceipt) throws {
     let generation = try currentRunHistoryWriteGeneration()
     try withImmediateTransaction { try insertTerminalReceipt(receipt, generation: generation) }
   }
 
-  public func insertTerminal(
+  func insertTerminal(
     _ receipt: WorkflowRunReceipt,
     generation: RunHistoryWriteGeneration
-  ) async throws {
+  ) throws {
     try withImmediateTransaction { try insertTerminalReceipt(receipt, generation: generation) }
   }
 
-  public func commitTerminal(
+  func commitTerminal(
     _ receipt: WorkflowRunReceipt,
     history: WorkflowResultRecord?,
     generation: RunHistoryWriteGeneration
-  ) async throws {
+  ) throws {
     if let history {
       guard history.runID == receipt.runID, history.workflowID == receipt.workflowID,
         history.timestamp == receipt.timestamp, history.trigger == receipt.trigger
@@ -462,7 +458,8 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       ) VALUES (?, ?, ?, ?, ?);
       """
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind(
       [
         .text(runID),
@@ -476,9 +473,9 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  public func receipts(
+  func receipts(
     matching query: WorkflowRunReceiptQuery
-  ) async throws -> [WorkflowRunReceipt] {
+  ) throws -> [WorkflowRunReceipt] {
     if query.limit == 0 { return [] }
     let resultLimit = query.limit.flatMap { $0 >= 0 ? $0 : nil }
     let currentGeneration = try currentRunHistoryWriteGeneration()
@@ -531,20 +528,16 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       sql += " ORDER BY timestamp DESC, run_id ASC LIMIT ? OFFSET ?"
 
       let statement = try prepare(sql)
+      defer { withExtendedLifetime(statement) {} }
       var batchBindings = bindings
       batchBindings.append(.int(scanBatchSize))
       batchBindings.append(.int(scanOffset))
-      do {
-        try bind(batchBindings, to: statement)
-      } catch {
-        sqlite3_finalize(statement)
-        throw error
-      }
+      try bind(batchBindings, to: statement)
 
       var scannedRowCount: Int64 = 0
       do {
         while true {
-          let stepResult = sqlite3_step(statement)
+          let stepResult = sqlite3_step(statement.sqliteStatement)
           if stepResult == SQLITE_DONE { break }
           guard stepResult == SQLITE_ROW else {
             throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
@@ -570,10 +563,9 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
           }
         }
       } catch {
-        sqlite3_finalize(statement)
+
         throw error
       }
-      sqlite3_finalize(statement)
 
       scanOffset += scannedRowCount
       exhaustedStorage = scannedRowCount < scanBatchSize
@@ -583,7 +575,7 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     return result
   }
 
-  public func page(_ request: RunHistoryPageRequest) async throws -> RunHistoryPage {
+  func page(_ request: RunHistoryPageRequest) throws -> RunHistoryPage {
     try validateBrowseLimit(request.limit)
     switch request {
     case .first(let scope, let retentionCutoff, let contentAccess, let limit):
@@ -602,11 +594,11 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     }
   }
 
-  public func page(
+  func page(
     containing entryID: UUID,
     in session: RunHistoryReadSession,
     limit: Int
-  ) async throws -> RunHistoryPage? {
+  ) throws -> RunHistoryPage? {
     try validateBrowseLimit(limit)
     return try runHistoryPageContaining(
       entryID,
@@ -615,13 +607,13 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     )
   }
 
-  public func page(
+  func page(
     containing entryID: UUID,
     scope: RunHistoryBrowseScope,
     retentionCutoff: Date?,
     contentAccess: RunHistoryContentAccess,
     limit: Int
-  ) async throws -> RunHistoryPage? {
+  ) throws -> RunHistoryPage? {
     try validateBrowseLimit(limit)
     let session = try captureRunHistoryReadSession(
       scope: scope,
@@ -939,17 +931,18 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     sql += " ORDER BY timestamp DESC, entry_id ASC;"
 
     let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind(bindings, to: statement)
     var candidates: [BrowseCandidate] = []
     while true {
-      switch sqlite3_step(statement) {
+      switch sqlite3_step(statement.sqliteStatement) {
       case SQLITE_DONE:
         return candidates
       case SQLITE_ROW:
         guard
           let source = BrowseCandidate.Source(
-            rawValue: sqlite3_column_int64(statement, 0)
+            rawValue: sqlite3_column_int64(statement.sqliteStatement, 0)
           ),
           let entryIDText = textColumn(in: statement, index: 1),
           let entryID = UUID(uuidString: entryIDText)
@@ -957,7 +950,7 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
           continue
         }
         let key = RunHistorySortKey(
-          timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
+          timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement.sqliteStatement, 2)),
           entryID: entryID
         )
         let metadata: RunHistoryRecordMetadata?
@@ -984,7 +977,7 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
   }
 
   private func decodeBrowseRecordMetadata(
-    from statement: OpaquePointer?
+    from statement: Statement
   ) throws -> RunHistoryRecordMetadata {
     guard let recordIDText = textColumn(in: statement, index: 4),
       let recordID = UUID(uuidString: recordIDText),
@@ -1012,17 +1005,17 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
       recordID: recordID,
       runID: runID,
       workflowID: workflowID,
-      timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-      isRecordRelated: sqlite3_column_int64(statement, 9) != 0,
+      timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement.sqliteStatement, 2)),
+      isRecordRelated: sqlite3_column_int64(statement.sqliteStatement, 9) != 0,
       outcome: outcome,
       trigger: trigger,
       hasNonemptyFinalText: trigger?.isVoiceCapture == true
-        && sqlite3_column_int64(statement, 10) != 0
+        && sqlite3_column_int64(statement.sqliteStatement, 10) != 0
     )
   }
 
   private func optionalUUIDColumn(
-    in statement: OpaquePointer?,
+    in statement: Statement,
     index: Int32
   ) throws -> UUID? {
     guard let rawValue = textColumn(in: statement, index: index) else { return nil }
@@ -1086,10 +1079,11 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     }
     sql += " ORDER BY timestamp DESC, id ASC;"
     let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind(bindings, to: statement)
     while true {
-      switch sqlite3_step(statement) {
+      switch sqlite3_step(statement.sqliteStatement) {
       case SQLITE_DONE:
         return nil
       case SQLITE_ROW:
@@ -1107,11 +1101,11 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
             recordID: recordID,
             runID: try optionalUUIDColumn(in: statement, index: 1),
             workflowID: try optionalUUIDColumn(in: statement, index: 2),
-            timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
-            isRecordRelated: sqlite3_column_int64(statement, 4) != 0,
+            timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement.sqliteStatement, 3)),
+            isRecordRelated: sqlite3_column_int64(statement.sqliteStatement, 4) != 0,
             outcome: outcome,
             trigger: trigger,
-            hasNonemptyFinalText: sqlite3_column_int64(statement, 7) != 0
+            hasNonemptyFinalText: sqlite3_column_int64(statement.sqliteStatement, 7) != 0
           )
         } catch {
           continue
@@ -1201,9 +1195,10 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     }
     sql += ";"
     let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind(bindings, to: statement)
-    switch sqlite3_step(statement) {
+    switch sqlite3_step(statement.sqliteStatement) {
     case SQLITE_DONE:
       return nil
     case SQLITE_ROW:
@@ -1213,28 +1208,30 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     }
   }
 
-  public func deleteReceipts(olderThan cutoff: Date) async throws -> Int {
+  func deleteReceipts(olderThan cutoff: Date) throws -> Int {
     let statement = try prepare("DELETE FROM workflow_run_receipts WHERE timestamp < ?;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.double(cutoff.timeIntervalSince1970)], to: statement)
     try step(statement, expecting: SQLITE_DONE)
     return Int(sqlite3_changes(db))
   }
 
-  public func deleteReceipts(through upperBound: Date) async throws -> Int {
+  func deleteReceipts(through upperBound: Date) throws -> Int {
     let statement = try prepare(
       "DELETE FROM workflow_run_receipts WHERE timestamp <= ?;"
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.double(upperBound.timeIntervalSince1970)], to: statement)
     try step(statement, expecting: SQLITE_DONE)
     return Int(sqlite3_changes(db))
   }
 
-  public func deleteReceipts(
+  func deleteReceipts(
     obsoletedBy transition: RunHistoryClearTransition,
     preservingLegacyRowsAfter legacyUpperBound: Date?
-  ) async throws -> Int {
+  ) throws -> Int {
     try deleteRunHistoryRows(
       obsoletedBy: transition,
       from: "workflow_run_receipts",
@@ -1242,35 +1239,38 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     )
   }
 
-  public func deleteAllReceipts() async throws -> Int {
+  func deleteAllReceipts() throws -> Int {
     let statement = try prepare("DELETE FROM workflow_run_receipts;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try step(statement, expecting: SQLITE_DONE)
     return Int(sqlite3_changes(db))
   }
 
-  public func deleteRecords(olderThan cutoff: Date) async throws -> Int {
+  func deleteRecords(olderThan cutoff: Date) throws -> Int {
     let statement = try prepare("DELETE FROM history_records WHERE timestamp < ?;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.double(cutoff.timeIntervalSince1970)], to: statement)
     try step(statement, expecting: SQLITE_DONE)
     return Int(sqlite3_changes(db))
   }
 
-  public func deleteRecords(through upperBound: Date) async throws -> Int {
+  func deleteRecords(through upperBound: Date) throws -> Int {
     let statement = try prepare(
       "DELETE FROM history_records WHERE timestamp <= ?;"
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.double(upperBound.timeIntervalSince1970)], to: statement)
     try step(statement, expecting: SQLITE_DONE)
     return Int(sqlite3_changes(db))
   }
 
-  public func deleteRecords(
+  func deleteRecords(
     obsoletedBy transition: RunHistoryClearTransition,
     preservingLegacyRowsAfter legacyUpperBound: Date?
-  ) async throws -> Int {
+  ) throws -> Int {
     try deleteRunHistoryRows(
       obsoletedBy: transition,
       from: "history_records",
@@ -1278,9 +1278,10 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     )
   }
 
-  public func deleteAllRecords() async throws -> Int {
+  func deleteAllRecords() throws -> Int {
     let statement = try prepare("DELETE FROM history_records;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try step(statement, expecting: SQLITE_DONE)
     return Int(sqlite3_changes(db))
   }

@@ -88,7 +88,8 @@ gitleaks version
 
 Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/release`。
 完整图的 Debug 构建与测试统一使用 SwiftBuild，编译 String Catalog 并保留同一增量构建目录；
-`test-domain` 继续使用原生构建引擎和独立目录。
+`test-domain` 继续使用原生构建引擎和独立目录；基准负载的 GRDB 原生构建使用独立的
+`.artifacts/build/benchmarks-grdb`，不会因构建引擎指纹不同而清空 Release 目录。
 构建、清理和产物快照由统一入口按配置加锁；不要在另一进程构建时手工删除目录，
 也不要在 worktree 之间复制或软链接 SwiftPM 的构建数据库。工具链、SDK、Metal、
 锁文件、Package 声明或构建参数变化会使相应配置失效；普通源文件变化由 SwiftPM
@@ -253,7 +254,7 @@ git diff --cached --check
 
 1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
 2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
-3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试，与 `just test` 相同。
+3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储和面板压力测试分别放在独立串行进程中，与 `just test` 相同。
 4. `desktop-tests` 验证真实桌面交互；环境不可用时本次完整门禁失败，后续阶段不运行。
 5. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
 6. 工作区 diff 检查。

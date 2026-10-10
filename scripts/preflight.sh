@@ -16,8 +16,8 @@ RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 NATIVE_TESTS='RillPlatformTests|RillUITests|RillAppTests'
 DESKTOP_TESTS='/testDesktop'
-STORAGE_STRESS='RillRuntimeTests.RecordCatalogStressTests'
-PANEL_STRESS='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
+STORAGE_STRESS_TESTS='RillRuntimeTests.RecordCatalogStressTests'
+PANEL_STRESS_TESTS='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
 REPORT_DIR=""
 CURRENT_STAGE=""
 STAGE_STARTED=0
@@ -244,28 +244,31 @@ check_record_domain_boundary() {
 
 run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations|$STORAGE_STRESS"
+  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
 }
 
 run_native_swift_tests() {
+  echo 'Running native platform, UI, and app tests without desktop interaction...'
+  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$PANEL_STRESS_TESTS"
+}
+
+run_performance_swift_tests() {
   local discovered_tests stress_filter
   discovered_tests="$(locked_swift test list --skip-build)"
-  for stress_filter in "$STORAGE_STRESS" "$PANEL_STRESS"; do
+  for stress_filter in "$STORAGE_STRESS_TESTS" "$PANEL_STRESS_TESTS"; do
     if ! grep -E "$stress_filter" <<< "$discovered_tests" >/dev/null; then
       error "Required performance tests were not discovered: $stress_filter"
     fi
   done
-  echo 'Running native platform, UI, and app tests without desktop interaction...'
-  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$PANEL_STRESS"
   echo 'Running 10,000-record storage performance tests in a fresh serial process...'
-  locked_swift test --skip-build --filter "$STORAGE_STRESS"
+  locked_swift test --skip-build --filter "$STORAGE_STRESS_TESTS"
   echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
-  if locked_swift test --skip-build --filter "$PANEL_STRESS"; then
+  if locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
     return
   fi
   info "Native panel stress failed; sampling one diagnostic replay"
   if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
-    locked_swift test --skip-build --filter "$PANEL_STRESS"; then
+    locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
     info "Diagnostic replay also failed; the original failure remains authoritative"
   fi
   error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
@@ -279,6 +282,7 @@ run_desktop_swift_tests() {
 run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
+  run_performance_swift_tests
   info 'Desktop interaction was not tested. Run just test-desktop in an unlocked session; just ci requires both suites.'
 }
 
@@ -548,6 +552,7 @@ run_preflight() {
   run_preflight_stage repository check_repository
   run_preflight_stage domain-tests run_domain_swift_tests
   run_preflight_stage native-tests run_native_swift_tests
+  run_preflight_stage performance-tests run_performance_swift_tests
   run_preflight_stage desktop-tests run_desktop_swift_tests --skip-build
   run_preflight_stage release check_release
   run_preflight_stage working-diff check_working_diff

@@ -1,9 +1,10 @@
 import Foundation
+import GRDB
 import RillCore
 import SQLite3
 
-extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
-  public func loadRecordCatalog() async throws -> RecordCatalogRead? {
+extension SQLitePersistenceSession {
+  func loadRecordCatalog() throws -> RecordCatalogRead? {
     try withDeferredTransaction { try readRecordCatalog() }
   }
 
@@ -19,11 +20,12 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
     try validateCatalogManifest(manifest)
     let statement = try prepare(
       "SELECT key, kind, identifier, payload FROM record_catalog_nodes ORDER BY key;")
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     var nodes: [RecordCatalogNode] = []
     var byteCount = 0
     while true {
-      let status = sqlite3_step(statement)
+      let status = sqlite3_step(statement.sqliteStatement)
       if status == SQLITE_DONE { break }
       guard status == SQLITE_ROW else {
         throw SQLitePersistenceError.clipboardPersistenceUnavailable
@@ -52,7 +54,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
       revision: stored.revision, manifest: manifest, nodes: nodes, references: references)
   }
 
-  public func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws
+  func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) throws
     -> Data
   {
     try readRecordPayload(reference)
@@ -62,12 +64,13 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
     let statement = try prepare(
       "SELECT record_id, payload_kind, plaintext_size, payload FROM record_payload_blobs WHERE blob_id = ?;"
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     try bind([.text(reference.blobID.uuidString)], to: statement)
-    guard sqlite3_step(statement) == SQLITE_ROW,
+    guard sqlite3_step(statement.sqliteStatement) == SQLITE_ROW,
       textColumn(in: statement, index: 0) == reference.recordID.rawValue.uuidString,
       textColumn(in: statement, index: 1) == reference.kind.rawValue,
-      sqlite3_column_int64(statement, 2) == reference.byteCount,
+      sqlite3_column_int64(statement.sqliteStatement, 2) == reference.byteCount,
       let sealed = try dataColumn(in: statement, index: 3, maximumByteCount: 128 * 1_024 * 1_024)
     else { throw SQLitePersistenceError.clipboardPersistenceUnavailable }
     let value = try localDataProtector.openBinary(
@@ -78,7 +81,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
     return value
   }
 
-  public func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
+  func commitRecordCatalog(_ mutation: RecordCatalogMutation) throws -> Int64 {
     if !mutation.preservesManifest { try validateCatalogManifest(mutation.manifest) }
     if mutation.preservesManifest {
       guard mutation.newPayloadBlobs.isEmpty, mutation.removedPayloadBlobIDs.isEmpty,
@@ -117,8 +120,9 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
         // Authenticate the small clock node instead of decrypting and decoding the entire manifest.
         let clock = try prepare(
           "SELECT payload FROM record_catalog_nodes WHERE key = 'bufferClock/input-sequence';")
-        defer { sqlite3_finalize(clock) }
-        guard sqlite3_step(clock) == SQLITE_ROW,
+        defer { withExtendedLifetime(clock) {} }
+
+        guard sqlite3_step(clock.sqliteStatement) == SQLITE_ROW,
           let sealed = try dataColumn(in: clock, index: 0, maximumByteCount: 256),
           try JSONDecoder().decode(
             UInt64.self,
@@ -126,7 +130,8 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
               sealed, context: Self.catalogNodeContext("bufferClock/input-sequence"))) > 0
         else { throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot }
         let update = try prepare("UPDATE record_graph_metadata SET revision = ? WHERE id = 1;")
-        defer { sqlite3_finalize(update) }
+        defer { withExtendedLifetime(update) {} }
+
         try bind([.int(nextRevision)], to: update)
         try step(update, expecting: SQLITE_DONE)
         manifestData = nil
@@ -139,7 +144,8 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
       }
       for key in mutation.removedKeys {
         let statement = try prepare("DELETE FROM record_catalog_nodes WHERE key = ?;")
-        defer { sqlite3_finalize(statement) }
+        defer { withExtendedLifetime(statement) {} }
+
         try bind([.text(key)], to: statement)
         try step(statement, expecting: SQLITE_DONE)
       }
@@ -147,9 +153,10 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
         if mutation.preservesManifest, node.kind == .activity {
           let existing = try prepare(
             "SELECT 1 FROM record_catalog_nodes WHERE key = ? AND kind = ? AND identifier = ?;")
-          defer { sqlite3_finalize(existing) }
+          defer { withExtendedLifetime(existing) {} }
+
           try bind([.text(node.key), .text(node.kind.rawValue), .text(node.id)], to: existing)
-          guard sqlite3_step(existing) == SQLITE_ROW else {
+          guard sqlite3_step(existing.sqliteStatement) == SQLITE_ROW else {
             throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
           }
         }
@@ -163,16 +170,18 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
           INSERT INTO record_catalog_nodes (key, kind, identifier, payload) VALUES (?, ?, ?, ?)
           ON CONFLICT(key) DO UPDATE SET payload = excluded.payload;
           """)
-        defer { sqlite3_finalize(statement) }
+        defer { withExtendedLifetime(statement) {} }
+
         try bind(
           [.text(node.key), .text(node.kind.rawValue), .text(node.id), .blob(sealed)], to: statement
         )
         try step(statement, expecting: SQLITE_DONE)
         let readback = try prepare(
           "SELECT payload FROM record_catalog_nodes WHERE key = ? AND kind = ? AND identifier = ?;")
-        defer { sqlite3_finalize(readback) }
+        defer { withExtendedLifetime(readback) {} }
+
         try bind([.text(node.key), .text(node.kind.rawValue), .text(node.id)], to: readback)
-        guard sqlite3_step(readback) == SQLITE_ROW,
+        guard sqlite3_step(readback.sqliteStatement) == SQLITE_ROW,
           let persisted = try dataColumn(
             in: readback, index: 0, maximumByteCount: 4 * 1_024 * 1_024),
           try localDataProtector.openBinary(persisted, context: Self.catalogNodeContext(node.key))
@@ -229,12 +238,13 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
     let statement = try prepare(
       "SELECT blob_id, record_id, payload_kind, plaintext_size FROM record_payload_blobs ORDER BY blob_id;"
     )
-    defer { sqlite3_finalize(statement) }
+    defer { withExtendedLifetime(statement) {} }
+
     let limits = RecordStorageLimits.productDefault
     var result: [RecordGraphPersistenceBlobReference] = []
     var bytes = 0
     while true {
-      switch sqlite3_step(statement) {
+      switch sqlite3_step(statement.sqliteStatement) {
       case SQLITE_DONE: return result
       case SQLITE_ROW:
         guard result.count < limits.maximumRecordCount,
@@ -244,7 +254,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
         else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
-        let size = sqlite3_column_int64(statement, 3)
+        let size = sqlite3_column_int64(statement.sqliteStatement, 3)
         let maximum: Int
         switch kind {
         case .text: maximum = limits.maximumTextUTF8ByteCount

@@ -230,8 +230,12 @@ budgets are separate from the durable catalog's storage limits.
 
 `GlobalInputSource` and focus identity values live in Core. Runtime consumes
 those contracts; App wires platform input and recording cues. SQLite history,
-settings, and catalog queries share one connection owner so graph migration and
-clear barriers retain their transactional guarantees. UI persistence task
+settings, and catalog queries share one GRDB connection behind the persistence
+actor. GRDB owns connection and statement lifetimes and parameter binding; the
+existing bounded payload decoders and authenticated schema migrations retain
+their SQLite C API checks. Queue access is synchronous, including authorized
+commit and cancellation checks, so graph migration and clear barriers retain
+their transactional guarantees. UI persistence task
 ownership is separate from AppModel's settings presentation and retry policy.
 
 See [Architecture](architecture.md) for the dependency graph and state owners.

@@ -12,6 +12,7 @@ let package = Package(
     .executable(name: "RillInputMethod", targets: ["RillInputMethod"]),
   ],
   dependencies: [
+    .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.11.1"),
     .package(
       url: "https://github.com/mattt/swift-toml.git",
       exact: "2.0.0"
@@ -92,7 +93,7 @@ let package = Package(
     .target(name: "RillWorkflows", dependencies: ["RillSpeechContracts", "RillCore", "RillSpeech", "RillRecords", "RillKnowledge"]),
     .target(
       name: "RillPersistence",
-      dependencies: ["RillCore"],
+      dependencies: ["RillCore", .product(name: "GRDB", package: "GRDB.swift")],
       linkerSettings: [
         .linkedLibrary("sqlite3")
       ]

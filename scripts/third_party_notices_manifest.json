@@ -32,6 +32,18 @@
     },
     {
       "kind": "sourceControl",
+      "identity": "grdb.swift",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "9853f9dce81365fcc1d9b46004633354450164b8d17904e92e80c444545f7e87"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
       "identity": "mlx-audio-swift",
       "licenseExpression": "MIT",
       "evidence": [

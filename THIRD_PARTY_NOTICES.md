@@ -15,6 +15,7 @@ rendered text only normalizes line endings and trailing horizontal whitespace.
 | --- | --- | --- | --- | --- | --- | --- |
 | `async-http-client` | source control | 1.35.0 | <https://github.com/swift-server/async-http-client> | `Apache-2.0` | Git revision `4603a8036d921ea999fadb742931546c341f4bd7` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `e5eab628baf9849380ce867d80f65ece8ff98daa48035f994714e6fe7dbdb3ce`) |
 | `eventsource` | source control | 1.4.1 | <https://github.com/mattt/EventSource.git> | `MIT` | Git revision `a3a85a85214caf642abaa96ae664e4c772a59f6e` | `LICENSE.md` (license, `2f9b695627d569a3ce452b2c03fdd34310df78c8ea94edfafd9ce38381e5b502`) |
+| `grdb.swift` | source control | 7.11.1 | <https://github.com/groue/GRDB.swift.git> | `MIT` | Git revision `b83108d10f42680d78f23fe4d4d80fc88dab3212` | `LICENSE` (license, `9853f9dce81365fcc1d9b46004633354450164b8d17904e92e80c444545f7e87`) |
 | `mlx-audio-swift` | source control | 0.1.3 | <https://github.com/Blaizzy/mlx-audio-swift.git> | `MIT` | Git revision `d302a5c6080d2bb97bae38c7418f82abb76013b6` | `LICENSE` (license, `fd330bb5d9adf9e65bfe4d8f6f90c808a4196ef5c98aad018a3344256fcb2374`) |
 | `mlx-swift` | source control | 0.31.4 | <https://github.com/ml-explore/mlx-swift.git> | `MIT` | Git revision `dc43e62d7055353c7f99fa071a4e71d29dfddc44` | `LICENSE` (license, `44326a4ea062241ae6fc26ee2ec90bdc81af7eb7b9d3966181b733fa69d42057`)<br>`Source/Cmlx/json/LICENSE.MIT` (license, `86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14`) |
 | `mlx-swift-lm` | source control | 3.31.4 | <https://github.com/ml-explore/mlx-swift-lm.git> | `MIT` | Git revision `bd4b7434e6bdb588c7ef55706ff8904cb7fd4c57` | `LICENSE` (license, `7b1d86acac816ce8192209d7e01141c129b4d48d474c15cc5fb4af62f497c323`) |
@@ -1968,6 +1969,20 @@ Applies to: `swift-asn1/LICENSE.txt` (license), `swift-certificates/LICENSE.txt`
    See the License for the specific language governing permissions and
    limitations under the License.
 
+```
+
+### Evidence `9853f9dce81365fcc1d9b46004633354450164b8d17904e92e80c444545f7e87`
+
+Applies to: `grdb.swift/LICENSE` (license).
+
+```text
+Copyright (C) 2015-2025 Gwendal Roué
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ### Evidence `b3ddc2ae068e76b3beb71be03c0400f90090f9469aa491bf7b1ac42320af37b8`
