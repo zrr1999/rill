@@ -88,7 +88,8 @@ gitleaks version
 
 Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/release`。
 完整图的 Debug 构建与测试统一使用 SwiftBuild，编译 String Catalog 并保留同一增量构建目录；
-`test-domain` 继续使用原生构建引擎和独立目录。
+`test-domain` 继续使用原生构建引擎和独立目录；基准负载的 GRDB 原生构建使用独立的
+`.artifacts/build/benchmarks-grdb`，不会因构建引擎指纹不同而清空 Release 目录。
 构建、清理和产物快照由统一入口按配置加锁；不要在另一进程构建时手工删除目录，
 也不要在 worktree 之间复制或软链接 SwiftPM 的构建数据库。工具链、SDK、Metal、
 锁文件、Package 声明或构建参数变化会使相应配置失效；普通源文件变化由 SwiftPM
