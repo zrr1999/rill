@@ -166,7 +166,7 @@ Revocation cancels pending work and clears cached results. Uncertain results,
 unavailable services and restricted contexts preserve local selection. Imported
 audio and failed-audio retries do not start ranking requests. Live captions remain
 unchanged; streaming hotword support requires a separate upstream change.
-See the [hotword evaluation protocol](https://github.com/zrr1999/rill/blob/main/docs/archive/qa/jev-hotwords.md) before making quality claims.
+Compare hotword quality on fixed recordings before making quality claims.
 
 Wake-word triggers use `setup.wake_word.phrases`, with one to four distinct short
 phrases. The existing wake-word provider, permissions and readiness rules apply.
