@@ -111,7 +111,11 @@ final class RecordPanelControllerTests: XCTestCase {
     let editor = workspace.buffers.editor
     editor.newItem()
     await editor.waitForPendingWrites()
-    let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existing.contains($0.windowNumber) })
+    let window = try XCTUnwrap(NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existing.contains($0.windowNumber) })
+    let capsule = try XCTUnwrap(
+      NSApp.windows.first { $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existing.contains($0.windowNumber) })
+    let capsuleFrame = capsule.frame
+    let pageFrame = window.frame
     func nativeEditor(in view: NSView) -> NSTextView? {
       if let text = view as? NSTextView, text.accessibilityIdentifier() == "record-buffer.editor" { return text }
       return view.subviews.lazy.compactMap { nativeEditor(in: $0) }.first
@@ -137,17 +141,30 @@ final class RecordPanelControllerTests: XCTestCase {
     for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
     XCTAssertTrue(controller.isVisible)
     XCTAssertTrue(controller.presentation.isCollapsed)
-    XCTAssertEqual(window.frame.width, 320, accuracy: 1)
-    XCTAssertEqual(window.frame.height, 56, accuracy: 1)
+    XCTAssertEqual(window.frame, pageFrame)
+    XCTAssertEqual(capsule.frame, capsuleFrame)
+    XCTAssertEqual(capsule.frame.size, NSSize(width: 260, height: 48))
+    XCTAssertFalse(window.isVisible)
+    XCTAssertTrue(capsule.isVisible)
+    XCTAssertFalse(capsule.canBecomeKey)
     XCTAssertFalse(window.isKeyWindow)
     XCTAssertFalse(window.canBecomeKey)
     XCTAssertFalse(controller.digitSelectionHandler?(0) ?? true)
-    controller.expand()
+    controller.expand(activate: false)
+    XCTAssertFalse(controller.isKey, "Hovering must not capture focus from the external app")
+    XCTAssertEqual(capsule.frame, capsuleFrame)
+    XCTAssertEqual(window.frame, pageFrame)
+    controller.selectMode(.drafts)
     for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
     XCTAssertTrue(nativeEditor(in: try XCTUnwrap(window.contentView)) === native)
     XCTAssertEqual(editor.session?.id, sessionID)
     XCTAssertEqual(native.string, "保留这段编辑")
     XCTAssertEqual(controller.quickPanelModel?.searchText, "保留")
+    controller.moveFloatingPanels(by: NSPoint(x: -20, y: -20))
+    XCTAssertEqual(window.frame.size, pageFrame.size)
+    XCTAssertEqual(capsule.frame.size, capsuleFrame.size)
+    XCTAssertEqual(window.frame.minX - pageFrame.minX, capsule.frame.minX - capsuleFrame.minX)
+    XCTAssertEqual(window.frame.minY - pageFrame.minY, capsule.frame.minY - capsuleFrame.minY)
     native.undoManager?.undo()
     XCTAssertEqual(native.string, "")
     native.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -182,7 +199,7 @@ final class RecordPanelControllerTests: XCTestCase {
         }, onDeliveryAbort: {})
       let window = try XCTUnwrap(
         NSApp.windows.first {
-          $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+          $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
         })
       window.contentView?.layoutSubtreeIfNeeded()
       let deadline = ContinuousClock.now.advanced(by: .seconds(2))
@@ -225,7 +242,8 @@ final class RecordPanelControllerTests: XCTestCase {
       }, onDeliveryAbort: {})
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while controller.quickPanelModel?.results.isEmpty != false, ContinuousClock.now < deadline { await Task.yield() }
-    let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
+    let window = try XCTUnwrap(
+      NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
     window.contentView?.layoutSubtreeIfNeeded()
     func searchField(in view: NSView) -> NSSearchField? {
       if let field = view as? NSSearchField { return field }
@@ -565,40 +583,78 @@ final class RecordPanelControllerTests: XCTestCase {
         .init(payload: .text("workspace \(index)"), provenance: .init(source: .init(kind: .user))), into: [RecordCollection.inboxID])
       let workspace = RecordWorkspaceModel(store: store)
       await workspace.refresh()
-      let probe = RecordPanelDeliveryProbe()
       let model = makeModel(recordWorkspace: workspace)
-      controller.show(
-        model: model,
-        deliverSelection: { subject, actionTarget in
-          await probe.record(subject, target: actionTarget)
-          return .delivered
-        }, onDeliveryAbort: {})
-      let window = try XCTUnwrap(
-        NSApp.windows.first {
-          $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
-        })
-      window.contentView?.layoutSubtreeIfNeeded()
-      let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-      while controller.quickPanelModel?.results.first?.id != record.id, ContinuousClock.now < deadline {
-        await Task.yield()
+      for _ in 0..<2 {
+        let probe = RecordPanelDeliveryProbe()
+        controller.show(
+          model: model,
+          deliverSelection: { subject, actionTarget in
+            await probe.record(subject, target: actionTarget)
+            return .delivered
+          }, onDeliveryAbort: {})
+        let window = try XCTUnwrap(
+          NSApp.windows.first {
+            $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+          })
+        window.contentView?.layoutSubtreeIfNeeded()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while controller.quickPanelModel?.results.first?.id != record.id, ContinuousClock.now < deadline {
+          await Task.yield()
+        }
+        window.contentView?.layoutSubtreeIfNeeded()
+        let field = try XCTUnwrap(searchField(in: XCTUnwrap(window.contentView)))
+        XCTAssertEqual(field.stringValue, "")
+        let event = try XCTUnwrap(
+          NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: "1",
+            charactersIgnoringModifiers: "1", isARepeat: false, keyCode: 18))
+        XCTAssertTrue(field.performKeyEquivalent(with: event))
+        await waitForPasteWork()
+        let result = await probe.snapshot()
+        XCTAssertEqual(result.subjects.map(\.recordID), [record.id])
+        XCTAssertEqual(result.targets, [target])
+        controller.quickPanelModel?.setSearchText("old visit query")
+        controller.dismiss()
       }
-      window.contentView?.layoutSubtreeIfNeeded()
-      let field = try XCTUnwrap(searchField(in: XCTUnwrap(window.contentView)))
-      XCTAssertEqual(field.stringValue, "")
-      let event = try XCTUnwrap(
-        NSEvent.keyEvent(
-          with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
-          windowNumber: window.windowNumber, context: nil, characters: "1",
-          charactersIgnoringModifiers: "1", isARepeat: false, keyCode: 18))
-      XCTAssertTrue(field.performKeyEquivalent(with: event))
-      await waitForPasteWork()
-      let result = await probe.snapshot()
-      XCTAssertEqual(result.subjects.map(\.recordID), [record.id])
-      XCTAssertEqual(result.targets, [target])
-      controller.dismiss()
       await workspace.shutdown()
     }
     await controller.shutdown()
+  }
+
+  func testReopenedCapsuleObservesLanguageChangesAndReplacementModels() async throws {
+    let firstWorkspace = RecordWorkspaceModel(store: RecordStore())
+    let secondWorkspace = RecordWorkspaceModel(store: RecordStore())
+    let firstModel = makeModel(recordWorkspace: firstWorkspace)
+    let secondModel = makeModel(recordWorkspace: secondWorkspace)
+    let controller = RecordPanelController(
+      pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
+    let existing = Set(NSApp.windows.map(\.windowNumber))
+    func dragHandle(in view: NSView) -> NSView? {
+      if view.accessibilityIdentifier() == "record-panel.move-and-open" { return view }
+      return view.subviews.lazy.compactMap { dragHandle(in: $0) }.first
+    }
+    let visits: [(AppModel, AppLanguage)] = [
+      (firstModel, .english), (firstModel, .simplifiedChinese), (secondModel, .english),
+    ]
+    for (model, language) in visits {
+      model.applyLanguage(language)
+      controller.show(model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+      let capsule = try XCTUnwrap(
+        NSApp.windows.first { $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existing.contains($0.windowNumber) })
+      for _ in 0..<4 { await waitForMainRunLoopDefaultMode() }
+      capsule.contentView?.layoutSubtreeIfNeeded()
+      let handle = try XCTUnwrap(dragHandle(in: XCTUnwrap(capsule.contentView)))
+      XCTAssertEqual(handle.accessibilityLabel(), L10n.recordPanel(.moveAndOpen, language: language))
+      controller.collapse()
+      XCTAssertTrue(controller.presentation.isCollapsed)
+      XCTAssertTrue(handle.accessibilityPerformPress())
+      XCTAssertFalse(controller.presentation.isCollapsed)
+      controller.dismiss()
+    }
+    await controller.shutdown()
+    await firstWorkspace.shutdown()
+    await secondWorkspace.shutdown()
   }
 
   func testWarmPanelReadyToSearchWithTenThousandRecords() async throws {
@@ -614,6 +670,8 @@ final class RecordPanelControllerTests: XCTestCase {
     var timings: [Double] = []
     var showTimings: [Double] = []
     var layoutTimings: [Double] = []
+    let sampler = try samplePanelPresentationIfRequested()
+    defer { sampler?.waitUntilExit() }
     func seconds(_ duration: Duration) -> Double {
       let value = duration.components
       return Double(value.seconds) + Double(value.attoseconds) / 1e18
@@ -623,7 +681,7 @@ final class RecordPanelControllerTests: XCTestCase {
       controller.show(model: model, deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
       let shown = ContinuousClock.now
       let window = try XCTUnwrap(
-        NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
+        NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
       window.contentView?.layoutSubtreeIfNeeded()
       let laidOut = ContinuousClock.now
       let deadline = started.advanced(by: .seconds(2))
@@ -645,6 +703,20 @@ final class RecordPanelControllerTests: XCTestCase {
     XCTAssertLessThanOrEqual(
       p95, 0.150,
       "show_p95_ms=\(showTimings.sorted()[28] * 1000) layout_p95_ms=\(layoutTimings.sorted()[28] * 1000)")
+  }
+
+  private func samplePanelPresentationIfRequested() throws -> Process? {
+    guard let path = ProcessInfo.processInfo.environment["RILL_RECORD_PROFILE_DIR"] else { return nil }
+    let directory = URL(fileURLWithPath: path, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let sampler = Process()
+    sampler.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
+    sampler.arguments = [
+      String(ProcessInfo.processInfo.processIdentifier), "5", "1", "-file",
+      directory.appendingPathComponent("record-panel.sample.txt").path,
+    ]
+    try sampler.run()
+    return sampler
   }
 
   private func makeTarget(

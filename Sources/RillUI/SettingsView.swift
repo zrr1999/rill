@@ -212,6 +212,17 @@ public struct SettingsView: View {
         }
       }
       .formStyle(.grouped)
+      .buttonStyle(.glass)
+      .safeAreaBar(edge: .top, alignment: .leading, spacing: 0) {
+        Label(pane.title(language: model.settings.language), systemImage: pane.symbolName)
+          .font(.title2.weight(.semibold))
+          .symbolRenderingMode(.hierarchical)
+          .accessibilityAddTraits(.isHeader)
+          .padding(.horizontal, RillSpacing.page)
+          .padding(.top, RillSpacing.row)
+          .padding(.bottom, RillSpacing.panel)
+      }
+      .scrollEdgeEffectStyle(.soft, for: .top)
       .task(id: model.settingsNavigationRequest?.id) {
         guard let request = model.settingsNavigationRequest else { return }
         await positionSettingsSection(request, proxy: proxy)

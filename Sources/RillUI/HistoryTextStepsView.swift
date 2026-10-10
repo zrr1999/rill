@@ -34,7 +34,7 @@ struct HistoryTextStepsView: View {
           }
           if let output = step.outputText {
             HistoryPreviewContent(text: output, mode: previewMode, language: language) { text, lineLimit in
-              Text(text.isEmpty ? (language == .english ? "Empty result" : "结果为空") : text)
+              Text(text.isEmpty ? (L10n.catalogString("HistoryTextStepsView.Empty.result", language: language)) : text)
                 .font(.callout)
                 .lineLimit(lineLimit)
                 .textSelection(.enabled)
@@ -54,56 +54,72 @@ struct HistoryTextStepsView: View {
 
 enum HistoryTextStepPresentation {
   static func duration(_ milliseconds: UInt64, language: AppLanguage) -> String {
-    let value = L10n.historyProcessingDuration(milliseconds, language: language)
-    return language == .english ? "Processing time: \(value)" : "处理耗时：\(value)"
+    durationResource(milliseconds).string(for: language)
+  }
+
+  private static func durationResource(_ milliseconds: UInt64) -> LocalizedStringResource {
+    L10n.resource("history.step.duration", defaultValue: "Processing time: \(L10n.historyProcessingDurationResource(milliseconds))")
   }
 
   static func tokenUsage(_ usage: LanguageModelTokenUsage?, language: AppLanguage) -> String {
-    let chinese = language == .simplifiedChinese
-    let missing = chinese ? "未提供" : "Not provided"
-    guard let usage else { return chinese ? "Token 用量：\(missing)" : "Token usage: \(missing)" }
-    let input = usage.inputTokens.map { String($0) } ?? missing
-    let output = usage.outputTokens.map { String($0) } ?? missing
-    let total = usage.totalTokens.map { String($0) } ?? missing
-    return chinese
-      ? "Tokens · 输入 \(input) · 输出 \(output) · 合计 \(total)"
-      : "Tokens · Input \(input) · Output \(output) · Total \(total)"
+    tokenUsageResource(usage).string(for: language)
+  }
+
+  private static func tokenUsageResource(_ usage: LanguageModelTokenUsage?) -> LocalizedStringResource {
+    let missing = L10n.resource("history.step.tokens.missing")
+    guard let usage else {
+      return L10n.resource("history.step.tokens.unavailable", defaultValue: "Token usage: \(missing)")
+    }
+    func count(_ value: Int?) -> LocalizedStringResource {
+      guard let value else { return missing }
+      return L10n.resource("history.step.tokens.count", defaultValue: "\(String(value))")
+    }
+    return L10n.resource(
+      "history.step.tokens.usage",
+      defaultValue: "Tokens · Input \(count(usage.inputTokens)) · Output \(count(usage.outputTokens)) · Total \(count(usage.totalTokens))")
   }
 
   static func logHeader(_ step: WorkflowTextStep, language: AppLanguage) -> String {
-    var header = "\(title(step.kind, language: language)) · \(status(step, language: language))\n"
+    logHeaderResource(step).string(for: language)
+  }
+
+  static func logHeaderResource(_ step: WorkflowTextStep) -> LocalizedStringResource {
+    var header = L10n.resource("history.step.header", defaultValue: "\(titleResource(step.kind)) · \(statusResource(step))\n")
     if let milliseconds = step.durationMilliseconds {
-      header += duration(milliseconds, language: language) + "\n"
+      header = L10n.resource("history.step.headerLine", defaultValue: "\(header)\(durationResource(milliseconds))\n")
     }
     if step.kind == .llmRewrite || step.kind == .llmAnswer {
-      header += tokenUsage(step.tokenUsage, language: language) + "\n"
+      header = L10n.resource("history.step.headerLine", defaultValue: "\(header)\(tokenUsageResource(step.tokenUsage))\n")
     }
     return header
   }
 
   static func title(_ kind: WorkflowProcessStepKind, language: AppLanguage) -> String {
-    switch (kind, language) {
-    case (.recognizeSpeech, .simplifiedChinese): "识别结果"
-    case (.recognizeSpeech, .english): "Recognized text"
-    case (.applyVocabulary, .simplifiedChinese): "词替换"
-    case (.applyVocabulary, .english): "Vocabulary replacement"
-    case (.llmRewrite, .simplifiedChinese): "文本润色"
-    case (.llmRewrite, .english): "Text cleanup"
-    default: WorkflowStepPresentation.stepTitle(kind, language: language)
+    titleResource(kind).string(for: language)
+  }
+
+  private static func titleResource(_ kind: WorkflowProcessStepKind) -> LocalizedStringResource {
+    switch kind {
+    case .recognizeSpeech: L10n.resource("history.step.title.recognizeSpeech")
+    case .applyVocabulary: L10n.resource("history.step.title.applyVocabulary")
+    case .llmRewrite: L10n.resource("history.step.title.llmRewrite")
+    default: WorkflowStepPresentation.titleResource(kind)
     }
   }
 
   static func status(_ step: WorkflowTextStep, language: AppLanguage) -> String {
-    let chinese = language == .simplifiedChinese
+    statusResource(step).string(for: language)
+  }
+
+  private static func statusResource(_ step: WorkflowTextStep) -> LocalizedStringResource {
     switch step.result {
     case .completed:
-      if step.didChange == false { return chinese ? "文本未变化" : "Text unchanged" }
-      return chinese ? "已完成" : "Completed"
-    case .skipped: return chinese ? "已跳过，保留原文" : "Skipped; text retained"
-    case .failed: return chinese ? "失败" : "Failed"
-    case .cancelled: return chinese ? "已取消" : "Cancelled"
-    case .thenBranch: return chinese ? "满足条件" : "Condition matched"
-    case .elseBranch: return chinese ? "不满足条件" : "Condition not matched"
+      L10n.resource(step.didChange == false ? "history.step.status.unchanged" : "history.step.status.completed")
+    case .skipped: L10n.resource("history.step.status.skipped")
+    case .failed: L10n.resource("history.step.status.failed")
+    case .cancelled: L10n.resource("history.step.status.cancelled")
+    case .thenBranch: L10n.resource("history.step.status.thenBranch")
+    case .elseBranch: L10n.resource("history.step.status.elseBranch")
     }
   }
 }

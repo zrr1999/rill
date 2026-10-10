@@ -25,14 +25,7 @@ public enum LiveSubtitleOverlayMetrics {
   public static let standardSurfaceHeight = expandedSurfaceHeight
   public static let compactCornerRadius: CGFloat = 24
   public static let standardCornerRadius: CGFloat = 20
-  public static let shadowRadius: CGFloat = 12
-  public static let shadowOffsetY: CGFloat = 4
   public static let shadowInsets = EdgeInsets(top: 16, leading: 16, bottom: 20, trailing: 16)
-}
-
-enum LiveSubtitleSurfaceMaterial: Equatable {
-  case thin
-  case opaque
 }
 
 /// Shared bar geometry for the overlay waveform, so the observed-meter and
@@ -45,26 +38,7 @@ private enum LiveSubtitleWaveformMetrics {
   static let maxHeight: CGFloat = 20
 }
 
-struct LiveSubtitleSurfaceStyle: Equatable {
-  let material: LiveSubtitleSurfaceMaterial
-  let tintOpacity: Double
-
-  static func resolve(
-    reduceTransparency: Bool,
-    increasedContrast: Bool
-  ) -> LiveSubtitleSurfaceStyle {
-    if reduceTransparency {
-      return LiveSubtitleSurfaceStyle(material: .opaque, tintOpacity: 0)
-    }
-    return LiveSubtitleSurfaceStyle(
-      material: .thin,
-      tintOpacity: increasedContrast ? 0.16 : 0.08
-    )
-  }
-}
-
 public struct LiveSubtitleOverlay: View {
-  @Environment(\.accessibilityReduceTransparency) private var accessibilityReduceTransparency
   @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
   public let snapshot: LiveSubtitleSnapshot
@@ -91,12 +65,6 @@ public struct LiveSubtitleOverlay: View {
     Group {
       if includesShadow {
         surface
-          .compositingGroup()
-          .shadow(
-            color: shadowColor,
-            radius: LiveSubtitleOverlayMetrics.shadowRadius,
-            y: LiveSubtitleOverlayMetrics.shadowOffsetY
-          )
           .padding(LiveSubtitleOverlayMetrics.shadowInsets)
       } else {
         surface
@@ -113,30 +81,7 @@ public struct LiveSubtitleOverlay: View {
         compactBody
       }
     }
-    .background { surfaceBackground }
-    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        .strokeBorder(borderColor, lineWidth: 0.75)
-    )
-  }
-
-  @ViewBuilder
-  private var surfaceBackground: some View {
-    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-    let style = LiveSubtitleSurfaceStyle.resolve(
-      reduceTransparency: accessibilityReduceTransparency,
-      increasedContrast: colorSchemeContrast == .increased
-    )
-
-    switch style.material {
-    case .thin:
-      shape
-        .fill(.thinMaterial)
-        .overlay(shape.fill(surfaceTint.opacity(style.tintOpacity)))
-    case .opaque:
-      shape.fill(Color(nsColor: .windowBackgroundColor))
-    }
+    .rillGlass(in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
   }
 
   private var compactBody: some View {
@@ -382,14 +327,10 @@ public struct LiveSubtitleOverlay: View {
     snapshot.phase == .failed ? .red : Color(nsColor: .labelColor)
   }
 
-  private var surfaceTint: Color { Color(nsColor: .windowBackgroundColor) }
   private var primaryTextColor: Color { Color(nsColor: .labelColor) }
   private var secondaryTextColor: Color { Color(nsColor: .secondaryLabelColor) }
   private var borderColor: Color {
     Color(nsColor: .separatorColor).opacity(colorSchemeContrast == .increased ? 0.9 : 0.55)
-  }
-  private var shadowColor: Color {
-    .black.opacity(colorSchemeContrast == .increased ? 0.2 : 0.13)
   }
   private var cornerRadius: CGFloat {
     expandedLayout
@@ -422,19 +363,10 @@ enum LiveSubtitleInteractionPolicy {
     _ usage: LiveSubtitleNetworkUsage,
     language: AppLanguage
   ) -> String {
-    switch (usage, language) {
-    case (.offline, .english):
-      "On this Mac — processed locally"
-    case (.offline, .simplifiedChinese):
-      "本机 — 全程在本机处理"
-    case (.online, .english):
-      "Network steps — this workflow uses a network service"
-    case (.online, .simplifiedChinese):
-      "包含联网步骤 — 此工作流会使用网络服务"
-    case (.unknown, .english):
-      "Network use could not be determined"
-    case (.unknown, .simplifiedChinese):
-      "联网状态无法确定"
+    switch usage {
+    case .offline: L10n.resource("LiveSubtitleOverlay.On.this.Mac.processed.locally").string(for: language)
+    case .online: L10n.resource("LiveSubtitleOverlay.Network.steps.this.workflow.uses.a.network.service").string(for: language)
+    case .unknown: L10n.resource("LiveSubtitleOverlay.Network.use.could.not.be.determined").string(for: language)
     }
   }
 
@@ -442,13 +374,10 @@ enum LiveSubtitleInteractionPolicy {
     _ usage: LiveSubtitleNetworkUsage,
     language: AppLanguage
   ) -> String {
-    switch (usage, language) {
-    case (.offline, .english): "On this Mac"
-    case (.offline, .simplifiedChinese): "本机"
-    case (.online, .english): "Network steps"
-    case (.online, .simplifiedChinese): "包含联网步骤"
-    case (.unknown, .english): "Unknown"
-    case (.unknown, .simplifiedChinese): "未知"
+    switch usage {
+    case .offline: L10n.resource("LiveSubtitleOverlay.On.this.Mac").string(for: language)
+    case .online: L10n.resource("LiveSubtitleOverlay.Network.steps").string(for: language)
+    case .unknown: L10n.resource("LiveSubtitleOverlay.Unknown").string(for: language)
     }
   }
 

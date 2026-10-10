@@ -41,6 +41,9 @@ locked_swift() {
       exit 1
     fi
   fi
+  if [[ "$filter" == "$PANEL_STRESS_TESTS" && "${FIXTURE_FAIL_PANEL:-}" == true && -z "${RILL_RECORD_PROFILE_DIR:-}" ]]; then
+    return 47
+  fi
 }
 case "$2" in
   regular) run_swift_tests ;;
@@ -81,6 +84,15 @@ for missing in RecordCatalogStressTests testWarmPanelReadyToSearchWithTenThousan
   grep -Fq 'Required performance tests were not discovered' "$TEST_ROOT/missing-output"
 done
 echo 'PASS: both performance suites must be discovered before execution'
+
+if env FIXTURE_FAIL_PANEL=true FIXTURE_TRACE="$TEST_ROOT/failed-panel-trace" FIXTURE_TESTS="$TEST_ROOT/test-ids" \
+  "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" regular >"$TEST_ROOT/failed-panel-output" 2>&1; then
+  echo 'FAIL: diagnostic replay concealed the original performance failure' >&2
+  exit 1
+fi
+[[ "$(grep -c testWarmPanelReadyToSearchWithTenThousandRecords "$TEST_ROOT/failed-panel-trace")" == 2 ]]
+grep -Fq 'Native panel stress failed; diagnostic samples' "$TEST_ROOT/failed-panel-output"
+echo 'PASS: panel diagnostic replay keeps the original performance failure authoritative'
 
 cat >"$TEST_ROOT/fixture.sh" <<'SH'
 #!/usr/bin/env bash

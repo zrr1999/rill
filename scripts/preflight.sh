@@ -263,7 +263,15 @@ run_performance_swift_tests() {
   echo 'Running 10,000-record storage performance tests in a fresh serial process...'
   locked_swift test --skip-build --filter "$STORAGE_STRESS_TESTS"
   echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
-  locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"
+  if locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
+    return
+  fi
+  info "Native panel stress failed; sampling one diagnostic replay"
+  if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
+    locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
+    info "Diagnostic replay also failed; the original failure remains authoritative"
+  fi
+  error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
 }
 
 run_desktop_swift_tests() {
@@ -478,6 +486,7 @@ check_release() {
 
   info "Checking relocatable SwiftPM resource accessors..."
   verify_xcode_resource_accessor "RillMacOS_RillApp"
+  verify_xcode_resource_accessor "RillMacOS_RillUI"
 
   info "Smoke-testing unsigned app bundle assembly..."
   "$SCRIPT_DIR/assemble_app_bundle.sh" \
@@ -505,6 +514,23 @@ check_release() {
   done
   uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
+  if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
+    check_working_diff
+    preflight_source verify
+    info "Saving the verified preflight app for native interaction QA..."
+    mkdir -p "$RILL_PREFLIGHT_APP_DIR"
+    local archive="Rill-preflight-$SOURCE_REVISION.zip"
+    [[ ! -e "$RILL_PREFLIGHT_APP_DIR/$archive" && ! -L "$RILL_PREFLIGHT_APP_DIR/$archive" ]] ||
+      error "Preflight app archive already exists: $RILL_PREFLIGHT_APP_DIR/$archive"
+    ditto -c -k --sequesterRsrc --keepParent \
+      "$PACKAGE_SMOKE_ROOT/Rill.app" "$RILL_PREFLIGHT_APP_DIR/$archive"
+    (
+      cd "$RILL_PREFLIGHT_APP_DIR"
+      shasum -a 256 "$archive" > "$archive.sha256"
+      printf 'source_revision=%s\nsource_dirty=%s\nsource_fingerprint=%s\nbuild_kind=preflight\nsigning=ad-hoc\n' \
+        "$SOURCE_REVISION" "$SOURCE_DIRTY" "$SOURCE_FINGERPRINT" > "$archive.source.txt"
+    )
+  fi
   cleanup
   trap - EXIT INT TERM
 }

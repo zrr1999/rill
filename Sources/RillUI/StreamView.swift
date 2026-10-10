@@ -67,6 +67,7 @@ public struct StreamView: View {
         )
       }
     }
+    .scrollEdgeEffectStyle(.soft, for: .top)
     .navigationTitle(L10n.text(.sidebarStream, language: model.settings.language))
   }
 
@@ -148,7 +149,7 @@ public struct StreamView: View {
           model.showSettings(.diagnostics)
         }
       }
-      .buttonStyle(.borderedProminent)
+      .buttonStyle(.glassProminent)
 
       Text(L10n.string(.voiceFailureGenericSummary, language: model.settings.language))
         .font(.callout.weight(.medium))

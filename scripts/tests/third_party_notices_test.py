@@ -164,6 +164,13 @@ class Fixture:
         )
         write_json(workflow_manifest, {"workflows": []})
 
+        ui_bundle = build_dir / "RillMacOS_RillUI.bundle"
+        create_bundle(ui_bundle, "dev.zrr.Rill.ui-resources")
+        for language, title in (("en", "Settings"), ("zh-Hans", "设置")):
+            catalog = ui_bundle / "Contents" / "Resources" / f"{language}.lproj" / "Localizable.strings"
+            catalog.parent.mkdir(parents=True)
+            catalog.write_bytes(plistlib.dumps({"interface.settingsTitle": title}))
+
         mlx_bundle = build_dir / MLX_RESOURCE_BUNDLE_NAME
         create_bundle(mlx_bundle, "mlx-swift_Cmlx")
         (mlx_bundle / "Contents" / "Resources" / "default.metallib").write_bytes(
@@ -482,6 +489,20 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         if bundle_remains:
             self.assertTrue(self.fixture.app_bundle.exists())
 
+    def test_assembler_rejects_missing_ui_localizations(self) -> None:
+        self.fixture.prepare_packaging()
+        self.fixture.generate()
+        self.fixture.build_dir = self.fixture.create_build_products()
+        ui_bundle = self.fixture.build_dir / "RillMacOS_RillUI.bundle"
+        (ui_bundle / "Contents" / "Resources" / "zh-Hans.lproj" / "Localizable.strings").unlink()
+        result = self.fixture.assemble()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Required UI localization not found", result.stdout + result.stderr)
+        shutil.rmtree(ui_bundle)
+        result = self.fixture.assemble()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Required UI resource bundle not found", result.stdout + result.stderr)
+
     def test_assembler_packages_reviewed_resources_and_rejects_drift(self) -> None:
         project_documents = ("LICENSE", "README.md")
         self.fixture.prepare_packaging()
@@ -519,6 +540,12 @@ class ThirdPartyNoticesTests(unittest.TestCase):
                 / "default.metallib"
             ).read_bytes(),
         )
+        for language in ("en", "zh-Hans"):
+            relative = Path("RillMacOS_RillUI.bundle") / "Contents" / "Resources" / f"{language}.lproj" / "Localizable.strings"
+            self.assertEqual(
+                (app_bundle / "Contents" / "Resources" / relative).read_bytes(),
+                (build_dir / relative).read_bytes(),
+            )
         packaged = app_bundle / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.md"
         self.assertEqual(packaged.read_bytes(), self.fixture.output.read_bytes())
         for document in project_documents:

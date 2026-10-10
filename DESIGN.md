@@ -24,7 +24,7 @@ typography:
     fontWeight: 500
   draft-editor:
     fontFamily: "system-ui"
-    fontSize: "15pt"
+    fontSize: "14pt"
 rounded:
   chip: "6pt"
   badge: "8pt"
@@ -53,24 +53,26 @@ components:
   settings-sidebar:
     width: "176pt"
   unified-panel:
-    width: "820pt"
-    height: "600pt"
-    rounded: "{rounded.panel}"
-  unified-panel-minimum:
+    width: "668pt"
+    height: "468pt"
+    rounded: "19pt"
+  unified-panel-compact:
     width: "620pt"
-    height: "560pt"
+    height: "320pt"
+  panel-sidebar:
+    width: "194pt"
   panel-mode-control:
-    width: "260pt"
+    width: "192pt"
   pending-strip:
-    width: "320pt"
-    height: "56pt"
+    width: "260pt"
+    height: "48pt"
     padding: "0pt 12pt"
   panel-search:
     height: "30pt"
     padding: "{spacing.panel}"
   draft-editor:
     typography: "{typography.draft-editor}"
-    padding: "14pt"
+    padding: "4pt 22pt"
   card:
     rounded: "{rounded.card}"
     padding: "{spacing.panel}"
@@ -115,12 +117,12 @@ without invented RGB values or tonal ramps.
 - Collections and Drafts share one panel and retain their native view state.
 - The existing compact and expanded recording overlay remains recognizable.
 
-The implementation has compositor-rendered evidence from temporary synthetic
-windows on macOS 27.0 (26A428), using Xcode 27.0 (27A5228h). Those captures are
-visual evidence, not installed-app or release acceptance. The integrated unified
-panel and the latest workflow corrections still require new compositor captures;
-the Mac is locked at this refresh. Record automated validation with the reviewed
-change and pull request. Physical macOS 26, Fn, IME,
+The floating panel has compositor-rendered evidence from temporary synthetic
+windows on macOS 27.0 (26A428), using Xcode 27.0 (27A5228h). Captures cover both
+modes, English and Chinese, light and dark appearances, three page sizes, and
+focused scenes for native control states. Those captures are visual evidence,
+not installed-app or release acceptance. Record automated validation with the
+reviewed change and pull request. Physical macOS 26, Fn, IME,
 VoiceOver, cross-application output, and multi-display acceptance remain pending.
 Use the [release acceptance contract](docs/release-qa-checklist.md); local
 galleries are review aids, not durable design authority.
@@ -135,8 +137,8 @@ text, selection, and status use their native semantic roles.
 | Primary accent | `Color.accentColor` | Primary actions, selected custom controls, pending-content entry |
 | Primary text | `.primary`, `NSColor.labelColor` | Labels, content, and the normal recording waveform |
 | Supporting text | `.secondary`, `NSColor.secondaryLabelColor` | Sources, time, save state, keyboard hints, recognition hypothesis |
-| Window surface | `NSColor.windowBackgroundColor` | Opaque workspace/panel base and recorder transparency fallback |
-| Control surface | `NSColor.controlBackgroundColor` | Floating header/strip accessibility fallback and key hints |
+| Window surface | `NSColor.windowBackgroundColor` | Opaque workspace and panel base |
+| Control surface | `NSColor.controlBackgroundColor` | Shared glass accessibility surface and key hints |
 | Editor surface | `NSColor.textBackgroundColor` with `NSColor.textColor` | Native editable draft text |
 | Separation | `NSColor.separatorColor`, native `Divider` | Boundaries between controls and content |
 | Selection | Native `List(selection:)` and native controls | Emphasized and inactive selection, including the corresponding text color |
@@ -155,9 +157,11 @@ the recording waveform.
 
 ## Typography
 
-Use the macOS system font and platform Chinese fallback. Native controls keep
-their platform metrics. There is no separate display face or fixed global
-13pt/11pt scale extracted from the mockups.
+Use the macOS system font and platform Chinese fallback. There is no separate
+display face. The floating workspace is a local exception to default control
+metrics: its approved B preview uses 17pt document headings, 14pt body text with
+7pt added line spacing, 12pt actions and list titles, and 11pt supporting text.
+These values belong to this compact surface, not an application-wide type scale.
 
 | Token role | Source role | Use |
 | --- | --- | --- |
@@ -192,10 +196,10 @@ insets and the native editor's padding, remain local to their owners.
 | Main window | Default size in frontmatter; sidebar min/ideal/max 180/200/260pt | [App scene](Sources/RillApp/VoiceInputApplication.swift), [MainShellView](Sources/RillUI/MainShellView.swift) |
 | Records | Split list/detail at 700pt of record content width; narrower content shows list or selected detail | [RecordWorkspaceView](Sources/RillUI/RecordWorkspaceView.swift) |
 | Settings | Same main window; settings sidebar min/ideal/max 160/176/220pt; Back returns to the previous page | [MainShellView](Sources/RillUI/MainShellView.swift), [SettingsDetailView](Sources/RillUI/SettingsWindowView.swift) |
-| Unified panel | Default and minimum sizes in frontmatter; native frame saving retains expanded position and size | [RecordPanelPresentation](Sources/RillUI/RecordPanelPresentation.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
-| Collections preview | Side preview at 760pt or wider when open; preview below results otherwise | [RecordQuickPanelView](Sources/RillUI/RecordQuickPanelView.swift) |
-| Drafts | Native inset list min/ideal/max 180/215/300pt and editor minimum 330pt | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
-| Pending strip | Fixed surface size in frontmatter; drag, expand, and close without taking keyboard focus | [UnifiedRecordPanelView](Sources/RillUI/UnifiedRecordPanelView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
+| Unified panel | Default and compact verification sizes in frontmatter; geometry is selected before opening and stays fixed during interaction | [RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
+| Collections preview | Fixed 194pt list column beside an opaque content preview | [RecordQuickPanelView](Sources/RillUI/RecordQuickPanelView.swift) |
+| Drafts | Fixed 194pt native list with single-line titles and metadata beside the native editor | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
+| Pending strip | Fixed capsule, separate from the page; drag, hover, accessible open, and close | [RecordPanelCapsuleView](Sources/RillUI/RecordPanelCapsuleView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
 The six Settings panes are General, Input, Voice & Models, Vocabulary & Memory,
@@ -204,38 +208,56 @@ is the window subtitle; mounted hidden panes preserve drafts while remaining
 outside hit testing and accessibility navigation.
 
 Main-window navigation keeps All Records, Activity, and Workflows in one top
-group, Collections below, and Settings in the bottom inset. A single toolbar
-search opens grouped results. The Records compact Back path preserves selection;
+group, Collections below, and a glass Settings button in the bottom safe-area
+bar. `ToolbarSpacer` separates global search from the contextual toolbar actions.
+A single toolbar search opens grouped results. The Records compact Back path preserves selection;
 exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
 
-Native window and panel depth carries the hierarchy. Custom Liquid Glass is
-limited to floating control chrome: the unified panel header and pending strip
-use `.glassEffect(.regular)` with the section shape. Reading surfaces, record
-previews, and draft editing stay opaque. Native navigation and toolbars retain
-their platform treatment; individual records do not receive glass shells.
+Native window and panel depth carries the hierarchy. The unified panel uses a
+standard material backdrop, with Liquid Glass on the pending capsule, navigation
+sidebar, selected mode, and action buttons. Each mounted mode owns a separate
+`GlassEffectContainer` so hidden effects cannot join the visible pane. The header
+has its own container. Custom effects apply directly to their content;
+native `.glass` and `.glassProminent` button styles own pointer, pressed, and
+disabled feedback. The primary action uses the system accent color. Reading
+surfaces, record previews, and draft editing stay opaque; individual records do
+not receive glass shells.
+
+The sidebar and paper are inset 8pt. `ConcentricRectangle` resolves their corners
+inside the panel's container shape. The selected mode uses `glassEffectID` and
+a short matched geometry transition, without animating the editor or window
+geometry. This follows Apple's [Liquid Glass guidance](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views)
+and [material hierarchy](https://developer.apple.com/design/human-interface-guidelines/materials).
 
 **The Content Surface Rule.** Keep text and payloads on their own opaque surface.
 Apply translucent material to navigation and controls without lowering the
 opacity of their text or icons.
 
-The preserved recorder uses `.thinMaterial` with a semantic window-color tint.
-Reduce Transparency changes it to an opaque window background. Increase Contrast
-strengthens its tint and separator border. For the unified panel's custom glass,
-either Reduce Transparency or Increase Contrast selects an opaque control
-background. These fallbacks come from the corresponding source views, not a
-generic shared opacity rule.
+The recorder and floating workspace share [RillGlass](Sources/RillUI/RillGlass.swift).
+It applies native regular Liquid Glass directly to the custom surface. Reduce
+Transparency or Increase Contrast selects an opaque control background. Glass
+buttons retain the system's accessibility adaptations. The recorder retains its
+fixed compact and expanded frames, waveform, network disclosure, countdown,
+continue action, and Esc hint. System glass supplies its depth; no custom tint,
+outline, or additional shadow is layered over the surface. The native floating
+panels use `NSPanel.hasShadow`.
 
-The recorder has one soft black shadow and a separator stroke; its exact shadow,
-tint, and border values are in the sidecar. The floating panel uses
-`NSPanel.hasShadow`. Shared cards use quaternary tonal fills through
-`RillCardProminence`, not a shadow stack.
+Main-window Drafts, Copy, Settings, and workflow actions use native glass button
+styles. Primary workflow and explicit output actions use `.glassProminent`.
+The Drafts entry stays above the nested record splits. `safeAreaBar` keeps record
+inspector actions, the global search field, settings heading, and workflow actions
+visible beside scrolling content.
+`scrollEdgeEffectStyle(.soft)` lets that content recede under its controls.
+Settings keeps grouped native forms and a semantic heading for each pane;
+Activity gives its history heading a stronger type hierarchy. Shared content
+cards retain quaternary tonal fills through `RillCardProminence`.
 
 Reduce Motion disables the custom card/selection transitions, panel fades, and
 meter interpolation. The recorder's geometry transition has one AppKit owner.
-Motion constants and their source symbols are recorded in the sidecar; none of
-these transitions delays capture, editing, or output authorization.
+Motion constants stay with their owning implementation; none of these
+transitions delays capture, editing, or output authorization.
 
 ## Shapes
 
@@ -252,12 +274,20 @@ silhouette and the space reserved for timer, Esc hint, and near-limit action.
 
 ### Native actions and navigation
 
-Use native buttons and menus. Explicit output uses `.borderedProminent`;
+Use native buttons and menus. Main-window and floating-workspace output uses
+`.glassProminent`;
 secondary copy and administration remain separate actions. Compact panel controls
 use `.controlSize(.small)`. Records keeps Copy reachable and secondary actions in
 the More menu. Selection, hover, keyboard focus, and inactive-window appearance
 come from native controls. Functional icons use SF Symbols through existing
 project conventions; icon-only buttons retain help and accessibility labels.
+
+The floating workspace keeps the approved B proportions and uses a quiet text
+action for finishing editing or adding a draft, native `.glass` for Copy, and
+accent-colored `.glassProminent` for Send. Native styles own activation,
+accessibility, and pointer feedback. The 32pt action slots have fixed widths;
+`buttonSizing(.flexible)` fills the assigned width without moving controls when
+selection, status, or output confirmation changes.
 
 ### Search and text input
 
@@ -288,7 +318,7 @@ settings command and mutation availability. The item list uses `.listStyle(.inse
 with native selection colors. See
 [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift).
 
-The pending strip shows a count, next-item summary, expand, and close. It is
+The pending capsule shows a count, reserved attention mark, and close. It is
 separate from the recorder's position and state. When a collection source is
 restored as enabled after settings load, or is newly enabled while the panel is
 hidden, the controller shows the collapsed strip without taking keyboard focus.
@@ -302,11 +332,17 @@ mode changes within the same editing visit, and Send do not recapture or retarge
 it. The displayed target remains controller-owned and is revalidated at the
 output boundary. A persistent strip does not authorize reuse of a stale target.
 
-Expanded position and size use native `saveFrame(usingName:)` and
-`setFrameUsingName(_:)` under `RillRecordPanel`. Collapse retains the expanded
-size without replacing the saved frame with the strip geometry. Expanding from
-a dragged strip uses its current top-left position, restores the retained size,
-and clamps the result to the visible screen. These behaviors are owned by
+The capsule retains its position under `RillRecordCapsule`. Hover opens a separate
+668×468pt page after 120ms; available screen space may reduce its size before
+opening. Crossing the gap keeps the page visible, and leaving both windows starts
+a 220ms delay, with 6pt tolerance around each window edge. Returning cancels the
+close timer. Editing, pointer presses, composition, sheets, and pinning hold the
+page open. Each window is clamped horizontally on its own, so the capsule can
+reach the 12pt screen margin after the page reaches its boundary. Vertical dragging
+keeps the current page side while it fits, moves the page below a capsule near the
+top or above one near the bottom, and preserves a 14pt gap. Limited space reduces
+page height; normal height returns when space is available. The page has no collapse
+button, and content changes never move its controls. These behaviors are owned by
 [RecordPanelController](Sources/RillApp/RecordPanelController.swift).
 
 ### Cards and disclosure
