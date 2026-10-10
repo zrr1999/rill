@@ -4,7 +4,7 @@ default:
 
 # Install the pre-commit and commit-message hooks.
 install:
-    uvx prek==0.5.3 install --prepare-hooks --hook-type pre-commit --hook-type commit-msg
+    uvx prek==0.5.3 install --prepare-hooks
 
 # Run maintained formatting and configuration hooks.
 check:
