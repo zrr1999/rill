@@ -3,8 +3,8 @@
 文档站使用 [Zensical](https://zensical.org/)，直接取用仓库中的 Markdown。
 README 是产品入口，`docs/usage.md` 是安装指南，其余用户页面按任务组织。
 开发契约与发布流程从 [贡献指南](../CONTRIBUTING.md#文档归属)进入，只保留在仓库。
-当前技能依赖的架构、Record、工作流、UI 和发布验收路径保持稳定；历史材料统一归档到
-`docs/archive/`，不作为当前事实源。README、隐私与许可文件仍按原路径随 App 分发。
+当前技能依赖的架构、Record、工作流、UI 和发布验收路径保持稳定；研究、计划和验收记录放在
+`.agents/notes/`，不作为当前事实源。README、隐私与许可文件仍按原路径随 App 分发。
 
 ## 构建与预览
 

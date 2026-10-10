@@ -134,7 +134,7 @@ SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与�
 临时快照。手动指定回执目录时，由调用者在装配完成后清理该目录。共享缓存中的
 文件不参与签名；所有签名都在当前装配目录中完成。
 
-实测数据、计数口径和复现步骤见 [构建提速验证](docs/archive/validation/build-performance.md)。
+实测数据、计数口径和复现步骤记录在 `.agents/notes/validation/build-performance.md`。
 
 ## 本地 App 与发布
 
@@ -170,7 +170,7 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 
 公开文档站只收录用户指南、高级工作流参考和隐私/许可说明。技术契约、发布流程与
 开发命令在本表维护入口，不进入站点正文或搜索索引。
-研究、计划、性能实测和历史 QA 已归入 [历史资料](docs/archive/README.md)，保留原始证据和
+研究、计划、性能实测和 QA 记录放在 `.agents/notes/`，按需阅读，保留原始证据和
 适用范围；旧术语、模型选择和未实施方案不能作为当前能力或发布通过的依据。
 
 文档站使用 Zensical；`just docs` 严格构建并检查链接，`just docs-serve` 提供自动刷新的

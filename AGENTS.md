@@ -4,6 +4,10 @@ Use [CONTRIBUTING.md](CONTRIBUTING.md) for development commands, generated
 files, validation, and Git delivery conventions. Check the current implementation
 before relying on older plans or acceptance notes.
 
+Working notes such as research, plans, and acceptance records live in
+`.agents/notes/`; read them on demand and do not treat them as current truth.
+Maintained public documentation stays in `docs/`.
+
 ## Repository skills
 
 Load the skill that matches the task. Combine skills only when the work crosses

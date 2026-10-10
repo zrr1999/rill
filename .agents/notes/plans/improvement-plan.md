@@ -2,7 +2,7 @@
 
 基线：`main@0fe5834`。质量不退化后再降低延迟；只使用固定依赖的公开接口。
 内部接口允许收敛，Record、设置、词库与工作流保留升级路径。以下状态是实施进度，
-不是产品验收结论；历史竞品研究保留在 [归档](archive/research/improvement-plan.md)。
+不是产品验收结论；早期竞品研究见 [研究笔记](../research/improvement-plan.md)。
 
 | 工作包 | 状态 | 完成条件 |
 | --- | --- | --- |
@@ -30,10 +30,10 @@ ASR/TTS/VAD/Embedding 共用下载、摘要与原子目录发布；各自的固�
 运行阶段按 run/lane 发布，已结束运行的晚到阶段不能重新激活 UI。
 输出失败收据可携带 `notApplied` 证据；无证据或旧收据一律视为结果未确认。
 
-验收方法和指标见 [ASR 评测与回放](asr-evaluation.md)，原生验收见
-[发布 QA](release-qa-checklist.md)。本地检查、Hosted CI、真实安装与其他机型分别记录。
+验收方法和指标见 [ASR 评测与回放](../../../docs/asr-evaluation.md)，原生验收见
+[发布 QA](../../../docs/release-qa-checklist.md)。本地检查、Hosted CI、真实安装与其他机型分别记录。
 
-本轮可核验结果见 [质量验证记录](quality-improvement-validation.md)。
+本轮可核验结果见 [质量验证记录](../validation/2026-09-25-quality-improvement.md)。
 
 ### 公开接口缺口 TODO
 

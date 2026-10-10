@@ -8,7 +8,7 @@
 `Evals/ASR/collection-plan.json`，**不包含 120 条已录制、已授权的音频**。
 槽位分为 72 条开发集和 48 条保留验收集；参考文本当前为空，不能直接通过评分。
 填写参考文本前，应听取实际录音并人工复核；提示用户朗读的句子不能直接当作真值。
-Release 合成音频的 worker 与隔离宿主生命周期结果见 [验证记录](quality-improvement-validation.md)。
+Release 合成音频的 worker 与隔离宿主生命周期结果记录在 `.agents/notes/validation/2026-09-25-quality-improvement.md`。
 真人语料配对、连续取消压测、原生交互和跨设备验收仍缺失，不默认启用实验性能策略。
 
 ## 数据与隐私
@@ -147,7 +147,7 @@ configuration 指定 `model_id`、仓库锁定的 `model_revision`、可选 `lan
 目前没有本轮真人 ASR 对照、Release 连续取消压测或上述跨设备性能结论。
 
 流式热词、可靠取消退出屏障、窗口结果复用和选择性大模型复核的重启条件，统一维护在
-[改进计划](improvement-plan.md)。250 ms 保护等待在公开接口没有可靠退出保证前保留。
+`.agents/notes/plans/improvement-plan.md`。250 ms 保护等待在公开接口没有可靠退出保证前保留。
 
 
 回放也接受 `preview_profile: "realtime" | "agent" | "subtitle"`，以真实时间发送

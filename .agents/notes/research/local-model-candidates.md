@@ -1,7 +1,7 @@
 # Local Model Catalog Review
 
 > 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
-> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../../docs/usage.md)。
 
 Rill's local speech boundary now routes exact final-model identities to
 sherpa-onnx or the optional Apple Silicon native MLX Swift backend. The 16 GB default

@@ -1,7 +1,7 @@
 # Rill 同类工具研究与改进方向
 
 > 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
-> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../../docs/usage.md)。
 
 > 初次调研：2026-06-17
 > 最近刷新：2026-07-16
@@ -409,5 +409,5 @@ specific interactions; these are reference patterns, not feature-parity claims.
 | [Dify workflow quick start](https://docs.dify.ai/en/quick-start) | Inspect processing output before committing to production effects. | A process test suppresses all outputs; real output is a separate explicit action. |
 
 Implementation and schema contracts are documented in
-[workflow-toml.md](../../workflow-toml.md). Native visual QA and physical microphone/Fn
+[workflow-toml.md](../../../docs/workflow-toml.md). Native visual QA and physical microphone/Fn
 acceptance remain separate from parser and runtime test results.

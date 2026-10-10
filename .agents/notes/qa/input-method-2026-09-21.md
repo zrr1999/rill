@@ -15,7 +15,7 @@ Review the PR against `main`; the inherited dirty baseline is not introduced as
 new feature work. The port retains main's speech-worker contract target, catalog
 mutation optimizations, workflow executor, settings and vocabulary state owners.
 
-The module graph and state owners are documented in [architecture.md](../../architecture.md).
+The module graph and state owners are documented in [architecture.md](../../../docs/architecture.md).
 AppModel still provides compatibility properties and cross-feature settings
 composition. The new feature models own the corresponding observable state;
 this does not remove every legacy AppModel command extension.
@@ -127,7 +127,7 @@ build 24). This established its visible entry, not native IMK compatibility.
 No real-device IMK input-source acceptance is claimed. TextEdit,
 browser, Codex, VS Code, WeChat and Terminal still need the marked-text,
 keyboard/mouse selection, paging, focus/source switch, multi-display, Fn,
-copy/paste and exit/restart checks in [input-method.md](../../input-method-development.md).
+copy/paste and exit/restart checks in [input-method.md](../../../docs/input-method-development.md).
 The generated app has not replaced the user's installed Rill or Squirrel.
 
 No fixed recordings with reference transcripts were supplied for the hotword
@@ -136,4 +136,4 @@ ordinary-sentence regressions, latency and edit cost are unmeasured.
 
 This is a local personal-use build. Public distribution and notarization are
 outside this delivery; pinned dependency licensing is documented separately in
-[input-method-dependencies.md](../../input-method-dependencies.md).
+[input-method-dependencies.md](../../../docs/input-method-dependencies.md).
