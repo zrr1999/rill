@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["zensical==0.0.63"]
+# dependencies = ["zensical==0.0.69"]
 # ///
 """Stage the maintained Markdown sources, then run the pinned Zensical CLI."""
 
