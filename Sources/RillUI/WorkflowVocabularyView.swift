@@ -79,10 +79,11 @@ struct VocabularyCollectionCard: View {
     }
     .rillCard(.regular, cornerRadius: RillRadius.row, padding: RillSpacing.dense)
     .sheet(item: $editingEntry) { entry in
+      let isNew = isAddingEntry
       VocabularyEntryEditor(
-        entry: entry, language: model.settings.language,
+        entry: entry, isNew: isNew, language: model.settings.language,
         save: { proposed in
-          if !isAddingEntry {
+          if !isNew {
             return model.vocabulary.updateVocabularyEntry(proposed, in: collection.id)
           }
           return model.vocabulary.addVocabularyEntry(proposed, to: collection.id)
@@ -126,6 +127,7 @@ struct VocabularyCollectionCard: View {
 
 private struct VocabularyEntryEditor: View {
   let entry: VocabularyEntry
+  let isNew: Bool
   let language: AppLanguage
   let save: (VocabularyEntry) -> Bool
   @Environment(\.dismiss) private var dismiss
@@ -133,8 +135,9 @@ private struct VocabularyEntryEditor: View {
   @State private var sample = ""
   @State private var saveFailed = false
 
-  init(entry: VocabularyEntry, language: AppLanguage, save: @escaping (VocabularyEntry) -> Bool) {
+  init(entry: VocabularyEntry, isNew: Bool, language: AppLanguage, save: @escaping (VocabularyEntry) -> Bool) {
     self.entry = entry
+    self.isNew = isNew
     self.language = language
     self.save = save
     _rule = State(initialValue: entry.legacyRule())
@@ -142,7 +145,7 @@ private struct VocabularyEntryEditor: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text(text(.vocabularyEditRule)).font(.headline)
+      Text(text(isNew ? .vocabularyAddRule : .vocabularyEditRule)).font(.headline)
       Form {
         Picker(text(.vocabularyKind), selection: $rule.kind) {
           ForEach([VocabularyRuleKind.hotword, .mapping], id: \.self) { kind in
