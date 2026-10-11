@@ -5,58 +5,29 @@ struct VocabularyCollectionCard: View {
   @Bindable var model: AppModel
   let collection: VocabularyCollection
 
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var isExpanded = false
-  @State private var entryKind = VocabularyRuleKind.hotword
-  @State private var pattern = ""
-  @State private var replacement = ""
-  @State private var confirmsCollectionDeletion = false
+  @State private var isExpanded = true
+  @State private var editingEntry: VocabularyEntry?
+  @State private var isAddingEntry = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      // The enable toggle and the disclosure control sit side by side
-      // instead of nesting the toggle inside a DisclosureGroup label,
-      // so their hit areas no longer overlap.
-      HStack(spacing: 8) {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
         Toggle(
+          collection.name,
           isOn: Binding(
             get: { collection.enabled },
-            set: {
-              model.vocabulary.setVocabularyCollectionEnabled(
-                collection.id,
-                isEnabled: $0
-              )
-            }
+            set: { model.vocabulary.setVocabularyCollectionEnabled(collection.id, isEnabled: $0) }
           )
-        ) {
-          VStack(alignment: .leading, spacing: 1) {
-            Text(collection.name)
-              .font(.caption.weight(.medium))
-            Text(
-              L10n.workflowVocabularyEntryCount(
-                collection.entries.count,
-                language: model.settings.language
-              )
-            )
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
-          }
-        }
+        )
         .toggleStyle(.checkbox)
-
-        Spacer(minLength: 8)
-
+        Spacer()
         Button {
-          withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
-            isExpanded.toggle()
-          }
+          isExpanded.toggle()
         } label: {
-          Image(systemName: RillSystemSymbol.chevronRight.rawValue)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-            .padding(4)
-            .contentShape(Rectangle())
+          Label(
+            L10n.workflowVocabularyEntryCount(collection.entries.count, language: model.settings.language),
+            systemImage: isExpanded ? "chevron.down" : "chevron.right"
+          )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
@@ -65,135 +36,184 @@ struct VocabularyCollectionCard: View {
       }
 
       if isExpanded {
-        expandedContent
-          .padding(.top, 8)
+        scopeSummary
+        ForEach(collection.entries) { entry in
+          HStack {
+            Toggle(
+              entryTitle(entry),
+              isOn: Binding(
+                get: { entry.enabled },
+                set: { model.vocabulary.setVocabularyRuleEnabled(entry.id, isEnabled: $0) }
+              )
+            )
+            .toggleStyle(.checkbox)
+            .accessibilityIdentifier("vocabulary.entry.\(entry.id.uuidString).enabled")
+            Spacer()
+            Button {
+              isAddingEntry = false
+              editingEntry = entry
+            } label: {
+              Image(systemName: "pencil")
+            }
+            .accessibilityLabel("\(text(.vocabularyEditRule)): \(entryTitle(entry))")
+            .accessibilityIdentifier("vocabulary.entry.\(entry.id.uuidString).edit")
+            Button(role: .destructive) {
+              model.vocabulary.deleteVocabularyEntry(entry.id, from: collection.id)
+            } label: {
+              Image(systemName: RillSystemSymbol.trash.rawValue)
+            }
+            .accessibilityLabel(
+              L10n.targetedAccessibilityLabel(
+                .vocabularyDeleteRule, target: entryTitle(entry), language: model.settings.language
+              )
+            )
+            .accessibilityIdentifier("vocabulary.entry.\(entry.id.uuidString).delete")
+          }
+        }
+        Button(text(.vocabularyAddRule)) {
+          isAddingEntry = true
+          editingEntry = VocabularyEntry(content: .hotword(phrase: ""))
+        }
+        .accessibilityIdentifier("vocabulary.collection.\(collection.id.uuidString).add")
       }
     }
     .rillCard(.regular, cornerRadius: RillRadius.row, padding: RillSpacing.dense)
-    .alert(
-      L10n.workflowText(.workflowDeleteCollectionTitle, language: model.settings.language),
-      isPresented: $confirmsCollectionDeletion
-    ) {
-      Button(L10n.recordText(.cancel, language: model.settings.language), role: .cancel) {}
-      Button(L10n.text(.clipboardDeleteItem, language: model.settings.language), role: .destructive) {
-        model.deleteVocabularyCollection(collection.id)
-      }
-    } message: {
-      Text(L10n.workflowText(.workflowDeleteCollectionDetail, language: model.settings.language))
+    .sheet(item: $editingEntry) { entry in
+      let isNew = isAddingEntry
+      VocabularyEntryEditor(
+        entry: entry, isNew: isNew, language: model.settings.language,
+        save: { proposed in
+          if !isNew {
+            return model.vocabulary.updateVocabularyEntry(proposed, in: collection.id)
+          }
+          return model.vocabulary.addVocabularyEntry(proposed, to: collection.id)
+        }
+      )
     }
   }
 
-  private var expandedContent: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if collection.entries.isEmpty {
-        Text(L10n.workflowText(.workflowCollectionEmptyEntries, language: model.settings.language))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      ForEach(collection.entries) { entry in
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-          Image(
-            systemName:
-              entry.content.kind == .hotword
-              ? RillSystemSymbol.waveformBadgePlus.rawValue
-              : RillSystemSymbol.arrowTriangle2Circlepath.rawValue
-          )
-          .foregroundStyle(.secondary)
-          Text(entryTitle(entry))
-            .font(.caption)
-            .lineLimit(2)
-          Spacer()
-          Button(role: .destructive) {
-            model.vocabulary.deleteVocabularyEntry(
-              entry.id,
-              from: collection.id
-            )
-          } label: {
-            Image(systemName: RillSystemSymbol.minusCircle.rawValue)
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel(
-            L10n.targetedAccessibilityLabel(
-              .vocabularyDeleteRule,
-              target: entryTitle(entry),
-              language: model.settings.language
-            )
-          )
-          .accessibilityIdentifier(
-            "vocabulary.entry.\(entry.id.uuidString).delete"
-          )
-        }
-      }
-
-      Picker(
-        L10n.workflowText(.workflowEntryKindLabel, language: model.settings.language),
-        selection: $entryKind
-      ) {
-        Text(L10n.vocabularyRuleKind(.hotword, language: model.settings.language))
-          .tag(VocabularyRuleKind.hotword)
-        Text(L10n.workflowText(.workflowReplacementKindOption, language: model.settings.language))
-          .tag(VocabularyRuleKind.mapping)
-      }
-      .labelsHidden()
-      .pickerStyle(.segmented)
-
-      TextField(
-        L10n.workflowText(.workflowPhrasePlaceholder, language: model.settings.language),
-        text: $pattern
-      )
-      .textFieldStyle(.roundedBorder)
-
-      if entryKind == .mapping {
-        TextField(
-          L10n.workflowText(.workflowReplacementPlaceholder, language: model.settings.language),
-          text: $replacement
+  private var scopeSummary: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      ForEach(model.vocabulary.vocabularyCollectionBindings.filter { $0.collectionID == collection.id }) { binding in
+        let scope = VocabularyRuleScope(
+          bundleIdentifier: binding.condition.bundleIdentifier,
+          recordCollectionID: binding.condition.recordCollectionID,
+          locale: binding.condition.locale
         )
-        .textFieldStyle(.roundedBorder)
+        Text(
+          L10n.vocabularyScopeSummary(
+            scope,
+            groupName: model.recordWorkspace.snapshot.collections.first {
+              $0.id.rawValue == scope.recordCollectionID
+            }?.name,
+            language: model.settings.language
+          ))
       }
-
-      HStack {
-        Button(L10n.workflowText(.workflowAddEntry, language: model.settings.language)) {
-          model.vocabulary.addVocabularyEntry(
-            to: collection.id,
-            kind: entryKind,
-            pattern: pattern,
-            replacement: replacement
-          )
-          pattern = ""
-          replacement = ""
-        }
-        .buttonStyle(.bordered)
-        .disabled(
-          pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        )
-
-        Spacer()
-
-        if collection.id != VocabularyCollection.personalID {
-          Button(role: .destructive) {
-            confirmsCollectionDeletion = true
-          } label: {
-            Image(systemName: RillSystemSymbol.trash.rawValue)
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel(
-            "\(L10n.workflowText(.workflowDeleteCollection, language: model.settings.language)): \(collection.name)"
-          )
-          .accessibilityIdentifier(
-            "vocabulary.collection.\(collection.id.uuidString).delete"
-          )
-        }
-      }
+      Text(text(.vocabularyWorkflowBindings))
     }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+  }
+
+  private func text(_ key: L10n.Key) -> String {
+    L10n.string(key, language: model.settings.language)
   }
 
   private func entryTitle(_ entry: VocabularyEntry) -> String {
-    switch entry.content {
-    case .hotword(let phrase):
-      return phrase
-    case .replacement(let pattern, let replacement, _, _):
-      return "\(pattern) → \(replacement)"
-    }
+    let rule = entry.legacyRule()
+    return rule.kind == .mapping ? "\(rule.pattern) → \(rule.replacement)" : rule.pattern
   }
+}
+
+private struct VocabularyEntryEditor: View {
+  let entry: VocabularyEntry
+  let isNew: Bool
+  let language: AppLanguage
+  let save: (VocabularyEntry) -> Bool
+  @Environment(\.dismiss) private var dismiss
+  @State private var rule: VocabularyRule
+  @State private var sample = ""
+  @State private var saveFailed = false
+
+  init(entry: VocabularyEntry, isNew: Bool, language: AppLanguage, save: @escaping (VocabularyEntry) -> Bool) {
+    self.entry = entry
+    self.isNew = isNew
+    self.language = language
+    self.save = save
+    _rule = State(initialValue: entry.legacyRule())
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(text(isNew ? .vocabularyAddRule : .vocabularyEditRule)).font(.headline)
+      Form {
+        Picker(text(.vocabularyKind), selection: $rule.kind) {
+          ForEach([VocabularyRuleKind.hotword, .mapping], id: \.self) { kind in
+            Text(L10n.vocabularyRuleKind(kind, language: language)).tag(kind)
+          }
+        }
+        TextField(text(.vocabularyPattern), text: $rule.pattern)
+          .accessibilityIdentifier("vocabulary.editor.pattern")
+        if rule.kind == .mapping {
+          TextField(text(.vocabularyReplacement), text: $rule.replacement)
+          Picker(text(.vocabularyMatchMode), selection: $rule.matchMode) {
+            ForEach([VocabularyMatchMode.exactPhrase, .wordBoundary, .regex], id: \.self) { mode in
+              Text(L10n.vocabularyMatchMode(mode, language: language)).tag(mode)
+            }
+          }
+          Toggle(text(.vocabularyCaseSensitive), isOn: $rule.caseSensitive)
+          TextField(text(.vocabularyPriority), value: $rule.priority, format: .number)
+          if rule.matchMode == .regex {
+            Text(text(.vocabularyRegexPreviewNote)).foregroundStyle(.secondary)
+          } else {
+            TextField(text(.vocabularyPreviewInput), text: $sample, axis: .vertical)
+              .lineLimit(2...5)
+            LabeledContent(text(.vocabularyPreviewResult)) {
+              Text(preview.text).textSelection(.enabled)
+            }
+          }
+        } else {
+          Text(text(.vocabularyHotwordBehavior)).foregroundStyle(.secondary)
+        }
+      }
+      if !isValid {
+        Text(text(.vocabularyInvalidRule)).foregroundStyle(.orange)
+      }
+      if saveFailed {
+        Text(text(.vocabularyEditFailed)).foregroundStyle(.orange)
+      }
+      HStack {
+        Spacer()
+        Button(text(.vocabularyCorrectionCancel), role: .cancel) { dismiss() }
+          .keyboardShortcut(.cancelAction)
+        Button(text(.vocabularyCorrectionSave)) {
+          if save(VocabularyEntry(rule: normalizedRule)) { dismiss() } else { saveFailed = true }
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(!isValid)
+        .accessibilityIdentifier("vocabulary.editor.save")
+      }
+    }
+    .padding(20)
+    .frame(minWidth: 480, idealWidth: 560)
+  }
+
+  private var normalizedRule: VocabularyRule {
+    var result = rule
+    result.pattern = result.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+    result.replacement = result.replacement.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Preview represents an enabled rule; editing never changes its stored enabled state.
+    result.enabled = true
+    return result
+  }
+
+  private var preview: VocabularyApplicationResult {
+    VocabularyRuleApplicator.apply(text: rule.matchMode == .regex ? "" : sample, rules: [normalizedRule], context: .init())
+  }
+
+  private var isValid: Bool {
+    !normalizedRule.pattern.isEmpty && (rule.kind == .hotword || preview.issues.isEmpty)
+  }
+
+  private func text(_ key: L10n.Key) -> String { L10n.string(key, language: language) }
 }
