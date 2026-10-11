@@ -20643,70 +20643,70 @@
         }
       }
     },
-    "run.historyRetentionDomainClipboard": {
+    "run.historyRetentionInvalid.clipboard": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "clipboard"
+            "value": "Invalid clipboard history retention setting was ignored; cleanup for that domain is paused."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "剪贴板"
+            "value": "剪贴板历史留存设置无效；该域清理已暂停。"
           }
         }
       }
     },
-    "run.historyRetentionDomainRunAndDiagnostic": {
+    "run.historyRetentionInvalid.runs": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "run and diagnostic"
+            "value": "Invalid run and diagnostic history retention setting was ignored; cleanup for that domain is paused."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "运行与诊断"
+            "value": "运行与诊断历史留存设置无效；该域清理已暂停。"
           }
         }
       }
     },
-    "run.historyRetentionInvalidFormat": {
+    "run.historyRetentionReadFailed.clipboard": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Invalid %@ history retention setting was ignored; cleanup for that domain is paused."
+            "value": "A stored clipboard history retention setting could not be read; cleanup for that domain is paused."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@历史留存设置无效；该域清理已暂停。"
+            "value": "无法读取已保存的剪贴板历史留存设置；该域清理已暂停。"
           }
         }
       }
     },
-    "run.historyRetentionReadFailedFormat": {
+    "run.historyRetentionReadFailed.runs": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A stored %@ history retention setting could not be read; cleanup for that domain is paused."
+            "value": "A stored run and diagnostic history retention setting could not be read; cleanup for that domain is paused."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法读取已保存的%@历史留存设置；该域清理已暂停。"
+            "value": "无法读取已保存的运行与诊断历史留存设置；该域清理已暂停。"
           }
         }
       }
@@ -20717,13 +20717,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Local history updated: removed %d, preserved %d active clipboard item(s)."
+            "value": "Local history updated: removed %@, preserved %@ active clipboard item(s)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "本地历史已更新：移除 %d 条，保留 %d 条仍在使用的剪贴板内容。"
+            "value": "本地历史已更新：移除 %@ 条，保留 %@ 条仍在使用的剪贴板内容。"
           }
         }
       }
@@ -29252,7 +29252,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wake phrases must contain 1–4 unique valid phrases."
+            "value": "%@"
           }
         },
         "zh-Hans": {
