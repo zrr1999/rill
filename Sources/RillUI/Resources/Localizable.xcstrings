@@ -7791,6 +7791,40 @@
         }
       }
     },
+    "general.vocabularyEditFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This rule or collection is no longer available for editing. Close this editor and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此规则或集合已无法编辑。请关闭编辑窗口后重试。"
+          }
+        }
+      }
+    },
+    "general.vocabularyEditRule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑规则"
+          }
+        }
+      }
+    },
     "general.vocabularyEmpty": {
       "extractionState": "manual",
       "localizations": {
@@ -7821,6 +7855,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "范围匹配时，本地 Qwen 使用有界热词上下文。热词只提高识别概率，不保证命中。"
+          }
+        }
+      }
+    },
+    "general.vocabularyInvalidRule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a nonempty phrase or a valid regular expression."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入非空词条或有效的正则表达式。"
           }
         }
       }
@@ -7893,6 +7944,40 @@
         }
       }
     },
+    "general.vocabularyPreviewInput": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try replacement with sample text"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入示例文字试用替换"
+          }
+        }
+      }
+    },
+    "general.vocabularyPreviewResult": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replacement preview (this rule only)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "替换预览（仅此规则）"
+          }
+        }
+      }
+    },
     "general.vocabularyPriority": {
       "extractionState": "manual",
       "localizations": {
@@ -7906,6 +7991,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "优先级"
+          }
+        }
+      }
+    },
+    "general.vocabularyRegexPreviewNote": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regular expressions are checked for valid syntax. Sample matching is unavailable in this editor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正则表达式仅校验语法；编辑器不执行示例匹配。"
           }
         }
       }
@@ -7974,6 +8076,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "词汇与映射词"
+          }
+        }
+      }
+    },
+    "general.vocabularyWorkflowBindings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Additional applicability is defined by workflow TOML bindings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "额外适用范围由工作流 TOML 绑定指定。"
           }
         }
       }
@@ -25591,23 +25710,6 @@
         }
       }
     },
-    "surface.historyDeletedSuffix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " · history deleted"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": " · 原始历史已清理"
-          }
-        }
-      }
-    },
     "surface.imageSummary": {
       "extractionState": "manual",
       "localizations": {
@@ -25829,6 +25931,210 @@
         }
       }
     },
+    "surface.memoryAllSourceBodiesDeleted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All source history bodies have been deleted."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部来源正文已删除。"
+          }
+        }
+      }
+    },
+    "surface.memoryApplication": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Application scope"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用范围"
+          }
+        }
+      }
+    },
+    "surface.memoryCurrentContentNotice": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current memories, which may have changed. The receipt records IDs, not the summaries sent at the time."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以下为当前记忆，可能已修改。回执记录关联 ID，不保存当时发送的摘要版本。"
+          }
+        }
+      }
+    },
+    "surface.memoryCurrentUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current memory unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前记忆不可用"
+          }
+        }
+      }
+    },
+    "surface.memoryEvidenceRevision": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evidence revision"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "证据版本"
+          }
+        }
+      }
+    },
+    "surface.memoryExpiredNotSelected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expired · will not be selected as a reference"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已过期 · 不会选用为参考"
+          }
+        }
+      }
+    },
+    "surface.memoryExpiry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expires"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "到期时间"
+          }
+        }
+      }
+    },
+    "surface.memoryLanguage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Language scope"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语言范围"
+          }
+        }
+      }
+    },
+    "surface.memoryNoExpiry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No expiry"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无到期时间"
+          }
+        }
+      }
+    },
+    "surface.memoryNotRecorded": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not recorded"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未记录"
+          }
+        }
+      }
+    },
+    "surface.memoryNotSpecified": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not specified"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未指定"
+          }
+        }
+      }
+    },
+    "surface.memorySourceVersionNotice": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evidence versions identify the source used to form this memory. Links open the current history entry, which may have changed or no longer be retained."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "证据版本标识形成记忆时使用的来源。链接打开当前历史，内容可能已修改或不再保留。"
+          }
+        }
+      }
+    },
     "surface.memorySummary": {
       "extractionState": "manual",
       "localizations": {
@@ -25842,6 +26148,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "记忆摘要"
+          }
+        }
+      }
+    },
+    "surface.memoryTerms": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terms"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "术语"
+          }
+        }
+      }
+    },
+    "surface.memoryViewCurrentSource": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View current source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看当前来源"
+          }
+        }
+      }
+    },
+    "surface.memoryWorkflow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workflow scope"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流范围"
           }
         }
       }

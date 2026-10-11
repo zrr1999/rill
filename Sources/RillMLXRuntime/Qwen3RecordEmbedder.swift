@@ -41,10 +41,9 @@ public actor Qwen3RecordEmbedder {
         coverageLimited = false
         windows = [tokens]
       } else {
-        var starts = Array(stride(from: 0, to: tokens.count, by: 192))
-        coverageLimited = starts.count > 16
-        if coverageLimited { starts = Array(starts.prefix(15)) + [starts[starts.count - 1]] }
-        windows = starts.map { Array(tokens[$0..<min($0 + 248, tokens.count)]) }
+        let plan = Self.documentWindowPlan(tokenCount: tokens.count)
+        coverageLimited = plan.coverageLimited
+        windows = plan.starts.map { Array(tokens[$0..<min($0 + 248, tokens.count)]) }
       }
       var vectors: [[Float]] = []
       for offset in stride(from: 0, to: windows.count, by: 4) {
@@ -80,5 +79,11 @@ public actor Qwen3RecordEmbedder {
   public func release() {
     container = nil
     Memory.clearCache()
+  }
+
+  static func documentWindowPlan(tokenCount: Int) -> (starts: [Int], coverageLimited: Bool) {
+    let starts = Array(stride(from: 0, to: tokenCount, by: 192))
+    guard starts.count > 16 else { return (starts, false) }
+    return ((0..<16).map { starts[$0 * (starts.count - 1) / 15] }, true)
   }
 }

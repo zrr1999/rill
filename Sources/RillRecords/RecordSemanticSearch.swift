@@ -140,26 +140,12 @@ public actor RecordSemanticSearch {
         if document == nil { document = try await searchableText(record) }
         try check()
         guard let document else { throw RecordStoreError.membershipChanged }
-        let bytes = document.utf8
-        let clipped = bytes.count > 40 * 1_024
-        // UTF-8 decoding replaces a split boundary scalar; the request still fits the worker frame.
-        var input =
-          clipped
-          ? String(decoding: bytes.prefix(30 * 1_024), as: UTF8.self) + "\n…\n"
-            + String(decoding: bytes.suffix(10 * 1_024), as: UTF8.self)
-          : document
-        var frameLimited = false
-        if try JSONEncoder().encode(input).count > 48 * 1_024 {
-          input =
-            String(decoding: input.utf8.prefix(6 * 1_024), as: UTF8.self) + "\n…\n"
-            + String(decoding: input.utf8.suffix(2 * 1_024), as: UTF8.self)
-          frameLimited = true
-        }
-        let value = try await embedder.embed(input, purpose: .document)
+        let input = try Self.documentInput(document)
+        let value = try await embedder.embed(input.text, purpose: .document)
         try check()
         guard valid(value) else { throw RecordEmbeddingError.invalidOutput }
         embedding = .init(
-          vectors: value.vectors, coverageLimited: clipped || frameLimited || value.coverageLimited)
+          vectors: value.vectors, coverageLimited: input.coverageLimited || value.coverageLimited)
         cacheEmbedding(embedding, for: record)
       }
       if embedding.coverageLimited { limitedCount += 1 }
@@ -242,6 +228,46 @@ public actor RecordSemanticSearch {
   private func check() throws {
     try Task.checkCancellation()
     guard !isClosed else { throw CancellationError() }
+  }
+
+  private static func documentInput(_ document: String) throws -> (text: String, coverageLimited: Bool) {
+    let rawLimit = 40 * 1_024
+    let jsonLimit = 48 * 1_024
+    var input = sample(document, byteBudget: rawLimit)
+    var limited = document.utf8.count > rawLimit
+    if try JSONEncoder().encode(input).count > jsonLimit {
+      // A control scalar can expand to six JSON bytes, plus the enclosing quotes.
+      input = sample(document, byteBudget: (jsonLimit - 2) / 6)
+      limited = true
+      guard try JSONEncoder().encode(input).count <= jsonLimit else {
+        throw RecordEmbeddingError.invalidInput
+      }
+    }
+    return (input, limited)
+  }
+
+  private static func sample(_ document: String, byteBudget: Int) -> String {
+    let bytes = document.utf8
+    guard bytes.count > byteBudget else { return document }
+    let separator = "\n…\n"
+    let contentBudget = byteBudget - 2 * separator.utf8.count
+    let headCount = contentBudget / 3
+    let centerCount = contentBudget / 3
+    let tailCount = contentBudget - headCount - centerCount
+    let centerStart = (bytes.count - centerCount) / 2
+    let ranges = [
+      0..<headCount,
+      centerStart..<(centerStart + centerCount),
+      (bytes.count - tailCount)..<bytes.count,
+    ]
+    return ranges.map { range in
+      var start = bytes.index(bytes.startIndex, offsetBy: range.lowerBound)
+      var end = bytes.index(bytes.startIndex, offsetBy: range.upperBound)
+      // Shrink each edge to a scalar boundary; a grapheme can exceed the entire budget.
+      while start != bytes.endIndex && bytes[start] & 0xC0 == 0x80 { bytes.formIndex(after: &start) }
+      while end != bytes.endIndex && bytes[end] & 0xC0 == 0x80 { bytes.formIndex(before: &end) }
+      return String(decoding: bytes[start..<end], as: UTF8.self)
+    }.joined(separator: separator)
   }
 
   private func searchableText(_ summary: RecordSummary) async throws -> String {

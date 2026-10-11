@@ -22,6 +22,7 @@ class QualityEvaluationTests(unittest.TestCase):
         for suite in evaluation.SUITES:
             cases = json.loads(evaluation.corpus_path(suite, {}).read_text())
             self.assertTrue(cases)
+            evaluation.validate_cases(cases)
             self.assertEqual(len({case["id"] for case in cases}), len(cases))
             self.assertTrue(all(isinstance(case["expected"], str) for case in cases))
             self.assertTrue(all(len(case["transcript"].encode()) < 1000 for case in cases))
@@ -86,6 +87,156 @@ class QualityEvaluationTests(unittest.TestCase):
         case = {"id": "one", "asrEvidence": {"terms": ["Rill"], "usedCount": 0,
                                              "omittedCount": 1, "provenance": "fixture"}}
         self.assertEqual(len(evaluation.expected_observations("vocabulary-correction", [case])), 6)
+
+    def test_category_counts_expose_paired_improvements_and_regressions(self):
+        cases = [{"id": name, "category": category} for name, category in
+                 (("gain", "identifier"), ("loss", "negation"), ("both", "negation"), ("neither", "units"))]
+        raw = self.raw("context-correction", cases)
+        outcomes = {"gain": (False, True), "loss": (True, False), "both": (True, True), "neither": (False, False)}
+        for row in raw["observations"]:
+            row["category"] = "PRIVATE RAW CATEGORY"
+            row["exactContentMatch"] = outcomes[row["id"]][row["mode"] == "references"]
+        report = evaluation.reports("context-correction", raw, cases, {}, True)[0]
+        self.assertEqual(report["decision"], "not_assessed")
+        self.assertEqual(report["paired_comparisons"], [{
+            "baseline_mode": "text", "candidate_mode": "references", "expected_pairs": 4, "paired": 4,
+            "improved": 1, "regressed": 1, "both_matched": 1, "neither_matched": 1,
+            "unrequested_pairs": 0, "incomplete_pairs": 0}])
+        self.assertEqual(report["quality"]["text"]["exact_matches"], report["quality"]["references"]["exact_matches"])
+        self.assertEqual(report["quality_by_category"]["references"]["negation"]["exact_matches"], 1)
+        raw["observations"].reverse()
+        self.assertEqual(evaluation.reports("context-correction", raw, cases, {}, True)[0], report)
+
+    def test_pairing_never_borrows_another_repetition(self):
+        cases = [{"id": "one", "category": "identifier"}]
+        raw = self.raw("text-rewrite", cases)
+        for row in raw["observations"]["observations"]:
+            row["matchesExpectedContent"] = ((row["repetition"] == 1) != row["contextual"]
+                                             if row["repetition"] < 3 else True)
+        paired = evaluation.reports("text-rewrite", raw, cases, {}, True)[0]["paired_comparisons"][0]
+        self.assertEqual((paired["paired"], paired["improved"], paired["regressed"], paired["both_matched"]), (3, 1, 1, 1))
+
+    def test_missing_duplicate_and_unknown_coordinates_are_not_scored(self):
+        cases = [{"id": "one", "category": "negation"}]
+        for change in ("missing", "duplicate", "unknown"):
+            with self.subTest(change=change):
+                raw = self.raw("context-correction", cases)
+                if change == "missing":
+                    raw["observations"].pop()
+                elif change == "duplicate":
+                    raw["observations"].append(dict(raw["observations"][0], exactContentMatch=False))
+                else:
+                    raw["observations"].append(dict(raw["observations"][0], id="PRIVATE ID", mode="PRIVATE MODE"))
+                quality, performance = evaluation.reports("context-correction", raw, cases, {}, True)
+                self.assertEqual(quality["decision"], "incomplete")
+                self.assertEqual(set(quality["quality"]), {"text", "references"})
+                self.assertNotIn("PRIVATE", json.dumps([quality, performance]))
+                self.assertEqual(quality["paired_comparisons"][0]["incomplete_pairs"], change != "unknown")
+                if change == "duplicate":
+                    mode = raw["observations"][0]["mode"]
+                    self.assertEqual(quality["quality"][mode]["n"], 0)
+                    self.assertEqual(performance["measurements"][mode]["n"], 0)
+
+    def test_duplicate_coordinates_do_not_erase_observed_request_failure(self):
+        cases = [{"id": "one", "category": "negation"}]
+        raw = self.raw("context-correction", cases)
+        raw["observations"].append(dict(raw["observations"][0], failed=True))
+        quality, performance = evaluation.reports("context-correction", raw, cases, {}, True)
+        self.assertEqual(quality["decision"], "fail")
+        self.assertEqual(quality["run_status"], "incomplete")
+        mode = raw["observations"][0]["mode"]
+        self.assertEqual(quality["quality"][mode]["n"], 0)
+        self.assertEqual(performance["measurements"][mode]["n"], 0)
+        self.assertEqual(quality["paired_comparisons"][0]["incomplete_pairs"], 1)
+
+    def test_rewrite_mode_cannot_replace_a_missing_or_invalid_contextual_flag(self):
+        cases = [{"id": "one"}]
+        for invalid in (None, "false", 0):
+            with self.subTest(contextual=invalid):
+                raw = self.raw("text-rewrite", cases)
+                for row in raw["observations"]["observations"]:
+                    row["mode"] = "contextual" if row.pop("contextual") else "ordinary"
+                    if invalid is not None:
+                        row["contextual"] = invalid
+                quality, performance = evaluation.reports("text-rewrite", raw, cases, {}, True)
+                self.assertEqual(quality["decision"], "incomplete")
+                self.assertEqual(quality["paired_comparisons"][0]["paired"], 0)
+                self.assertTrue(all(value["n"] == 0 for value in performance["measurements"].values()))
+
+    def test_unrequested_and_asymmetric_requests_have_no_implied_gain(self):
+        cases = [{"id": "one", "category": "empty"}]
+        raw = self.raw("context-correction", cases)
+        for row in raw["observations"]:
+            row.update(attemptedRequest=False, elapsedMilliseconds=0)
+        report = evaluation.reports("context-correction", raw, cases, {}, True)[0]
+        self.assertEqual(report["paired_comparisons"][0]["unrequested_pairs"], 1)
+        self.assertEqual(report["paired_comparisons"][0]["paired"], 0)
+        raw["observations"][0]["attemptedRequest"] = True
+        report = evaluation.reports("context-correction", raw, cases, {}, True)[0]
+        self.assertEqual(report["decision"], "incomplete")
+        self.assertEqual(report["paired_comparisons"][0]["incomplete_pairs"], 1)
+
+    def test_failed_requests_cannot_match_and_runner_failure_remains_incomplete(self):
+        cases = [{"id": "one", "category": "negation"}]
+        for suite in evaluation.SUITES:
+            with self.subTest(suite=suite):
+                raw = self.raw(suite, cases)
+                rows = raw["observations"] if suite == "context-correction" else raw["observations"]["observations"]
+                rows[0]["failed"] = True
+                quality, performance = evaluation.reports(suite, raw, cases, {}, False)
+                self.assertEqual(quality["decision"], "fail")
+                self.assertEqual(quality["run_status"], "incomplete")
+                self.assertEqual(performance["run_status"], "incomplete")
+                self.assertIn("runner_failed", quality["incomplete"])
+                self.assertEqual(sum(value["failures"] for value in quality["quality"].values()), 1)
+                self.assertEqual(sum(value["n"] - value["exact_matches"] for value in quality["quality"].values()), 1)
+
+    def test_python_independently_checks_exact_protected_literals(self):
+        cases = [{"id": "one", "category": "identifier", "transcript": "café.txt user_id",
+                  "expected": "café.txt user_id", "protected_literals": ["café.txt", "user_id"]}]
+        for output in ("cafe\u0301.txt user_id", "café.txt userid", "café.txt USER_ID", "café.txt user_id user_id", None):
+            with self.subTest(output=output):
+                raw = self.raw("text-rewrite", cases)
+                for row in raw["observations"]["observations"]:
+                    row["output"] = output
+                quality = evaluation.reports("text-rewrite", raw, cases, {}, True)[0]
+                self.assertEqual(quality["decision"], "fail")
+                self.assertTrue(all(value["exact_matches"] == 0 for value in quality["quality"].values()))
+        raw = self.raw("text-rewrite", cases)
+        for row in raw["observations"]["observations"]:
+            row["output"] = "café.txt user_id"
+        self.assertEqual(evaluation.reports("text-rewrite", raw, cases, {}, True)[0]["decision"], "pass")
+
+    def test_invalid_literal_contract_fails_before_provider_runner(self):
+        case = {"id": "one", "transcript": "café.txt", "expected": "café.txt"}
+        for literals in ([""], ["missing"], ["café.txt", "café.txt"], "café.txt", ["cafe\u0301.txt"]):
+            with self.subTest(literals=literals), self.assertRaises(ValueError):
+                evaluation.validate_cases([dict(case, protected_literals=literals)])
+
+    def test_asr_pairs_and_skipped_count_come_from_complete_corpus_evidence(self):
+        evidence = {"terms": ["Rill"], "usedCount": 1, "omittedCount": 0, "provenance": "fixture"}
+        cases = [{"id": "complete", "category": "correction", "asrEvidence": evidence},
+                 {"id": "incomplete", "category": "correction"}]
+        raw = self.raw("vocabulary-correction", cases)
+        raw["observations"]["skippedASRComparisons"] = ["PRIVATE ID", "PRIVATE BODY"]
+        report = evaluation.reports("vocabulary-correction", raw, cases, {}, True)[0]
+        self.assertEqual(report["skipped_asr_comparison_count"], 1)
+        self.assertNotIn("skipped_asr_comparisons", report)
+        self.assertEqual([pair["expected_pairs"] for pair in report["paired_comparisons"]], [6, 3])
+        self.assertNotIn("PRIVATE", json.dumps(report))
+
+    def test_new_summaries_do_not_echo_private_corpus_or_observation_fields(self):
+        cases = [{"id": "PRIVATE_ID", "category": "PRIVATE_CATEGORY", "transcript": "PRIVATE_LITERAL",
+                  "expected": "PRIVATE_LITERAL", "protected_literals": ["PRIVATE_LITERAL"]}]
+        for suite in evaluation.SUITES:
+            raw = self.raw(suite, cases)
+            rows = raw["observations"] if suite == "context-correction" else raw["observations"]["observations"]
+            for row in rows:
+                row.update(output="PRIVATE_LITERAL", category="PRIVATE_RAW_CATEGORY")
+            rows.append(dict(rows[0], id="PRIVATE_UNKNOWN_ID", sampleID="PRIVATE_UNKNOWN_ID", mode="PRIVATE_MODE"))
+            quality, performance = evaluation.reports(suite, raw, cases, {}, True)
+            self.assertNotIn("PRIVATE", json.dumps([quality, performance]))
+            self.assertTrue(all(set(categories) <= {"other"} for categories in quality["quality_by_category"].values()))
 
     def test_missing_configuration_fails_before_any_provider_runner(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(evaluation.subprocess, "run") as runner:

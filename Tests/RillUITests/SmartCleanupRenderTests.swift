@@ -92,7 +92,13 @@ final class SmartCleanupRenderTests: XCTestCase {
         ).model
         await model.waitForInitialVoiceConfiguration()
         model.setInterfaceLanguage(language)
+        model.vocabulary.addVocabularyEntry(to: VocabularyCollection.personalID, kind: .hotword, pattern: "Rill")
+        model.vocabulary.addVocabularyEntry(to: VocabularyCollection.personalID, kind: .mapping, pattern: "地普西克", replacement: "DeepSeek")
         let surfaces: [(String, AnyView, NSSize)] = [
+          (
+            "vocabulary-manager", AnyView(VocabularyCollectionCard(model: model, collection: model.vocabulary.vocabularyCollections[0]).padding(24)),
+            NSSize(width: 560, height: 360)
+          ),
           ("llm-provider", AnyView(SettingsView(model: model).llmProviderSettingsSection.padding(24)), NSSize(width: 720, height: 760)),
           ("workflow-files", AnyView(WorkflowsView(model: model)), NSSize(width: 960, height: 540)),
         ]

@@ -124,15 +124,6 @@ struct SettingsPermissionPresentation: Equatable {
 public struct SettingsView: View {
   @Bindable var model: AppModel
   let privacyNoticeDocument: PrivacyNoticeDocument?
-  @State var vocabularyKind: VocabularyRuleKind = .mapping
-  @State var vocabularyPattern = ""
-  @State var vocabularyReplacement = ""
-  @State var vocabularyMatchMode: VocabularyMatchMode = .exactPhrase
-  @State var vocabularyCaseSensitive = false
-  @State var vocabularyBundleIdentifier = ""
-  @State var vocabularyGroupID: UUID?
-  @State var vocabularyLocale = ""
-  @State var vocabularyPriority = 0
   @State var sensitiveAppBundleIdentifier = ""
   @State var sensitiveAppApplicationName = ""
   @State var editingSensitiveAppRuleID: UUID?
@@ -196,7 +187,8 @@ public struct SettingsView: View {
             vocabularySection
             if let memory = model.contextMemory {
               ContextMemorySettingsView(
-                memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.settings.language,
+                memory: memory, workflows: model.workflowLibrary.workflows, language: model.settings.language,
+                openSource: model.showHistoryEntry,
                 isExpanded: settingsDisclosureBinding(for: .contextMemory)
               )
               .id(SettingsSection.contextMemory)
