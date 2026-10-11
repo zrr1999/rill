@@ -29518,6 +29518,23 @@
         }
       }
     },
+    "workflowDocument.labelGeneralTemplate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General template"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用模板"
+          }
+        }
+      }
+    },
     "workflowDocument.labelImportTOML": {
       "extractionState": "manual",
       "localizations": {
@@ -29790,6 +29807,23 @@
         }
       }
     },
+    "workflowDocument.labelShowConfigurationLocation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show configuration location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示配置位置"
+          }
+        }
+      }
+    },
     "workflowDocument.labelSteps": {
       "extractionState": "manual",
       "localizations": {
@@ -29837,6 +29871,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "工作流"
+          }
+        }
+      }
+    },
+    "workflowDocument.newWorkflowReviewHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New and imported workflows start disabled. Review their steps and outputs before enabling."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建和导入的工作流默认停用，请检查步骤与输出后再启用。"
           }
         }
       }

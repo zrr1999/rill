@@ -23,16 +23,30 @@ public struct WorkflowFileRecord: Sendable, Equatable {
   }
 }
 
-/// A bounded, display-safe parse or validation failure for one TOML file.
+/// A bounded, display-safe file or configuration-directory diagnostic.
 public struct WorkflowFileIssue: Sendable, Equatable {
+  public enum Target: Sendable, Equatable {
+    case file
+    case configurationDirectory
+  }
+
   public var filename: String
   public var message: String
   public var workflowID: UUID?
+  public var target: Target
 
-  public init(filename: String, message: String, workflowID: UUID? = nil) {
+  public init(filename: String, message: String, workflowID: UUID? = nil, target: Target = .file) {
     self.filename = filename
     self.message = message
     self.workflowID = workflowID
+    self.target = target
+  }
+
+  public func resolvedURL(in configurationDirectory: URL) -> URL {
+    switch target {
+    case .file: configurationDirectory.appendingPathComponent(filename)
+    case .configurationDirectory: configurationDirectory
+    }
   }
 }
 

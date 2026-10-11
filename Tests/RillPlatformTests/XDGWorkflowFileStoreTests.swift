@@ -224,11 +224,36 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     XCTAssertEqual(result.discoveredFileCount, 4)
     XCTAssertEqual(result.records.map(\.workflow.id), [secondWorkflow.id])
     XCTAssertEqual(result.issues.count, 3)
+    XCTAssertTrue(result.issues.allSatisfy { $0.target == .file })
+    XCTAssertEqual(
+      Set(result.issues.map { $0.resolvedURL(in: directory) }),
+      Set(["broken.toml", "duplicate.toml", "first.toml"].map { directory.appendingPathComponent($0) }))
     XCTAssertTrue(result.issues.contains { $0.filename == "broken.toml" })
     XCTAssertEqual(
       Set(result.issues.map(\.filename)),
       ["broken.toml", "duplicate.toml", "first.toml"]
     )
+  }
+
+  func testConfigurationPathAndFileLimitIssuesResolveToTheDirectory() async throws {
+    let directory = temporaryDirectory().deletingLastPathComponent().appendingPathComponent("workflows.toml")
+    let store = XDGWorkflowFileStore(configurationDirectoryURL: directory)
+    try FileManager.default.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data().write(to: directory)
+    let notDirectory = await store.load()
+    let issue = try XCTUnwrap(notDirectory.issues.first)
+    XCTAssertEqual(issue.target, .configurationDirectory)
+    XCTAssertEqual(issue.resolvedURL(in: directory), directory)
+    try FileManager.default.removeItem(at: directory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    for index in 0...XDGWorkflowFileStore.maximumFileCount {
+      try Data("schema_version = [".utf8).write(to: directory.appendingPathComponent("\(index).toml"))
+    }
+    let tooMany = await store.load()
+    XCTAssertEqual(tooMany.discoveredFileCount, XDGWorkflowFileStore.maximumFileCount + 1)
+    let limit = try XCTUnwrap(tooMany.issues.first { $0.target == .configurationDirectory })
+    XCTAssertEqual(limit.resolvedURL(in: directory), directory)
+    XCTAssertEqual(tooMany.issues.filter { $0.target == .file }.count, XDGWorkflowFileStore.maximumFileCount)
   }
 
   func testBundledTemplatesConformToCurrentSchema() throws {

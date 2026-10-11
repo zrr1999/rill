@@ -614,16 +614,16 @@ extension AppModel {
           record.source.map { (record.workflow.id, $0) }
         })
       self.workflowLibrary.workflowFileIssues = workflowFiles.result.issues
-      self.workflowLibrary.invalidWorkflowFileIDs = Set(self.workflowLibrary.workflowFileIssues.compactMap(\.workflowID))
+      self.workflowLibrary.invalidWorkflowFileIDs = Set(self.workflowLibrary.workflowFileIssues.filter { $0.target == .file }.compactMap(\.workflowID))
       self.workflowLibrary.workflowFileURLsByID = Dictionary(
         uniqueKeysWithValues: workflowFiles.result.records.map {
           ($0.workflow.id, $0.fileURL)
         }
       )
       if let directory = workflowFileStore?.configurationDirectoryURL {
-        for issue in self.workflowLibrary.workflowFileIssues {
+        for issue in self.workflowLibrary.workflowFileIssues where issue.target == .file {
           if let id = issue.workflowID, self.workflowLibrary.workflowFileURLsByID[id] == nil {
-            self.workflowLibrary.workflowFileURLsByID[id] = directory.appendingPathComponent(issue.filename)
+            self.workflowLibrary.workflowFileURLsByID[id] = issue.resolvedURL(in: directory)
           }
         }
       }
@@ -637,6 +637,8 @@ extension AppModel {
     } else {
       self.workflowLibrary.usesWorkflowFilesAsSource = false
       self.workflowLibrary.customWorkflows = settings.customWorkflows
+      self.workflowLibrary.workflowFileIssues = workflowFiles?.result.issues ?? []
+      self.workflowLibrary.invalidWorkflowFileIDs = []
       let partialRecords = workflowFiles?.result.records ?? []
       self.workflowLibrary.workflowFileURLsByID = Dictionary(
         uniqueKeysWithValues: partialRecords.map {
@@ -676,18 +678,23 @@ extension AppModel {
     // Do not let a manual reload of an empty directory discard that recovery copy.
     let shouldAdoptFileSource = self.workflowLibrary.usesWorkflowFilesAsSource || self.workflowLibrary.customWorkflows.isEmpty
     guard shouldAdoptFileSource else {
-      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(result.issues)
+      var issues = result.issues
+      let migrationIssue = AppSettingsCodec.incompleteWorkflowMigrationIssue(in: workflowFileStore.configurationDirectoryURL)
+      if !issues.contains(migrationIssue) { issues.append(migrationIssue) }
+      self.workflowLibrary.workflowFileIssues = issues
+      self.workflowLibrary.invalidWorkflowFileIDs = []
+      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(issues)
       return
     }
 
     self.workflowLibrary.usesWorkflowFilesAsSource = true
     let previousCustomIDs = Set(self.workflowLibrary.customWorkflows.map(\.id))
-    let invalidNames = Set(result.issues.map(\.filename))
+    let invalidNames = Set(result.issues.filter { $0.target == .file }.map(\.filename))
     let retainedInvalid = self.workflowLibrary.customWorkflows.filter { workflow in
       self.workflowLibrary.workflowFileURLsByID[workflow.id].map { invalidNames.contains($0.lastPathComponent) } ?? false
     }
     self.workflowLibrary.workflowFileIssues = result.issues
-    self.workflowLibrary.invalidWorkflowFileIDs = Set(result.issues.compactMap(\.workflowID)).union(
+    self.workflowLibrary.invalidWorkflowFileIDs = Set(result.issues.filter { $0.target == .file }.compactMap(\.workflowID)).union(
       retainedInvalid.map(\.id))
     let validIDs = Set(result.records.map { $0.workflow.id })
     self.workflowLibrary.customWorkflows =
@@ -703,6 +710,12 @@ extension AppModel {
       }
     )
     self.workflowLibrary.workflowFileURLsByID.merge(invalidURLs) { current, _ in current }
+    let directory = workflowFileStore.configurationDirectoryURL
+    for issue in result.issues where issue.target == .file {
+      if let id = issue.workflowID, self.workflowLibrary.workflowFileURLsByID[id] == nil {
+        self.workflowLibrary.workflowFileURLsByID[id] = issue.resolvedURL(in: directory)
+      }
+    }
     for workflowID in previousCustomIDs {
       self.workflowLibrary.workflowEnabledStates.removeValue(forKey: workflowID)
     }
@@ -1423,12 +1436,19 @@ extension AppModel {
             record.source.map { (record.workflow.id, $0) }
           })
         self.workflowLibrary.workflowFileIssues = workflowFiles.issues
-        self.workflowLibrary.invalidWorkflowFileIDs = Set(workflowFiles.issues.compactMap(\.workflowID))
+        self.workflowLibrary.invalidWorkflowFileIDs = Set(workflowFiles.issues.filter { $0.target == .file }.compactMap(\.workflowID))
         self.workflowLibrary.workflowFileURLsByID = Dictionary(
           uniqueKeysWithValues: workflowFiles.records.map {
             ($0.workflow.id, $0.fileURL)
           }
         )
+        if let directory = workflowFileStore?.configurationDirectoryURL {
+          for issue in workflowFiles.issues where issue.target == .file {
+            if let id = issue.workflowID, self.workflowLibrary.workflowFileURLsByID[id] == nil {
+              self.workflowLibrary.workflowFileURLsByID[id] = issue.resolvedURL(in: directory)
+            }
+          }
+        }
       } else if let recoveredWorkflows = recovered.customWorkflows {
         self.workflowLibrary.usesWorkflowFilesAsSource = false
         self.workflowLibrary.customWorkflows = recoveredWorkflows

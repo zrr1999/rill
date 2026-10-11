@@ -63,7 +63,9 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     }
     guard isDirectory.boolValue else {
       return WorkflowFileLoadResult(issues: [
-        WorkflowFileIssue(filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.")
+        WorkflowFileIssue(
+          filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.", target: .configurationDirectory
+        )
       ])
     }
 
@@ -85,7 +87,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
         issues: [
           WorkflowFileIssue(
             filename: configurationDirectoryURL.lastPathComponent,
-            message: "The workflow configuration directory could not be read."
+            message: "The workflow configuration directory could not be read.", target: .configurationDirectory
           )
         ]
       )
@@ -98,7 +100,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
       issues.append(
         WorkflowFileIssue(
           filename: configurationDirectoryURL.lastPathComponent,
-          message: "Only the first \(Self.maximumFileCount) TOML files were loaded."
+          message: "Only the first \(Self.maximumFileCount) TOML files were loaded.", target: .configurationDirectory
         )
       )
     }
