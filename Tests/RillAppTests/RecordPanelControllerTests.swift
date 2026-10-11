@@ -71,7 +71,11 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     let model = makeModel()
     model.applyLanguage(.english)
     let existingWindows = Set(NSApplication.shared.windows.map(\.windowNumber))
-    controller.show(model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    controller.show(
+      model: model, deliverSelection: { _, _ in .blocked },
+      onDeliveryAbort: {
+        XCTFail("Window title changes must not abort record delivery")
+      })
     let panel = try XCTUnwrap(
       NSApp.windows.first {
         $0.identifier?.rawValue == "record-panel.page" && !existingWindows.contains($0.windowNumber)
@@ -89,7 +93,11 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     controller.collapse()
     model.applyLanguage(.simplifiedChinese)
     try await waitForTitle("剪贴板")
-    controller.show(model: model, toggle: false, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    controller.show(
+      model: model, toggle: false, deliverSelection: { _, _ in .blocked },
+      onDeliveryAbort: {
+        XCTFail("Window title changes must not abort record delivery")
+      })
     XCTAssertTrue(NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible } === panel)
     model.applyLanguage(.english)
     try await waitForTitle("Clipboard")
