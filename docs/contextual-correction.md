@@ -12,8 +12,30 @@ clear recognition errors in names, homophones and identifiers; they cannot add
 facts, answer questions, change tone, remove uncertainty, or substitute a newer
 fact for the user's words. The provider receives this fixed contract independently
 of user-controlled reference data. Ambiguous evidence must preserve the transcript.
-A numeric mismatch additionally falls back to the complete transcript locally.
-This guard does not prove semantic correctness; model behavior needs live evaluation.
+The same local content guard applies to ordinary canonical Smart Cleanup and
+contextual correction. It checks Chinese and Arabic numeric literals, attached
+signs, currencies and a bounded set of common units, plus HTTP(S) URLs in both
+directions. Existing quoted code, identifiers with code-specific spelling and
+command-line flags and simple calls/signatures without nested parentheses must
+survive verbatim; new identifiers remain allowed for spoken-code correction.
+Complex code needs quotation for complete literal protection. Actual line-start
+Markdown ordered-list markers are ignored so cleanup can structure a list without
+adding substantive numbers.
+
+Sentences containing natural-language negation must occur in both normalized
+documents in order, ignoring punctuation, whitespace and letter case. This
+permits added sentence boundaries but conservatively rejects word corrections
+inside a negative sentence, including some valid homophone fixes. Negation inside
+URLs or code does not trigger this sentence check. Literal number reformatting,
+such as `五百` to `500`, is also conservatively rejected. These bounded checks do
+not prove semantic correctness or interpret punctuation-dependent scope; model
+behavior still needs live evaluation.
+
+A rejected result raises the existing invalid-response error. The executor keeps
+the text immediately before the rewrite, reports a fallback, and records the
+cleanup step as skipped before delivering once. It does not store the rejected
+output as a successful LLM trace. Explicit custom rewrite instructions and
+assistant answers retain their existing semantics.
 
 ## Vocabulary references
 

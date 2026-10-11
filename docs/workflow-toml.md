@@ -334,6 +334,14 @@ cleanup must not answer it or ask for the material to summarize. The same rule
 applies to contextual correction. `llm-answer` and voice-assistant workflows
 still answer requests. User-authored TOML prompts are not overwritten by updates.
 
+Canonical Smart Cleanup with its default instruction also applies a local content
+guard, shared with contextual correction. It preserves literal numbers and
+common attached units, HTTP(S) URLs, existing explicit code, and normalized
+negative sentences. List numbering and added sentence punctuation are allowed.
+The check is intentionally conservative: spelling fixes within a negative
+sentence and number-format changes can skip cleanup and preserve the prior text.
+Custom rewrite instructions are not filtered by this builtin policy.
+
 The provider request contract and cleanup examples are covered by offline checks.
 An opt-in model evaluation sends only fixed synthetic samples in
 `Evals/TextRewrite/cases.json`, in both ordinary and contextual correction
