@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import SwiftUI
 import XCTest
 @testable import RillCore
@@ -71,7 +70,7 @@ private struct MemoryReferenceHost: View {
 }
 
 @MainActor
-final class ContextMemoryPresentationTests: XCTestCase {
+final class ContextMemoryPresentationTests: NativeAccessibilityTestCase {
   func testPrivacyTighteningRemovesReferenceBodiesFromTheRealAccessibilityTree() async throws {
     for language in AppLanguage.allCases {
       let fixture = try await MemoryPresentationFixture.make()
@@ -216,66 +215,4 @@ final class ContextMemoryPresentationTests: XCTestCase {
     return window
   }
 
-  private func settle(_ window: NSWindow) async {
-    for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
-    window.layoutIfNeeded()
-    window.contentView?.layoutSubtreeIfNeeded()
-  }
-
-  private func wait(_ window: NSWindow, until predicate: () -> Bool) async {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-    while !predicate() && ContinuousClock.now < deadline { await settle(window) }
-    XCTAssertTrue(predicate())
-    await settle(window)
-  }
-
-  // Use the external AX tree, including SwiftUI's bridge and attached sheets.
-  private func elements(in window: NSWindow) -> [AXUIElement] {
-    var value: CFTypeRef?
-    let status = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()), kAXWindowsAttribute as CFString, &value)
-    XCTAssertEqual(status, .success)
-    let title = (window.sheetParent ?? window).title
-    guard let root = (value as? [AXUIElement])?.first(where: { string($0, kAXTitleAttribute) == title }) else {
-      XCTFail("The native window must be present in the external AX tree")
-      return []
-    }
-    var pending = [root]
-    var result: [AXUIElement] = []
-    while let element = pending.popLast() {
-      guard !result.contains(where: { CFEqual($0, element) }) else { continue }
-      result.append(element)
-      var children: CFTypeRef?
-      if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children) == .success {
-        pending.append(contentsOf: (children as? [AXUIElement] ?? []).reversed())
-      }
-    }
-    return result
-  }
-
-  private func element(_ identifier: String, in window: NSWindow) -> AXUIElement? {
-    elements(in: window).first { string($0, kAXIdentifierAttribute) == identifier }
-  }
-
-  private func button(_ label: String, in window: NSWindow) -> AXUIElement? {
-    elements(in: window).first {
-      string($0, kAXRoleAttribute) == kAXButtonRole
-        && (string($0, kAXDescriptionAttribute) == label || string($0, kAXTitleAttribute) == label)
-    }
-  }
-
-  private func accessibilityText(_ window: NSWindow) -> String {
-    elements(in: window).flatMap { element in
-      [kAXDescriptionAttribute, kAXTitleAttribute, kAXValueAttribute, kAXHelpAttribute].compactMap { string(element, $0) }
-    }.joined(separator: "\n")
-  }
-
-  private func string(_ element: AXUIElement, _ attribute: String) -> String? {
-    var value: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
-    return value as? String
-  }
-
-  private func press(_ element: AXUIElement) -> Bool {
-    AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
-  }
 }
