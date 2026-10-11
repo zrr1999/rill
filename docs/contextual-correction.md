@@ -15,7 +15,12 @@ of user-controlled reference data. Ambiguous evidence must preserve the transcri
 The same local content guard applies to ordinary canonical Smart Cleanup and
 contextual correction. It checks Chinese and Arabic numeric literals, attached
 signs, currencies and a bounded set of common units, plus HTTP(S) URLs in both
-directions. Existing quoted code, identifiers with code-specific spelling and
+directions. Chinese numeral characters within ordinary words are ignored unless
+they have a unit, an explicit quantity cue, a single-character literal boundary, or
+a recognized multi-place numeric form. Common ambiguous forms such as `千万`
+and `十分` need quantity/duration evidence; complete times such as `三点十分`
+are checked as one literal. This bounded lexical coverage cannot disambiguate
+every bare Chinese numeral. Existing quoted code, identifiers with code-specific spelling and
 command-line flags and simple calls/signatures without nested parentheses must
 survive verbatim; new identifiers remain allowed for spoken-code correction.
 Complex code needs quotation for complete literal protection. Actual line-start

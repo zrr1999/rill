@@ -32,7 +32,7 @@ enum CleanupContentGuard {
       urls = links.map { (text as NSString).substring(with: $0.range) }
       let quoted = quotedCode.matches(in: text, range: range)
       let identifierText = masking(text, ranges: (links + quoted).map(\.range))
-      let numericRanges = numbers.matches(in: identifierText, range: range).map(\.range)
+      let numericRanges = numericMatches(in: identifierText, range: range).map(\.range)
       let identifiers = codeIdentifiers.matches(in: identifierText, range: range).filter { match in
         // A quantity unit such as MiB can have the same spelling as a code identifier.
         let value = (text as NSString).substring(with: match.range)
@@ -52,7 +52,7 @@ enum CleanupContentGuard {
       let quantityText = masking(text, ranges: links.map(\.range) + code.map(\.range))
       let withoutMarkers = masking(text, ranges: markers)
       let numberText = masking(quantityText, ranges: markers)
-      quantities = numbers.matches(in: numberText, range: range).map {
+      quantities = numericMatches(in: numberText, range: range).map {
         (numberText as NSString).substring(with: $0.range).filter { !$0.isWhitespace }
       }
       normalized = normalize(withoutMarkers)
@@ -122,6 +122,43 @@ enum CleanupContentGuard {
     return String(result)
   }
 
+  private static func numericMatches(in text: String, range: NSRange) -> [NSTextCheckingResult] {
+    numbers.matches(in: text, range: range).filter { match in
+      let chinese = match.range(withName: "chinese")
+      guard chinese.location != NSNotFound else { return true }
+      guard let swiftRange = Range(chinese, in: text) else { return false }
+      let value = (text as NSString).substring(with: chinese)
+      let prefix = (text as NSString).substring(with: NSRange(location: match.range.location, length: chinese.location - match.range.location))
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let suffix = (text as NSString).substring(with: NSRange(location: NSMaxRange(chinese), length: NSMaxRange(match.range) - NSMaxRange(chinese)))
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let context = String(text[..<swiftRange.lowerBound].suffix(24))
+      let contextRange = NSRange(context.startIndex..<context.endIndex, in: context)
+      let valueRange = NSRange(value.startIndex..<value.endIndex, in: value)
+      let isMultiPlaceNumber = multiDigitChinese.firstMatch(in: value, range: valueRange) != nil
+      let leftIsBoundary = swiftRange.lowerBound == text.startIndex || isNumberBoundary(text[text.index(before: swiftRange.lowerBound)])
+      let rightIsBoundary = swiftRange.upperBound == text.endIndex || isNumberBoundary(text[swiftRange.upperBound])
+      let hasCue = (rightIsBoundary || isMultiPlaceNumber) && quantityCue.firstMatch(in: context, range: contextRange) != nil
+      // These common adverbs need explicit quantity evidence, even though they contain numeral characters.
+      if value == "万一" || value == "千万" {
+        return !prefix.isEmpty || !suffix.isEmpty || hasCue
+      }
+      if value == "十", suffix == "分" {
+        return !prefix.isEmpty || durationCue.firstMatch(in: context, range: contextRange) != nil
+      }
+      if !prefix.isEmpty || !suffix.isEmpty || hasCue || value.contains("点")
+        || value.hasPrefix("百分之") || value.hasPrefix("千分之")
+      {
+        return true
+      }
+      return isMultiPlaceNumber || (value.count == 1 && leftIsBoundary && rightIsBoundary)
+    }
+  }
+
+  private static func isNumberBoundary(_ character: Character) -> Bool {
+    character.isWhitespace || character.unicodeScalars.allSatisfy { CharacterSet.punctuationCharacters.contains($0) }
+  }
+
   // These fixed patterns are programmer-owned; invalid syntax is a programming error.
   private static let linkDetector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
   private static let quotedCode = try! NSRegularExpression(pattern: #"```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\r\n]+`"#)
@@ -150,7 +187,10 @@ enum CleanupContentGuard {
       (?:正负|[+\-−±负正])? \s*
       (?:
         [0-9０-９]+(?:,[0-9０-９]{3})*(?:[.．][0-9０-９]+)*(?:[eE][+\-]?[0-9]+)?[十百千万亿]?
-        | (?:百分之|千分之)?[零〇一二两三四五六七八九十百千万亿半壹贰叁肆伍陆柒捌玖拾佰仟萬億]+(?:点[零〇一二两三四五六七八九半]+)?
+        | (?<chinese>
+            [零〇一二两三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟萬億]+点(?:半|[零〇一二两三四五六七八九十壹贰叁肆伍陆柒捌玖拾]+分?)
+            | (?:百分之|千分之)?[零〇一二两三四五六七八九十百千万亿半壹贰叁肆伍陆柒捌玖拾佰仟萬億]+(?:点[零〇一二两三四五六七八九半]+)?
+          )
       )
       (?:
         [A-Za-zµμ]+
@@ -159,6 +199,10 @@ enum CleanupContentGuard {
       )?
       """#,
     options: .allowCommentsAndWhitespace)
+  private static let quantityCue = try! NSRegularExpression(pattern: #"(?:预算|金额|数量|总计|单价|价格|延迟|耗时|时长|等待|等|共|约|第|数值|选)(?:为|是|约)?\s*$"#)
+  private static let durationCue = try! NSRegularExpression(pattern: #"(?:耗时|时长|等待|等)(?:为|是|约)?\s*$"#)
+  private static let multiDigitChinese = try! NSRegularExpression(
+    pattern: #"^(?:[一二两三四五六七八九壹贰叁肆伍陆柒捌玖][十百千万亿拾佰仟萬億][零〇一二两三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟萬億]*|[十拾][一二两三四五六七八九壹贰叁肆伍陆柒捌玖])$"#)
   private static let negation = try! NSRegularExpression(
     pattern: #"[不没无勿]|未(?!来)|(?<![特区类])别|非(?!常)|禁止|\b(?:no|not|never|none|nothing|neither|nor|without|cannot)\b|\b[A-Za-z]+n['’]t\b"#,
     options: .caseInsensitive)
