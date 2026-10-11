@@ -9,6 +9,16 @@ indexed by `.agents/notes/README.md`; read them on demand and never treat them a
 current truth. Formal docs (`docs/`, README, CONTRIBUTING, site pages) must not
 reference notes; only AGENTS.md, skills, and the notes index may point to them.
 
+## Pull requests
+
+Multiple PRs created in the same conversation must form one linear stack. The
+first targets `main`; each later branch includes the preceding layer and its PR
+targets that layer's branch. Register the members and order as a GitHub native
+stack, including when the individual changes could otherwise be independent.
+
+PRs that change UI must include screenshots in the PR body, as specified in
+[CONTRIBUTING.md](CONTRIBUTING.md) and the PR template.
+
 ## Repository skills
 
 Load the skill that matches the task. Combine skills only when the work crosses
