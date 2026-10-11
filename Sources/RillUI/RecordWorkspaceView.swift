@@ -60,6 +60,7 @@ public struct RecordWorkspaceView: View {
   @State private var replacementText = ""
   @State private var replacesInAllCollections = false
   private let copySelection: (@MainActor (RecordReuseSubject) async -> RecordReuseOutcome)?
+  private let correctSelection: (@MainActor (RecordCorrectionRequest) -> Void)?
   @State private var showsCollectionSettings = false
   @State private var showsRules = false
   @State private var copyFeedback: QuickRecordText?
@@ -74,13 +75,15 @@ public struct RecordWorkspaceView: View {
     language: AppLanguage,
     deliverSelection: (@MainActor @Sendable (RecordDeliverySubject) -> Void)? = nil,
     sourceAppContext: RecordRouteContext? = nil,
-    copySelection: (@MainActor (RecordReuseSubject) async -> RecordReuseOutcome)? = nil
+    copySelection: (@MainActor (RecordReuseSubject) async -> RecordReuseOutcome)? = nil,
+    correctSelection: (@MainActor (RecordCorrectionRequest) -> Void)? = nil
   ) {
     self.workspace = workspace
     self.language = language
     self.deliverSelection = deliverSelection
     self.sourceAppContext = sourceAppContext
     self.copySelection = copySelection
+    self.correctSelection = correctSelection
   }
 
   public var body: some View {
@@ -533,6 +536,18 @@ public struct RecordWorkspaceView: View {
       Text(sourceName(record.record.provenance)).font(.caption).foregroundStyle(.secondary)
         .lineLimit(1)
       Spacer()
+      if let correctSelection,
+        let request = RecordCorrectionRequest(record: record.record, collectionID: workspace.selectedCollectionID)
+      {
+        Button {
+          correctSelection(request)
+        } label: {
+          Label(L10n.string(.vocabularyCorrectionAction, language: language), systemImage: RillSystemSymbol.pencil.rawValue)
+        }
+        .buttonStyle(.glass)
+        .disabled(workspace.isMutating)
+        .accessibilityIdentifier("records.correct")
+      }
       if let copySelection {
         Button {
           guard !isCopying else { return }

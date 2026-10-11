@@ -3,6 +3,32 @@ import XCTest
 @testable import RillUI
 
 final class VocabularyCorrectionDraftTests: XCTestCase {
+  func testCollectionCorrectionUsesVisibleTextAndOnlyKnownScope() throws {
+    let collectionID = RecordCollectionID()
+    let record = Record(
+      payload: .text("open aaa now"),
+      provenance: .init(source: .init(kind: .voiceInput), sourceBundleIdentifier: "com.example.editor"))
+    let request = try XCTUnwrap(RecordCorrectionRequest(record: record, collectionID: collectionID))
+    XCTAssertEqual(request.id, record.id)
+    var draft = VocabularyCorrectionDraft(source: request.source)
+    XCTAssertEqual(draft.originalText, "open aaa now")
+    draft.updateCorrectedText("open BBB now")
+    XCTAssertNil(draft.proposedRule)
+    draft.selectOption(id: .mapping)
+    XCTAssertEqual(draft.unknownScopeFields, [.locale])
+    XCTAssertNil(draft.proposedRule)
+    draft.setAnyScopeConfirmed(true, for: .locale)
+    let rule = try XCTUnwrap(draft.proposedRule)
+    XCTAssertEqual(rule.pattern, "aaa")
+    XCTAssertEqual(rule.replacement, "BBB")
+    XCTAssertEqual(rule.scope.bundleIdentifier, "com.example.editor")
+    XCTAssertEqual(rule.scope.recordCollectionID, collectionID.rawValue)
+    XCTAssertNil(rule.scope.locale)
+    for payload in [RecordPayload.text(" \n "), .image(Data()), .files([])] {
+      XCTAssertNil(RecordCorrectionRequest(record: Record(payload: payload, provenance: record.provenance), collectionID: collectionID))
+    }
+  }
+
   func testEligibilityRequiresCompletedCorrectionSourceAndVisibleHistoryPreviews() {
     let eligible = historyRecord(outcome: .completed, includesSource: true)
     XCTAssertTrue(

@@ -32,8 +32,16 @@ a speech entry. Collection mode uses overlay preview, never cursor mutation.
 Failed/cancelled recognition removes its unfilled slot, with owned cleanup retry
 when persistence is temporarily unavailable.
 
-There is no expiry, inactivity window, or automatic batch reset. Pending Records
-are protected from automatic cleanup. An explicit, confirmed Record deletion
+Pending entries expire 24 hours after their input is observed or they are manually
+enqueued. Expiry removes only the pending entry; its Record and collection memberships
+remain in history. The App checks every minute and before displaying or selecting
+pending content, including after restart. Preparing inputs, active editors, unsent
+draft changes, unapplied speech suggestions, explicit retry selections, and delivery/confirmation attempts
+are protected. Once that protection ends, an overdue entry can expire. Older entries
+without an input timestamp receive a persisted 24-hour grace period on upgrade.
+Explicitly sending an overdue protected draft renews its pending timestamp before
+closing the editor, so expiry cannot interrupt that send.
+Pending Records are otherwise protected from automatic history cleanup. An explicit, confirmed Record deletion
 removes its buffer references in the same transaction, unless that Record is
 currently being delivered or awaiting confirmation. Examples: `A B L C H I` yields `LHICBA`; copying D
 after L yields `LDHICBA`; input ending at C yields `CLBA`.

@@ -358,12 +358,12 @@ public final class RecordWorkspaceModel {
   }
 
   public func saveTextCorrection(
-    workflowRunID: UUID, text: String, operationID: UUID
+    subject: RecordTextCorrectionSubject, text: String, operationID: UUID
   ) async -> Bool {
     var saved = false
     await mutate {
       let correction = try await self.store.saveTextCorrection(
-        workflowRunID: workflowRunID, text: text, operationID: operationID)
+        subject: subject, text: text, operationID: operationID)
       self.selectedCollectionID = nil
       self.selectedRecordID = correction.id
       saved = true

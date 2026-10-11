@@ -1,6 +1,23 @@
 import Foundation
 import RillCore
 
+public struct RecordCorrectionRequest: Identifiable {
+  public let id: RecordID
+  public let source: RecognitionCorrectionSource
+
+  public init?(record: Record, collectionID: RecordCollectionID?) {
+    guard let text = record.payload.textValue,
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+    id = record.id
+    source = RecognitionCorrectionSource(
+      preMappingText: text,
+      context: .init(
+        bundleIdentifier: record.provenance.sourceBundleIdentifier,
+        recordCollectionID: collectionID?.rawValue))
+  }
+}
+
 /// Mutable presentation state for reviewing one recognition correction.
 ///
 /// The draft never persists a rule. It requires the user to select one planner

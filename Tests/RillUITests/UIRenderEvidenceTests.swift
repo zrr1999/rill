@@ -11,6 +11,41 @@ import XCTest
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.
 @MainActor
 final class UIRenderEvidenceTests: XCTestCase {
+  func testRenderCollectionCorrection() async throws {
+    guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+      throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+    }
+    let output = URL(fileURLWithPath: directory, isDirectory: true)
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    let store = RecordStore()
+    let record = try await store.ingest(
+      .init(
+        payload: .text("明天去背景开会，记得带上新的设计稿。"),
+        provenance: .init(source: .init(kind: .voiceInput), sourceBundleIdentifier: "com.example.editor")),
+      into: [RecordCollection.voiceInputID])
+    let workspace = RecordWorkspaceModel(store: store)
+    await workspace.refresh()
+    workspace.selectCollection(RecordCollection.voiceInputID)
+    workspace.selectedRecordID = record.id
+    let model = makeHarness(recordWorkspace: workspace).model
+    let request = try XCTUnwrap(RecordCorrectionRequest(record: record.record, collectionID: RecordCollection.voiceInputID))
+    for language in AppLanguage.allCases {
+      model.setInterfaceLanguage(language)
+      for dark in [false, true] {
+        let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
+        try await render(
+          RecordWorkspaceView(workspace: workspace, language: language, copySelection: model.copyRecord, correctSelection: { _ in }),
+          size: NSSize(width: 850, height: 640), dark: dark,
+          to: output.appendingPathComponent("collection-correction-entry-\(variant).png"))
+        try await render(
+          VocabularyCorrectionSheet(model: model, source: request.source, recordID: request.id),
+          size: NSSize(width: 620, height: 600), dark: dark,
+          to: output.appendingPathComponent("collection-correction-editor-\(variant).png"))
+      }
+    }
+    await workspace.shutdown()
+  }
+
   func testRenderUnifiedRecordPanel() async throws {
     guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
       throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")

@@ -243,8 +243,12 @@ See [Architecture](architecture.md) for the dependency graph and state owners.
 
 ### Explicit recognition corrections
 
-`RecordStore.saveTextCorrection` resolves the original immutable text by workflow
-run ID and creates a new user-derived Record. It preserves the source and its
+`RecordStore.saveTextCorrection` resolves the original immutable text by exact
+Record ID or workflow run ID and creates a new user-derived Record. Collections
+expose the same correction editor as Activity, using the selected Record's current
+text and known application/collection scope; missing locale remains explicitly unknown.
+This works even after the workflow history has expired or for text without a run ID.
+It preserves the source and its
 memberships. The correction has no collection membership, so saving it cannot
 trigger routing or repeat delivery. An operation ID makes retries idempotent;
 a deleted original is not resurrected. The workspace owns and drains the accepted
