@@ -66,6 +66,36 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
+  func testReusedPanelTitleFollowsInterfaceLanguage() async throws {
+    let controller = makeController(reduceMotion: true)
+    let model = makeModel()
+    model.applyLanguage(.english)
+    let existingWindows = Set(NSApplication.shared.windows.map(\.windowNumber))
+    controller.show(model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    let panel = try XCTUnwrap(
+      NSApp.windows.first {
+        $0.identifier?.rawValue == "record-panel.page" && !existingWindows.contains($0.windowNumber)
+      })
+    XCTAssertEqual(panel.title, "Clipboard")
+
+    func waitForTitle(_ expected: String) async throws {
+      let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+      while panel.title != expected, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(5))
+      }
+      XCTAssertEqual(panel.title, expected)
+    }
+
+    controller.collapse()
+    model.applyLanguage(.simplifiedChinese)
+    try await waitForTitle("剪贴板")
+    controller.show(model: model, toggle: false, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    XCTAssertTrue(NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible } === panel)
+    model.applyLanguage(.english)
+    try await waitForTitle("Clipboard")
+    await controller.shutdown()
+  }
+
   func testDesktopFocusLossDuringPresentationEventuallyLeavesOnlyTheCapsule() async throws {
     guard try await requireInteractiveDesktop() else { return }
     let otherWindow = NSPanel(
