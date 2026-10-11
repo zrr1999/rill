@@ -88,7 +88,7 @@ drain separately from the clipboard polling lifecycle.
 | Active workflow recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |
 | Authorized workflow run | `SessionCoordinator` | Frozen workflow/context and resolved provider plan remain attached to one run. |
 | Live recognition context | `LiveRecognitionContextResolver` | Compiles vocabulary once at capture admission; the processing lease carries the frozen plan, language, model and hints to final recognition. Complete applicable hotwords remain a separate projection for opt-in Smart Cleanup references. |
-| Optional hotword ranking | `HotwordSelection` in Workflows | Owns independent session consent, the bounded memory cache and background tasks. It validates the shared Jev credential before and after requests; App shutdown drains accepted work. |
+| Optional hotword ranking | `HotwordSelection` in Workflows | Owns independent session consent, the bounded memory cache and background tasks. It validates the shared classification credential before and after requests; App shutdown drains accepted work. |
 | UI settings reads | `AppModelSettingsReadTaskOwner` | Replaced reads remain owned until drained; shutdown rejects new reads. |
 | UI persistence tasks | `PersistenceWriteCoordinator` | Overlapping single-key and atomic multi-key writes serialize; all accepted tasks remain tracked until completion. |
 | Unsaved settings and retry policy | `SettingsPersistenceModel` | Latest-write completion updates visible state; failures retain the exact value to retry. `AppSettingsCodec` owns stored-value decoding and migration. |
@@ -332,3 +332,18 @@ Record 复制、剪贴板采集控制和快捷键录制通过必需的 `RecordIn
 
 隐私保存失败与其他设置共同保留在未保存队列，整组五键重试；退出关闭用户编辑后仍排空
 并重试已接受快照。只有被新写入取代的结果不发布；当前写入的取消错误仍保留可重试状态。
+
+## Global model bindings
+
+`SettingsPersistenceModel` owns the two durable text selections and their separate
+Keychain credentials. It publishes accepted edits through `LanguageModelSettingsSource`;
+runtime requests do not reread persistence. `PrivacyRunGate` freezes only the roles
+used by a run into an ephemeral `WorkflowModelSnapshot`, which follows capture,
+queued processing, recognized text, transforms and speech output. Provider consent
+uses that same snapshot. Credential revocation is checked before each text request.
+
+Workflow v3 contains text roles and a single ASR category. Version 1/2 imports drop
+concrete ASR/TTS overrides and normalize text roles without rewriting source on read.
+The global ASR setting determines recognition options at admission. Classification
+uses `DecisionModelSettingsSource` and a shared typed score transport with separate
+TypeSafe and Cloudflare destinations. Provider changes revoke its session consents.

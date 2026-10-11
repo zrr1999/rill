@@ -124,6 +124,7 @@ struct SettingsPermissionPresentation: Equatable {
 public struct SettingsView: View {
   @Bindable var model: AppModel
   let privacyNoticeDocument: PrivacyNoticeDocument?
+  @State var selectedLanguageModelRole: LanguageModelRole = .fast
   @State var vocabularyKind: VocabularyRuleKind = .mapping
   @State var vocabularyPattern = ""
   @State var vocabularyReplacement = ""

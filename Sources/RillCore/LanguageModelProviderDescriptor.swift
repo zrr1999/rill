@@ -7,7 +7,6 @@ public struct LanguageModelProviderDescriptor: Sendable, Equatable {
   public let supportsReferenceImages: Bool
   public let authorizationFingerprint: String
   public let rewriteTimeout: TimeInterval
-  public let disablesThinkingForRewrite: Bool
 
   public init(settings: OpenAISettings) {
     let endpoint = URLComponents(
@@ -26,6 +25,5 @@ public struct LanguageModelProviderDescriptor: Sendable, Equatable {
     )
     .map { String(format: "%02x", $0) }.joined()
     rewriteTimeout = family == .deepSeek ? LLMTextProcessing.rewriteTimeout : 60
-    disablesThinkingForRewrite = family == .deepSeek
   }
 }

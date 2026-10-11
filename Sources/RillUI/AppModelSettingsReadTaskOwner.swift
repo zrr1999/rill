@@ -4,7 +4,6 @@ enum AppModelSettingsReadTaskSlot: Hashable, Sendable {
   case initialSettingsLoad
   case storedSettingsDomainsRetry
   case privacySettingsRetry
-  case openAICredentialRetry
   case scalarSettingsRetry(ScalarSettingsDomain)
 }
 

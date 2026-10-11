@@ -10,10 +10,33 @@ struct JevAPISettingsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
-      Text(text(.brandTitle))
+      Text(L10n.resource("models.decision").string(for: language))
         .font(.subheadline.weight(.medium))
       Text(text(.settingsDescription))
         .font(.caption).foregroundStyle(.secondary)
+      Picker(
+        L10n.resource("models.provider").string(for: language),
+        selection: Binding(
+          get: { settings.configuration.model },
+          set: {
+            settings.selectModel($0)
+            apiKey = ""
+          }
+        )
+      ) {
+        ForEach(DecisionModel.allCases) { model in Text(verbatim: model.displayName).tag(model) }
+      }
+      .accessibilityIdentifier("settings.decision.model")
+      if settings.configuration.model != .jev {
+        TextField(
+          "Cloudflare Account ID",
+          text: Binding(
+            get: { settings.configuration.accountID }, set: { settings.setAccountID($0) }
+          )
+        )
+        .textFieldStyle(.roundedBorder)
+        .accessibilityIdentifier("settings.decision.account-id")
+      }
       LabeledContent(text(.apiKey)) {
         SecureField(text(.apiKeyPlaceholder), text: $apiKey)
           .textFieldStyle(.roundedBorder)
@@ -29,7 +52,7 @@ struct JevAPISettingsView: View {
           settings.setKey(apiKey)
           apiKey = ""
         }
-        .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !settings.configuration.isValid)
         .accessibilityIdentifier("settings.jev.save-key")
         Button(text(.clearKey)) {
           focusedItem.wrappedValue = nil

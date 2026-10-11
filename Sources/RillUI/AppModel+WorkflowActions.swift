@@ -513,23 +513,20 @@ extension AppModel {
         return .wakeWordModelNotReady
       }
     }
-    if workflow.plan.process.allSteps.contains(where: {
-      $0.kind == .llmRewrite || $0.kind == .llmAnswer
-    }) {
-      guard self.settings.openAICredentialAvailability == .available,
-        !settings.hasUnavailableScalarSettings(in: .openAI)
+    for role in workflow.languageModelRoles.sorted(by: { $0.rawValue < $1.rawValue }) {
+      let availability = settings.credentialAvailability(for: role)
+      guard availability == .available,
+        !settings.hasUnavailableScalarSettings(in: role.settingsDomain)
       else {
-        return .openAIUnavailable(self.settings.openAICredentialAvailability)
+        return .openAIUnavailable(availability)
       }
-      guard OpenAISettings.isValidBaseURL(self.settings.openAIBaseURL),
-        OpenAISettings.isValidModelIdentifier(self.settings.openAIModel)
-      else {
+      guard (try? LanguageModelConfiguration(migrating: settings.languageModelSettings(for: role)).validate(for: role)) != nil else {
         return .openAIConfigurationInvalid
       }
-      if self.settings.openAIConfigurationVerificationState == .failed {
-        return .openAIVerificationFailed(self.settings.openAIVerificationFailure)
+      if settings.verificationState(for: role) == .failed {
+        return .openAIVerificationFailed(settings.verificationFailure(for: role))
       }
-      guard !self.settings.isLoadingPrivacySettings, self.settings.privacySettingsLoadError == nil else {
+      guard !settings.isLoadingPrivacySettings, settings.privacySettingsLoadError == nil else {
         return .privacySettingsUnavailable
       }
     }

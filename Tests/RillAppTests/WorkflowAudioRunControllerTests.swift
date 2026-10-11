@@ -1007,7 +1007,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       liveAuthorizationMonitorInterval: .milliseconds(5),
       privacyRunGate: PrivacyRunGate(
         settingsProvider: { .defaults },
-        cloudConfirmationProvider: { _, _, _ in true }
+        cloudConfirmationProvider: { _, _, _, _ in true }
       )
     )
     let workflow = WorkflowDefinition(
@@ -1075,7 +1075,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       liveAuthorizationMonitorInterval: .seconds(30),
       privacyRunGate: PrivacyRunGate(
         settingsProvider: { .defaults },
-        cloudConfirmationProvider: { _, _, _ in true }
+        cloudConfirmationProvider: { _, _, _, _ in true }
       )
     )
     let workflow = WorkflowDefinition(
@@ -1134,7 +1134,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       authorizedContextProvider: { _ in await contexts.read() },
       privacyRunGate: PrivacyRunGate(
         settingsProvider: { .defaults },
-        cloudConfirmationProvider: { _, _, _ in true }
+        cloudConfirmationProvider: { _, _, _, _ in true }
       )
     )
     let workflow = WorkflowDefinition(
@@ -1284,7 +1284,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       liveAuthorizationMonitorInterval: .seconds(60),
       privacyRunGate: PrivacyRunGate(
         settingsProvider: { .defaults },
-        cloudConfirmationProvider: { _, _, _ in true }
+        cloudConfirmationProvider: { _, _, _, _ in true }
       )
     )
     let workflow = WorkflowDefinition(
@@ -1363,7 +1363,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       },
       privacyRunGate: PrivacyRunGate(
         settingsProvider: { .defaults },
-        cloudConfirmationProvider: { _, _, _ in true }
+        cloudConfirmationProvider: { _, _, _, _ in true }
       )
     )
     let workflow = WorkflowDefinition(
@@ -1575,7 +1575,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       settingsProvider: {
         PrivacyPolicySettings(sensitiveAppRules: [], cloudConfirmationRequired: true)
       },
-      cloudConfirmationProvider: { _, _, _ in false }
+      cloudConfirmationProvider: { _, _, _, _ in false }
     )
     let optionsProbe = WorkflowRecognitionOptionsProbe()
     let privacyContext = ContextSnapshot(
@@ -1645,7 +1645,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let ordering = WorkflowRunOrderingProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { .defaults },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await ordering.confirmCloudRun()
       }
     )
@@ -1706,7 +1706,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         _ = await ordering.readContext()
         return .defaults
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await ordering.confirmCloudRun()
       }
     )
@@ -1800,7 +1800,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
             cloudConfirmationRequired: false
           )
         },
-        cloudConfirmationProvider: { _, _, _ in true }
+        cloudConfirmationProvider: { _, _, _, _ in true }
       )
     )
     let workflow = WorkflowDefinition(
@@ -1839,7 +1839,7 @@ private func makeWorkflowAudioTestPrivacyGate() -> PrivacyRunGate {
         cloudConfirmationRequired: false
       )
     },
-    cloudConfirmationProvider: { _, _, _ in true },
+    cloudConfirmationProvider: { _, _, _, _ in true },
     destinationClassifier: { _ in .classified([.localSpeech]) }
   )
 }

@@ -1299,13 +1299,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enabling sends candidate hotwords, app and workflow names, and the authorized text selection to api.typesafe.ai. Selections over 1,800 UTF-8 bytes are omitted. Audio, clipboard, screen and history are never sent."
+            "value": "Enabling sends candidate hotwords, app and workflow names, and the authorized text selection to the selected classification service. Selections over 1,800 UTF-8 bytes are omitted. Audio, clipboard, screen and history are never sent."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "启用后，会将候选热词、应用名称、工作流名称和已授权的文本选区发送到 api.typesafe.ai。选区超过 1,800 UTF-8 字节时整段省略。不会发送音频、剪贴板、屏幕或历史记录。"
+            "value": "启用后，会将候选热词、应用名称、工作流名称和已授权的文本选区发送到所选分类服务。选区超过 1,800 UTF-8 字节时整段省略。不会发送音频、剪贴板、屏幕或历史记录。"
           }
         }
       }
@@ -1316,13 +1316,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev hotword selection · Experimental"
+            "value": "Classification hotword selection · Experimental"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev 热词挑选 · 实验"
+            "value": "分类模型 热词挑选 · 实验"
           }
         }
       }
@@ -2557,13 +2557,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add a Jev key in Settings → Voice & Models → API Providers."
+            "value": "Add a classification key in Settings → Voice & Models → API Providers."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "请在设置 → 语音与模型 → API 服务中配置 Jev Key。"
+            "value": "请在设置 → 语音与模型 → API 服务中配置 分类模型 Key。"
           }
         }
       }
@@ -2642,13 +2642,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Compare with Jev…"
+            "value": "Compare with classification model…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "用 Jev 比较…"
+            "value": "用 分类模型 比较…"
           }
         }
       }
@@ -2659,13 +2659,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Configure Jev API…"
+            "value": "Configure classification API…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "配置 Jev API…"
+            "value": "配置 分类模型 API…"
           }
         }
       }
@@ -2676,13 +2676,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a TypeSafe API key with 8–512 visible ASCII characters and no spaces."
+            "value": "Enter a provider API key with 8–512 visible ASCII characters and no spaces."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "请输入 8–512 个可见 ASCII 字符的 TypeSafe API Key，中间不能包含空格。"
+            "value": "请输入 8–512 个可见 ASCII 字符的 所选分类服务商 API Key，中间不能包含空格。"
           }
         }
       }
@@ -2710,13 +2710,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev API Key"
+            "value": "Classification API Key"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev API 密钥"
+            "value": "分类模型 API 密钥"
           }
         }
       }
@@ -2727,13 +2727,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev polishing prediction"
+            "value": "Classification polishing prediction"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev 润色判断"
+            "value": "分类模型 润色判断"
           }
         }
       }
@@ -2761,7 +2761,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "One session key serves Jev candidate scoring and polishing prediction. Candidate scoring requires confirmation each time; automatic polishing prediction has a separate switch below."
+            "value": "One session key serves classification candidate scoring and polishing prediction. Candidate scoring requires confirmation each time; automatic polishing prediction has a separate switch below."
           }
         },
         "zh-Hans": {
@@ -2846,13 +2846,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Review with Jev"
+            "value": "Review with classification model"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用 Jev 比较候选"
+            "value": "使用 分类模型 比较候选"
           }
         }
       }
@@ -2880,13 +2880,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Send these candidates to Jev"
+            "value": "Send these candidates for scoring"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发送这些候选给 Jev"
+            "value": "发送这些候选给 分类模型"
           }
         }
       }
@@ -2897,13 +2897,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Send this query and up to 10 displayed text excerpts or file names to TypeSafe (api.typesafe.ai) for paid scoring. File contents, images, tags and source apps are not sent. Nothing is sent until you confirm below."
+            "value": "Send this query and up to 10 displayed text excerpts or file names to the selected classification provider for paid scoring. File contents, images, tags and source apps are not sent. Nothing is sent until you confirm below."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将此查询和最多 10 条展示的文字片段或文件名发送给 TypeSafe（api.typesafe.ai）付费评分。不发送文件内容、图片、标签和来源应用。点击下方发送按钮前不会调用云端。"
+            "value": "将此查询和最多 10 条展示的文字片段或文件名发送给所选分类服务商付费评分。不发送文件内容、图片、标签和来源应用。点击下方发送按钮前不会调用云端。"
           }
         }
       }
@@ -2931,13 +2931,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "TypeSafe API Key"
+            "value": "provider API Key"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "TypeSafe API 密钥"
+            "value": "所选分类服务商 API 密钥"
           }
         }
       }
@@ -3458,13 +3458,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev polishing prediction"
+            "value": "Classification polishing prediction"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev 润色判断"
+            "value": "分类模型 润色判断"
           }
         }
       }
@@ -3475,7 +3475,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The switch and key are kept only for this app session. Audio, screen and memory references are never sent to Jev; runs using those references proceed directly to polishing."
+            "value": "The switch and key are kept only for this app session. Audio, screen and memory references are never sent to the classification model; runs using those references proceed directly to polishing."
           }
         },
         "zh-Hans": {
@@ -3492,13 +3492,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use Jev to decide whether polishing is needed"
+            "value": "Use classification to decide whether polishing is needed"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "用 Jev 判断是否需要润色"
+            "value": "用 分类模型 判断是否需要润色"
           }
         }
       }
@@ -3509,13 +3509,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When enabled, Smart Cleanup sends the transcript and rewrite instructions to TypeSafe Jev first. If clearly ready, the text is saved and delivered without an LLM rewrite. Uncertain or failed predictions continue with polishing."
+            "value": "When enabled, Smart Cleanup sends the transcript and rewrite instructions to the selected classification provider first. If clearly ready, the text is saved and delivered without an LLM rewrite. Uncertain or failed predictions continue with polishing."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "启用后，智能整理会先将转写文本与润色要求发送到 TypeSafe Jev。明确无需润色时跳过 LLM，原文仍会保存并输出；判断不确定或失败时继续润色。"
+            "value": "启用后，智能整理会先将转写文本与润色要求发送到 所选分类服务商。明确无需润色时跳过 LLM，原文仍会保存并输出；判断不确定或失败时继续润色。"
           }
         }
       }
@@ -7066,13 +7066,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "One OpenAI-compatible Responses API configuration for Smart Cleanup, voice assistant answers, and custom text workflows."
+            "value": "Configure Fast and Intelligent separately. Each role uses the selected provider, model and credential across workflows."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "智能整理、语音助手回答和自定义文本工作流共用一套 OpenAI-compatible Responses API 配置。"
+            "value": "分别配置快速和智能类别。所有工作流统一使用对应类别的服务商、模型与密钥。"
           }
         }
       }
@@ -7117,13 +7117,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add an API key to enable text polishing."
+            "value": "Add an API key for this model role."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "添加 API Key 后才能启用文本润色。"
+            "value": "请为此模型类别添加 API Key。"
           }
         }
       }
@@ -7185,13 +7185,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only the final transcript is sent. Requests use the configured Responses API endpoint, non-streaming mode, and store=false."
+            "value": "Requests send the step’s text and instructions using the Responses API with store=false. Optional context features require separate consent. Audio stays local."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "仅发送最终转写正文。请求使用已配置的 Responses API 地址、非流式模式，并设置 store=false。"
+            "value": "通过 Responses API 发送步骤正文与指令，并设置 store=false。可选上下文功能需要单独授权；音频保留在本机。"
           }
         }
       }
@@ -14597,13 +14597,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The previous Jev request is still finishing. Try again after it ends."
+            "value": "The previous classification request is still finishing. Try again after it ends."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "上一条 Jev 请求仍在结束处理中，请稍后重试。"
+            "value": "上一条 分类模型 请求仍在结束处理中，请稍后重试。"
           }
         }
       }
@@ -14648,13 +14648,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev returned an invalid score response. No ranking was applied."
+            "value": "Classification returned an invalid score response. No ranking was applied."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev 返回了无效评分，未应用结果。"
+            "value": "分类模型 返回了无效评分，未应用结果。"
           }
         }
       }
@@ -14699,13 +14699,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev is busy or rate limited. No automatic retry was made."
+            "value": "Classification is busy or rate limited. No automatic retry was made."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jev 过载或限流，未自动重试。"
+            "value": "分类模型 过载或限流，未自动重试。"
           }
         }
       }
@@ -14722,7 +14722,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "TypeSafe 拒绝了此 Key，请检查账户后重新准备。"
+            "value": "所选分类服务商 拒绝了此 Key，请检查账户后重新准备。"
           }
         }
       }
@@ -14733,13 +14733,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could not complete the Jev request. Check the network or account; it may still incur usage. No automatic retry was made."
+            "value": "Could not complete the classification request. Check the network or account; it may still incur usage. No automatic retry was made."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "无法完成 Jev 请求，请检查网络或账户；本次可能已产生用量，未自动重试。"
+            "value": "无法完成 分类模型 请求，请检查网络或账户；本次可能已产生用量，未自动重试。"
           }
         }
       }
@@ -23523,13 +23523,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "LLM and Jev API keys"
+            "value": "LLM and classification API keys"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "LLM 与 Jev 的 API 配置"
+            "value": "LLM 与 分类模型 的 API 配置"
           }
         }
       }
@@ -25546,13 +25546,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "For DeepSeek, use https://api.deepseek.com and choose DeepSeek V4.1 Flash. Thinking is disabled for polishing."
+            "value": "For DeepSeek, use https://api.deepseek.com and choose DeepSeek V4.1 Flash. Fast disables reasoning; Intelligent enables it."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用 DeepSeek：Base URL 填写 https://api.deepseek.com，模型选择 DeepSeek V4.1 Flash。润色时自动关闭思考。"
+            "value": "使用 DeepSeek：Base URL 填写 https://api.deepseek.com，模型选择 DeepSeek V4.1 Flash。快速类别关闭推理，智能类别开启推理。"
           }
         }
       }
@@ -32472,6 +32472,142 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音与模型"
+          }
+        }
+      }
+    },
+    "models.role": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model role"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型类别"
+          }
+        }
+      }
+    },
+    "models.fast": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fast · reasoning off"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快速 · 关闭推理"
+          }
+        }
+      }
+    },
+    "models.intelligent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intelligent · reasoning on"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能 · 开启推理"
+          }
+        }
+      }
+    },
+    "models.provider": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务商"
+          }
+        }
+      }
+    },
+    "models.compatible": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responses API compatible"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "兼容 Responses API"
+          }
+        }
+      }
+    },
+    "models.roles.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workflows choose a role. The model and provider are selected here for all workflows."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流只选择类别。所有工作流使用的模型和服务商在这里统一设置。"
+          }
+        }
+      }
+    },
+    "models.decision": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Classification model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分类模型"
+          }
+        }
+      }
+    },
+    "models.reasoning.required": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This model requires reasoning. Use it for the intelligent role or select another fast model."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此模型无法关闭推理。请用于智能类别，或为快速类别选择其他模型。"
           }
         }
       }

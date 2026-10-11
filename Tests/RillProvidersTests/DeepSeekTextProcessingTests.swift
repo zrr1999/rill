@@ -9,7 +9,7 @@ struct DeepSeekTextProcessingTests {
   func rewriteUsesSharedConfigurationAndSerializesNonThinkingRequest(baseURL: String) async throws {
     let (client, probe) = clientWithCapture()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { Self.settings(baseURL: baseURL) },
+      settingsProvider: { _, _ in Self.settings(baseURL: baseURL) },
       clientFactory: { client }
     )
     let result = try await transformer.transformWithTrace(
@@ -50,7 +50,7 @@ struct DeepSeekTextProcessingTests {
 
   @Test func missingSharedCredentialPreventsTransport() async {
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { OpenAISettings() }
+      settingsProvider: { _, _ in OpenAISettings() }
     )
     await #expect(throws: OpenAITextRewriteError.credentialUnavailable) {
       try await transformer.transform(text: "正文", step: rewriteStep, context: context())
@@ -60,21 +60,21 @@ struct DeepSeekTextProcessingTests {
   @Test func assistantRequestKeepsItsReasoningPolicy() async throws {
     let (client, probe) = clientWithCapture()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { Self.settings() },
+      settingsProvider: { _, _ in Self.settings() },
       clientFactory: { client }
     )
     _ = try await transformer.transform(
       text: "问题", step: PostProcessStep(kind: .llmAnswer, prompt: "Answer briefly"), context: context()
     )
     let request = try #require(probe.request)
-    #expect(try body(request)["reasoning"] == nil)
+    #expect((try body(request)["reasoning"] as? [String: String])?["effort"] == "high")
     #expect(request.timeoutInterval == 60)
   }
 
   @Test func oversizedInputIsRejectedWholeBeforeTransport() async {
     let (client, probe) = clientWithCapture()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { Self.settings() },
+      settingsProvider: { _, _ in Self.settings() },
       clientFactory: { client }
     )
     await #expect(throws: OpenAITextRewriteError.incomplete) {
@@ -88,7 +88,7 @@ struct DeepSeekTextProcessingTests {
   @Test func expiredDeadlineDoesNotStartTransport() async {
     let client = SuspendedDeepSeekClient()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { Self.settings() },
+      settingsProvider: { _, _ in Self.settings() },
       clientFactory: { client }, deepSeekTimeout: .zero
     )
     await #expect(throws: OpenAITextRewriteError.timedOut) {
@@ -99,7 +99,7 @@ struct DeepSeekTextProcessingTests {
 
   @Test func contextualRequestUsesTranscriptAndInlineJPEGWithoutLeakingReferencesIntoInstructionsOrTrace() async throws {
     let (client, probe) = clientWithCapture()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { Self.settings() }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in Self.settings() }, clientFactory: { client })
     let image = try CorrectionReferenceImage(jpeg: Data([0xff, 0xd8, 0xff, 0xd9]), width: 1, height: 1)
     var context = context()
     context.correctionRequest = ContextualCorrectionRequest(
@@ -128,7 +128,7 @@ struct DeepSeekTextProcessingTests {
   @Test func customProviderDoesNotReceiveAnUnconfirmedImageCapability() async throws {
     let settings = Self.settings(baseURL: "https://custom.example/v1")
     let (client, probe) = clientWithCapture()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
     var context = context()
     context.correctionRequest = ContextualCorrectionRequest(
       transcript: "正文",
@@ -140,7 +140,7 @@ struct DeepSeekTextProcessingTests {
 
   @Test func emptyTranscriptAndRevokedAuthorizationNeverReachTransport() async throws {
     let (client, probe) = clientWithCapture()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { Self.settings() }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in Self.settings() }, clientFactory: { client })
     var context = context()
     context.correctionRequest = ContextualCorrectionRequest(transcript: "  ", imageSummary: .init(terms: ["visible"], observations: []))
     await #expect(throws: OpenAITextRewriteError.self) {

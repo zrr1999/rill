@@ -182,7 +182,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     let destination = try fileURL.map(validatedDirectChild) ?? configurationDirectoryURL.appendingPathComponent(Self.filename(for: document.workflow))
     try await Self.writer.save(
       source: source, to: destination, expected: expected, historyDirectory: stateDirectoryURL.appendingPathComponent(document.workflow.id.uuidString))
-    return WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: destination, source: source)
+    return try Self.decode(source, fileURL: destination)
   }
 
   public func changes() async -> AsyncStream<Void> {
@@ -513,8 +513,8 @@ struct WorkflowTOMLSetup: Codable {
 }
 
 struct WorkflowTOMLSpeechRoute: Codable {
-  var selection: String
-  var recognizer: String
+  var selection: String?
+  var recognizer: String?
   var language: String?
   var localModel: String?
   var providerModel: String?
@@ -534,42 +534,33 @@ struct WorkflowTOMLSpeechRoute: Codable {
   }
 
   init(route: WorkflowSpeechRoute) {
-    selection = route.selection.rawValue
-    recognizer = route.recognizerID
+    selection = nil
+    recognizer = nil
     language = route.language
-    localModel = route.localModel
-    providerModel = route.providerModel
+    localModel = nil
+    providerModel = nil
     livePreview = nil
     livePreviewPlacement = nil
     streamingProfile = nil
   }
 
   func route() throws -> WorkflowSpeechRoute {
-    guard let selection = SpeechRouteSelection(rawValue: selection) else {
+    guard let selection = SpeechRouteSelection(rawValue: selection ?? "automatic") else {
       throw WorkflowFileStoreError.invalidWorkflow(
-        "Unknown speech selection '\(selection)'."
+        "Unknown speech selection."
       )
     }
     let normalizedRecognizer: String
-    switch recognizer.lowercased() {
+    switch (recognizer ?? "local-speech").lowercased() {
     case "auto", "sherpa-onnx.local", "sherpa-onnx.streaming":
       normalizedRecognizer = "local-speech"
     default:
-      normalizedRecognizer = recognizer
+      normalizedRecognizer = recognizer ?? "local-speech"
     }
     return WorkflowSpeechRoute(
       selection: selection,
       recognizerID: normalizedRecognizer,
-      language: language,
-      localModel: localModel.map { modelID in
-        switch modelID.lowercased() {
-        case "auto", "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25":
-          "qwen3-asr-0.6b-mlx-8bit"
-        default:
-          modelID
-        }
-      },
-      providerModel: providerModel
+      language: language
     )
   }
 

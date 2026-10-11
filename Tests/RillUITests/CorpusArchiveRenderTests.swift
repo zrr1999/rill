@@ -15,7 +15,7 @@ final class CorpusArchiveRenderTests: XCTestCase {
     _ = NSApplication.shared
     for language in AppLanguage.allCases {
       for dark in [false, true] {
-        let settings = SettingsPersistenceModel(store: nil, language: language, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
+        let settings = SettingsPersistenceModel(store: nil, language: language, verifyOpenAIConfiguration: { _, _ in }, configurationChanged: {})
         settings.isLoading = false
         let model = CorpusRecordingArchiveModel(
           settings: settings, store: nil,

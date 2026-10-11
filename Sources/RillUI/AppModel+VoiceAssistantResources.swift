@@ -195,40 +195,27 @@ extension AppModel {
         $0.kind == .llmRewrite || $0.kind == .llmAnswer
       }) ?? false
 
-    let llm: VoiceAssistantLLMReadiness
-    if !requiresLLM {
-      llm = .notRequired
-    } else if self.settings.isLoading {
-      llm = .loading
-    } else {
-      switch self.settings.openAICredentialAvailability {
-      case .loading, .saving:
-        llm = .loading
-      case .missing:
-        llm = .credentialMissing
-      case .inaccessible:
-        llm = .credentialInaccessible
+    func readiness(for role: LanguageModelRole) -> VoiceAssistantLLMReadiness {
+      if settings.isLoading { return .loading }
+      switch settings.credentialAvailability(for: role) {
+      case .loading, .saving: return .loading
+      case .missing: return .credentialMissing
+      case .inaccessible: return .credentialInaccessible
       case .available:
-        guard
-          !settings.hasUnavailableScalarSettings(in: .openAI),
-          OpenAISettings.isValidBaseURL(self.settings.openAIBaseURL),
-          OpenAISettings.isValidModelIdentifier(self.settings.openAIModel)
-        else {
-          llm = .configurationInvalid
-          break
-        }
-        switch self.settings.openAIConfigurationVerificationState {
-        case .idle:
-          llm = .configured
-        case .verifying:
-          llm = .verifying
-        case .verified:
-          llm = .verified
-        case .failed:
-          llm = .verificationFailed(self.settings.openAIVerificationFailure)
+        guard !settings.hasUnavailableScalarSettings(in: role.settingsDomain),
+          (try? LanguageModelConfiguration(migrating: settings.languageModelSettings(for: role)).validate(for: role)) != nil
+        else { return .configurationInvalid }
+        switch settings.verificationState(for: role) {
+        case .idle: return .configured
+        case .verifying: return .verifying
+        case .verified: return .verified
+        case .failed: return .verificationFailed(settings.verificationFailure(for: role))
         }
       }
     }
+    let roles = (workflow?.languageModelRoles ?? []).sorted { $0.rawValue < $1.rawValue }
+    let states = roles.map { readiness(for: $0) }
+    let llm = states.first { $0 != .configured && $0 != .verified } ?? states.first ?? .notRequired
 
     let privacy: VoiceAssistantPrivacyReadiness
     if !requiresLLM {
