@@ -65,6 +65,13 @@ public enum L10n {
     case menuVoiceInputSettings
     case menuWorkflows
     case vocabularyAddRule
+    case vocabularyEditRule
+    case vocabularyEditFailed
+    case vocabularyPreviewInput
+    case vocabularyPreviewResult
+    case vocabularyRegexPreviewNote
+    case vocabularyInvalidRule
+    case vocabularyWorkflowBindings
     case vocabularyAnyApp
     case vocabularyAnyGroup
     case vocabularyAnyLocale
