@@ -4,6 +4,21 @@ import XCTest
 
 @MainActor
 final class EventFeedPrivacyPresentationTests: XCTestCase {
+  func testEventResourcesPreserveArgumentsAcrossLanguageChanges() {
+    let name = "Demo 50% %@"
+    let saved = EventFeedEntry(L10n.resource("run.workflowSavedFormat", defaultValue: "Workflow saved: \(name)"))
+    let updated = EventFeedEntry(
+      L10n.resource("run.localHistoryUpdatedFormat", defaultValue: "Local history updated: removed \("1200"), preserved \("0") active clipboard item(s)."))
+    for language in [AppLanguage.english, .simplifiedChinese, .english] {
+      XCTAssertEqual(saved.text(for: language), language == .english ? "Workflow saved: Demo 50% %@" : "工作流已保存：Demo 50% %@")
+      XCTAssertEqual(
+        updated.text(for: language),
+        language == .english
+          ? "Local history updated: removed 1200, preserved 0 active clipboard item(s)."
+          : "本地历史已更新：移除 1200 条，保留 0 条仍在使用的剪贴板内容。")
+    }
+  }
+
   func testDeferredHeadersSwitchLanguageWithoutExposingBodyWhenPreviewIsDisabled() {
     let step = WorkflowTextStep(
       kind: .llmRewrite, outputText: "PRIVATE-%@", didChange: true,

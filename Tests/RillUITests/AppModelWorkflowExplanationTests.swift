@@ -218,6 +218,13 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
     XCTAssertEqual(receipt.status, .blocked)
     XCTAssertTrue(receipt.issues.contains { $0.kind == .legacyWorkflowUnsupported })
     XCTAssertEqual(receipt.trigger, .manual)
+
+    harness.model.settings.language = .english
+    harness.model.runWorkflow(legacy)
+    let entry = harness.model.history.eventFeed.last
+    XCTAssertEqual(entry?.text(for: .english), "This legacy clipboard event workflow is disabled and cannot run.")
+    harness.model.settings.language = .simplifiedChinese
+    XCTAssertEqual(entry?.text(for: .simplifiedChinese), "此旧版记录集事件工作流已停用，无法运行。")
   }
 
   func testMissingWorkflowAndProviderErrorUseTypedContentFreeFailures() async {
