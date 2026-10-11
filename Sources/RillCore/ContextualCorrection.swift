@@ -2,6 +2,10 @@ import Foundation
 
 public extension WorkflowDefinition {
   var supportsVocabularyCorrection: Bool {
+    isCanonicalSmartCleanup
+  }
+
+  var isCanonicalSmartCleanup: Bool {
     id.uuidString == "D3E19A88-F9FB-4AB3-8444-CDBF7E215A88"
       && metadata[WorkflowMetadataKey.catalog] == BuiltinWorkflowRoutingValue.catalog
       && metadata[WorkflowMetadataKey.builtinKind] == "push-to-talk.polish"

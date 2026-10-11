@@ -60,7 +60,7 @@ struct TextRewriteEvaluationTests {
           !$0.isEmpty && literalCount($0, in: sample.transcript) > 0 && literalCount($0, in: sample.expected) > 0
         })
     }
-    let canonicalWorkflow = BuiltinWorkflowCatalog().manifest().workflows.first { $0.supportsVocabularyCorrection }
+    let canonicalWorkflow = BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup }
     let workflow = try #require(canonicalWorkflow)
     let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
     var observations: [Observation] = []
