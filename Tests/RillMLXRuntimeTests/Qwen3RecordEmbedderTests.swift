@@ -5,6 +5,32 @@ import XCTest
 @testable import RillSpeechContracts
 
 final class Qwen3RecordEmbedderTests: XCTestCase {
+  func testDocumentWindowPlanPreservesAllStartsWithinTheLimit() {
+    for tokenCount in [1, 192, 193, 3_072] {
+      let plan = Qwen3RecordEmbedder.documentWindowPlan(tokenCount: tokenCount)
+      XCTAssertEqual(plan.starts, Array(stride(from: 0, to: tokenCount, by: 192)))
+      XCTAssertFalse(plan.coverageLimited)
+    }
+  }
+
+  func testDocumentWindowPlanSamplesTheEntireDocumentWithoutDuplicates() {
+    for windowCount in [17, 33, 201, 513] {
+      let tokenCount = (windowCount - 1) * 192 + 1
+      let plan = Qwen3RecordEmbedder.documentWindowPlan(tokenCount: tokenCount)
+      XCTAssertTrue(plan.coverageLimited)
+      XCTAssertEqual(plan.starts.count, 16)
+      XCTAssertEqual(Set(plan.starts).count, 16)
+      XCTAssertEqual(plan.starts.first, 0)
+      XCTAssertEqual(plan.starts.last, (windowCount - 1) * 192)
+      XCTAssertEqual(plan.starts, plan.starts.sorted())
+      XCTAssertTrue(plan.starts.allSatisfy { $0.isMultiple(of: 192) && $0 < tokenCount })
+      let indices = plan.starts.map { $0 / 192 }
+      let gaps = zip(indices, indices.dropFirst()).map { $0.1 - $0.0 }
+      XCTAssertTrue(gaps.allSatisfy { ((windowCount - 1) / 15...(windowCount + 13) / 15).contains($0) })
+      XCTAssertTrue(indices.contains { abs($0 - (windowCount - 1) / 2) <= (windowCount + 13) / 15 })
+    }
+  }
+
   func testRejectsEmptyAndOversizeInputBeforeLoadingModel() async throws {
     let embedder = Qwen3RecordEmbedder(directory: URL(fileURLWithPath: "/unavailable-model"))
     for text in [" \n", String(repeating: "a", count: 48 * 1_024 + 1)] {
