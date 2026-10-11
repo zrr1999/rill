@@ -5,25 +5,6 @@ import Darwin
 import Foundation
 import RillInputMethodContracts
 
-public enum RimeProfileImportError: LocalizedError, Equatable {
-  case sourceRunning, inputMethodRunning, alreadyImported, incompleteSource, sourceChanged,
-    unsafeLink,
-    deploymentFailed, helperMissing, installationBusy
-  public var errorDescription: String? {
-    switch self {
-    case .sourceRunning: "导入完整个人词库前，请切换到 ABC 并退出鼠须管，避免复制正在写入的词库。普通安装和修复无需退出鼠须管。"
-    case .inputMethodRunning: "更新组件前，请切换到其他输入源，并在活动监视器中退出 RillInputMethod。无需退出鼠须管。"
-    case .alreadyImported: "Rill 输入法已有配置，不能再次导入。请使用修复安装，现有词库会保留。"
-    case .incompleteSource: "所选目录缺少万象方案或个人词库。"
-    case .sourceChanged: "导入期间源配置发生变化，未安装。请退出鼠须管后重试。"
-    case .unsafeLink: "源配置包含符号链接，请先将链接内容复制为独立文件后导入。"
-    case .deploymentFailed: "Rime 部署或词库校验失败，原配置未修改。"
-    case .installationBusy: "另一项输入法安装正在进行，请稍后重试。"
-    case .helperMissing: "当前 Rill 构建未包含输入法组件，请使用完整 app 构建。"
-    }
-  }
-}
-
 public struct RimeProfileInstaller: Sendable {
   public let helperBundle: URL
   public let dataDirectory: URL
@@ -54,10 +35,9 @@ public struct RimeProfileInstaller: Sendable {
   }
 
   @MainActor
-  public func install(from source: URL? = nil) async throws -> String {
+  public func install(from source: URL? = nil) async throws {
     try await prepareInstallation(importing: source, to: dataDirectory, application: application)
     try InputMethodRegistration.register(application)
-    return "Rill 输入法组件已安装，现有配置与词库已保留。请添加到系统输入源后切换使用。"
   }
 
   @concurrent

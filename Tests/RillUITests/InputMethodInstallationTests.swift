@@ -10,7 +10,7 @@ struct InputMethodInstallationTests {
     var actual = InputMethodInstallationState.needsRepair
     let model = InputMethodFeatureModel(
       settings: UITestSettingsStore(), privacy: { .defaults },
-      confirmRule: { _, id in (id, true) }, revokeRule: { _ in }, install: { _ in "" },
+      confirmRule: { _, id in (id, true) }, revokeRule: { _ in }, install: { _ in },
       inspectInstallation: { actual })
     #expect(model.installationState == .needsRepair)
     actual = .registrationPending
@@ -35,7 +35,6 @@ struct InputMethodInstallationTests {
         attempt += 1
         actual = attempt == 1 ? .needsRepair : .registered
         if attempt == 1 { throw CocoaError(.fileWriteUnknown) }
-        return "Installed"
       }, inspectInstallation: { actual })
     await model.installInputMethod()
     #expect(model.installationState == .needsRepair)

@@ -94,7 +94,8 @@ public final class AppModel {
   public var isSystemClipboardCaptureControlTransitioning: Bool {
     systemClipboardCaptureControlSnapshot.state.isTransitioning
   }
-  public var lastFailure: String?
+  var lastFailureResource: LocalizedStringResource?
+  public var lastFailure: String? { lastFailureResource?.string(for: settings.language) }
   public let vocabulary: VocabularyLibraryModel
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 

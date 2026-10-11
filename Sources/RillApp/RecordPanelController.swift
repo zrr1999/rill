@@ -1179,6 +1179,7 @@ private struct FloatingRecordView: View {
     ) {
       FloatingRecordCollectionsView(content: content, onShowRecord: onShowRecord, onClose: onClose)
     }
+    .environment(\.locale, content.model.settings.language.formattingLocale)
     .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
   }
 }

@@ -14,7 +14,7 @@ public final class InputMethodFeatureModel {
   public private(set) var isReady = false
   public private(set) var isInstalling = false
   public private(set) var installationState: InputMethodInstallationState = .notInstalled
-  public private(set) var status: String?
+  public private(set) var status: LocalizedStringResource?
   public private(set) var error: LocalizedStringResource?
   private let settings: any SettingsStore
   private let privacy: () throws -> PrivacyPolicySettings
@@ -22,7 +22,7 @@ public final class InputMethodFeatureModel {
   private let revokeRule: (UUID) async throws -> Void
   private let ownedRuleIDs: () async throws -> Set<UUID>
   private let secureInputEnabled: () -> Bool
-  private let install: (URL?) async throws -> String
+  private let install: (URL?) async throws -> Void
   private let inspectInstallation: () -> InputMethodInstallationState
   private let writes = PersistenceWriteCoordinator()
   private var loadTask: Task<Void, Never>?
@@ -44,7 +44,7 @@ public final class InputMethodFeatureModel {
     settings: any SettingsStore, privacy: @escaping () throws -> PrivacyPolicySettings,
     confirmRule: @escaping (String, UUID) async throws -> (UUID, Bool),
     revokeRule: @escaping (UUID) async throws -> Void,
-    install: @escaping (URL?) async throws -> String,
+    install: @escaping (URL?) async throws -> Void,
     inspectInstallation: @escaping () -> InputMethodInstallationState = { .notInstalled },
     ownedRuleIDs: @escaping () async throws -> Set<UUID> = { [] },
     secureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() },
@@ -192,10 +192,13 @@ public final class InputMethodFeatureModel {
     error = nil
     defer {
       isInstalling = false
-      refreshInstallationState()
+      installationState = inspectInstallation()
       resumeMutationWaiters()
     }
-    do { status = try await install(directory) } catch { self.error = L10n.resource("inputMethod.error.system", defaultValue: "\(error.localizedDescription)") }
+    do {
+      try await install(directory)
+      status = L10n.resource("inputMethod.installationCompleted")
+    } catch { self.error = L10n.inputMethodInstallationError(error) }
   }
 
   public func refreshInstallationState() {
