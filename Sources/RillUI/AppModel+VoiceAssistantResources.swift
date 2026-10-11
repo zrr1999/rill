@@ -102,14 +102,7 @@ extension AppModel {
       persistWorkflowEnabledStates()
       persistCustomWorkflows()
       append(
-        english: String(
-          format: L10n.runText(.wakePhrasesUpdatedFormat, language: .english),
-          editableWorkflow.name
-        ),
-        simplifiedChinese: String(
-          format: L10n.runText(.wakePhrasesUpdatedFormat, language: .simplifiedChinese),
-          editableWorkflow.name
-        )
+        L10n.resource("run.wakePhrasesUpdatedFormat", defaultValue: "Wake phrases updated: \(editableWorkflow.name)")
       )
       savedWorkflowID = editableWorkflow.id
     } else if let sourceWorkflow {
@@ -145,14 +138,7 @@ extension AppModel {
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
       append(
-        english: String(
-          format: L10n.runText(.builtInWakeWorkflowUpdatedFormat, language: .english),
-          customizedWorkflow.name
-        ),
-        simplifiedChinese: String(
-          format: L10n.runText(.builtInWakeWorkflowUpdatedFormat, language: .simplifiedChinese),
-          customizedWorkflow.name
-        )
+        L10n.resource("run.builtInWakeWorkflowUpdatedFormat", defaultValue: "Built-in wake workflow updated: \(customizedWorkflow.name)")
       )
       savedWorkflowID = customizedWorkflow.id
     } else {

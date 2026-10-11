@@ -10,16 +10,17 @@ public struct EventFeedEntry: Identifiable, Equatable, Sendable {
   }
 
   public let id: UUID
-  public let english: String
-  public let simplifiedChinese: String
+  private let message: LocalizedStringResource
   private let privacyProtectedContent: PrivacyProtectedContent?
 
-  public init(id: UUID = UUID(), english: String, simplifiedChinese: String) {
+  public init(id: UUID = UUID(), _ message: LocalizedStringResource) {
     self.id = id
-    self.english = english
-    self.simplifiedChinese = simplifiedChinese
+    self.message = message
     self.privacyProtectedContent = nil
   }
+
+  public var english: String { text(for: .english) }
+  public var simplifiedChinese: String { text(for: .simplifiedChinese) }
 
   init(
     id: UUID = UUID(),
@@ -29,10 +30,8 @@ public struct EventFeedEntry: Identifiable, Equatable, Sendable {
     hiddenSummary: LocalizedStringResource
   ) {
     self.id = id
-    // Keep the legacy mode-unaware surface content-free. Body-bearing
-    // activity must opt in to the privacy-aware presentation below.
-    self.english = hiddenSummary.english
-    self.simplifiedChinese = hiddenSummary.simplifiedChinese
+    // Only privacy-aware presentation may reveal the body.
+    self.message = hiddenSummary
     self.privacyProtectedContent = PrivacyProtectedContent(
       body: privacyProtectedBody,
       fullPrefix: fullPrefix,
@@ -42,12 +41,7 @@ public struct EventFeedEntry: Identifiable, Equatable, Sendable {
   }
 
   public func text(for language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      return english
-    case .simplifiedChinese:
-      return simplifiedChinese
-    }
+    message.string(for: language)
   }
 
   func presentation(
