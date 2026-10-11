@@ -354,10 +354,17 @@ Comparisons ignore punctuation and whitespace but retain words, case and numbers
 The emphasis sample retains a repetition whose intent is ambiguous without audio.
 
 DeepSeek rewrite requests use `reasoning.effort = "none"`, temperature 0.1 and a
-4096-token output limit. The rewrite has a 5-second budget; cancellation drains
-the request before any fallback is delivered. Inputs above 12,000 UTF-8 bytes skip
-cleanup whole. Assistant steps retain their existing thinking policy. Other
-compatible models retain their existing request parameters. These initial
+4096-token output limit. DeepSeek inputs above 12,000 UTF-8 bytes skip cleanup
+whole; the limit applies to the actual request transcript, without truncation.
+These provider-specific parameters remain separate from the workflow budget.
+
+Default builtin Smart Cleanup and contextual correction have a 5-second transport
+timeout and local deadline with every compatible model. DeepSeek non-assistant
+rewrite steps use that same budget with custom instructions. Other custom rewrites
+and assistant steps retain 60 seconds. At the deadline, the owner requests transport
+cancellation and reports timeout without waiting for late work. It retains that
+work until completion; late results cannot replace delivered text. Assistant
+thinking policy and other compatible-model parameters remain unchanged. These
 limits need real usage and latency evaluation.
 
 For captured speech or explicitly supplied text, temporary network, rate-limit,

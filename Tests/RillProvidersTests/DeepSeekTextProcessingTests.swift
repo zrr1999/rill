@@ -89,7 +89,7 @@ struct DeepSeekTextProcessingTests {
     let client = SuspendedDeepSeekClient()
     let transformer = OpenAITextRewriteTransformer(
       settingsProvider: { Self.settings() },
-      clientFactory: { client }, deepSeekTimeout: .zero
+      clientFactory: { client }, rewriteTimeout: .zero
     )
     await #expect(throws: OpenAITextRewriteError.timedOut) {
       try await transformer.transform(text: "保留原文", step: rewriteStep, context: context())
