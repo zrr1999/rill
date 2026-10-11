@@ -28,7 +28,7 @@ final class UIRenderEvidenceTests: XCTestCase {
     workspace.selectCollection(RecordCollection.voiceInputID)
     workspace.selectedRecordID = record.id
     let model = makeHarness(recordWorkspace: workspace).model
-    let request = try XCTUnwrap(RecordCorrectionRequest(record: record.record, collectionID: RecordCollection.voiceInputID))
+    let request = try XCTUnwrap(RecordCorrectionRequest(record: record.record))
     for language in AppLanguage.allCases {
       model.setInterfaceLanguage(language)
       for dark in [false, true] {

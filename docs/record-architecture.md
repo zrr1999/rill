@@ -246,7 +246,8 @@ See [Architecture](architecture.md) for the dependency graph and state owners.
 `RecordStore.saveTextCorrection` resolves the original immutable text by exact
 Record ID or workflow run ID and creates a new user-derived Record. Collections
 expose the same correction editor as Activity, using the selected Record's current
-text and known application/collection scope; missing locale remains explicitly unknown.
+text and known application scope. Its original recognition collection and locale
+remain explicitly unknown; current membership does not establish recognition scope.
 This works even after the workflow history has expired or for text without a run ID.
 It preserves the source and its
 memberships. The correction has no collection membership, so saving it cannot

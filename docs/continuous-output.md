@@ -39,7 +39,7 @@ pending content, including after restart. Preparing inputs, active editors, unse
 draft changes, unapplied speech suggestions, explicit retry selections, and delivery/confirmation attempts
 are protected. Once that protection ends, an overdue entry can expire. Older entries
 without an input timestamp receive a persisted 24-hour grace period on upgrade.
-Explicitly sending an overdue protected draft renews its pending timestamp before
+Explicitly sending a protected draft renews its pending timestamp before
 closing the editor, so expiry cannot interrupt that send.
 Pending Records are otherwise protected from automatic history cleanup. An explicit, confirmed Record deletion
 removes its buffer references in the same transaction, unless that Record is

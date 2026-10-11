@@ -2991,21 +2991,18 @@ extension RecordStore {
     var draft = entry.draft!
     guard !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw BufferDraftError.empty }
     let now = currentDate()
-    let isOverdue = entry.enqueuedAt.map { $0.addingTimeInterval(BufferEntry.pendingLifetime) <= now } ?? true
-    if isOverdue { entry.enqueuedAt = now }
+    entry.enqueuedAt = now
     guard draft.needsCommit else {
-      if isOverdue {
-        try await commitBufferChanges(nodes: [try bufferNode(entry)])
-        applyBufferEntry(entry)
-        publishBuffers()
-      }
+      try await commitBufferChanges(nodes: [try bufferNode(entry)])
+      applyBufferEntry(entry)
+      publishBuffers()
       return
     }
     let original: Record?
     if let recordID = entry.recordID { original = try await materializedRecord(recordID) } else { original = nil }
     try await ensureInitialized()
     entry = try editableBufferEntry(id, draftID: draftID, revision: expectedRevision)
-    if isOverdue { entry.enqueuedAt = now }
+    entry.enqueuedAt = now
     guard entry.draft!.needsCommit else { return }
     guard entry.recordID == original?.id else { throw BufferDraftError.changed }
     draft = entry.draft!

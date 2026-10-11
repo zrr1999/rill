@@ -537,7 +537,7 @@ public struct RecordWorkspaceView: View {
         .lineLimit(1)
       Spacer()
       if let correctSelection,
-        let request = RecordCorrectionRequest(record: record.record, collectionID: workspace.selectedCollectionID)
+        let request = RecordCorrectionRequest(record: record.record)
       {
         Button {
           correctSelection(request)

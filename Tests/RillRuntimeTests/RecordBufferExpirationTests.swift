@@ -131,14 +131,15 @@ struct RecordBufferExpirationTests {
     #expect(try await reopened.bufferItems().isEmpty)
   }
 
-  @Test func explicitSendRenewsAnOverdueDraftBeforeReleasingItsEditor() async throws {
+  @Test(arguments: [BufferEntry.pendingLifetime - 1, BufferEntry.pendingLifetime])
+  func explicitSendRenewsADraftBeforeReleasingItsEditor(age: TimeInterval) async throws {
     let clock = BufferDateClock(start)
     let persistence = BufferCatalogFake()
     let store = RecordStore(persistence: persistence, currentDate: clock.now)
     let id = try await append("send this", store: store)
     let session = UUID()
     let draft = try await store.openBufferDraft(id, editingSessionID: session)
-    clock.advance(BufferEntry.pendingLifetime)
+    clock.advance(age)
     try await store.expireBufferEntries()
     await persistence.rejectNext()
     await #expect(throws: RecordStoreError.persistenceUnavailable) {
@@ -147,6 +148,7 @@ struct RecordBufferExpirationTests {
     #expect(try await store.entries(in: id.bufferID).first?.enqueuedAt == start)
     try await store.commitBufferDraft(id, draftID: draft.id, expectedRevision: draft.revision)
     await store.closeBufferEditingSession(session)
+    clock.advance(1)
     #expect(try await store.beginBufferOutput(manualEntryID: id).record.payload.textValue == "send this")
     try await store.finishBufferOutput(id)
     #expect(try await store.bufferItems().isEmpty)

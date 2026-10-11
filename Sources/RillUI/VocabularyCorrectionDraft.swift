@@ -5,16 +5,14 @@ public struct RecordCorrectionRequest: Identifiable {
   public let id: RecordID
   public let source: RecognitionCorrectionSource
 
-  public init?(record: Record, collectionID: RecordCollectionID?) {
+  public init?(record: Record) {
     guard let text = record.payload.textValue,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return nil }
     id = record.id
     source = RecognitionCorrectionSource(
       preMappingText: text,
-      context: .init(
-        bundleIdentifier: record.provenance.sourceBundleIdentifier,
-        recordCollectionID: collectionID?.rawValue))
+      context: .init(bundleIdentifier: record.provenance.sourceBundleIdentifier))
   }
 }
 
