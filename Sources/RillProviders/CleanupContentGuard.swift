@@ -138,7 +138,9 @@ enum CleanupContentGuard {
       let isMultiPlaceNumber = multiDigitChinese.firstMatch(in: value, range: valueRange) != nil
       let leftIsBoundary = swiftRange.lowerBound == text.startIndex || isNumberBoundary(text[text.index(before: swiftRange.lowerBound)])
       let rightIsBoundary = swiftRange.upperBound == text.endIndex || isNumberBoundary(text[swiftRange.upperBound])
-      let hasCue = (rightIsBoundary || isMultiPlaceNumber) && quantityCue.firstMatch(in: context, range: contextRange) != nil
+      let hasCue =
+        ordinalOrWeekdayCue.firstMatch(in: context, range: contextRange) != nil
+        || ((rightIsBoundary || isMultiPlaceNumber) && quantityCue.firstMatch(in: context, range: contextRange) != nil)
       // These common adverbs need explicit quantity evidence, even though they contain numeral characters.
       if value == "万一" || value == "千万" {
         return !prefix.isEmpty || !suffix.isEmpty || hasCue
@@ -195,12 +197,13 @@ enum CleanupContentGuard {
       (?:
         [A-Za-zµμ]+
         | \s+(?:\#(asciiUnitPattern))(?![A-Za-z_])
-        | \s*(?:[%％‰℃]|°[CF]|人民币|美元|欧元|英镑|日元|万元|亿元|元|毫秒|分钟|小时|秒|分|点|个月|月|年|日|天|公里|厘米|毫米|米|千克|公斤|克|毫升|升|个|次|人|件)
+        | \s*(?:[%％‰℃]|°[CF]|人民币|美元|欧元|英镑|日元|万元|亿元|元|毫秒|分钟|小时|秒|分|点|个月|月|年|日|天|公里|厘米|毫米|米|千克|公斤|克|毫升|升|个|次|人|件|号|楼|层|章|节|页|倍|折|位|名|岁|周|封|句|张|份|台|辆|条|本|只|套|支|块|款|项|组|包|杯|瓶|度|成)
       )?
       """#,
     options: .allowCommentsAndWhitespace)
   private static let quantityCue = try! NSRegularExpression(pattern: #"(?:预算|金额|数量|总计|单价|价格|延迟|耗时|时长|等待|等|共|约|第|数值|选)(?:为|是|约)?\s*$"#)
   private static let durationCue = try! NSRegularExpression(pattern: #"(?:耗时|时长|等待|等)(?:为|是|约)?\s*$"#)
+  private static let ordinalOrWeekdayCue = try! NSRegularExpression(pattern: #"(?:第|周|星期|礼拜)\s*$"#)
   private static let multiDigitChinese = try! NSRegularExpression(
     pattern: #"^(?:[一二两三四五六七八九壹贰叁肆伍陆柒捌玖][十百千万亿拾佰仟萬億][零〇一二两三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟萬億]*|[十拾][一二两三四五六七八九壹贰叁肆伍陆柒捌玖])$"#)
   private static let negation = try! NSRegularExpression(

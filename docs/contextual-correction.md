@@ -20,7 +20,9 @@ they have a unit, an explicit quantity cue, a single-character literal boundary,
 a recognized multi-place numeric form. Common ambiguous forms such as `千万`
 and `十分` need quantity/duration evidence; complete times such as `三点十分`
 are checked as one literal. This bounded lexical coverage cannot disambiguate
-every bare Chinese numeral. Existing quoted code, identifiers with code-specific spelling and
+every bare Chinese numeral. Common counters, weekday prefixes and ordinal
+prefixes are included, so `下周三`, `第三章`, `五月三号` and `两倍` remain protected.
+Existing quoted code, identifiers with code-specific spelling and
 command-line flags and simple calls/signatures without nested parentheses must
 survive verbatim; new identifiers remain allowed for spoken-code correction.
 Complex code needs quotation for complete literal protection. Actual line-start
