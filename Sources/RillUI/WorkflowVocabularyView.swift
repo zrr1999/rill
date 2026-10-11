@@ -8,6 +8,7 @@ struct VocabularyCollectionCard: View {
   @State private var isExpanded = true
   @State private var editingEntry: VocabularyEntry?
   @State private var isAddingEntry = false
+  @State private var confirmsCollectionDeletion = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -33,6 +34,18 @@ struct VocabularyCollectionCard: View {
         .accessibilityLabel(
           "\(L10n.workflowText(.workflowCollectionEntriesToggle, language: model.settings.language)): \(collection.name)"
         )
+        if collection.id != VocabularyCollection.personalID {
+          Button(role: .destructive) {
+            confirmsCollectionDeletion = true
+          } label: {
+            Image(systemName: RillSystemSymbol.trash.rawValue)
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel(
+            "\(L10n.workflowText(.workflowDeleteCollection, language: model.settings.language)): \(collection.name)"
+          )
+          .accessibilityIdentifier("vocabulary.collection.\(collection.id.uuidString).delete")
+        }
       }
 
       if isExpanded {
@@ -78,6 +91,17 @@ struct VocabularyCollectionCard: View {
       }
     }
     .rillCard(.regular, cornerRadius: RillRadius.row, padding: RillSpacing.dense)
+    .alert(
+      L10n.workflowText(.workflowDeleteCollectionTitle, language: model.settings.language),
+      isPresented: $confirmsCollectionDeletion
+    ) {
+      Button(L10n.recordText(.cancel, language: model.settings.language), role: .cancel) {}
+      Button(L10n.text(.clipboardDeleteItem, language: model.settings.language), role: .destructive) {
+        model.deleteVocabularyCollection(collection.id)
+      }
+    } message: {
+      Text(L10n.workflowText(.workflowDeleteCollectionDetail, language: model.settings.language))
+    }
     .sheet(item: $editingEntry) { entry in
       let isNew = isAddingEntry
       VocabularyEntryEditor(
@@ -164,7 +188,9 @@ private struct VocabularyEntryEditor: View {
           Toggle(text(.vocabularyCaseSensitive), isOn: $rule.caseSensitive)
           TextField(text(.vocabularyPriority), value: $rule.priority, format: .number)
           if rule.matchMode == .regex {
-            Text(text(.vocabularyRegexPreviewNote)).foregroundStyle(.secondary)
+            Text(text(.vocabularyRegexPreviewNote))
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
           } else {
             TextField(text(.vocabularyPreviewInput), text: $sample, axis: .vertical)
               .lineLimit(2...5)
@@ -173,7 +199,9 @@ private struct VocabularyEntryEditor: View {
             }
           }
         } else {
-          Text(text(.vocabularyHotwordBehavior)).foregroundStyle(.secondary)
+          Text(text(.vocabularyHotwordBehavior))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
       if !isValid {
