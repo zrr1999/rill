@@ -1147,7 +1147,7 @@ extension AppModel {
       } catch {
         self.workflowLibrary.workflowEditorErrorPresentation = { language in
           return L10n.runWakeWordWorkflowSaveFailed(
-            detail: L10n.workflowFileFailureDetail(error, language: language),
+            detail: error.localizedDescription,
             language: language
           )
         }

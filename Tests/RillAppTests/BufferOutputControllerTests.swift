@@ -15,7 +15,9 @@ import RillWorkflows
     let record = Record(payload: .image(Data([1])), provenance: .init(source: .init(kind: .user)))
     let changeCount = NSPasteboard.general.changeCount
     for asFile in [false, true] {
-      let view = BufferDragView(record: record, asFile: asFile, language: .english, shouldBegin: { false }, completion: { _ in })
+      let view = BufferDragView(
+        record: record, asFile: asFile, language: .english, shouldBegin: { false },
+        completion: { _ in Issue.record("Updating accessibility labels unexpectedly completed a drag") })
       #expect(view.accessibilityLabel() == (asFile ? "Drag PNG file" : "Drag to copy to the target app"))
       view.updateLanguage(.simplifiedChinese)
       #expect(view.accessibilityLabel() == (asFile ? "拖出 PNG 文件" : "拖到目标应用以复制"))

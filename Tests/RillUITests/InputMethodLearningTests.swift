@@ -35,7 +35,7 @@ struct InputMethodLearningTests {
       try await Task.sleep(for: .milliseconds(10))
     }
     harness.model.installInputMethodFeature(
-      privacy: { .defaults }, install: { _ in }, bridgeDirectory: directory)
+      privacy: { .defaults }, install: { _ in Issue.record("Vocabulary learning unexpectedly installed the input method") }, bridgeDirectory: directory)
     let model = try #require(harness.model.inputMethod)
     try await waitUntilReady(model)
     #expect(
@@ -68,7 +68,7 @@ struct InputMethodLearningTests {
       settings: settings, privacy: { .defaults },
       confirmRule: { _, id in (id, true) },
       revokeRule: { _ in Issue.record("Reconciliation unexpectedly revoked a rule") },
-      install: { _ in },
+      install: { _ in Issue.record("Vocabulary learning unexpectedly installed the input method") },
       ownedRuleIDs: { ruleExists ? [id] : [] }, bridgeDirectory: directory)
     model.start()
     try await waitUntilReady(model)
@@ -94,7 +94,7 @@ struct InputMethodLearningTests {
         return (id, true)
       },
       revokeRule: { _ in Issue.record("A failed intent unexpectedly revoked a rule") },
-      install: { _ in }, bridgeDirectory: directory)
+      install: { _ in Issue.record("Vocabulary learning unexpectedly installed the input method") }, bridgeDirectory: directory)
     model.start()
     try await waitUntilReady(model)
     await model.confirm(try #require(model.state.suggestions.first))
@@ -119,7 +119,7 @@ struct InputMethodLearningTests {
         return (id, true)
       },
       revokeRule: { _ in Issue.record("Pending clear unexpectedly revoked a rule") },
-      install: { _ in }, bridgeDirectory: directory)
+      install: { _ in Issue.record("Vocabulary learning unexpectedly installed the input method") }, bridgeDirectory: directory)
     model.start()
     try await waitUntilReady(model)
     let suggestion = try #require(model.state.suggestions.first)
@@ -151,7 +151,7 @@ struct InputMethodLearningTests {
     let model = InputMethodFeatureModel(
       settings: settings, privacy: { .defaults },
       confirmRule: { _, id in (id, true) }, revokeRule: { revokedRuleID = $0 },
-      install: { _ in },
+      install: { _ in Issue.record("Vocabulary learning unexpectedly installed the input method") },
       secureInputEnabled: { false }, bridgeDirectory: directory)
     model.makeChannel = { try LocalInputMethodChannel(host: true, directory: $0, authenticate: { _, _ in true }) }
     model.start()

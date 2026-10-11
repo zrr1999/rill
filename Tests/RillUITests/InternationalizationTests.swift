@@ -50,7 +50,7 @@ struct InternationalizationTests {
     var actual = InputMethodInstallationState.notInstalled
     let model = InputMethodFeatureModel(
       settings: UITestSettingsStore(), privacy: { .defaults },
-      confirmRule: { _, id in (id, true) }, revokeRule: { _ in },
+      confirmRule: { _, id in (id, true) }, revokeRule: { _ in Issue.record("Installation unexpectedly revoked a vocabulary rule") },
       install: { _ in
         actual = fails ? .registrationPending : .registered
         if fails { throw InputMethodRegistrationError.unavailable }
@@ -148,13 +148,49 @@ struct InternationalizationTests {
     await model.flushPendingPersistenceWrites()
   }
 
+  @Test func wakeWorkflowValidationFailureUsesItsDiagnosticAndFollowsLanguageChanges() async throws {
+    let validationError = NSError(
+      domain: "WakePhraseValidation", code: 1,
+      userInfo: [NSLocalizedDescriptionKey: "The wake phrase is not in the selected model vocabulary (50%)."])
+    let validationLog = ProbeActionLog()
+    let model = makeHarness(
+      workflowFileStore: WakeWorkflowSaveFailureStore(),
+      voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: { _ in
+        await validationLog.increment()
+        throw validationError
+      })
+    ).model
+    await model.waitForInitialVoiceConfiguration()
+    model.applyLanguage(.english)
+    await model.saveWorkflowDraft(
+      WorkflowEditorDraft(
+        name: "Wake Assistant", eventType: .wakeWord,
+        wakePhrasesText: "Hey Rill", destination: .copyToClipboard))
+    #expect(await validationLog.snapshot() == 1)
+    #expect(model.workflowLibrary.customWorkflows.isEmpty)
+    let english = try #require(model.workflowLibrary.workflowEditorError)
+    #expect(english == L10n.runWakeWordWorkflowSaveFailed(detail: validationError.localizedDescription, language: .english))
+    model.applyLanguage(.simplifiedChinese)
+    #expect(
+      model.workflowLibrary.workflowEditorError
+        == L10n.runWakeWordWorkflowSaveFailed(detail: validationError.localizedDescription, language: .simplifiedChinese))
+    #expect(model.workflowLibrary.workflowEditorError != english)
+    model.applyLanguage(.english)
+    #expect(model.workflowLibrary.workflowEditorError == english)
+    #expect(await validationLog.snapshot() == 1)
+    await model.stopSettingsReadTasksForApplicationShutdown()
+    await model.flushPendingPersistenceWrites()
+  }
+
   @Test func wakeWorkflowSaveFailureLocalizesAndPreservesItsDiagnostic() async throws {
     var workflow = makeDefaultWorkflow()
     workflow.trigger = .wakeWord
     workflow.plan.setup.wakeWord = WakeWordConfiguration(phrases: ["Hey Rill"])
     let model = makeHarness(
       workflows: [workflow], workflowFileStore: WakeWorkflowSaveFailureStore(),
-      voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: { _ in })
+      voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: { configuration in
+        #expect(configuration.phrases == ["Hey Rill"])
+      })
     ).model
     await model.waitForInitialVoiceConfiguration()
     let result = await model.updateWakeWordSettings(phrases: ["Hey Rill"], enableListening: false)
@@ -190,10 +226,10 @@ struct InternationalizationTests {
 }
 
 private struct WakeWorkflowSaveFailureStore: WorkflowFileStore {
-  let configurationDirectoryURL = URL(fileURLWithPath: "/tmp/rill-i18n-wake-save-failure")
+  let configurationDirectoryURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
   func load() async -> WorkflowFileLoadResult { .init() }
-  func save(workflow: WorkflowDefinition, isEnabled: Bool, replacing fileURL: URL?) async throws -> URL {
+  func save(workflow _: WorkflowDefinition, isEnabled _: Bool, replacing _: URL?) async throws -> URL {
     throw WorkflowFileStoreError.unsupportedSchema(37)
   }
-  func delete(fileURL: URL) async throws { throw WorkflowFileStoreError.unsupportedSchema(37) }
+  func delete(fileURL _: URL) async throws { throw WorkflowFileStoreError.unsupportedSchema(37) }
 }
