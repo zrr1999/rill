@@ -14,7 +14,7 @@ extension VoiceRunModel {
     localSpeechPreparationCompletedUnitCount = 0
     localSpeechPreparationTotalUnitCount = 0
     localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
+    localSpeechPreparationFailure = nil
     let id = UUID()
     let owner = localSpeechPreparationTaskOwner
     let task = Task { [weak self, prepareLocalSpeech, owner] in
@@ -67,7 +67,7 @@ extension VoiceRunModel {
     }
     localSpeechPreparationTaskOwner.cancelActive()
     releaseLocalSpeech()
-    localSpeechPreparationError = nil
+    localSpeechPreparationFailure = nil
     appendEvent(
       EventFeedEntry(
         L10n.resource("run.localSpeechModelMemoryReleased")))
@@ -76,7 +76,7 @@ extension VoiceRunModel {
   private func applyLocalSpeechPreparationFailure(_ error: Error) {
     let stage = (error as? LocalSpeechPreparationFailure)?.stage ?? .generic
     let presentation = L10n.localSpeechPreparationFailure(stage)
-    localSpeechPreparationError = presentation.string(for: settings.language)
+    localSpeechPreparationFailure = presentation
     appendEvent(
       EventFeedEntry(
         presentation))
@@ -116,6 +116,6 @@ extension VoiceRunModel {
     localSpeechPreparationCompletedUnitCount = 0
     localSpeechPreparationTotalUnitCount = 0
     localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
+    localSpeechPreparationFailure = nil
   }
 }

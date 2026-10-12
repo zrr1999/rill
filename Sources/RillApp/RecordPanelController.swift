@@ -188,7 +188,11 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   private var capsulePanel: NSPanel?
   private weak var capsuleModel: AppModel?
   let presentation = RecordPanelPresentation()
-  private weak var appModel: AppModel?
+  private weak var appModel: AppModel? {
+    didSet {
+      if appModel !== oldValue { observeLanguage() }
+    }
+  }
   private var draftTarget: RecordBufferTextOutput.Target?
   private var draftTextOutput = RecordBufferTextOutput()
   private var editingActivity: (Bool) -> Void = { _ in }
@@ -229,6 +233,16 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   func startCollectionObservation(present: @escaping () -> Void) {
     presentCollectionPanel = present
     observeCollectionPreferences()
+  }
+
+  private func observeLanguage() {
+    guard !hasBegunShutdown, let model = appModel else { return }
+    let language = withObservationTracking {
+      model.settings.language
+    } onChange: { [weak self] in
+      Task { @MainActor [weak self] in self?.observeLanguage() }
+    }
+    panel?.title = L10n.quickRecord(.title, language: language)
   }
 
   private func observeCollectionPreferences() {
@@ -1179,6 +1193,7 @@ private struct FloatingRecordView: View {
     ) {
       FloatingRecordCollectionsView(content: content, onShowRecord: onShowRecord, onClose: onClose)
     }
+    .environment(\.locale, content.model.settings.language.formattingLocale)
     .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
   }
 }

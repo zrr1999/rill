@@ -75,6 +75,7 @@ struct RillApplication: App {
   var body: some Scene {
     Window(container.model.localizedWindowTitle, id: Self.mainWindowID) {
       MainShellView(model: container.model)
+        .environment(\.locale, container.model.settings.language.formattingLocale)
     }
     .defaultSize(width: 960, height: 720)
     .commands {
@@ -84,6 +85,7 @@ struct RillApplication: App {
 
     MenuBarExtra {
       MenuBarContent(model: container.model)
+        .environment(\.locale, container.model.settings.language.formattingLocale)
     } label: {
       Label {
         Text(container.model.localizedMenuBarTitle)

@@ -47,7 +47,7 @@ struct InputMethodSettingsView: View {
         Text(L10n.inputMethod(.activationHelp, language: language))
           .font(.caption).foregroundStyle(.secondary)
       }
-      if let status = input.status { Text(status).font(.caption) }
+      if let status = input.status { Text(status.string(for: language)).font(.caption) }
       if let error = input.error { Text(error.string(for: language)).foregroundStyle(.red).font(.caption) }
       Button(L10n.inputMethod(.openSettings, language: language)) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
