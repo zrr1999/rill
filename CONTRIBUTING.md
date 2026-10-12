@@ -407,3 +407,7 @@ scripts/preflight.sh commit-messages origin/main HEAD
 - 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
 
 发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。项目许可见 [LICENSE](LICENSE)，安全报告渠道状态与披露规则见 [SECURITY.md](SECURITY.md)。
+
+## 项目演进
+
+[EVOLUTION.md](EVOLUTION.md) 保存项目起源和真实的方向变化。后续方向变化按真实日期追加，包含“触发”“变化”“理由”，同日变更合并；维护后运行 `zendev evolution check`。文中历史状态不替代当前实现和验收证据。
