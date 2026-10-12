@@ -45,10 +45,7 @@ struct TextRewriteEvaluationTests {
         contentsOf:
           Self.root.appendingPathComponent("Evals/TextRewrite/cases.json")))
     try #require(!samples.isEmpty)
-    let workflow = WorkflowDefinition(
-      name: "Cleanup evaluation",
-      pipeline: PipelineDeclaration(recognizerID: "fixture", outputActions: []),
-      ui: .init(symbolName: "waveform", accentColorName: "blue"))
+    let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup })
     let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
     var observations: [Observation] = []
 

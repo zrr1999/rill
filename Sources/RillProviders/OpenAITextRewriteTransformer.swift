@@ -648,11 +648,13 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
       )
       try Task.checkCancellation()
       try ContextProviderIdentity.validate(correction?.authorization, settings: settings)
-      let proposedOutput = try Self.acceptedOutput(from: response)
-      let output =
-        correction == nil
-        ? proposedOutput
-        : ContextCorrectionPrompts.preservingNumbers(transcript: request.input, proposed: proposedOutput)
+      let output = try Self.acceptedOutput(from: response)
+      let protectsCleanup =
+        step.kind == .llmRewrite && context.workflow.speechMode != .voiceAssistant
+        && (correction != nil || (context.workflow.isCanonicalSmartCleanup && workflowInstruction == LLMTextProcessing.cleanupPrompt))
+      if protectsCleanup, !CleanupContentGuard.accepts(transcript: request.input, proposed: output) {
+        throw OpenAITextRewriteError.invalidResponse
+      }
       await diagnosticReporter(
         diagnosticEvent(
           runID: context.runID,

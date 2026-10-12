@@ -58,10 +58,13 @@ struct CorrectionVocabularyReferenceTests {
       ui: .init(symbolName: "waveform", accentColorName: "blue"),
       metadata: [WorkflowMetadataKey.catalog: "builtin", WorkflowMetadataKey.builtinKind: "push-to-talk.polish"])
     #expect(workflow.supportsVocabularyCorrection)
+    #expect(workflow.isCanonicalSmartCleanup)
     workflow.metadata[WorkflowMetadataKey.catalog] = "custom"
     #expect(!workflow.supportsVocabularyCorrection)
+    #expect(!workflow.isCanonicalSmartCleanup)
     workflow.metadata[WorkflowMetadataKey.catalog] = "builtin"
     workflow.plan.process.steps = [.init(kind: .recognizeSpeech), .init(kind: .llmRewrite, prompt: "Translate to English")]
     #expect(!workflow.supportsVocabularyCorrection)
+    #expect(!workflow.isCanonicalSmartCleanup)
   }
 }
