@@ -27,7 +27,7 @@ extension L10n {
   }
 
   static func workflowVocabularyEntryCount(_ count: Int, language: AppLanguage) -> String {
-    String(format: workflowText(.workflowVocabularyEntryCountFormat, language: language), count)
+    pluralString("workflow.workflowVocabularyEntryCountFormat", language: language, count)
   }
 
   static func workflowPhaseTitle(_ phase: WorkflowPhaseKind, language: AppLanguage) -> String {

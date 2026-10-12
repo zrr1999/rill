@@ -114,7 +114,7 @@ struct WorkflowDocumentLibraryView: View {
         } label: {
           Label(issue.filename, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
             .foregroundStyle(.orange)
-        }.help(issue.message)
+        }.help(L10n.workflowFileIssue(issue, language: model.settings.language))
       }
     }.listStyle(.inset(alternatesRowBackgrounds: false))
   }
