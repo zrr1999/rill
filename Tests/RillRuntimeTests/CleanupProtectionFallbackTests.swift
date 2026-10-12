@@ -7,11 +7,12 @@ import Testing
 @testable import RillWorkflows
 
 struct CleanupProtectionFallbackTests {
-  @Test(arguments: [false, true])
-  func rejectedCleanupIsSkippedAndDeliversOriginalOnce(contextual: Bool) async throws {
+  @Test(arguments: [false, true], CleanupFailureMode.allCases)
+  func failedCleanupIsSkippedAndDeliversOriginalOnce(contextual: Bool, failureMode: CleanupFailureMode) async throws {
     let settings = OpenAISettings(apiKey: "synthetic-test-key")
     let client = RejectedCleanupClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(
+      settingsProvider: { settings }, clientFactory: { client }, rewriteTimeout: failureMode == .timeout ? .zero : .seconds(5))
     let bus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: bus)
     let receipts = InMemoryWorkflowRunReceiptRepository()
@@ -42,7 +43,7 @@ struct CleanupProtectionFallbackTests {
     }
     #expect(summary.finalText == "预算五百元")
     #expect(await output.texts == ["预算五百元"])
-    #expect(await client.inputs == ["预算五百元"])
+    #expect(await client.inputs == (failureMode == .timeout ? [] : ["预算五百元"]))
     let textStep = try #require(summary.correctionSource?.processingSteps?.last)
     #expect(textStep.kind == .llmRewrite)
     #expect(textStep.result == .skipped)
@@ -61,6 +62,10 @@ struct CleanupProtectionFallbackTests {
       })
     await transformer.shutdown()
   }
+}
+
+enum CleanupFailureMode: CaseIterable, Sendable {
+  case invalidResponse, timeout
 }
 
 private struct CleanupFallbackRecognizer: SpeechRecognizer {
