@@ -124,15 +124,6 @@ struct SettingsPermissionPresentation: Equatable {
 public struct SettingsView: View {
   @Bindable var model: AppModel
   let privacyNoticeDocument: PrivacyNoticeDocument?
-  @State var vocabularyKind: VocabularyRuleKind = .mapping
-  @State var vocabularyPattern = ""
-  @State var vocabularyReplacement = ""
-  @State var vocabularyMatchMode: VocabularyMatchMode = .exactPhrase
-  @State var vocabularyCaseSensitive = false
-  @State var vocabularyBundleIdentifier = ""
-  @State var vocabularyGroupID: UUID?
-  @State var vocabularyLocale = ""
-  @State var vocabularyPriority = 0
   @State var sensitiveAppBundleIdentifier = ""
   @State var sensitiveAppApplicationName = ""
   @State var editingSensitiveAppRuleID: UUID?
