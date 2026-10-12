@@ -244,7 +244,7 @@ enum GlobalSearchIndex {
         }
       return GlobalSearchResult(
         destination: .record(record.id), category: .records,
-        title: title, detail: record.header.provenance.sourceApplicationName,
+        title: title, detail: L10n.recordSource(record.header.provenance, language: language),
         preview: nil, symbolName: symbol.rawValue, searchableText: title,
         timestamp: record.header.createdAt
       )
@@ -255,9 +255,9 @@ enum GlobalSearchIndex {
     collections.map { collection in
       GlobalSearchResult(
         destination: .collection(collection.id), category: .collections,
-        title: collection.name, detail: nil, preview: nil,
+        title: L10n.collectionName(collection, language: language), detail: nil, preview: nil,
         symbolName: RillSystemSymbol.squareStack3dUp.rawValue,
-        searchableText: collection.name, timestamp: nil
+        searchableText: collection.name + " " + L10n.collectionName(collection, language: language), timestamp: nil
       )
     }
   }
@@ -393,7 +393,7 @@ enum GlobalSearchIndex {
 
   private static func formattedDate(_ date: Date, language: AppLanguage) -> String {
     let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: language == .english ? "en_US" : "zh_CN")
+    formatter.locale = language.formattingLocale
     formatter.dateStyle = .medium
     formatter.timeStyle = .short
     return formatter.string(from: date)

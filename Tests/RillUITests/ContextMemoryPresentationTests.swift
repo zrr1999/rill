@@ -160,6 +160,33 @@ final class ContextMemoryPresentationTests: NativeAccessibilityTestCase {
     await fixture.shutdown()
   }
 
+  func testOpenManagementUpdatesAtExpiryWithoutRefreshingOrWritingMemories() async throws {
+    let fixture = try await MemoryPresentationFixture.make()
+    var memory = fixture.memories[0]
+    memory.expiresAt = .distantFuture
+    await fixture.repository.replaceMemories([memory])
+    await fixture.model.refresh()
+    let window = makeWindow(
+      MemoryManagementView(model: fixture.model, workflows: [fixture.workflow], language: .english, openSource: { _ in }))
+    await settle(window)
+    let expiredLabel = L10n.surface(.memoryExpiredNotSelected, language: .english)
+    XCTAssertFalse(accessibilityText(window).contains(expiredLabel))
+
+    memory.expiresAt = Date().addingTimeInterval(2)
+    await fixture.repository.replaceMemories([memory])
+    await fixture.model.refresh()
+    await settle(window)
+    XCTAssertFalse(accessibilityText(window).contains(expiredLabel))
+    let reads = await fixture.repository.memoryReadCount
+    await wait(window) { accessibilityText(window).contains(expiredLabel) }
+    let finalReads = await fixture.repository.memoryReadCount
+    let writes = await fixture.repository.writeCount
+    XCTAssertEqual(finalReads, reads, "Expiry updates the presentation without reloading persistence")
+    XCTAssertEqual(writes, 0, "Expiry presentation must not archive the memory")
+    window.close()
+    await fixture.shutdown()
+  }
+
   func testSourceNavigationWaitsForManagementSheetDismissalAndOrdinaryCloseDoesNotNavigate() async throws {
     let fixture = try await MemoryPresentationFixture.make()
     await fixture.repository.replaceMemories([fixture.memories[0]])

@@ -15,7 +15,7 @@ final class UnifiedWorkspaceTests: XCTestCase {
     model.voice.activeRunID = activeRunID
     model.voice.isRunning = true
     var messages: [String] = []
-    model.recordWorkspace.buffers.showMessageAction = { messages.append($0) }
+    model.recordWorkspace.buffers.showMessageAction = { messages.append($0.string(for: .english)) }
 
     model.handle(.recordBufferInputFailed(recordID: RecordID()))
 

@@ -332,7 +332,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
     XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparing(progress: 0))
 
     harness.model.voice.localSpeechPreparationState = .idle
-    harness.model.voice.localSpeechPreparationError = "failed"
+    harness.model.voice.localSpeechPreparationFailure = LocalizedStringResource("failed")
     XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
   }
 
