@@ -136,7 +136,7 @@ public struct SettingsView: View {
   @State var wakePhrasesText: String
   @State var wakeListeningDraftEnabled: Bool
   @State var isApplyingWakeWordSettings = false
-  @State var wakeWordSettingsError: String?
+  @State var wakeWordSettingsError: WakeWordSettingsUpdateResult?
   @FocusState var focusedSettingsItem: SettingsItem?
   @AccessibilityFocusState var accessibilityFocusedSettingsItem: SettingsItem?
   @FocusState private var focusedSettingsSection: SettingsSection?
@@ -264,6 +264,7 @@ public struct SettingsView: View {
     } message: { confirmation in
       Text(destructiveConfirmationDetail(confirmation))
     }
+    .environment(\.locale, model.settings.language.formattingLocale)
   }
 
   private var permissionsSection: some View {

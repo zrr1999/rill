@@ -21,6 +21,8 @@ final class WorkflowDocumentPresentationTests: NativeAccessibilityTestCase {
       await wait(window) { window.isKeyWindow }
       XCTAssertTrue(window.isKeyWindow)
       let text = accessibilityText(window)
+      XCTAssertTrue(text.contains(L10n.catalogString("workflowFile.error.invalidDocument", language: language)))
+      XCTAssertTrue(text.contains(L10n.catalogString("workflowFile.error.configurationPathIsNotDirectory", language: language)))
       XCTAssertTrue(text.contains(WorkflowDocumentPresentationFixture.errorTail), "The real AX tree must include the end of the long error")
       XCTAssertTrue(text.contains(L10n.workflowDocument(.newWorkflowReviewHint, language: language)))
       XCTAssertEqual(buttons(L10n.workflowDocument(.labelOpenFile, language: language), in: window).count, 1)

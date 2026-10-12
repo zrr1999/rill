@@ -383,6 +383,7 @@ ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本�
   使用评审者可直接查看的图片附件或仓库图片链接，覆盖改动界面和相关交互状态，
   并标注对应提交、场景及语言/深浅色；按改动范围补充前后对比。
   截图使用合成数据或脱敏内容，并与自动化测试、人工交互验收结果分别记录。
+  使用仓库截图测试时设置 `RILL_UI_COMPOSITOR_CAPTURE=1`，检查原生分栏、工具栏和系统材质是否完整呈现。
   无 UI 改动时，在同一位置注明“不适用”及原因。
 - PR 正文简要说明与当前改动直接相关的验证及结果，必要时链接 CI 或报告；
   不粘贴整栈验证流水账、完整提交哈希、源码指纹或本地 artifact 路径。
@@ -422,3 +423,7 @@ scripts/preflight.sh commit-messages origin/main HEAD
 - 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
 
 发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。项目许可见 [LICENSE](LICENSE)，安全报告渠道状态与披露规则见 [SECURITY.md](SECURITY.md)。
+
+## 项目演进
+
+[EVOLUTION.md](EVOLUTION.md) 保存项目起源和真实的方向变化。后续方向变化按真实日期追加，包含“触发”“变化”“理由”，同日变更合并；维护后运行 `zendev evolution check`。文中历史状态不替代当前实现和验收证据。

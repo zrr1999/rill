@@ -21,14 +21,15 @@ final class UIRenderEvidenceTests: XCTestCase {
       for dark in [false, true] {
         let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
         try await render(
-          MemoryManagementView(model: fixture.model, workflows: [fixture.workflow], language: language, openSource: { _ in }),
+          MemoryManagementView(model: fixture.model, workflows: [fixture.workflow], language: language, openSource: { _ in })
+            .environment(\.locale, language.formattingLocale),
           size: NSSize(width: 820, height: 1_000), dark: dark,
           to: output.appendingPathComponent("memory-management-\(variant).png"))
         try await render(
           CorrectionReferenceView(
             receipt: fixture.receipt, memories: fixture.model.memories, workflows: [fixture.workflow],
             previewMode: .full, language: language, manageMemories: {}, isExpanded: true
-          ).padding(20),
+          ).padding(20).environment(\.locale, language.formattingLocale),
           size: NSSize(width: 760, height: 720), dark: dark,
           to: output.appendingPathComponent("memory-references-\(variant).png"))
       }

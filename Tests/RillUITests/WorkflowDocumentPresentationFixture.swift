@@ -16,7 +16,7 @@ struct WorkflowDocumentPresentationFixture {
     let service = makeContentFreeExplainService()
     let files = UITestWorkflowFileStore(issues: [
       .init(filename: "broken.toml", message: errorMessage),
-      .init(filename: "workflows.toml", message: "The workflow configuration path is not a directory.", target: .configurationDirectory),
+      .init(filename: "workflows.toml", message: "The workflow configuration path is not a directory.", reason: .file(.configurationPathIsNotDirectory)),
     ])
     let harness = makeHarness(
       workflows: [workflow], settingsStore: UITestSettingsStore(), workflowFileStore: files,
