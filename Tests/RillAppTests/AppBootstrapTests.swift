@@ -1345,7 +1345,7 @@ final class AppBootstrapTests: XCTestCase {
     let speechOnly = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [.cloudSpeech],
-      usesChinese: false
+      language: .english
     )
     XCTAssertTrue(speechOnly.contains("microphone audio"))
     XCTAssertTrue(speechOnly.contains("cloud-recognition terms"))
@@ -1356,7 +1356,7 @@ final class AppBootstrapTests: XCTestCase {
     let textOnly = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [.cloudText],
-      usesChinese: false
+      language: .english
     )
     XCTAssertTrue(textOnly.contains("final transcript"))
     XCTAssertTrue(textOnly.contains("configured cloud text service"))
@@ -1367,7 +1367,7 @@ final class AppBootstrapTests: XCTestCase {
     let mixed = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [.cloudSpeech, .cloudText],
-      usesChinese: true
+      language: .simplifiedChinese
     )
     XCTAssertTrue(mixed.contains("麦克风音频"))
     XCTAssertTrue(mixed.contains("云端识别术语"))
@@ -1379,7 +1379,7 @@ final class AppBootstrapTests: XCTestCase {
     let defensive = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [],
-      usesChinese: false
+      language: .english
     )
     XCTAssertTrue(defensive.contains("could not be classified"))
     XCTAssertTrue(defensive.contains("Nothing from this run has left this Mac yet"))

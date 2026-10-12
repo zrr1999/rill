@@ -74,7 +74,8 @@ public final class VoiceRunModel {
   public internal(set) var downloadedLocalSpeechModels: [String] = []
   public internal(set) var downloadedLocalSpeechModelsAvailability: StoredSettingsDomainAvailability = .available
   public internal(set) var downloadedLocalSpeechModelsError: String?
-  public var localSpeechPreparationError: String?
+  var localSpeechPreparationFailure: LocalizedStringResource?
+  public var localSpeechPreparationError: String? { localSpeechPreparationFailure?.string(for: settings.language) }
   public internal(set) var wakeWordResourceState: VoiceAssistantResourceState = .notInstalled
   public internal(set) var wakeWordRuntimeState: WakeWordRuntimePresentationState = .disabled
   public internal(set) var downloadedTTSModelIdentifiers: Set<String> = []
@@ -245,5 +246,7 @@ public struct WakeWordSettingsSnapshot: Sendable, Equatable {
 
 public enum WakeWordSettingsUpdateResult: Sendable, Equatable {
   case saved
-  case failed(String)
+  case failed(LocalizedStringResource)
+  case workflowEditorFailed
+  case workflowLibraryFailed
 }

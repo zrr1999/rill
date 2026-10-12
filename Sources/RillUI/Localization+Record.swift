@@ -2,12 +2,41 @@ import Foundation
 import RillCore
 
 extension L10n {
+
+  static func bufferName(_ buffer: RecordBuffer, language: AppLanguage) -> String {
+    guard RecordBuffer.defaults.contains(where: { $0.id == buffer.id && $0.name == buffer.name }) else { return buffer.name }
+    if buffer.id == RecordBuffer.speechID { return surface(.speech, language: language) }
+    if buffer.id == RecordBuffer.clipboardID { return surface(.clipboard, language: language) }
+    return buffer.name
+  }
+
+  static func collectionName(_ collection: RecordCollection, language: AppLanguage) -> String {
+    if collection.id == RecordCollection.inboxID, collection.name == RecordCollection.inbox.name {
+      return catalogString("record.builtinInbox", language: language)
+    }
+    if collection.id == RecordCollection.voiceInputID, collection.name == RecordCollection.voiceInput.name {
+      return catalogString("record.builtinVoiceInput", language: language)
+    }
+    return collection.name
+  }
+
+  static func recordPreview(_ header: RecordHeader, language: AppLanguage) -> String {
+    guard header.preview.isEmpty else { return header.preview }
+    return catalogString("record.payload.\(header.kind.rawValue)", language: language)
+  }
+
+  static func recordSource(_ provenance: RecordProvenance, language: AppLanguage) -> String {
+    if let application = provenance.sourceApplicationName { return application }
+    if let workflow = provenance.workflow { return workflowName(workflow, language: language) }
+    return catalogString("record.provenanceSource.\(provenance.source.kind.rawValue)", language: language)
+  }
+
   static func recordText(_ key: RecordTextKey, language: AppLanguage) -> String {
     catalogString("record.\(key.rawValue)", language: language)
   }
 
   static func recordCount(_ count: Int, language: AppLanguage) -> String {
-    String(format: recordText(.recordCountFormat, language: language), count)
+    pluralString("record.recordCountFormat", language: language, count)
   }
 
   static func removeFromCollection(_ collectionName: String, language: AppLanguage) -> String {
@@ -39,7 +68,7 @@ extension L10n {
   }
 
   static func routeWorkflowsCount(_ count: Int, language: AppLanguage) -> String {
-    String(format: recordText(.workflowsCountFormat, language: language), count)
+    pluralString("record.workflowsCountFormat", language: language, count)
   }
 
   static func routePriority(_ priority: Int, language: AppLanguage) -> String {

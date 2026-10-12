@@ -22,7 +22,9 @@ public final class RecordWorkspaceModel {
   public private(set) var sourceAppFilterBundleIdentifier: String?
   public private(set) var isLoading = false
   public private(set) var isMutating = false
-  public private(set) var errorMessage: String?
+  private var failure: Error?
+  public var errorMessage: String? { failure?.localizedDescription }
+  public var errorPresentation: LocalizedStringResource? { failure.map(L10n.recordStoreFailure) }
   public private(set) var pendingCollectionDeletion: RecordCollectionDeletionImpact?
 
   public let buffers: RecordBufferModel
@@ -200,9 +202,9 @@ public final class RecordWorkspaceModel {
     defer { isLoading = false }
     do {
       applySnapshot(try await store.catalogSnapshot())
-      errorMessage = nil
+      failure = nil
     } catch {
-      errorMessage = error.localizedDescription
+      failure = error
     }
   }
 
@@ -216,7 +218,7 @@ public final class RecordWorkspaceModel {
           self?.applySnapshot(snapshot)
         }
       } catch {
-        self?.errorMessage = error.localizedDescription
+        self?.failure = error
       }
     }
   }
@@ -315,7 +317,7 @@ public final class RecordWorkspaceModel {
       retentionSuggestionCount = 0
       return
     }
-    do { retentionSuggestionCount = try await store.prepareCleanup(olderThan: cutoff).recordIDs.count } catch { errorMessage = error.localizedDescription }
+    do { retentionSuggestionCount = try await store.prepareCleanup(olderThan: cutoff).recordIDs.count } catch { failure = error }
   }
 
   public func updateMetadata(
@@ -343,7 +345,7 @@ public final class RecordWorkspaceModel {
 
   public func loadRecord(_ id: RecordID) async -> RecordProjection? {
     do { return try await store.record(id: id) } catch {
-      errorMessage = error.localizedDescription
+      failure = error
       return nil
     }
   }
@@ -393,7 +395,7 @@ public final class RecordWorkspaceModel {
       let impact = try await store.deletionImpact(for: id)
       pendingCollectionDeletion = impact
     } catch {
-      errorMessage = error.localizedDescription
+      failure = error
     }
   }
 
@@ -428,7 +430,7 @@ public final class RecordWorkspaceModel {
   }
 
   public func dismissError() {
-    errorMessage = nil
+    failure = nil
   }
 
   private func mutate(_ operation: @escaping @MainActor () async throws -> Void) async {
@@ -439,9 +441,9 @@ public final class RecordWorkspaceModel {
       do {
         try await operation()
         applySnapshot(try await store.catalogSnapshot())
-        errorMessage = nil
+        failure = nil
       } catch {
-        errorMessage = error.localizedDescription
+        failure = error
       }
     }
     mutationTask = task

@@ -575,7 +575,7 @@ extension AppModelTests {
       )
     ]
     harness.model.voice.lastCompletedText = "transcript-before-clear"
-    harness.model.lastFailure = "failure-before-clear"
+    harness.model.lastFailureResource = LocalizedStringResource("failure-before-clear")
     harness.model.history.eventFeed = [
       EventFeedEntry("content-before-clear")
     ]
