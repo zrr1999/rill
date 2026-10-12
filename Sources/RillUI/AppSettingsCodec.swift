@@ -113,7 +113,7 @@ enum AppSettingsCodec {
     WorkflowFileIssue(
       filename: directory.lastPathComponent,
       message: "Existing workflows could not be migrated to TOML; the legacy library remains active.",
-      target: .configurationDirectory)
+      reason: .legacyMigrationIncomplete)
   }
 
   static func resolveLegacyLocalSpeechSetting(

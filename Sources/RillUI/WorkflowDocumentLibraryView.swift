@@ -112,7 +112,7 @@ struct WorkflowDocumentLibraryView: View {
         VStack(alignment: .leading, spacing: RillSpacing.row) {
           Label(issue.filename, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
             .font(.headline).foregroundStyle(.orange)
-          Text(issue.message)
+          Text(L10n.workflowFileIssue(issue, language: model.settings.language))
             .font(.callout).textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
           if let directory = model.workflowConfigurationDirectoryURL {

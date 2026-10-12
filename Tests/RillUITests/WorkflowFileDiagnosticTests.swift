@@ -9,7 +9,7 @@ final class WorkflowFileDiagnosticTests: XCTestCase {
     let directory = URL(fileURLWithPath: "/tmp/workflows.toml", isDirectory: true)
     let file = directory.appendingPathComponent("workflows.toml")
     let record = WorkflowFileRecord(workflow: workflow, isEnabled: true, fileURL: file)
-    let warning = WorkflowFileIssue(filename: "workflows.toml", message: "Directory warning", workflowID: workflow.id, target: .configurationDirectory)
+    let warning = WorkflowFileIssue(filename: "workflows.toml", message: "Directory warning", reason: .directoryUnreadable, workflowID: workflow.id)
     let files = UITestWorkflowFileStore(records: [record], issues: [warning], configurationDirectoryURL: directory)
     let model = makeHarness(workflows: [], settingsStore: UITestSettingsStore(), workflowFileStore: files).model
     await model.waitForInitialVoiceConfiguration()
@@ -73,6 +73,20 @@ final class WorkflowFileDiagnosticTests: XCTestCase {
       XCTAssertTrue(model.isWorkflowEnabled(workflow))
       XCTAssertTrue(model.workflowLibrary.invalidWorkflowFileIDs.isEmpty)
       XCTAssertEqual(model.workflowLibrary.workflowFileIssues.filter { $0.target == .file }, [issue])
+      let migrationIssue = try XCTUnwrap(model.workflowLibrary.workflowFileIssues.first { $0.reason == .legacyMigrationIncomplete })
+      XCTAssertEqual(migrationIssue.target, .configurationDirectory)
+      XCTAssertEqual(migrationIssue.resolvedURL(in: files.configurationDirectoryURL), files.configurationDirectoryURL)
+      for language in AppLanguage.allCases {
+        model.setInterfaceLanguage(language)
+        let summary = L10n.catalogString("workflowFile.error.legacyMigrationIncomplete", language: language)
+        XCTAssertTrue(model.workflowLibrary.workflowLibraryError?.contains(summary) == true)
+        if language == .english {
+          XCTAssertEqual(L10n.workflowFileIssue(migrationIssue, language: language), migrationIssue.message)
+        }
+        XCTAssertFalse(
+          L10n.workflowFileIssue(migrationIssue, language: language).contains(
+            L10n.catalogString("workflowFile.error.invalidDocument", language: language)))
+      }
       XCTAssertEqual(model.workflowLibrary.workflowFileIssues.filter { $0.target == .configurationDirectory }.count, 1)
       XCTAssertEqual(issue.resolvedURL(in: files.configurationDirectoryURL), files.configurationDirectoryURL.appendingPathComponent("legacy.toml"))
     }
@@ -104,7 +118,7 @@ final class WorkflowFileDiagnosticTests: XCTestCase {
     let invalid = makeDefaultWorkflow()
     let directory = URL(fileURLWithPath: "/tmp/workflows.toml", isDirectory: true)
     let file = directory.appendingPathComponent("workflows.toml")
-    let warning = WorkflowFileIssue(filename: "workflows.toml", message: "Directory warning", workflowID: workflow.id, target: .configurationDirectory)
+    let warning = WorkflowFileIssue(filename: "workflows.toml", message: "Directory warning", reason: .directoryUnreadable, workflowID: workflow.id)
     let fileIssue = WorkflowFileIssue(filename: "invalid.toml", message: "Invalid file", workflowID: invalid.id)
     let files = UITestWorkflowFileStore(
       records: [.init(workflow: workflow, isEnabled: true, fileURL: file)], issues: [warning, fileIssue], configurationDirectoryURL: directory)

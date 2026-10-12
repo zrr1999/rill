@@ -2483,23 +2483,6 @@
         }
       }
     },
-    "Localization.InputMethod.times": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ times · %2$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ 次 · %2$@"
-          }
-        }
-      }
-    },
     "Localization.Jev.0.unrelated.1.partly.relevant.2.directly.useful.Scores.are.not.correctness.probabilities.Selection": {
       "extractionState": "manual",
       "localizations": {
@@ -4298,6 +4281,227 @@
           "stringUnit": {
             "state": "translated",
             "value": "改写"
+          }
+        }
+      }
+    },
+    "bufferOutput.draft": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This item has a draft. Send it from the draft editor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此项仍有草稿，请在待发区确认发送。"
+          }
+        }
+      }
+    },
+    "bufferOutput.dragCopy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag to copy to the target app"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖到目标应用以复制"
+          }
+        }
+      }
+    },
+    "bufferOutput.dragPNG": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag PNG file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖出 PNG 文件"
+          }
+        }
+      }
+    },
+    "bufferOutput.empty": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing pending"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有待输出内容"
+          }
+        }
+      }
+    },
+    "bufferOutput.focusTarget": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus the target, then press the output shortcut."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请聚焦目标输入框，再按输出快捷键。"
+          }
+        }
+      }
+    },
+    "bufferOutput.operationFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The operation could not finish. The item is retained."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "操作未完成，内容已保留。"
+          }
+        }
+      }
+    },
+    "bufferOutput.processing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The next item is still processing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下一项仍在处理中"
+          }
+        }
+      }
+    },
+    "bufferOutput.rejected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The target did not accept the item. It is retained."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标未接收，内容已保留。"
+          }
+        }
+      }
+    },
+    "bufferOutput.retryFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save state; nothing was resent."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态保存失败，暂未重试。"
+          }
+        }
+      }
+    },
+    "bufferOutput.retryTarget": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus the target, then press the output shortcut to retry this item."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请聚焦目标输入框，再按输出快捷键重试这一项。"
+          }
+        }
+      }
+    },
+    "bufferOutput.settlementFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settlement failed. The item will not be sent again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态保存失败；内容不会再次发送。"
+          }
+        }
+      }
+    },
+    "bufferOutput.settlementPending": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Output state could not be saved. The next request retries settlement only."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输出状态尚未保存；再次触发只重试保存。"
+          }
+        }
+      }
+    },
+    "bufferOutput.unsupportedControl": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This control cannot receive text. The item is retained."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此输入控件不支持输出，内容已保留。"
           }
         }
       }
@@ -10205,23 +10409,6 @@
         }
       }
     },
-    "inputMethod.error.system": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@"
-          }
-        }
-      }
-    },
     "inputMethod.ignore": {
       "extractionState": "manual",
       "localizations": {
@@ -10303,6 +10490,227 @@
           "stringUnit": {
             "state": "translated",
             "value": "安装 Rill 输入法"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.alreadyImported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rill already has an input method profile. Use Repair to preserve your current dictionary."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rill 输入法已有配置，不能再次导入。请使用修复安装，现有词库会保留。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.deploymentFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rime deployment or dictionary validation failed. The original profile was preserved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rime 部署或词库校验失败，原配置未修改。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.helperMissing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Rill build does not include the input method component. Use the complete app build."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前 Rill 构建未包含输入法组件，请使用完整 app 构建。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.incompleteSource": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected folder is missing the Wanxiang scheme or personal dictionary."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选目录缺少万象方案或个人词库。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.inputMethodRunning": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to another input source and quit RillInputMethod in Activity Monitor before updating. Squirrel can keep running."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新组件前，请切换到其他输入源，并在活动监视器中退出 RillInputMethod。无需退出鼠须管。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.installationBusy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another input method installation is in progress. Try again shortly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一项输入法安装正在进行，请稍后重试。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.registrationFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The component was saved, but system registration failed (%@). Try Repair again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "组件已保存，但系统注册失败（%@）。请重试修复安装。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.sourceChanged": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The source profile changed during import. Nothing was installed. Quit Squirrel and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入期间源配置发生变化，未安装。请退出鼠须管后重试。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.sourceRunning": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to ABC and quit Squirrel before importing your full personal dictionary. Ordinary installation and repair do not require quitting Squirrel."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入完整个人词库前，请切换到 ABC 并退出鼠须管，避免复制正在写入的词库。普通安装和修复无需退出鼠须管。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.system": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The input method could not be installed. Try again. Details: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法安装输入法，请重试。详情：%@"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The component is installed, but Rill is not recognized in this login session. Log out and back in, then add Rill in Input Sources. Reinstallation is unnecessary."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "组件已安装，但本次登录尚未识别 Rill 输入源。请注销并重新登录，再到系统输入法设置中添加 Rill。无需再次安装。"
+          }
+        }
+      }
+    },
+    "inputMethod.installError.unsafeLink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The source profile contains symbolic links. Copy their contents into regular files before importing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "源配置包含符号链接，请先将链接内容复制为独立文件后导入。"
+          }
+        }
+      }
+    },
+    "inputMethod.installationCompleted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Rill input method is installed. Your profile and dictionary were preserved. Add Rill in Input Sources and switch to it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rill 输入法组件已安装，现有配置与词库已保留。请添加到系统输入源后切换使用。"
           }
         }
       }
@@ -10439,6 +10847,35 @@
           "stringUnit": {
             "state": "translated",
             "value": "输入法"
+          }
+        }
+      }
+    },
+    "inputMethod.suggestionDetail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$d time · %2$@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%1$d times · %2$@"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d 次 · %2$@"
           }
         }
       }
@@ -17872,6 +18309,40 @@
         }
       }
     },
+    "record.builtinInbox": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inbox"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收件箱"
+          }
+        }
+      }
+    },
+    "record.builtinVoiceInput": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice Input"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音输入"
+          }
+        }
+      }
+    },
     "record.cancel": {
       "extractionState": "manual",
       "localizations": {
@@ -18552,6 +19023,312 @@
         }
       }
     },
+    "record.error.collectionLimitReached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The record collection limit has been reached."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已达到记录集数量上限。"
+          }
+        }
+      }
+    },
+    "record.error.collectionUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected record collection is unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选记录集不可用。"
+          }
+        }
+      }
+    },
+    "record.error.invalidDeliveryReceipt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The delivery sink returned an invalid receipt."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "投递目标返回了无效回执。"
+          }
+        }
+      }
+    },
+    "record.error.invalidGraph": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The stored record graph is invalid."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存储的记录结构无效。"
+          }
+        }
+      }
+    },
+    "record.error.invalidTextCorrection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The text correction is empty or no longer matches this edit."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纠错内容为空或已不匹配本次编辑。"
+          }
+        }
+      }
+    },
+    "record.error.manualSelectionRequired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This collection requires an explicit record selection."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此记录集需要明确选择一条记录。"
+          }
+        }
+      }
+    },
+    "record.error.membershipAlreadyInUse": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected record is already being delivered."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选记录正在投递，请稍后重试。"
+          }
+        }
+      }
+    },
+    "record.error.membershipChanged": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected collection membership changed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选记录集成员已变化，请重新选择。"
+          }
+        }
+      }
+    },
+    "record.error.membershipLimitReached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The record membership limit has been reached."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已达到记录成员数量上限。"
+          }
+        }
+      }
+    },
+    "record.error.membershipUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected collection membership is unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选记录集成员已不可用。"
+          }
+        }
+      }
+    },
+    "record.error.payloadLimitReached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Record payload exceeds the local storage limit."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记录内容超过本地存储限制。"
+          }
+        }
+      }
+    },
+    "record.error.persistenceUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The protected record store is unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "受保护的记录存储不可用。"
+          }
+        }
+      }
+    },
+    "record.error.recordLimitReached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Record store item limit has been reached."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已达到记录数量上限。"
+          }
+        }
+      }
+    },
+    "record.error.recordUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected record is unavailable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选记录不可用。"
+          }
+        }
+      }
+    },
+    "record.error.routeCollectionLimitReached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The route collection limit has been reached."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已达到路由记录集数量上限。"
+          }
+        }
+      }
+    },
+    "record.error.routeLimitReached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The record route limit has been reached."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已达到记录路由数量上限。"
+          }
+        }
+      }
+    },
+    "record.error.system": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records could not be updated. Details: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法更新记录。详情：%@"
+          }
+        }
+      }
+    },
+    "record.error.totalPayloadLimitReached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Record store content budget has been reached."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记录内容已达到存储容量上限。"
+          }
+        }
+      }
+    },
     "record.imagePayload": {
       "extractionState": "manual",
       "localizations": {
@@ -18875,6 +19652,57 @@
         }
       }
     },
+    "record.payload.files": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件"
+          }
+        }
+      }
+    },
+    "record.payload.image": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图片"
+          }
+        }
+      }
+    },
+    "record.payload.text": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文本"
+          }
+        }
+      }
+    },
     "record.pinnedOnly": {
       "extractionState": "manual",
       "localizations": {
@@ -18943,19 +19771,116 @@
         }
       }
     },
-    "record.recordCountFormat": {
+    "record.provenanceSource.system-clipboard": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d records"
+            "value": "System Clipboard"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统剪贴板"
+          }
+        }
+      }
+    },
+    "record.provenanceSource.user": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "User"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用户"
+          }
+        }
+      }
+    },
+    "record.provenanceSource.voice-input": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice Input"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音输入"
+          }
+        }
+      }
+    },
+    "record.provenanceSource.workflow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workflow"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流"
+          }
+        }
+      }
+    },
+    "record.recordCountFormat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d record"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d records"
+                }
+              }
+            }
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "%d 条记录"
+          }
+        }
+      }
+    },
+    "record.recordFallback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记录"
           }
         }
       }
@@ -19525,9 +20450,21 @@
       "extractionState": "manual",
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d workflows"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d workflow"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d workflows"
+                }
+              }
+            }
           }
         },
         "zh-Hans": {
@@ -27784,6 +28721,23 @@
         }
       }
     },
+    "voiceResource.preparationFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice resources could not be prepared. Details: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法准备语音资源。详情：%@"
+          }
+        }
+      }
+    },
     "voiceTextStyleDescription.cleanInput": {
       "extractionState": "manual",
       "localizations": {
@@ -29539,9 +30493,21 @@
       "extractionState": "manual",
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d entries"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d entry"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d entries"
+                }
+              }
+            }
           }
         },
         "zh-Hans": {
@@ -31894,6 +32860,273 @@
           "stringUnit": {
             "state": "translated",
             "value": "用途未分类"
+          }
+        }
+      }
+    },
+    "workflowFile.error.changed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workflow file changed. Reload it before saving."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流文件已变化，请重新加载后再保存。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.configurationPathIsNotDirectory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workflow configuration path is not a directory."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流配置路径不是文件夹。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.details": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@\n%2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@\n%2$@"
+          }
+        }
+      }
+    },
+    "workflowFile.error.directoryUnreadable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workflow configuration directory could not be read."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取工作流配置文件夹。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.duplicateID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workflow ID is also declared by another TOML file."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一个 TOML 文件使用了相同的工作流 ID。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.fileLimit": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the first %@ TOML files were loaded."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅加载了前 %@ 个 TOML 文件。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.fileOutsideConfigurationDirectory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workflow file is outside the configured workflow directory."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流文件不在配置的工作流文件夹内。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.fileTooLarge": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TOML file exceeds the 1 MiB size limit."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TOML 文件超过 1 MiB 大小限制。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.invalidDocument": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TOML document could not be parsed or validated."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法解析或验证 TOML 文档。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.invalidWorkflow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workflow definition is invalid."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流定义无效。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.legacyMigrationIncomplete": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Existing workflows could not be migrated to TOML; the legacy library remains active."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旧版工作流尚未迁移到 TOML，仍使用旧版定义。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.moreIssues": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d additional file issue"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%d additional file issues"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另外还有 %d 个文件问题"
+          }
+        }
+      }
+    },
+    "workflowFile.error.system": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workflow file operation failed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作流文件操作失败。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.unsupportedFile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a regular TOML file, without symbolic links, of at most 1 MiB."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择不含符号链接、大小不超过 1 MiB 的普通 TOML 文件。"
+          }
+        }
+      }
+    },
+    "workflowFile.error.unsupportedSchema": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This workflow uses an unsupported schema version."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此工作流使用了不支持的结构版本。"
           }
         }
       }

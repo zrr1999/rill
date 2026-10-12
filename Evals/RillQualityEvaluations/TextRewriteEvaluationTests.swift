@@ -10,13 +10,12 @@ struct TextRewriteEvaluationTests {
 
   private struct Sample: Decodable {
     let id: String
-    let category: String
     let transcript: String
     let expected: String
     let protectedLiterals: [String]?
 
     private enum CodingKeys: String, CodingKey {
-      case id, category, transcript, expected
+      case id, transcript, expected
       case protectedLiterals = "protected_literals"
     }
   }
@@ -60,8 +59,7 @@ struct TextRewriteEvaluationTests {
           !$0.isEmpty && literalCount($0, in: sample.transcript) > 0 && literalCount($0, in: sample.expected) > 0
         })
     }
-    let canonicalWorkflow = BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup }
-    let workflow = try #require(canonicalWorkflow)
+    let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup })
     let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
     var observations: [Observation] = []
 
@@ -131,7 +129,7 @@ struct TextRewriteEvaluationTests {
   }
 
   @Test func protectedLiteralsRejectUnicodeNormalizationAndChangedCounts() {
-    let sample = Sample(id: "fixture", category: "identifier", transcript: "café.txt", expected: "café.txt", protectedLiterals: ["café.txt"])
+    let sample = Sample(id: "fixture", transcript: "café.txt", expected: "café.txt", protectedLiterals: ["café.txt"])
     #expect(preservesLiterals("café.txt", sample: sample))
     #expect(!preservesLiterals("cafe\u{301}.txt", sample: sample))
     #expect(!preservesLiterals("café.txt café.txt", sample: sample))

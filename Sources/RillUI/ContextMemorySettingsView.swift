@@ -79,8 +79,7 @@ struct ContextMemorySettingsView: View {
       onDismiss: {
         guard let sourceID = pendingSourceID else { return }
         pendingSourceID = nil
-        Task { @MainActor in
-          await waitForMainRunLoopDefaultMode()
+        scheduleOnMainRunLoopDefaultMode {
           openSource(sourceID)
         }
       }
@@ -138,6 +137,7 @@ struct MemoryManagementView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var editing: LongTermMemory?
   @State private var deleting: LongTermMemory?
+  @State private var currentDate = Date()
   private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   private func evidenceLabel(_ kind: MemoryEvidenceKind) -> String {
@@ -156,6 +156,7 @@ struct MemoryManagementView: View {
   }
 
   var body: some View {
+    let expiryDates = model.memories.compactMap(\.expiresAt).sorted()
     VStack(alignment: .leading) {
       HStack {
         Text(text(.longTermMemories)).font(.title2)
@@ -165,9 +166,9 @@ struct MemoryManagementView: View {
           .accessibilityIdentifier("memory.management.done")
       }
       List(model.memories) { memory in
-        let expired = memory.expiresAt.map { $0 <= Date() } ?? false
         VStack(alignment: .leading, spacing: 8) {
           Text(memory.summary).textSelection(.enabled)
+          let expired = memory.expiresAt.map { $0 <= currentDate } ?? false
           Text(
             "\(evidenceLabel(memory.evidenceKind)) · \(expired ? text(.memoryExpiredNotSelected) : stateLabel(memory.state)) · \(memory.sources.count) "
               + text(.sources)
@@ -228,6 +229,15 @@ struct MemoryManagementView: View {
     }.padding(20).frame(minWidth: 660, minHeight: 440)
       .accessibilityIdentifier("memory.management")
       .task { await model.refresh() }
+      .task(id: expiryDates) {
+        currentDate = Date()
+        for expiry in expiryDates where expiry > currentDate {
+          do {
+            try await Task.sleep(for: .seconds(expiry.timeIntervalSinceNow))
+          } catch { return }
+          currentDate = Date()
+        }
+      }
       .sheet(item: $editing) { memory in
         MemoryEditor(memory: memory, language: language) { edited in
           await model.save(edited)
