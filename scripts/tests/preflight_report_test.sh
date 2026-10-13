@@ -11,19 +11,39 @@ cat >"$TEST_ROOT/selection.sh" <<'SH'
 set -euo pipefail
 source "$1/scripts/preflight.sh"
 locked_swift() {
-  local filter='.' skip='^$' test_id
+  if [[ "$1 $2" == 'test list' ]]; then
+    cat "$FIXTURE_TESTS"
+    return
+  fi
+  local filter='.' skip='^$' test_id parallel=false
+  local has_storage=false has_panel=false has_regular=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --filter) filter="$2"; shift ;;
       --skip) skip="$2"; shift ;;
+      --parallel) parallel=true ;;
     esac
     shift
   done
   while IFS= read -r test_id; do
     if [[ "$test_id" =~ $filter && ! "$test_id" =~ $skip ]]; then
       echo "$test_id" >>"$FIXTURE_TRACE"
+      case "$test_id" in
+        RillRuntimeTests.RecordCatalogStressTests/*) has_storage=true ;;
+        RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords) has_panel=true ;;
+        *) has_regular=true ;;
+      esac
     fi
   done <"$FIXTURE_TESTS"
+  if $has_storage || $has_panel; then
+    if $parallel || $has_regular || { $has_storage && $has_panel; }; then
+      echo 'Performance tests must run in separate serial invocations' >&2
+      exit 1
+    fi
+  fi
+  if [[ "$filter" == "$PANEL_STRESS_TESTS" && "${FIXTURE_FAIL_PANEL:-}" == true && -z "${RILL_RECORD_PROFILE_DIR:-}" ]]; then
+    return 47
+  fi
 }
 case "$2" in
   regular) run_swift_tests ;;
@@ -38,6 +58,8 @@ RillAppTests.PanelTests/testDesktopFocus
 RillUITests.ShellTests/testLayout
 RillUITests.ShellTests/testDesktopFocus
 RillPlatformTests.NativeTests/testPlatform
+RillRuntimeTests.RecordCatalogStressTests/testTenThousandRecords
+RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords
 RillQualityEvaluations.Evaluation/testQuality
 RillQualityEvaluations.Evaluation/testDesktopQuality
 TESTS
@@ -51,6 +73,26 @@ cmp "$TEST_ROOT/regular-expected" "$TEST_ROOT/regular-trace"
 cmp "$TEST_ROOT/desktop-expected" "$TEST_ROOT/desktop-trace"
 grep -Fq 'Desktop interaction was not tested' "$TEST_ROOT/regular-output"
 echo 'PASS: regular and desktop runners partition tests without losing or duplicating coverage'
+
+for missing in RecordCatalogStressTests testWarmPanelReadyToSearchWithTenThousandRecords; do
+  grep -v "$missing" "$TEST_ROOT/test-ids" >"$TEST_ROOT/missing-test-ids"
+  if env FIXTURE_TRACE="$TEST_ROOT/missing-trace" FIXTURE_TESTS="$TEST_ROOT/missing-test-ids" \
+    "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" regular >"$TEST_ROOT/missing-output" 2>&1; then
+    echo "FAIL: an undiscovered performance test was accepted: $missing" >&2
+    exit 1
+  fi
+  grep -Fq 'Required performance tests were not discovered' "$TEST_ROOT/missing-output"
+done
+echo 'PASS: both performance suites must be discovered before execution'
+
+if env FIXTURE_FAIL_PANEL=true FIXTURE_TRACE="$TEST_ROOT/failed-panel-trace" FIXTURE_TESTS="$TEST_ROOT/test-ids" \
+  "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" regular >"$TEST_ROOT/failed-panel-output" 2>&1; then
+  echo 'FAIL: diagnostic replay concealed the original performance failure' >&2
+  exit 1
+fi
+[[ "$(grep -c testWarmPanelReadyToSearchWithTenThousandRecords "$TEST_ROOT/failed-panel-trace")" == 2 ]]
+grep -Fq 'Native panel stress failed; diagnostic samples' "$TEST_ROOT/failed-panel-output"
+echo 'PASS: panel diagnostic replay keeps the original performance failure authoritative'
 
 cat >"$TEST_ROOT/fixture.sh" <<'SH'
 #!/usr/bin/env bash
@@ -101,13 +143,14 @@ check_preflight_toolchain() { fixture_stage; }
 check_repository() { fixture_stage; }
 run_domain_swift_tests() { fixture_stage; }
 run_native_swift_tests() { fixture_stage; }
+run_performance_swift_tests() { fixture_stage; }
 run_desktop_swift_tests() { fixture_stage; }
 check_release() { fixture_stage; }
 check_working_diff() { fixture_stage; }
 run_preflight
 SH
 
-stages=(toolchain repository domain-tests native-tests desktop-tests release working-diff)
+stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests release working-diff)
 for failed_stage in none "${stages[@]}"; do
   fixture="$TEST_ROOT/$failed_stage"
   mkdir -p "$fixture/reports with spaces"
@@ -170,6 +213,7 @@ check_preflight_toolchain() { :; }
 check_repository() { :; }
 run_domain_swift_tests() { :; }
 run_native_swift_tests() { :; }
+run_performance_swift_tests() { :; }
 run_desktop_swift_tests() { :; }
 locked_swift() {
   echo "$PACKAGE_SMOKE_ROOT" >"$FIXTURE_TRACE"

@@ -11,6 +11,22 @@ import RillWorkflows
 @testable import RillUI
 
 @MainActor struct BufferOutputControllerTests {
+  @Test func dragAccessibilityFollowsLanguageWithoutChangingPayloadOrPasteboard() {
+    let record = Record(payload: .image(Data([1])), provenance: .init(source: .init(kind: .user)))
+    let changeCount = NSPasteboard.general.changeCount
+    for asFile in [false, true] {
+      let view = BufferDragView(
+        record: record, asFile: asFile, language: .english, shouldBegin: { false },
+        completion: { _ in Issue.record("Updating accessibility labels unexpectedly completed a drag") })
+      #expect(view.accessibilityLabel() == (asFile ? "Drag PNG file" : "Drag to copy to the target app"))
+      view.updateLanguage(.simplifiedChinese)
+      #expect(view.accessibilityLabel() == (asFile ? "拖出 PNG 文件" : "拖到目标应用以复制"))
+      view.updateLanguage(.english)
+      #expect(view.accessibilityLabel() == (asFile ? "Drag PNG file" : "Drag to copy to the target app"))
+    }
+    #expect(NSPasteboard.general.changeCount == changeCount)
+  }
+
   @Test(arguments: [false, true])
   func inputFailureWaitsForTextOutputAndDoesNotReopenAfterShutdown(shutdown: Bool) async throws {
     let store = RecordStore()
@@ -53,7 +69,7 @@ import RillWorkflows
       try await waitUntil { !model.recordWorkspace.buffers.isSending }
       #expect(element.value == "first")
       #expect(try await store.bufferSnapshot().remainingCount == 0)
-      #expect(model.recordWorkspace.buffers.message?.contains("All Records") == true)
+      #expect(model.recordWorkspace.buffers.message?.string(for: .english).contains("All Records") == true)
       #expect(controller.isVisible)
       await controller.shutdown()
     }
@@ -86,7 +102,7 @@ import RillWorkflows
       model.handle(.recordBufferInputFailed(recordID: RecordID()))
     }
     try await waitUntil {
-      controller.isVisible && model.recordWorkspace.buffers.message?.contains("All Records") == true
+      controller.isVisible && model.recordWorkspace.buffers.message?.string(for: .english).contains("All Records") == true
     }
     #expect(try await store.bufferSnapshot().next?.id == id)
     #expect(try await store.bufferSnapshot().remainingCount == 1)

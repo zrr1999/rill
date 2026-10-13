@@ -16,6 +16,8 @@ RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 NATIVE_TESTS='RillPlatformTests|RillUITests|RillAppTests'
 DESKTOP_TESTS='/testDesktop'
+STORAGE_STRESS_TESTS='RillRuntimeTests.RecordCatalogStressTests'
+PANEL_STRESS_TESTS='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
 REPORT_DIR=""
 CURRENT_STAGE=""
 STAGE_STARTED=0
@@ -242,12 +244,34 @@ check_record_domain_boundary() {
 
 run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations"
+  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
 }
 
 run_native_swift_tests() {
   echo 'Running native platform, UI, and app tests without desktop interaction...'
-  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS"
+  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$PANEL_STRESS_TESTS"
+}
+
+run_performance_swift_tests() {
+  local discovered_tests stress_filter
+  discovered_tests="$(locked_swift test list --skip-build)"
+  for stress_filter in "$STORAGE_STRESS_TESTS" "$PANEL_STRESS_TESTS"; do
+    if ! grep -E "$stress_filter" <<< "$discovered_tests" >/dev/null; then
+      error "Required performance tests were not discovered: $stress_filter"
+    fi
+  done
+  echo 'Running 10,000-record storage performance tests in a fresh serial process...'
+  locked_swift test --skip-build --filter "$STORAGE_STRESS_TESTS"
+  echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
+  if locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
+    return
+  fi
+  info "Native panel stress failed; sampling one diagnostic replay"
+  if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
+    locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
+    info "Diagnostic replay also failed; the original failure remains authoritative"
+  fi
+  error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
 }
 
 run_desktop_swift_tests() {
@@ -258,6 +282,7 @@ run_desktop_swift_tests() {
 run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
+  run_performance_swift_tests
   info 'Desktop interaction was not tested. Run just test-desktop in an unlocked session; just ci requires both suites.'
 }
 
@@ -461,6 +486,7 @@ check_release() {
 
   info "Checking relocatable SwiftPM resource accessors..."
   verify_xcode_resource_accessor "RillMacOS_RillApp"
+  verify_xcode_resource_accessor "RillMacOS_RillUI"
 
   info "Smoke-testing unsigned app bundle assembly..."
   "$SCRIPT_DIR/assemble_app_bundle.sh" \
@@ -488,6 +514,23 @@ check_release() {
   done
   uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
+  if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
+    check_working_diff
+    preflight_source verify
+    info "Saving the verified preflight app for native interaction QA..."
+    mkdir -p "$RILL_PREFLIGHT_APP_DIR"
+    local archive="Rill-preflight-$SOURCE_REVISION.zip"
+    [[ ! -e "$RILL_PREFLIGHT_APP_DIR/$archive" && ! -L "$RILL_PREFLIGHT_APP_DIR/$archive" ]] ||
+      error "Preflight app archive already exists: $RILL_PREFLIGHT_APP_DIR/$archive"
+    ditto -c -k --sequesterRsrc --keepParent \
+      "$PACKAGE_SMOKE_ROOT/Rill.app" "$RILL_PREFLIGHT_APP_DIR/$archive"
+    (
+      cd "$RILL_PREFLIGHT_APP_DIR"
+      shasum -a 256 "$archive" > "$archive.sha256"
+      printf 'source_revision=%s\nsource_dirty=%s\nsource_fingerprint=%s\nbuild_kind=preflight\nsigning=ad-hoc\n' \
+        "$SOURCE_REVISION" "$SOURCE_DIRTY" "$SOURCE_FINGERPRINT" > "$archive.source.txt"
+    )
+  fi
   cleanup
   trap - EXIT INT TERM
 }
@@ -509,6 +552,7 @@ run_preflight() {
   run_preflight_stage repository check_repository
   run_preflight_stage domain-tests run_domain_swift_tests
   run_preflight_stage native-tests run_native_swift_tests
+  run_preflight_stage performance-tests run_performance_swift_tests
   run_preflight_stage desktop-tests run_desktop_swift_tests --skip-build
   run_preflight_stage release check_release
   run_preflight_stage working-diff check_working_diff

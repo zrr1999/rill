@@ -6,6 +6,39 @@ import XCTest
 
 @MainActor
 final class RecordQuickPanelTests: XCTestCase {
+  func testCatalogUpdatesDuringInitialSearchPublishTheNewestPage() async throws {
+    let store = RecordStore()
+    let first = try await store.ingest(draft("first", app: "editor"), into: [])
+    let initial = try await store.catalogSnapshot()
+    let panel = RecordQuickPanelModel(store: store)
+    panel.start(sourceBundleIdentifier: nil)
+    panel.receiveCatalogSnapshot(initial)
+    let second = try await store.ingest(draft("second", app: "editor"), into: [])
+    panel.receiveCatalogSnapshot(try await store.catalogSnapshot())
+    await panel.waitForSearch()
+    XCTAssertEqual(panel.results.map(\.id), [second.id, first.id])
+    XCTAssertFalse(panel.isSearching)
+    await panel.shutdown()
+  }
+
+  func testOlderCatalogSnapshotCannotClearANewerCollectionSelection() async throws {
+    let store = RecordStore()
+    _ = try await store.ingest(draft("outside", app: "editor"), into: [])
+    let older = try await store.catalogSnapshot()
+    let collection = try await store.createCollection(name: "Current", preset: .list)
+    let inside = try await store.ingest(draft("inside", app: "editor"), into: [collection.id])
+    let current = try await store.catalogSnapshot()
+    let panel = RecordQuickPanelModel(store: store)
+    panel.setCollection(collection.id)
+    panel.receiveCatalogSnapshot(current)
+    panel.receiveCatalogSnapshot(older)
+    await panel.waitForSearch()
+    XCTAssertEqual(panel.collectionID, collection.id)
+    XCTAssertEqual(panel.results.map(\.id), [inside.id])
+    XCTAssertEqual(panel.capacity, current.capacity)
+    await panel.shutdown()
+  }
+
   func testCollectionScopeFiltersResultsWithoutChangingManagementSelection() async throws {
     let store = RecordStore()
     let collection = try await store.createCollection(name: "Clipboard", preset: .list)

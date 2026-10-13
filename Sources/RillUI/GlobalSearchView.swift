@@ -26,32 +26,6 @@ struct GlobalSearchResultsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: RillSpacing.dense) {
-        Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
-          .foregroundStyle(.secondary)
-          .accessibilityHidden(true)
-
-        GlobalSearchField(
-          text: $query,
-          prompt: GlobalSearchText.searchPrompt(language: language),
-          focusRequest: focusRequest,
-          onMoveSelection: onMoveSelection,
-          onSubmit: onSubmit,
-          onCancel: onCancel
-        )
-        .frame(minHeight: 28)
-
-        Button(GlobalSearchText.cancel(language: language), action: onCancel)
-          .buttonStyle(.borderless)
-          .keyboardShortcut(.cancelAction)
-          .help(GlobalSearchText.cancelHelp(language: language))
-          .accessibilityIdentifier("global-search.cancel")
-      }
-      .padding(.horizontal, RillSpacing.section)
-      .padding(.vertical, 14)
-
-      Divider()
-
       if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         Group {
           if historySearchState == .searching {
@@ -165,6 +139,8 @@ struct GlobalSearchResultsView: View {
         }
       }
     }
+    .safeAreaBar(edge: .top, spacing: 0) { searchBar }
+    .scrollEdgeEffectStyle(.soft, for: .top)
     .background(.background)
     .animation(
       reduceMotion ? nil : .easeOut(duration: 0.15),
@@ -185,6 +161,28 @@ struct GlobalSearchResultsView: View {
     .onChange(of: selectedResultID) { _, selectedID in
       accessibilityFocusedResultID = selectedID
     }
+  }
+
+  private var searchBar: some View {
+    HStack(spacing: RillSpacing.dense) {
+      GlobalSearchField(
+        text: $query,
+        prompt: GlobalSearchText.searchPrompt(language: language),
+        focusRequest: focusRequest,
+        onMoveSelection: onMoveSelection,
+        onSubmit: onSubmit,
+        onCancel: onCancel
+      )
+      .frame(minHeight: 28)
+
+      Button(GlobalSearchText.cancel(language: language), action: onCancel)
+        .buttonStyle(.glass)
+        .keyboardShortcut(.cancelAction)
+        .help(GlobalSearchText.cancelHelp(language: language))
+        .accessibilityIdentifier("global-search.cancel")
+    }
+    .padding(.horizontal, RillSpacing.section)
+    .padding(.vertical, 14)
   }
 
   private func resultSection(
@@ -344,31 +342,31 @@ private struct GlobalSearchResultRow: View {
       HStack(alignment: .top, spacing: RillSpacing.card) {
         Image(systemName: result.symbolName)
           .frame(width: Self.iconSize, height: Self.iconSize)
-          .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .accentColor)
+          .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .accentColor)
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 3) {
           Text(result.title)
             .font(.body.weight(.semibold))
-            .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .primary)
+            .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
             .lineLimit(1)
           if let detail = result.detail {
             Text(detail)
               .font(.caption)
-              .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+              .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
               .lineLimit(1)
           }
           if let preview = result.preview {
             Text(preview)
               .font(.callout)
-              .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+              .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
               .lineLimit(2)
           }
         }
 
         Spacer(minLength: 8)
         Image(systemName: RillSystemSymbol.arrowForward.rawValue)
-          .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
+          .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
           .accessibilityHidden(true)
       }
       .padding(RillSpacing.card)

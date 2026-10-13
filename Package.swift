@@ -4,6 +4,7 @@ import Foundation
 
 let package = Package(
   name: "RillMacOS",
+  defaultLocalization: "en",
   platforms: [.macOS(.v26)],
   products: [
     .executable(name: "RillApp", targets: ["RillApp"]),
@@ -11,6 +12,7 @@ let package = Package(
     .executable(name: "RillInputMethod", targets: ["RillInputMethod"]),
   ],
   dependencies: [
+    .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.11.1"),
     .package(
       url: "https://github.com/mattt/swift-toml.git",
       exact: "2.0.0"
@@ -91,14 +93,15 @@ let package = Package(
     .target(name: "RillWorkflows", dependencies: ["RillSpeechContracts", "RillCore", "RillSpeech", "RillRecords", "RillKnowledge"]),
     .target(
       name: "RillPersistence",
-      dependencies: ["RillCore"],
+      dependencies: ["RillCore", .product(name: "GRDB", package: "GRDB.swift")],
       linkerSettings: [
         .linkedLibrary("sqlite3")
       ]
     ),
     .target(
       name: "RillUI",
-      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"]),
+      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"],
+      resources: [.process("Resources")]),
     .executableTarget(
       name: "RillApp",
       dependencies: [
@@ -202,6 +205,12 @@ let package = Package(
     ),
   ]
 )
+
+// Scope the warning gate to this package. SwiftBuild otherwise forwards a global
+// -Xswiftc flag into dependencies alongside its incompatible -suppress-warnings.
+for target in package.targets {
+  target.swiftSettings = (target.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+}
 
 // Fast tests use this same manifest and lock, never a parallel dependency graph.
 if ProcessInfo.processInfo.environment["RILL_BUILD_PROFILE"] == "domain-tests" {

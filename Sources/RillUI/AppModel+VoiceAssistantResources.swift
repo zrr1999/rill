@@ -62,9 +62,9 @@ extension AppModel {
     let sourceWorkflow = wakeWordSettingsWorkflow
     if enableListening,
       let sourceWorkflow,
-      let activationError = workflowEnablementError(for: sourceWorkflow)
+      let activationFailure = workflowEnablementFailure(for: sourceWorkflow)
     {
-      return .failed(activationError)
+      return .failed(activationFailure)
     }
     let editableWorkflow = sourceWorkflow.flatMap { workflow in
       self.workflowLibrary.customWorkflows.first(where: { $0.id == workflow.id })
@@ -76,7 +76,7 @@ extension AppModel {
       })
     {
       guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
-        return .failed(L10n.runText(.workflowLibraryUnavailable, language: self.settings.language))
+        return .failed(L10n.resource("run.workflowLibraryUnavailable"))
       }
       self.workflowLibrary.hasModifiedWorkflowLibrary = true
       var updatedWorkflow = self.workflowLibrary.customWorkflows[index]
@@ -96,25 +96,18 @@ extension AppModel {
         }
       }
       self.workflowLibrary.customWorkflows[index] = updatedWorkflow
-      self.workflowLibrary.workflowEditorError = nil
-      self.workflowLibrary.workflowLibraryError = nil
+      self.workflowLibrary.workflowEditorErrorPresentation = nil
+      self.workflowLibrary.workflowLibraryErrorPresentation = nil
       rebuildWorkflowLibrary()
       persistWorkflowEnabledStates()
       persistCustomWorkflows()
       append(
-        english: String(
-          format: L10n.runText(.wakePhrasesUpdatedFormat, language: .english),
-          editableWorkflow.name
-        ),
-        simplifiedChinese: String(
-          format: L10n.runText(.wakePhrasesUpdatedFormat, language: .simplifiedChinese),
-          editableWorkflow.name
-        )
+        L10n.resource("run.wakePhrasesUpdatedFormat", defaultValue: "Wake phrases updated: \(editableWorkflow.name)")
       )
       savedWorkflowID = editableWorkflow.id
     } else if let sourceWorkflow {
       guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
-        return .failed(L10n.runText(.workflowLibraryUnavailable, language: self.settings.language))
+        return .failed(L10n.resource("run.workflowLibraryUnavailable"))
       }
       var customizedWorkflow = sourceWorkflow
       customizedWorkflow.name = localizedWorkflowName(for: sourceWorkflow)
@@ -140,19 +133,12 @@ extension AppModel {
 
       self.workflowLibrary.hasModifiedWorkflowLibrary = true
       self.workflowLibrary.customWorkflows.insert(customizedWorkflow, at: 0)
-      self.workflowLibrary.workflowEditorError = nil
-      self.workflowLibrary.workflowLibraryError = nil
+      self.workflowLibrary.workflowEditorErrorPresentation = nil
+      self.workflowLibrary.workflowLibraryErrorPresentation = nil
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
       append(
-        english: String(
-          format: L10n.runText(.builtInWakeWorkflowUpdatedFormat, language: .english),
-          customizedWorkflow.name
-        ),
-        simplifiedChinese: String(
-          format: L10n.runText(.builtInWakeWorkflowUpdatedFormat, language: .simplifiedChinese),
-          customizedWorkflow.name
-        )
+        L10n.resource("run.builtInWakeWorkflowUpdatedFormat", defaultValue: "Built-in wake workflow updated: \(customizedWorkflow.name)")
       )
       savedWorkflowID = customizedWorkflow.id
     } else {
@@ -163,10 +149,10 @@ extension AppModel {
       draft.wakePhrasesText = normalizedPhrases.joined(separator: "\n")
 
       let previousCustomWorkflowIDs = Set(self.workflowLibrary.customWorkflows.map(\.id))
-      self.workflowLibrary.workflowEditorError = nil
+      self.workflowLibrary.workflowEditorErrorPresentation = nil
       await saveWorkflowDraft(draft)
-      if let editorError = self.workflowLibrary.workflowEditorError {
-        return .failed(editorError)
+      if self.workflowLibrary.workflowEditorError != nil {
+        return .workflowEditorFailed
       }
       savedWorkflowID =
         self.workflowLibrary.customWorkflows.first(where: {
@@ -175,7 +161,7 @@ extension AppModel {
         })?.id
     }
     guard let savedWorkflowID else {
-      return .failed(L10n.runText(.wakeWorkflowNotFound, language: self.settings.language))
+      return .failed(L10n.resource("run.wakeWorkflowNotFound"))
     }
 
     for workflow in self.workflowLibrary.workflows
@@ -187,8 +173,8 @@ extension AppModel {
       setWorkflowEnabled(false, for: workflow.id)
     }
     setWorkflowEnabled(enableListening, for: savedWorkflowID)
-    if let libraryError = self.workflowLibrary.workflowLibraryError {
-      return .failed(libraryError)
+    if self.workflowLibrary.workflowLibraryError != nil {
+      return .workflowLibraryFailed
     }
     return .saved
   }
@@ -284,17 +270,12 @@ extension AppModel {
     )
   }
 
-  private func localizedWakeWordSettingsError(_ error: Error) -> String {
-    L10n.runWakeWordSettingsSaveFailed(
-      detail: error.localizedDescription,
-      language: self.settings.language
-    )
+  private func localizedWakeWordSettingsError(_ error: Error) -> LocalizedStringResource {
+    L10n.resource("run.wakeWordSettingsSaveFailedFormat", defaultValue: "Could not save voice activation settings: \(error.localizedDescription)")
   }
 
-  private func localizedWorkflowFileSaveError(_ error: Error) -> String {
-    String(
-      format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: self.settings.language),
-      error.localizedDescription
-    )
+  private func localizedWorkflowFileSaveError(_ error: Error) -> LocalizedStringResource {
+    L10n.resource(
+      "run.workflowTOMLFileSaveFailedFormat", defaultValue: "The workflow TOML file could not be saved: \(L10n.workflowFileFailureDetailResource(error))")
   }
 }

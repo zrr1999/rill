@@ -87,8 +87,8 @@ extension SettingsView {
         }
       }
 
-      if let wakeWordSettingsError {
-        Label(wakeWordSettingsError, systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
+      if let message = wakeWordSettingsError?.message(model: model) {
+        Label(message, systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
           .font(.caption)
           .foregroundStyle(.red)
           .transition(.opacity)
@@ -146,9 +146,13 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.green)
     case .failed(let message):
-      Label(message, systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
-        .font(.caption)
-        .foregroundStyle(.red)
+      Label(
+        L10n.resource("voiceResource.preparationFailed", defaultValue: "Voice resources could not be prepared. Details: \(message)").string(
+          for: model.settings.language),
+        systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
+      )
+      .font(.caption)
+      .foregroundStyle(.red)
     case .unavailable(let reason):
       Label(
         voiceResourceUnavailableText(reason),
@@ -317,9 +321,9 @@ extension SettingsView {
         let snapshot = model.wakeWordSettingsSnapshot
         wakeListeningDraftEnabled = snapshot.isEnabled
         wakePhrasesText = snapshot.phrases.joined(separator: "\n")
-      case .failed(let message):
+      case .failed, .workflowEditorFailed, .workflowLibraryFailed:
         wakeListeningDraftEnabled = model.wakeWordSettingsSnapshot.isEnabled
-        wakeWordSettingsError = message
+        wakeWordSettingsError = result
       }
     }
   }
@@ -361,4 +365,15 @@ extension SettingsView {
     }
   }
 
+}
+
+private extension WakeWordSettingsUpdateResult {
+  @MainActor func message(model: AppModel) -> String? {
+    switch self {
+    case .saved: nil
+    case .failed(let resource): resource.string(for: model.settings.language)
+    case .workflowEditorFailed: model.workflowLibrary.workflowEditorError
+    case .workflowLibraryFailed: model.workflowLibrary.workflowLibraryError
+    }
+  }
 }

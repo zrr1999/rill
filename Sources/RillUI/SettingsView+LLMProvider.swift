@@ -164,18 +164,17 @@ extension SettingsView {
 
   private func jevPolishingSettingsSection(_ settings: JevAPISettingsModel) -> some View {
     @Bindable var jev = settings
-    let chinese = model.settings.language == .simplifiedChinese
+    let language = model.settings.language
     return VStack(alignment: .leading, spacing: RillSpacing.row) {
-      Text(chinese ? "Jev 润色判断" : "Jev polishing prediction")
+      Text(L10n.resource("SettingsView.LLMProvider.Jev.polishing.prediction").string(for: language))
         .font(.subheadline.weight(.medium))
       Text(
-        chinese
-          ? "启用后，智能整理会先将转写文本与润色要求发送到 TypeSafe Jev。明确无需润色时跳过 LLM，原文仍会保存并输出；判断不确定或失败时继续润色。"
-          : "When enabled, Smart Cleanup sends the transcript and rewrite instructions to TypeSafe Jev first. If clearly ready, the text is saved and delivered without an LLM rewrite. Uncertain or failed predictions continue with polishing."
+        L10n.resource("SettingsView.LLMProvider.When.enabled.Smart.Cleanup.sends.the.transcript.and.rewrite.instructions.to.TypeSafe.Jev.first").string(
+          for: language)
       )
       .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
       Toggle(
-        chinese ? "用 Jev 判断是否需要润色" : "Use Jev to decide whether polishing is needed",
+        L10n.resource("SettingsView.LLMProvider.Use.Jev.to.decide.whether.polishing.is.needed").string(for: language),
         isOn: $jev.isPolishingEnabled
       )
       .disabled(!jev.isConfigured)
@@ -184,9 +183,7 @@ extension SettingsView {
       .focused($focusedSettingsItem, equals: .jevPolishing)
       .accessibilityFocused($accessibilityFocusedSettingsItem, equals: .jevPolishing)
       Text(
-        chinese
-          ? "开关和 Key 仅在本次 App 会话中保留。不会发送音频、屏幕或记忆；使用这些参考信息时仍直接润色。"
-          : "The switch and key are kept only for this app session. Audio, screen and memory references are never sent to Jev; runs using those references proceed directly to polishing."
+        L10n.resource("SettingsView.LLMProvider.The.switch.and.key.are.kept.only.for.this.app.session.Audio.screen.and").string(for: language)
       )
       .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }

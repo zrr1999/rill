@@ -295,59 +295,34 @@ public extension AppModel {
 }
 
 extension AppModel {
-  func localizedRecoveryMessage(
-    english: String,
-    simplifiedChinese: String
-  ) -> String {
-    self.settings.language == .english ? english : simplifiedChinese
-  }
-
   func localizedRecoveryErrorDetail(_ error: Error) -> String {
     if let controllerError = error as? FailedAudioRecoveryController.ControllerError {
-      let simplifiedChinese: String
-      switch controllerError {
-      case .retryAlreadyRunning:
-        simplifiedChinese = "已有一条失败录音正在重试。"
-      case .recoveryDisabled:
-        simplifiedChinese = "失败录音恢复已关闭。"
-      case .retryFailed:
-        simplifiedChinese = "无法重新处理失败录音。"
-      case .retryFailedCleanupPending:
-        simplifiedChinese = "识别失败，且无法安全恢复重试状态。"
-      case .plaintextCleanupPending:
-        simplifiedChinese = "未加密的恢复临时录音可能仍待清理，暂时无法开始新的重试。"
-      }
-      return localizedRecoveryMessage(
-        english: controllerError.errorDescription
-          ?? "Failed recording recovery is unavailable.",
-        simplifiedChinese: simplifiedChinese
-      )
+      let message = controllerError.errorDescription ?? "Failed recording recovery is unavailable."
+      let resource: LocalizedStringResource =
+        switch controllerError {
+        case .retryAlreadyRunning: L10n.resource("recovery.controller.retryAlreadyRunning", defaultValue: "\(message)")
+        case .recoveryDisabled: L10n.resource("recovery.controller.recoveryDisabled", defaultValue: "\(message)")
+        case .retryFailed: L10n.resource("recovery.controller.retryFailed", defaultValue: "\(message)")
+        case .retryFailedCleanupPending: L10n.resource("recovery.controller.retryFailedCleanupPending", defaultValue: "\(message)")
+        case .plaintextCleanupPending: L10n.resource("recovery.controller.plaintextCleanupPending", defaultValue: "\(message)")
+        }
+      return resource.string(for: self.settings.language)
     }
     guard let recoveryError = error as? FailedAudioRecoveryError else {
       return L10n.runText(.recoveryTemporarilyUnavailable, language: self.settings.language)
     }
-    let simplifiedChinese: String
-    switch recoveryError {
-    case .entryTooLarge:
-      simplifiedChinese = "失败录音超过恢复大小上限。"
-    case .expired:
-      simplifiedChinese = "失败录音已过期。"
-    case .invalidEntry:
-      simplifiedChinese = "无法验证失败录音的完整性。"
-    case .notFound:
-      simplifiedChinese = "失败录音已不可用。"
-    case .protectionUnavailable:
-      simplifiedChinese = "无法保护或打开失败录音。"
-    case .retryOutcomeUnknown:
-      simplifiedChinese = "上一次重试结果未知，无法安全地重复请求。"
-    case .storageUnavailable:
-      simplifiedChinese = "失败录音恢复存储不可用。"
-    case .unsupportedPayload:
-      simplifiedChinese = "只有文件形式的录音可保留用于恢复。"
-    }
-    return localizedRecoveryMessage(
-      english: recoveryError.errorDescription ?? "Failed recording recovery is unavailable.",
-      simplifiedChinese: simplifiedChinese
-    )
+    let message = recoveryError.errorDescription ?? "Failed recording recovery is unavailable."
+    let resource: LocalizedStringResource =
+      switch recoveryError {
+      case .entryTooLarge: L10n.resource("recovery.error.entryTooLarge", defaultValue: "\(message)")
+      case .expired: L10n.resource("recovery.error.expired", defaultValue: "\(message)")
+      case .invalidEntry: L10n.resource("recovery.error.invalidEntry", defaultValue: "\(message)")
+      case .notFound: L10n.resource("recovery.error.notFound", defaultValue: "\(message)")
+      case .protectionUnavailable: L10n.resource("recovery.error.protectionUnavailable", defaultValue: "\(message)")
+      case .retryOutcomeUnknown: L10n.resource("recovery.error.retryOutcomeUnknown", defaultValue: "\(message)")
+      case .storageUnavailable: L10n.resource("recovery.error.storageUnavailable", defaultValue: "\(message)")
+      case .unsupportedPayload: L10n.resource("recovery.error.unsupportedPayload", defaultValue: "\(message)")
+      }
+    return resource.string(for: self.settings.language)
   }
 }

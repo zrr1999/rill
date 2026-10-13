@@ -15,6 +15,7 @@ SPEECH_WORKER_PRODUCT="RillSpeechWorker"
 INPUT_METHOD_PRODUCT="RillInputMethod"
 MIN_MACOS="26.0"
 OWN_RESOURCE_BUNDLE="RillMacOS_RillApp.bundle"
+UI_RESOURCE_BUNDLE="RillMacOS_RillUI.bundle"
 MLX_RESOURCE_BUNDLE="mlx-swift_Cmlx.bundle"
 WORKFLOW_MANIFEST="BuiltinWorkflowManifest.json"
 PROJECT_DOCUMENTS=("LICENSE" "README.md")
@@ -393,6 +394,7 @@ shopt -u nullglob
 [[ "${#RESOURCE_SOURCES[@]}" -gt 0 ]] || error "No SwiftPM resource bundles found in: $BUILD_DIR"
 
 own_bundle_found=false
+ui_bundle_found=false
 mlx_bundle_found=false
 dependency_bundle_count=0
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
@@ -404,6 +406,13 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
     error "Invalid resource bundle Info.plist: $bundle_name"
   if [[ "$bundle_name" == "$OWN_RESOURCE_BUNDLE" ]]; then
     own_bundle_found=true
+  elif [[ "$bundle_name" == "$UI_RESOURCE_BUNDLE" ]]; then
+    ui_bundle_found=true
+    for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
+      catalog="$source_bundle/Contents/Resources/$localization.lproj/Localizable.strings"
+      [[ -f "$catalog" ]] || error "Required UI localization not found: $catalog"
+      plutil -lint "$catalog" >/dev/null || error "Invalid UI localization: $catalog"
+    done
   elif [[ "$bundle_name" == "$MLX_RESOURCE_BUNDLE" ]]; then
     mlx_bundle_found=true
     ((dependency_bundle_count += 1))
@@ -413,6 +422,7 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
 done
 
 $own_bundle_found || error "Required app resource bundle not found: $OWN_RESOURCE_BUNDLE"
+$ui_bundle_found || error "Required UI resource bundle not found: $UI_RESOURCE_BUNDLE"
 $mlx_bundle_found ||
   error "Required MLX resource bundle not found: $MLX_RESOURCE_BUNDLE"
 

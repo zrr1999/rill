@@ -3,12 +3,10 @@ import Observation
 
 @MainActor @Observable
 public final class RecordPanelPresentation {
-  public enum Mode: String, CaseIterable { case collections, drafts }
-  public var mode: Mode = .collections
+  public enum Mode: String, CaseIterable { case drafts, collections }
+  public var mode: Mode = .drafts
   public var isCollapsed = false
   public var isPinned = false
-  public var expandedWidth: CGFloat = 820
-  public var expandedHeight: CGFloat = 600
 
   public init() {}
 }

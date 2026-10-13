@@ -14,7 +14,7 @@ extension VoiceRunModel {
     localSpeechPreparationCompletedUnitCount = 0
     localSpeechPreparationTotalUnitCount = 0
     localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
+    localSpeechPreparationFailure = nil
     let id = UUID()
     let owner = localSpeechPreparationTaskOwner
     let task = Task { [weak self, prepareLocalSpeech, owner] in
@@ -42,11 +42,7 @@ extension VoiceRunModel {
         didPrepare(model)
         appendEvent(
           EventFeedEntry(
-            english: String(
-              format: L10n.runText(.localSpeechModelReadyFormat, language: .english), model),
-            simplifiedChinese: String(
-              format: L10n.runText(.localSpeechModelReadyFormat, language: .simplifiedChinese),
-              model)))
+            L10n.resource("run.localSpeechModelReadyFormat", defaultValue: "Local speech model is ready: \(model)")))
       } catch {
         guard let self, owner.isActive(id: id), !Task.isCancelled,
           !settings.hasBegunApplicationShutdown
@@ -71,21 +67,19 @@ extension VoiceRunModel {
     }
     localSpeechPreparationTaskOwner.cancelActive()
     releaseLocalSpeech()
-    localSpeechPreparationError = nil
+    localSpeechPreparationFailure = nil
     appendEvent(
       EventFeedEntry(
-        english: L10n.runText(.localSpeechModelMemoryReleased, language: .english),
-        simplifiedChinese: L10n.runText(
-          .localSpeechModelMemoryReleased, language: .simplifiedChinese)))
+        L10n.resource("run.localSpeechModelMemoryReleased")))
   }
 
   private func applyLocalSpeechPreparationFailure(_ error: Error) {
     let stage = (error as? LocalSpeechPreparationFailure)?.stage ?? .generic
     let presentation = L10n.localSpeechPreparationFailure(stage)
-    localSpeechPreparationError = presentation.string(for: settings.language)
+    localSpeechPreparationFailure = presentation
     appendEvent(
       EventFeedEntry(
-        english: presentation.english, simplifiedChinese: presentation.simplifiedChinese))
+        presentation))
   }
 
   private func updateLocalSpeechPreparationProgress(_ progress: Progress, operationID: UUID) {
@@ -122,6 +116,6 @@ extension VoiceRunModel {
     localSpeechPreparationCompletedUnitCount = 0
     localSpeechPreparationTotalUnitCount = 0
     localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
+    localSpeechPreparationFailure = nil
   }
 }

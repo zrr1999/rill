@@ -14,15 +14,15 @@ public final class InputMethodFeatureModel {
   public private(set) var isReady = false
   public private(set) var isInstalling = false
   public private(set) var installationState: InputMethodInstallationState = .notInstalled
-  public private(set) var status: String?
-  public private(set) var error: String?
+  public private(set) var status: LocalizedStringResource?
+  public private(set) var error: LocalizedStringResource?
   private let settings: any SettingsStore
   private let privacy: () throws -> PrivacyPolicySettings
   private let confirmRule: (String, UUID) async throws -> (UUID, Bool)
   private let revokeRule: (UUID) async throws -> Void
   private let ownedRuleIDs: () async throws -> Set<UUID>
   private let secureInputEnabled: () -> Bool
-  private let install: (URL?) async throws -> String
+  private let install: (URL?) async throws -> Void
   private let inspectInstallation: () -> InputMethodInstallationState
   private let writes = PersistenceWriteCoordinator()
   private var loadTask: Task<Void, Never>?
@@ -44,7 +44,7 @@ public final class InputMethodFeatureModel {
     settings: any SettingsStore, privacy: @escaping () throws -> PrivacyPolicySettings,
     confirmRule: @escaping (String, UUID) async throws -> (UUID, Bool),
     revokeRule: @escaping (UUID) async throws -> Void,
-    install: @escaping (URL?) async throws -> String,
+    install: @escaping (URL?) async throws -> Void,
     inspectInstallation: @escaping () -> InputMethodInstallationState = { .notInstalled },
     ownedRuleIDs: @escaping () async throws -> Set<UUID> = { [] },
     secureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() },
@@ -91,7 +91,7 @@ public final class InputMethodFeatureModel {
         }
         self.persist()
       } catch is CancellationError {
-      } catch { self?.error = "输入法学习暂不可用，未开始采集。重新打开 Rill 后重试。" }
+      } catch { self?.error = L10n.resource("inputMethod.error.learningUnavailable") }
     }
   }
 
@@ -144,7 +144,7 @@ public final class InputMethodFeatureModel {
       state.suggestions[index].confirmedRuleID = ruleID
       state.suggestions[index].ownsConfirmedRule = ownsRule
       persist()
-    } catch { self.error = "词汇未能保存，建议仍保留，请重试。" }
+    } catch { self.error = L10n.resource("inputMethod.error.saveFailed") }
   }
 
   public func ignore(_ id: UUID) async {
@@ -160,7 +160,7 @@ public final class InputMethodFeatureModel {
       state.suggestions[index].confirmedRuleID = nil
       state.suggestions[index].ownsConfirmedRule = false
       persist()
-    } catch { self.error = "无法撤销这条词汇，请重试。" }
+    } catch { self.error = L10n.resource("inputMethod.error.revokeFailed") }
   }
 
   public func remove(_ suggestion: TypingVocabularySuggestion) async {
@@ -175,7 +175,7 @@ public final class InputMethodFeatureModel {
       }
       state.suggestions.removeAll { $0.id == suggestion.id }
       persist()
-    } catch { self.error = "无法撤销这条词汇，请重试。" }
+    } catch { self.error = L10n.resource("inputMethod.error.revokeFailed") }
   }
 
   public func clearPending() async {
@@ -192,10 +192,13 @@ public final class InputMethodFeatureModel {
     error = nil
     defer {
       isInstalling = false
-      refreshInstallationState()
+      installationState = inspectInstallation()
       resumeMutationWaiters()
     }
-    do { status = try await install(directory) } catch { self.error = error.localizedDescription }
+    do {
+      try await install(directory)
+      status = L10n.resource("inputMethod.installationCompleted")
+    } catch { self.error = L10n.inputMethodInstallationError(error) }
   }
 
   public func refreshInstallationState() {
@@ -262,10 +265,10 @@ public final class InputMethodFeatureModel {
         },
         completion: { [weak self] result in
           if case .failure(let error) = result, !(error is CancellationError) {
-            self?.error = "输入法设置尚未保存，请重试。"
+            self?.error = L10n.resource("inputMethod.error.settingsUnsaved")
           }
         })
-    } catch { self.error = "输入法设置尚未保存，请重试。" }
+    } catch { self.error = L10n.resource("inputMethod.error.settingsUnsaved") }
   }
 
   private func finishMutation(_ id: UUID) {
@@ -314,7 +317,7 @@ public final class InputMethodFeatureModel {
       guard !stopped else { return }
       state.expire(at: Date())
       persist()
-    } catch { self.error = "词汇建议暂时无法整理，请重试。" }
+    } catch { self.error = L10n.resource("inputMethod.error.maintenanceFailed") }
   }
 
   public func shutdown() async {

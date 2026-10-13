@@ -378,16 +378,18 @@ public struct MainShellView: View {
     }
     .toolbar {
       if !model.voiceSetupReadiness.isComplete, model.voiceSetupPresentation != .waiting {
-        ToolbarItem(id: "rill.voice-setup") {
+        ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
           Button {
             model.voiceSetupPresentation = .presented
           } label: {
             Label(L10n.surface(.finishSetup, language: model.settings.language), systemImage: RillSystemSymbol.checklist.rawValue)
           }
+          .labelStyle(.titleAndIcon)
           .accessibilityIdentifier("voice-setup.resume")
         }
       }
-      ToolbarItem(id: "rill.global-search") {
+      ToolbarSpacer(.fixed, placement: .primaryAction)
+      ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
         Button(action: presentGlobalSearch) {
           Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
         }
@@ -462,9 +464,10 @@ extension MainShellView {
       }
     }
     .background(SidebarFocusAnchor(coordinator: sidebarFocusCoordinator))
-    .safeAreaInset(edge: .bottom, spacing: 0) {
+    .safeAreaBar(edge: .bottom, spacing: 0) {
       sidebarSettingsFooter
     }
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
     .navigationSplitViewColumnWidth(
       min: MainShellLayoutMetrics.sidebarColumnMinWidth,
       ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
@@ -815,7 +818,7 @@ extension MainShellView {
 
   private func sidebarCollectionRow(_ collection: RecordCollection) -> some View {
     HStack(spacing: RillSpacing.dense) {
-      Label(collection.name, systemImage: RillSystemSymbol.squareStack3dUp.rawValue)
+      Label(L10n.collectionName(collection, language: model.settings.language), systemImage: RillSystemSymbol.squareStack3dUp.rawValue)
       Spacer(minLength: 8)
       Text("\(collectionRecordCount(collection.id))")
         .font(.caption2.monospacedDigit())
@@ -828,7 +831,7 @@ extension MainShellView {
           in: Capsule()
         )
     }
-    .accessibilityLabel(collection.name)
+    .accessibilityLabel(L10n.collectionName(collection, language: model.settings.language))
     .accessibilityIdentifier("sidebar.record-collection.\(collection.id.rawValue.uuidString)")
   }
 
@@ -849,20 +852,17 @@ extension MainShellView {
   }
 
   private var sidebarSettingsFooter: some View {
-    VStack(spacing: 0) {
-      Divider()
-      Button(action: selectSettingsFromSidebarFooter) {
-        Label(L10n.text(.sidebarSettings, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
-          .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
-      .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
-      .accessibilityIdentifier("sidebar.settings")
+    Button(action: selectSettingsFromSidebarFooter) {
+      Label(L10n.text(.sidebarSettings, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
+        .labelStyle(.titleAndIcon)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
+    .buttonStyle(.glass)
+    .buttonSizing(.flexible)
+    .controlSize(.large)
+    .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
+    .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
+    .accessibilityIdentifier("sidebar.settings")
   }
 
   private func selectSettingsFromSidebarFooter() {

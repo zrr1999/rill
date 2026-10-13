@@ -94,7 +94,8 @@ public final class AppModel {
   public var isSystemClipboardCaptureControlTransitioning: Bool {
     systemClipboardCaptureControlSnapshot.state.isTransitioning
   }
-  public var lastFailure: String?
+  var lastFailureResource: LocalizedStringResource?
+  public var lastFailure: String? { lastFailureResource?.string(for: settings.language) }
   public let vocabulary: VocabularyLibraryModel
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 
@@ -426,8 +427,7 @@ public final class AppModel {
       saveFailed: { [history] in
         history.append(
           EventFeedEntry(
-            english: L10n.runText(.settingsSaveFailedRetry, language: .english),
-            simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
+            L10n.resource("run.settingsSaveFailedRetry")))
       })
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore

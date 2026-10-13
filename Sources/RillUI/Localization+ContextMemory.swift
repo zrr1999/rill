@@ -1,31 +1,22 @@
 import Foundation
 
 extension L10n {
-  static func contextMemoryFailure(_ failure: ContextMemoryFailure) -> LocalizedText {
+  static func contextMemoryFailure(_ failure: ContextMemoryFailure) -> LocalizedStringResource {
     switch failure {
     case .settingsLoad:
-      LocalizedText(
-        english: "Context settings could not be loaded.", simplifiedChinese: "上下文设置读取失败。")
+      L10n.resource("Localization.ContextMemory.Context.settings.could.not.be.loaded")
     case .revocation:
-      LocalizedText(
-        english: "Authorization revocation could not be saved.", simplifiedChinese: "撤权设置保存失败。")
+      L10n.resource("Localization.ContextMemory.Authorization.revocation.could.not.be.saved")
     case .authorization:
-      LocalizedText(
-        english: "Context settings could not be saved or authorized.",
-        simplifiedChinese: "上下文设置保存或授权失败。")
+      L10n.resource("Localization.ContextMemory.Context.settings.could.not.be.saved.or.authorized")
     case .storage:
-      LocalizedText(english: "Memory storage is unavailable.", simplifiedChinese: "记忆存储不可用。")
+      L10n.resource("Localization.ContextMemory.Memory.storage.is.unavailable")
     case .mutation:
-      LocalizedText(
-        english: "Memory could not be changed. Your draft is retained; refresh and retry.",
-        simplifiedChinese: "记忆修改失败，草稿已保留；请刷新后重试。")
+      L10n.resource("Localization.ContextMemory.Memory.could.not.be.changed.Your.draft.is.retained.refresh.and.retry")
     case .correction:
-      LocalizedText(
-        english: "Correction could not be linked to history.", simplifiedChinese: "无法将纠正关联到历史。")
+      L10n.resource("Localization.ContextMemory.Correction.could.not.be.linked.to.history")
     case .unavailable:
-      LocalizedText(
-        english: "Memory editing is unavailable while Rill is shutting down.",
-        simplifiedChinese: "Rill 正在退出，暂时无法编辑记忆。")
+      L10n.resource("Localization.ContextMemory.Memory.editing.is.unavailable.while.Rill.is.shutting.down")
     }
   }
 }

@@ -3,36 +3,35 @@ import RillCore
 
 public struct EventFeedEntry: Identifiable, Equatable, Sendable {
   private struct PrivacyProtectedContent: Equatable, Sendable {
-    let body: LocalizedText
-    let fullPrefix: LocalizedText
-    let summaryPrefix: LocalizedText
-    let hiddenSummary: LocalizedText
+    let body: String
+    let fullPrefix: LocalizedStringResource
+    let summaryPrefix: LocalizedStringResource
+    let hiddenSummary: LocalizedStringResource
   }
 
   public let id: UUID
-  public let english: String
-  public let simplifiedChinese: String
+  private let message: LocalizedStringResource
   private let privacyProtectedContent: PrivacyProtectedContent?
 
-  public init(id: UUID = UUID(), english: String, simplifiedChinese: String) {
+  public init(id: UUID = UUID(), _ message: LocalizedStringResource) {
     self.id = id
-    self.english = english
-    self.simplifiedChinese = simplifiedChinese
+    self.message = message
     self.privacyProtectedContent = nil
   }
 
+  public var english: String { text(for: .english) }
+  public var simplifiedChinese: String { text(for: .simplifiedChinese) }
+
   init(
     id: UUID = UUID(),
-    privacyProtectedBody: LocalizedText,
-    fullPrefix: LocalizedText,
-    summaryPrefix: LocalizedText,
-    hiddenSummary: LocalizedText
+    privacyProtectedBody: String,
+    fullPrefix: LocalizedStringResource,
+    summaryPrefix: LocalizedStringResource,
+    hiddenSummary: LocalizedStringResource
   ) {
     self.id = id
-    // Keep the legacy mode-unaware surface content-free. Body-bearing
-    // activity must opt in to the privacy-aware presentation below.
-    self.english = hiddenSummary.english
-    self.simplifiedChinese = hiddenSummary.simplifiedChinese
+    // Only privacy-aware presentation may reveal the body.
+    self.message = hiddenSummary
     self.privacyProtectedContent = PrivacyProtectedContent(
       body: privacyProtectedBody,
       fullPrefix: fullPrefix,
@@ -42,12 +41,7 @@ public struct EventFeedEntry: Identifiable, Equatable, Sendable {
   }
 
   public func text(for language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      return english
-    case .simplifiedChinese:
-      return simplifiedChinese
-    }
+    message.string(for: language)
   }
 
   func presentation(
@@ -63,7 +57,7 @@ public struct EventFeedEntry: Identifiable, Equatable, Sendable {
       )
     }
 
-    let body = content.body.string(for: language)
+    let body = content.body
     guard
       let preview = HistoryPreviewPresentation(
         text: body,

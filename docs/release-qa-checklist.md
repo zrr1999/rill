@@ -24,6 +24,16 @@ hashes together. Local development runs and historical WhisperKit/sherpa-onnx
 results do not satisfy current MLX speech-worker candidate gates. The current
 source and locked model catalog determine which tests and models apply.
 
+Successful `CI - Tests` runs retain a `native-preflight-app-<source revision>`
+artifact for 14 days. It contains the arm64 app assembled and signature-verified
+by that run, its ZIP SHA-256, and the source revision/dirty state. Verify the
+checksum before extraction and record the app's embedded build identity for
+interaction QA. The bundle keeps the existing ad-hoc signature and `preflight`
+version; distribution trust and notarization still need the release candidate.
+Local preflight can save the same evidence by setting `RILL_PREFLIGHT_APP_DIR`
+to an artifact directory. Export happens after all preflight tests pass, and an
+existing archive is preserved rather than overwritten.
+
 Automated checks do not prove Gatekeeper behavior after a real download,
 permission prompts, physical Fn or input-method behavior, acoustic quality,
 or VoiceOver usability. Record those results below with the packaged candidate.
@@ -485,6 +495,27 @@ is established per app and content type; see [continuous output](continuous-outp
 
 ### Editable pending drafts
 
+- [ ] Hover the freely placed capsule for 120ms: the separate page opens without
+      moving or resizing the capsule, stealing focus, or capturing an output target.
+      Drag from the capsule before the delay: it moves without opening the page.
+- [ ] Cross the gap to the page and return during the 220ms exit delay. The page
+      stays open. Keep a button pressed or edit with the pointer outside: it must
+      not collapse. Verify Keep open, attached sheets, and physical IME candidates.
+      Small movements within 6pt of the page edge must not start dismissal; a quick
+      pass over the capsule must not open it after the pointer has already left.
+- [ ] Change modes, counts, selections and output status while preparing to click
+      Copy or Send. Window geometry and the bottom action positions stay fixed.
+- [ ] Drag the open pair near every screen edge and across displays. The capsule
+      reaches the 12pt screen margin independently of the wider page. Near the top,
+      the page moves below the capsule; near the bottom, it moves above. Keep the
+      current side while the full page fits, and keep a 14pt gap without overlap.
+      When neither side fits, limit the page height to available space and switch
+      only when the other side has more than 24pt extra space; small movements
+      near the midpoint must not repeatedly flip it. Restore normal height when
+      space returns. Reopen after a display change. Physical IME composition and
+      attached sheets must prevent dragging.
+- [ ] Check capsule drag/close and keyboard or VoiceOver expansion. No separate
+      collapse button is present; Escape and pointer exit retain their own behavior.
 - [ ] Enable voice collection and clipboard collection separately, both in Settings
       and in Drafts. Each enables the same saved preference and opens the resident
       panel without stealing key focus. Relaunch with either enabled and check restoration.

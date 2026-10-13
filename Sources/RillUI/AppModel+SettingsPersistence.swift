@@ -118,33 +118,20 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
   }
 
   public func unavailableWarning(language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      "Some saved \(englishName) settings could not be read. These controls are locked to preserve the original stored values."
-    case .simplifiedChinese:
-      "部分已保存的\(simplifiedChineseName)设置无法读取。相关控件已锁定，以保留原始存储值。"
-    }
+    L10n.resource(
+      "settings.unavailableWarning",
+      defaultValue: "Some saved \(nameResource) settings could not be read. These controls are locked to preserve the original stored values."
+    ).string(for: language)
   }
 
-  private var englishName: String {
+  private var nameResource: LocalizedStringResource {
     switch self {
-    case .interface: "interface"
-    case .systemClipboard: "clipboard"
-    case .speechRoute: "speech routing"
-    case .localSpeech: "local speech"
-    case .openAI: "LLM Provider"
-    case .input: "input"
-    }
-  }
-
-  private var simplifiedChineseName: String {
-    switch self {
-    case .interface: "界面"
-    case .systemClipboard: "剪贴板"
-    case .speechRoute: "语音路由"
-    case .localSpeech: "本地语音"
-    case .openAI: "LLM Provider"
-    case .input: "输入"
+    case .interface: L10n.resource("settings.domain.interface")
+    case .systemClipboard: L10n.resource("settings.domain.systemClipboard")
+    case .speechRoute: L10n.resource("settings.domain.speechRoute")
+    case .localSpeech: L10n.resource("settings.domain.localSpeech")
+    case .openAI: L10n.resource("settings.domain.openAI")
+    case .input: L10n.resource("settings.domain.input")
     }
   }
 }
@@ -156,13 +143,12 @@ enum ProviderSettingsPersistenceError: LocalizedError, Sendable, Equatable {
     "Saved speech-provider settings are unavailable."
   }
 
+  var presentation: LocalizedStringResource {
+    L10n.resource("AppModel.SettingsPersistence.Saved.speech.provider.settings.are.unavailable")
+  }
+
   func message(language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      "Saved speech-provider settings are unavailable."
-    case .simplifiedChinese:
-      "已保存的语音服务设置不可用。"
-    }
+    presentation.string(for: language)
   }
 }
 
@@ -206,39 +192,20 @@ enum StoredSettingsLoadWarning: Sendable {
   case vocabularyRules
   case openAICredential
 
-  var presentation: LocalizedText {
+  var presentation: LocalizedStringResource {
     switch self {
     case .storedValuesUnavailable:
-      LocalizedText(
-        english:
-          "One or more stored settings could not be read. Affected features remain unavailable or use safe defaults.",
-        simplifiedChinese: "一个或多个已保存设置无法读取；受影响功能保持不可用或使用安全默认值。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.One.or.more.stored.settings.could.not.be.read.Affected.features.remain")
     case .customWorkflows:
-      LocalizedText(
-        english: "Custom workflows could not be loaded and were ignored.",
-        simplifiedChinese: "自定义工作流无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Custom.workflows.could.not.be.loaded.and.were.ignored")
     case .workflowEnabledStates:
-      LocalizedText(
-        english: "Workflow enabled states could not be loaded and were ignored.",
-        simplifiedChinese: "工作流启用状态无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Workflow.enabled.states.could.not.be.loaded.and.were.ignored")
     case .downloadedModelMetadata:
-      LocalizedText(
-        english: "Downloaded model metadata could not be loaded and was ignored.",
-        simplifiedChinese: "已下载模型的元数据无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Downloaded.model.metadata.could.not.be.loaded.and.was.ignored")
     case .vocabularyRules:
-      LocalizedText(
-        english: "Vocabulary rules could not be loaded and were ignored.",
-        simplifiedChinese: "词汇规则无法加载，已忽略。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.Vocabulary.rules.could.not.be.loaded.and.were.ignored")
     case .openAICredential:
-      LocalizedText(
-        english: "The LLM Provider credential could not be read from secure storage.",
-        simplifiedChinese: "无法从安全存储读取 LLM Provider 凭据。"
-      )
+      L10n.resource("AppModel.SettingsPersistence.The.LLM.Provider.credential.could.not.be.read.from.secure.storage")
     }
   }
 }
@@ -349,15 +316,12 @@ extension AppModel {
       )
       self.settings.isLoadingPrivacySettings = false
       self.history.areHistoryRetentionSettingsAvailable = false
-      self.history.historyRetentionSettingsLoadError = L10n.runText(
-        .retentionStorageUnavailableDefaults,
-        language: self.settings.language
-      )
-      refreshHistoryRetentionSettingsErrorPresentation()
+      self.history.historyRetentionSettingsLoadFailure = L10n.resource("run.retentionStorageUnavailableDefaults")
+
       if !privacySettingsSource.hasAvailableSettings {
         let reason = "Persistent settings storage is unavailable."
         privacySettingsSource.markUnavailable(reason: reason)
-        self.settings.privacySettingsLoadError = L10n.runText(.privacyLoadBlocked, language: self.settings.language)
+        self.settings.privacySettingsLoadFailure = L10n.resource("run.privacyLoadBlocked")
       }
       return
     }
@@ -421,11 +385,8 @@ extension AppModel {
         self.applyPrivacyPolicySettings(.defaults)
         self.settings.isRestoringSettings = false
         self.history.areHistoryRetentionSettingsAvailable = false
-        self.history.historyRetentionSettingsLoadError = L10n.runText(
-          .retentionLoadFailedPaused,
-          language: self.settings.language
-        )
-        self.refreshHistoryRetentionSettingsErrorPresentation()
+        self.history.historyRetentionSettingsLoadFailure = L10n.resource("run.retentionLoadFailedPaused")
+
         self.loadHistory()
         self.vocabularyRuleSource.markUnavailable(
           reason: "Configuration storage could not be loaded."
@@ -437,16 +398,9 @@ extension AppModel {
         self.privacySettingsSource.markUnavailable(
           reason: "Configuration storage could not be loaded."
         )
-        self.settings.privacySettingsLoadError = L10n.runText(
-          .privacyLoadBlockedRetry,
-          language: self.settings.language
-        )
+        self.settings.privacySettingsLoadFailure = L10n.resource("run.privacyLoadBlockedRetry")
         self.append(
-          english: L10n.runText(.configurationStorageUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .configurationStorageUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.configurationStorageUnavailable")
         )
       }
     }
@@ -502,10 +456,7 @@ extension AppModel {
     loadFailedAudioRecoveryReceipts()
     for warning in settings.loadWarnings {
       let presentation = warning.presentation
-      append(
-        english: presentation.english,
-        simplifiedChinese: presentation.simplifiedChinese
-      )
+      append(presentation)
     }
     performLocalHistoryRetention(startPeriodicMaintenanceAfterCompletion: true)
     if shouldPrepareLocalSpeechModel {
@@ -526,20 +477,17 @@ extension AppModel {
   func applyStoredHistoryRetentionSettings(_ settings: StoredAppSettingsSnapshot) {
     guard settings.persistentSettingsStoreWasAvailable else {
       self.history.areHistoryRetentionSettingsAvailable = false
-      self.history.historyRetentionSettingsLoadError = L10n.runText(
-        .retentionStorageUnavailableDefaults,
-        language: self.settings.language
-      )
-      self.history.historyRetentionSettingsWriteError = nil
+      self.history.historyRetentionSettingsLoadFailure = L10n.resource("run.retentionStorageUnavailableDefaults")
+      self.history.historyRetentionSettingsWriteFailure = nil
       self.history.clipboardHistoryRetentionSettingIsInvalid = false
       self.history.runHistoryRetentionSettingIsInvalid = false
-      refreshHistoryRetentionSettingsErrorPresentation()
+
       loadHistory()
       return
     }
     self.history.areHistoryRetentionSettingsAvailable = true
-    self.history.historyRetentionSettingsLoadError = nil
-    self.history.historyRetentionSettingsWriteError = nil
+    self.history.historyRetentionSettingsLoadFailure = nil
+    self.history.historyRetentionSettingsWriteFailure = nil
     self.history.clipboardHistoryRetentionSettingIsInvalid = false
     self.history.runHistoryRetentionSettingIsInvalid = false
     recordRetentionPeriod = resolvedHistoryRetentionPeriod(
@@ -557,7 +505,7 @@ extension AppModel {
           .runHistoryRetentionPeriod
         )
       ))
-    refreshHistoryRetentionSettingsErrorPresentation()
+
     loadHistory()
   }
 
@@ -574,11 +522,7 @@ extension AppModel {
     default:
       self.voice.failedAudioRecoveryEnabled = false
       append(
-        english: L10n.runText(.failedRecoverySettingInvalid, language: .english),
-        simplifiedChinese: L10n.runText(
-          .failedRecoverySettingInvalid,
-          language: .simplifiedChinese
-        )
+        L10n.resource("run.failedRecoverySettingInvalid")
       )
     }
   }
@@ -595,14 +539,7 @@ extension AppModel {
         self.history.runHistoryRetentionSettingIsInvalid = true
       }
       append(
-        english: L10n.runHistoryRetentionReadFailed(
-          isRecordSetting: isRecordSetting,
-          language: .english
-        ),
-        simplifiedChinese: L10n.runHistoryRetentionReadFailed(
-          isRecordSetting: isRecordSetting,
-          language: .simplifiedChinese
-        )
+        L10n.runHistoryRetentionReadFailed(isRecordSetting: isRecordSetting)
       )
       return .forever
     }
@@ -616,38 +553,11 @@ extension AppModel {
         self.history.runHistoryRetentionSettingIsInvalid = true
       }
       append(
-        english: L10n.runHistoryRetentionInvalid(
-          isRecordSetting: isRecordSetting,
-          language: .english
-        ),
-        simplifiedChinese: L10n.runHistoryRetentionInvalid(
-          isRecordSetting: isRecordSetting,
-          language: .simplifiedChinese
-        )
+        L10n.runHistoryRetentionInvalid(isRecordSetting: isRecordSetting)
       )
       return .forever
     }
     return period
-  }
-
-  func refreshHistoryRetentionSettingsErrorPresentation() {
-    var messages: [String] = []
-    if let loadError = self.history.historyRetentionSettingsLoadError {
-      messages.append(loadError)
-    }
-    if self.history.clipboardHistoryRetentionSettingIsInvalid {
-      messages.append(L10n.runText(.clipboardRetentionDamaged, language: self.settings.language))
-    }
-    if self.history.runHistoryRetentionSettingIsInvalid {
-      messages.append(L10n.runText(.runRetentionDamaged, language: self.settings.language))
-    }
-    if let writeError = self.history.historyRetentionSettingsWriteError {
-      messages.append(writeError)
-    }
-    self.history.historyRetentionSettingsError =
-      messages.isEmpty
-      ? nil
-      : messages.joined(separator: "\n")
   }
 
   func applyStoredWorkflowSettings(
@@ -719,9 +629,11 @@ extension AppModel {
       markStoredSettingsDomainUnavailable(.workflowLibrary)
     } else {
       self.workflowLibrary.workflowLibraryAvailability = .available
-      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(
-        workflowFiles?.result.issues ?? []
-      )
+      self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
+        guard let self else { return nil }
+        return self.workflowFileIssueMessage(
+          workflowFiles?.result.issues ?? [], language: language)
+      }
     }
     rebuildWorkflowLibrary()
     startWorkflowFileMonitoring()
@@ -738,7 +650,10 @@ extension AppModel {
     // Do not let a manual reload of an empty directory discard that recovery copy.
     let shouldAdoptFileSource = self.workflowLibrary.usesWorkflowFilesAsSource || self.workflowLibrary.customWorkflows.isEmpty
     guard shouldAdoptFileSource else {
-      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(result.issues)
+      self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
+        guard let self else { return nil }
+        return self.workflowFileIssueMessage(result.issues, language: language)
+      }
       return
     }
 
@@ -772,7 +687,10 @@ extension AppModel {
       self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
     }
     if isWorkflowLibraryAvailable {
-      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(result.issues)
+      self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
+        guard let self else { return nil }
+        return self.workflowFileIssueMessage(result.issues, language: language)
+      }
     } else {
       refreshUnavailableStoredSettingsDomainErrors()
     }
@@ -780,16 +698,17 @@ extension AppModel {
     persistWorkflowEnabledStates()
   }
 
-  func workflowFileIssueMessage(_ issues: [WorkflowFileIssue]) -> String? {
+  func workflowFileIssueMessage(_ issues: [WorkflowFileIssue], language: AppLanguage) -> String? {
     guard !issues.isEmpty else { return nil }
     let visibleIssues = issues.prefix(3).map { issue in
-      "\(issue.filename): \(issue.message)"
+      "\(issue.filename): \(L10n.workflowFileIssue(issue, language: language))"
     }
     let suffix =
       issues.count > visibleIssues.count
-      ? " (+\(issues.count - visibleIssues.count) more)"
+      ? " ("
+        + L10n.pluralString("workflowFile.error.moreIssues", language: language, issues.count - visibleIssues.count) + ")"
       : ""
-    let heading = L10n.runText(.workflowTOMLIssuesHeading, language: self.settings.language)
+    let heading = L10n.runText(.workflowTOMLIssuesHeading, language: language)
     return "\(heading) \(visibleIssues.joined(separator: "; "))\(suffix)"
   }
 
@@ -1104,11 +1023,7 @@ extension AppModel {
         }
         self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
         self.append(
-          english: L10n.runText(.savedSettingsAvailableAgain, language: .english),
-          simplifiedChinese: L10n.runText(
-            .savedSettingsAvailableAgain,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.savedSettingsAvailableAgain")
         )
       } catch is CancellationError {
         return
@@ -1122,11 +1037,7 @@ extension AppModel {
         }
         self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
         self.append(
-          english: L10n.runText(.savedSettingsStillUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .savedSettingsStillUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.savedSettingsStillUnavailable")
         )
       }
     }
@@ -1198,11 +1109,7 @@ extension AppModel {
           AppSettingsCodec.openAICredentialAvailability(for: credential)
         self.workflowLibraryChangedAction()
         self.append(
-          english: L10n.runText(.openAISettingsAvailableAgain, language: .english),
-          simplifiedChinese: L10n.runText(
-            .openAISettingsAvailableAgain,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.openAISettingsAvailableAgain")
         )
       } catch is CancellationError {
         return
@@ -1218,11 +1125,7 @@ extension AppModel {
         self.settings.openAICredentialAvailability = .inaccessible
         self.workflowLibraryChangedAction()
         self.append(
-          english: L10n.runText(.openAISettingsStillUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .openAISettingsStillUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.openAISettingsStillUnavailable")
         )
       }
     }
@@ -1375,7 +1278,10 @@ extension AppModel {
 
   func refreshUnavailableStoredSettingsDomainErrors() {
     if self.workflowLibrary.workflowLibraryAvailability == .unavailable {
-      self.workflowLibrary.workflowLibraryError = unavailableStoredSettingsDomainMessage(.workflowLibrary)
+      self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
+        guard let self else { return nil }
+        return self.unavailableStoredSettingsDomainMessage(.workflowLibrary, language: language)
+      }
     }
     if self.voice.downloadedLocalSpeechModelsAvailability == .unavailable {
       self.voice.downloadedLocalSpeechModelsError = unavailableStoredSettingsDomainMessage(
@@ -1387,20 +1293,17 @@ extension AppModel {
     }
   }
 
-  private func unavailableStoredSettingsDomainMessage(_ domain: StoredSettingsDomain) -> String {
-    switch (self.settings.language, domain) {
-    case (.english, .workflowLibrary):
-      "The saved workflow library could not be loaded. Editing stays disabled to protect the existing data. Repair storage, then retry."
-    case (.simplifiedChinese, .workflowLibrary):
-      "无法加载已保存的工作流库。为保护现有数据，编辑保持停用。请修复存储后重试。"
-    case (.english, .downloadedModelMetadata):
-      "Downloaded local-model metadata could not be loaded. Rill will not overwrite it until storage is repaired and retried."
-    case (.simplifiedChinese, .downloadedModelMetadata):
-      "无法加载已下载本地模型的元数据。修复存储并重试前，Rill 不会覆盖该数据。"
-    case (.english, .vocabularyRules):
-      "The saved vocabulary rules could not be loaded. Editing stays disabled to protect the existing data. Repair storage, then retry."
-    case (.simplifiedChinese, .vocabularyRules):
-      "无法加载已保存的词汇规则。为保护现有数据，编辑保持停用。请修复存储后重试。"
+  private func unavailableStoredSettingsDomainMessage(_ domain: StoredSettingsDomain, language: AppLanguage? = nil) -> String {
+    switch domain {
+    case .workflowLibrary:
+      L10n.resource("AppModel.SettingsPersistence.The.saved.workflow.library.could.not.be.loaded.Editing.stays.disabled.to.protect.the").string(
+        for: language ?? self.settings.language)
+    case .downloadedModelMetadata:
+      L10n.resource("AppModel.SettingsPersistence.Downloaded.local.model.metadata.could.not.be.loaded.Rill.will.not.overwrite.it.until").string(
+        for: language ?? self.settings.language)
+    case .vocabularyRules:
+      L10n.resource("AppModel.SettingsPersistence.The.saved.vocabulary.rules.could.not.be.loaded.Editing.stays.disabled.to.protect.the").string(
+        for: language ?? self.settings.language)
     }
   }
 
@@ -1471,11 +1374,7 @@ extension AppModel {
         self.settings.isRetryingUnavailableSettingsDomains = false
         self.refreshUnavailableStoredSettingsDomainErrors()
         self.append(
-          english: L10n.runText(.protectedSettingsStillUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .protectedSettingsStillUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.protectedSettingsStillUnavailable")
         )
       }
     }
@@ -1525,9 +1424,11 @@ extension AppModel {
         self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
       }
       self.workflowLibrary.workflowLibraryAvailability = .available
-      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(
-        recovered.workflowFiles?.issues ?? []
-      )
+      self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
+        guard let self else { return nil }
+        return self.workflowFileIssueMessage(
+          recovered.workflowFiles?.issues ?? [], language: language)
+      }
       rebuildWorkflowLibrary()
       recoveredAnyDomain = true
     }
@@ -1553,11 +1454,7 @@ extension AppModel {
 
     if recoveredAnyDomain {
       append(
-        english: L10n.runText(.protectedSettingsReloaded, language: .english),
-        simplifiedChinese: L10n.runText(
-          .protectedSettingsReloaded,
-          language: .simplifiedChinese
-        )
+        L10n.resource("run.protectedSettingsReloaded")
       )
     }
   }
@@ -1566,10 +1463,10 @@ extension AppModel {
     applyPrivacyPolicySettings(settings.privacyPolicySettings)
     self.settings.isLoadingPrivacySettings = false
     if settings.privacySettingsWereInvalid {
-      self.settings.privacySettingsLoadError = L10n.runText(.privacySettingsDamaged, language: self.settings.language)
+      self.settings.privacySettingsLoadFailure = L10n.resource("run.privacySettingsDamaged")
       privacySettingsSource.markUnavailable(reason: "Privacy settings are damaged.")
     } else {
-      self.settings.privacySettingsLoadError = nil
+      self.settings.privacySettingsLoadFailure = nil
       privacySettingsSource.update(self.settings.privacyPolicySettings)
     }
   }
@@ -1614,11 +1511,7 @@ extension AppModel {
         }
         self.history.diagnosticsLoadState = .failed
         self.append(
-          english: L10n.runText(.diagnosticsRepositoryUnavailable, language: .english),
-          simplifiedChinese: L10n.runText(
-            .diagnosticsRepositoryUnavailable,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.diagnosticsRepositoryUnavailable")
         )
       }
     }
@@ -1736,8 +1629,7 @@ extension AppModel {
         self.settings.openAICredentialAvailability = .inaccessible
       }
       append(
-        english: L10n.runText(.credentialSaveFailed, language: .english),
-        simplifiedChinese: L10n.runText(.credentialSaveFailed, language: .simplifiedChinese)
+        L10n.resource("run.credentialSaveFailed")
       )
       return
     }
@@ -1768,8 +1660,7 @@ extension AppModel {
           self.workflowLibraryChangedAction()
         }
         self.append(
-          english: L10n.runText(.credentialSaveFailed, language: .english),
-          simplifiedChinese: L10n.runText(.credentialSaveFailed, language: .simplifiedChinese)
+          L10n.resource("run.credentialSaveFailed")
         )
       }
     }
@@ -1792,8 +1683,7 @@ extension AppModel {
 
   func appendSettingsSaveFailureEvent() {
     append(
-      english: L10n.runText(.settingsSaveFailedRetry, language: .english),
-      simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)
+      L10n.resource("run.settingsSaveFailedRetry")
     )
   }
 
@@ -2040,7 +1930,7 @@ extension AppModel {
   private var privacySettingsAreEditable: Bool {
     !hasBegunApplicationShutdown
       && !self.settings.isLoadingPrivacySettings
-      && self.settings.privacySettingsLoadError == nil
+      && self.settings.privacySettingsLoadFailure == nil
   }
 
   private func ensurePrivacySettingsAreEditable() throws {
@@ -2091,8 +1981,7 @@ extension AppModel {
   func persistPrivacyPolicySettings() {
     settings.persistPrivacyPolicySettings { [weak self] in
       self?.append(
-        english: L10n.runText(.privacySaveFailedRetry, language: .english),
-        simplifiedChinese: L10n.runText(.privacySaveFailedRetry, language: .simplifiedChinese))
+        L10n.resource("run.privacySaveFailedRetry"))
     }
   }
 
@@ -2149,7 +2038,7 @@ extension AppModel {
         self.applyPrivacyPolicySettings(policy)
         self.settings.isRestoringSettings = false
         self.settings.isLoadingPrivacySettings = false
-        self.settings.privacySettingsLoadError = nil
+        self.settings.privacySettingsLoadFailure = nil
         self.privacySettingsSource.update(policy)
         self.workflowLibraryChangedAction()
       } catch is CancellationError {
@@ -2162,10 +2051,7 @@ extension AppModel {
           return
         }
         self.settings.isLoadingPrivacySettings = false
-        self.settings.privacySettingsLoadError = L10n.runText(
-          .privacyLoadFailedRepairStorage,
-          language: self.settings.language
-        )
+        self.settings.privacySettingsLoadFailure = L10n.resource("run.privacyLoadFailedRepairStorage")
         self.privacySettingsSource.markUnavailable(
           reason: "Privacy settings could not be loaded."
         )
@@ -2179,7 +2065,7 @@ extension AppModel {
     guard !hasBegunApplicationShutdown, !self.settings.isLoadingPrivacySettings else { return }
     let defaults = PrivacyPolicySettings.defaults
     self.settings.isLoadingPrivacySettings = false
-    self.settings.privacySettingsLoadError = nil
+    self.settings.privacySettingsLoadFailure = nil
     self.settings.isRestoringSettings = true
     applyPrivacyPolicySettings(defaults)
     self.settings.isRestoringSettings = false

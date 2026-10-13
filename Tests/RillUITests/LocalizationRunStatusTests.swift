@@ -68,8 +68,8 @@ final class LocalizationRunStatusTests: XCTestCase {
     XCTAssertEqual(
       String(
         format: L10n.runText(.localHistoryUpdatedFormat, language: .english),
-        3,
-        1
+        "3",
+        "1"
       ),
       "Local history updated: removed 3, preserved 1 active clipboard item(s)."
     )
@@ -85,15 +85,15 @@ final class LocalizationRunStatusTests: XCTestCase {
 
   func testRunStatusRetentionHelpers() {
     XCTAssertEqual(
-      L10n.runHistoryRetentionReadFailed(isRecordSetting: true, language: .english),
+      L10n.runHistoryRetentionReadFailed(isRecordSetting: true).string(for: .english),
       "A stored clipboard history retention setting could not be read; cleanup for that domain is paused."
     )
     XCTAssertEqual(
-      L10n.runHistoryRetentionReadFailed(isRecordSetting: false, language: .simplifiedChinese),
+      L10n.runHistoryRetentionReadFailed(isRecordSetting: false).string(for: .simplifiedChinese),
       "无法读取已保存的运行与诊断历史留存设置；该域清理已暂停。"
     )
     XCTAssertEqual(
-      L10n.runHistoryRetentionInvalid(isRecordSetting: true, language: .simplifiedChinese),
+      L10n.runHistoryRetentionInvalid(isRecordSetting: true).string(for: .simplifiedChinese),
       "剪贴板历史留存设置无效；该域清理已暂停。"
     )
   }

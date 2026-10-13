@@ -4,6 +4,47 @@ import XCTest
 
 @MainActor
 final class EventFeedPrivacyPresentationTests: XCTestCase {
+  func testEventResourcesPreserveArgumentsAcrossLanguageChanges() {
+    let name = "Demo 50% %@"
+    let saved = EventFeedEntry(L10n.resource("run.workflowSavedFormat", defaultValue: "Workflow saved: \(name)"))
+    let updated = EventFeedEntry(
+      L10n.resource("run.localHistoryUpdatedFormat", defaultValue: "Local history updated: removed \("1200"), preserved \("0") active clipboard item(s)."))
+    for language in [AppLanguage.english, .simplifiedChinese, .english] {
+      XCTAssertEqual(saved.text(for: language), language == .english ? "Workflow saved: Demo 50% %@" : "工作流已保存：Demo 50% %@")
+      XCTAssertEqual(
+        updated.text(for: language),
+        language == .english
+          ? "Local history updated: removed 1200, preserved 0 active clipboard item(s)."
+          : "本地历史已更新：移除 1200 条，保留 0 条仍在使用的剪贴板内容。")
+    }
+  }
+
+  func testDeferredHeadersSwitchLanguageWithoutExposingBodyWhenPreviewIsDisabled() {
+    let step = WorkflowTextStep(
+      kind: .llmRewrite, outputText: "PRIVATE-%@", didChange: true,
+      tokenUsage: .init(inputTokens: 1200, outputTokens: 0),
+      durationMilliseconds: 1_234
+    )
+    let header = HistoryTextStepPresentation.logHeaderResource(step)
+    let entry = EventFeedEntry(
+      privacyProtectedBody: "PRIVATE-%@", fullPrefix: header,
+      summaryPrefix: header, hiddenSummary: header
+    )
+    XCTAssertFalse(entry.english.contains("PRIVATE-%@"))
+    XCTAssertFalse(entry.simplifiedChinese.contains("PRIVATE-%@"))
+    for language in [AppLanguage.english, .simplifiedChinese, .english] {
+      let full = entry.presentation(for: language, historyPreviewMode: .full)
+      let hidden = entry.presentation(for: language, historyPreviewMode: .disabled)
+      XCTAssertTrue(full.text.contains("PRIVATE-%@"))
+      XCTAssertFalse(hidden.text.contains("PRIVATE-%@"))
+      XCTAssertFalse(hidden.accessibilityLabel.contains("PRIVATE-%@"))
+      XCTAssertTrue(hidden.text.contains("1200"))
+      XCTAssertTrue(hidden.text.contains(language == .english ? "Text cleanup" : "文本润色"))
+      XCTAssertTrue(hidden.text.contains(language == .english ? "1.234 s" : "1.234 秒"))
+      XCTAssertTrue(hidden.text.contains(language == .english ? "Not provided" : "未提供"))
+    }
+  }
+
   func testTokenUsageRemainsVisibleWithoutExposingTheStepText() async throws {
     let harness = makeHarness()
     await harness.model.waitForInitialVoiceConfiguration()

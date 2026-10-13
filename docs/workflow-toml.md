@@ -166,7 +166,7 @@ Revocation cancels pending work and clears cached results. Uncertain results,
 unavailable services and restricted contexts preserve local selection. Imported
 audio and failed-audio retries do not start ranking requests. Live captions remain
 unchanged; streaming hotword support requires a separate upstream change.
-See the [hotword evaluation protocol](https://github.com/zrr1999/rill/blob/main/docs/archive/qa/jev-hotwords.md) before making quality claims.
+Compare hotword quality on fixed recordings before making quality claims.
 
 Wake-word triggers use `setup.wake_word.phrases`, with one to four distinct short
 phrases. The existing wake-word provider, permissions and readiness rules apply.
@@ -334,6 +334,14 @@ cleanup must not answer it or ask for the material to summarize. The same rule
 applies to contextual correction. `llm-answer` and voice-assistant workflows
 still answer requests. User-authored TOML prompts are not overwritten by updates.
 
+Canonical Smart Cleanup with its default instruction also applies a local content
+guard, shared with contextual correction. It preserves literal numbers and
+common attached units, HTTP(S) URLs, existing explicit code, and normalized
+negative sentences. List numbering and added sentence punctuation are allowed.
+The check is intentionally conservative: spelling fixes within a negative
+sentence and number-format changes can skip cleanup and preserve the prior text.
+Custom rewrite instructions are not filtered by this builtin policy.
+
 The provider request contract and cleanup examples are covered by offline checks.
 An opt-in model evaluation sends only fixed synthetic samples in
 `Evals/TextRewrite/cases.json`, in both ordinary and contextual correction
@@ -346,10 +354,17 @@ Comparisons ignore punctuation and whitespace but retain words, case and numbers
 The emphasis sample retains a repetition whose intent is ambiguous without audio.
 
 DeepSeek rewrite requests use `reasoning.effort = "none"`, temperature 0.1 and a
-4096-token output limit. The rewrite has a 5-second budget; cancellation drains
-the request before any fallback is delivered. Inputs above 12,000 UTF-8 bytes skip
-cleanup whole. Assistant steps retain their existing thinking policy. Other
-compatible models retain their existing request parameters. These initial
+4096-token output limit. DeepSeek inputs above 12,000 UTF-8 bytes skip cleanup
+whole; the limit applies to the actual request transcript, without truncation.
+These provider-specific parameters remain separate from the workflow budget.
+
+Default builtin Smart Cleanup and contextual correction have a 5-second transport
+timeout and local deadline with every compatible model. DeepSeek non-assistant
+rewrite steps use that same budget with custom instructions. Other custom rewrites
+and assistant steps retain 60 seconds. At the deadline, the owner requests transport
+cancellation and reports timeout without waiting for late work. It retains that
+work until completion; late results cannot replace delivered text. Assistant
+thinking policy and other compatible-model parameters remain unchanged. These
 limits need real usage and latency evaluation.
 
 For captured speech or explicitly supplied text, temporary network, rate-limit,

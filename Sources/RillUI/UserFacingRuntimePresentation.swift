@@ -2,40 +2,33 @@ import Foundation
 import RillCore
 
 enum RunFailurePresentation {
-  static func localizedText(for untrustedMessage: String?) -> LocalizedText {
+  static func localizedText(for untrustedMessage: String?) -> LocalizedStringResource {
     let safeMessage =
       HistoryFailureSanitizer.sanitize(untrustedMessage)
       ?? HistoryFailureSanitizer.genericMessage
-    let simplifiedChinese: String
     switch safeMessage {
     case "Microphone access is required. Grant access in System Settings and retry.":
-      simplifiedChinese = "需要麦克风权限。请在系统设置中授权后重试。"
+      return L10n.resource("failure.microphone", defaultValue: "\(safeMessage)")
     case "Accessibility access is required for direct text insertion. Grant access and retry.":
-      simplifiedChinese = "直接输入文本需要辅助功能权限。请授权后重试。"
+      return L10n.resource("failure.accessibility", defaultValue: "\(safeMessage)")
     case "The run was blocked by the current privacy policy. Review Privacy settings and retry.":
-      simplifiedChinese = "当前隐私策略阻止了本次运行。请检查隐私设置后重试。"
+      return L10n.resource("failure.privacy", defaultValue: "\(safeMessage)")
     case HistoryFailureSanitizer.noSpeechMessage:
-      simplifiedChinese = "未检测到语音。请重试。"
+      return L10n.resource("failure.noSpeech", defaultValue: "\(safeMessage)")
     case HistoryFailureSanitizer.globalInputUnavailableMessage:
-      simplifiedChinese = "全局键盘输入不可用，语音录制已停止。"
+      return L10n.resource("failure.globalInputUnavailable", defaultValue: "\(safeMessage)")
     case HistoryFailureSanitizer.recognitionTimeoutMessage:
-      simplifiedChinese = "语音识别耗时过长，本次运行已停止。请重试。"
+      return L10n.resource("failure.recognitionTimeout", defaultValue: "\(safeMessage)")
     case HistoryFailureSanitizer.recognitionRecoveryPendingMessage:
-      simplifiedChinese = "上次识别操作仍在结束中。请稍候，或切换识别引擎。"
+      return L10n.resource("failure.recognitionRecoveryPending", defaultValue: "\(safeMessage)")
     default:
-      simplifiedChinese = "工作流失败。请在诊断中查看安全摘要后重试。"
+      return L10n.resource("failure.generic", defaultValue: "\(safeMessage)")
     }
-    return LocalizedText(
-      english: safeMessage,
-      simplifiedChinese: simplifiedChinese
-    )
   }
 
   static func historyText(for message: String?, language: AppLanguage) -> String {
     if HistoryFailureSanitizer.sanitize(message) == HistoryFailureSanitizer.genericMessage {
-      return language == .english
-        ? "Processing did not complete. Expand execution details to see why."
-        : "本次处理未完成。展开执行详情查看原因。"
+      return L10n.catalogString("UserFacingRuntimePresentation.Processing.did.not.complete.Expand.execution.details.to.see.why", language: language)
     }
     return text(for: message, language: language)
   }
@@ -56,13 +49,10 @@ enum DiagnosticsTimelineFilter: String, CaseIterable, Identifiable, Sendable {
   var id: String { rawValue }
 
   func title(language: AppLanguage) -> String {
-    switch (language, self) {
-    case (.english, .activity): "Activity"
-    case (.simplifiedChinese, .activity): "活动"
-    case (.english, .issues): "Issues"
-    case (.simplifiedChinese, .issues): "问题"
-    case (.english, .all): "All Details"
-    case (.simplifiedChinese, .all): "全部详情"
+    switch self {
+    case .activity: L10n.resource("UserFacingRuntimePresentation.Activity").string(for: language)
+    case .issues: L10n.resource("UserFacingRuntimePresentation.Issues").string(for: language)
+    case .all: L10n.resource("UserFacingRuntimePresentation.All.Details").string(for: language)
     }
   }
 
@@ -110,75 +100,59 @@ enum DiagnosticEventPresentation {
   ) -> String? {
     switch event.name {
     case .globalInputInstalled:
-      return localized("Global input is ready", "全局输入已就绪", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Global.input.is.ready", language: language)
     case .globalInputUnavailable:
-      return localized("Global input is unavailable", "全局输入不可用", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Global.input.is.unavailable", language: language)
     case .historyMaintenanceCompleted:
-      return localized("History cleanup completed", "历史清理已完成", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.History.cleanup.completed", language: language)
     case .clipboardCapturePaused:
-      return localized("Clipboard capture is paused", "剪贴板捕获已暂停", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Clipboard.capture.is.paused", language: language)
     case .clipboardCaptureResumed:
-      return localized("Clipboard capture is active", "剪贴板捕获已开启", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Clipboard.capture.is.active", language: language)
     case .temporaryFilesCleanupCompleted:
-      return localized("Temporary recordings cleaned up", "临时录音已清理", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Temporary.recordings.cleaned.up", language: language)
     case .securityWebhookConfigurationProtected:
-      return localized(
-        "Webhook credentials are protected",
-        "Webhook 凭据已受保护",
-        language: language
-      )
+      return L10n.catalogString("UserFacingRuntimePresentation.Webhook.credentials.are.protected", language: language)
     case .providerLocalSpeechAvailable, .providerSherpaOnnxAvailable:
-      return localized(
-        "On-device speech support is available",
-        "本机语音能力已可用",
-        language: language
-      )
+      return L10n.catalogString("UserFacingRuntimePresentation.On.device.speech.support.is.available", language: language)
     case .workflowManifestLoaded:
-      return localized("Workflow catalog loaded", "工作流目录已载入", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Workflow.catalog.loaded", language: language)
     case .persistenceSqliteReady:
-      return localized("Local storage is ready", "本地存储已就绪", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Local.storage.is.ready", language: language)
     case .workflowAudioRecordingStarted:
-      return localized("Recording started", "已开始录音", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Recording.started", language: language)
     case .workflowAudioRecordingQueued:
-      return localized(
-        "Recording queued for on-device transcription",
-        "录音已进入本机转写队列",
-        language: language
-      )
+      return L10n.catalogString("UserFacingRuntimePresentation.Recording.queued.for.on.device.transcription", language: language)
     case .workflowAudioRecordingTerminalSignal:
-      return localized("Recording finished", "录音已结束", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Recording.finished", language: language)
     case .recordingStarted:
-      return localized("Recording started", "已开始录音", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Recording.started", language: language)
     case .recordingHotkeyPressed:
-      return localized("Push-to-talk pressed", "已按下按住说话键", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Push.to.talk.pressed", language: language)
     case .recordingHotkeyReleased:
-      return localized("Push-to-talk released", "已松开按住说话键", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Push.to.talk.released", language: language)
     case .recordingFinishing:
-      return localized("Finishing recording", "正在结束录音", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Finishing.recording", language: language)
     case .recordingQueued:
-      return localized(
-        "Recording queued for transcription",
-        "录音已进入转写队列",
-        language: language
-      )
+      return L10n.catalogString("UserFacingRuntimePresentation.Recording.queued.for.transcription", language: language)
     case .audioProcessingEnqueued:
-      return localized("Audio queued for processing", "音频已进入处理队列", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Audio.queued.for.processing", language: language)
     case .audioProcessingStarted:
-      return localized("Audio processing started", "已开始处理音频", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Audio.processing.started", language: language)
     case .audioProcessingTemporaryFileRemoved:
-      return localized("Temporary recording removed", "临时录音已清理", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Temporary.recording.removed", language: language)
     case .sessionTransformStep:
-      return localized("Text cleanup applied", "已完成文本整理", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Text.cleanup.applied", language: language)
     case .sessionAction:
-      return localized("Output action completed", "输出动作已完成", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Output.action.completed", language: language)
     case .clipboardInjectTextPrepare:
-      return localized("Preparing text insertion", "正在准备输入文本", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Preparing.text.insertion", language: language)
     case .clipboardInjectPasteBegin:
-      return localized("Text insertion started", "已开始输入文本", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Text.insertion.started", language: language)
     case .clipboardInjectPasteEnd:
-      return localized("Text insertion finished", "文本输入已完成", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Text.insertion.finished", language: language)
     case .clipboardInjectRestore:
-      return localized("Clipboard restored", "剪贴板已恢复", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Clipboard.restored", language: language)
     case .sessionStage:
       return sessionStageTitle(
         event.metadata["stage"],
@@ -195,17 +169,17 @@ enum DiagnosticEventPresentation {
   ) -> String? {
     switch stage {
     case "preparing":
-      return localized("Preparing workflow", "正在准备工作流", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Preparing.workflow", language: language)
     case "recognizing":
-      return localized("Recognizing speech on device", "正在本机识别语音", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Recognizing.speech.on.device", language: language)
     case "transforming":
-      return localized("Formatting transcription", "正在整理转写文本", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Formatting.transcription", language: language)
     case "saving":
-      return localized("Saving text", "正在保存文本", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Saving.text", language: language)
     case "delivering":
-      return localized("Delivering text", "正在投递文本", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Delivering.text", language: language)
     case "completed":
-      return localized("Workflow completed", "工作流已完成", language: language)
+      return L10n.catalogString("UserFacingRuntimePresentation.Workflow.completed", language: language)
     default:
       return nil
     }
@@ -216,16 +190,8 @@ enum DiagnosticEventPresentation {
     language: AppLanguage
   ) -> String {
     let subsystem = L10n.subsystem(event.subsystem, language: language)
-    return language == .english
-      ? "\(subsystem) event: \(event.event)"
-      : "\(subsystem)事件：\(event.event)"
+    return L10n.resource("UserFacingRuntimePresentation.event", defaultValue: "\(String(describing: subsystem)) event: \(String(describing: event.event))")
+      .string(for: language)
   }
 
-  private static func localized(
-    _ english: String,
-    _ simplifiedChinese: String,
-    language: AppLanguage
-  ) -> String {
-    language == .english ? english : simplifiedChinese
-  }
 }

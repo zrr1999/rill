@@ -44,12 +44,8 @@ struct DiagnosticTimelineEntry: Identifiable, Sendable {
   let position: Int
 
   func copyAccessibilityLabel(language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      return "Copy diagnostic entry \(position)"
-    case .simplifiedChinese:
-      return "复制第 \(position) 条诊断记录"
-    }
+    return L10n.resource("DiagnosticTimelineEntry.Copy.diagnostic.entry", defaultValue: "Copy diagnostic entry \(String(describing: position))").string(
+      for: language)
   }
 
   static func build(from events: [DiagnosticEvent], limit: Int) -> [Self] {

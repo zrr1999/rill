@@ -15,7 +15,7 @@ final class UnifiedWorkspaceTests: XCTestCase {
     model.voice.activeRunID = activeRunID
     model.voice.isRunning = true
     var messages: [String] = []
-    model.recordWorkspace.buffers.showMessageAction = { messages.append($0) }
+    model.recordWorkspace.buffers.showMessageAction = { messages.append($0.string(for: .english)) }
 
     model.handle(.recordBufferInputFailed(recordID: RecordID()))
 
@@ -268,11 +268,6 @@ final class UnifiedWorkspaceTests: XCTestCase {
     XCTAssertEqual(search.recordState, .loaded)
     XCTAssertEqual(search.historyState, .loaded)
     XCTAssertTrue(search.results(matching: request("old")).isEmpty)
-  }
-
-  func testQuickPanelPreviewUsesExactWidthBoundary() {
-    XCTAssertFalse(RecordQuickPanelLayoutPolicy.usesSidePreview(width: 759))
-    XCTAssertTrue(RecordQuickPanelLayoutPolicy.usesSidePreview(width: 760))
   }
 
   func testWorkspaceCopyIsExplicitAndReportsActualOutcome() async throws {

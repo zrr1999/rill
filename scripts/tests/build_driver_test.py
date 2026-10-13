@@ -37,6 +37,32 @@ class BuildDriverTests(unittest.TestCase):
             with self.assertRaises(build.BuildError):
                 build.main(["test-domain", "--scratch-path", ".build"])
 
+    def test_build_and_tests_compile_catalogs_without_cleaning_shared_outputs(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(build, "toolchain_identity", return_value={"swift": "fixture"}),
+            patch.object(build.BuildContext, "swift", return_value="") as swift,
+            patch.object(build.BuildContext, "clean") as clean,
+        ):
+            output = self.root / ".build/compiled-output"
+            for arguments in (
+                ["build", "--product", "RillApp"],
+                ["test", "--parallel", "--num-workers", "4"],
+                ["test", "--skip-build", "--filter", "RillUITests"],
+                ["build", "--product", "RillApp"],
+            ):
+                build.main(arguments + ["--package-path", str(self.root)])
+                self.assertEqual(build.option(swift.call_args.args[1], ("--build-system",), None), "swiftbuild")
+                if output.exists():
+                    self.assertEqual(output.read_text(), "compiled")
+                else:
+                    output.write_text("compiled")
+            clean.assert_not_called()
+            build.main(["build", "--build-system", "native", "--package-path", str(self.root)])
+            self.assertEqual(build.option(swift.call_args.args[1], ("--build-system",), None), "native")
+            build.main(["test-domain", "--filter", "SessionCoordinatorTests", "--package-path", str(self.root)])
+            self.assertNotIn("--build-system", swift.call_args.args[1])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -167,16 +193,47 @@ class BuildDriverTests(unittest.TestCase):
             self.context.swift("test", ["--filter", "SomeTest"], quiet=True)
         command = capture.call_args.args[0]
         self.assertEqual(
-            command[:5],
+            command[:3],
             [
                 "swift",
                 "test",
                 "--force-resolved-versions",
-                "-Xswiftc",
-                "-warnings-as-errors",
             ],
         )
         self.assertIn("--scratch-path", command)
+        self.assertNotIn("-warnings-as-errors", command)
+
+    def test_real_manifest_rejects_first_party_swift_warnings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = (build.PROJECT / "Package.swift").read_text()
+            # Keep the real target and its settings; remove unrelated dependencies
+            # so this negative compilation only exercises the package warning gate.
+            manifest += """
+package.dependencies = []
+package.products = []
+package.targets.removeAll { $0.name != "RillCore" }
+"""
+            (root / "Package.swift").write_text(manifest)
+            source = root / "Sources/RillCore/Warning.swift"
+            source.parent.mkdir(parents=True)
+            source.write_text('#warning("Rill warning gate regression fixture")\n')
+            for configuration in ("debug", "release"):
+                with self.subTest(configuration=configuration):
+                    result = subprocess.run(
+                        [
+                            "swift", "build", "--package-path", str(root),
+                            "--build-system", "native", "-c", configuration,
+                        ],
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(
+                        "error: Rill warning gate regression fixture",
+                        result.stdout + result.stderr,
+                    )
 
     def test_first_compile_failure_keeps_partial_incremental_outputs(self):
         partial = self.context.scratch / "out/partial.o"

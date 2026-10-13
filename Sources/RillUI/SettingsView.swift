@@ -124,15 +124,6 @@ struct SettingsPermissionPresentation: Equatable {
 public struct SettingsView: View {
   @Bindable var model: AppModel
   let privacyNoticeDocument: PrivacyNoticeDocument?
-  @State var vocabularyKind: VocabularyRuleKind = .mapping
-  @State var vocabularyPattern = ""
-  @State var vocabularyReplacement = ""
-  @State var vocabularyMatchMode: VocabularyMatchMode = .exactPhrase
-  @State var vocabularyCaseSensitive = false
-  @State var vocabularyBundleIdentifier = ""
-  @State var vocabularyGroupID: UUID?
-  @State var vocabularyLocale = ""
-  @State var vocabularyPriority = 0
   @State var sensitiveAppBundleIdentifier = ""
   @State var sensitiveAppApplicationName = ""
   @State var editingSensitiveAppRuleID: UUID?
@@ -145,7 +136,7 @@ public struct SettingsView: View {
   @State var wakePhrasesText: String
   @State var wakeListeningDraftEnabled: Bool
   @State var isApplyingWakeWordSettings = false
-  @State var wakeWordSettingsError: String?
+  @State var wakeWordSettingsError: WakeWordSettingsUpdateResult?
   @FocusState var focusedSettingsItem: SettingsItem?
   @AccessibilityFocusState var accessibilityFocusedSettingsItem: SettingsItem?
   @FocusState private var focusedSettingsSection: SettingsSection?
@@ -212,6 +203,17 @@ public struct SettingsView: View {
         }
       }
       .formStyle(.grouped)
+      .buttonStyle(.glass)
+      .safeAreaBar(edge: .top, alignment: .leading, spacing: 0) {
+        Label(pane.title(language: model.settings.language), systemImage: pane.symbolName)
+          .font(.title2.weight(.semibold))
+          .symbolRenderingMode(.hierarchical)
+          .accessibilityAddTraits(.isHeader)
+          .padding(.horizontal, RillSpacing.page)
+          .padding(.top, RillSpacing.row)
+          .padding(.bottom, RillSpacing.panel)
+      }
+      .scrollEdgeEffectStyle(.soft, for: .top)
       .task(id: model.settingsNavigationRequest?.id) {
         guard let request = model.settingsNavigationRequest else { return }
         await positionSettingsSection(request, proxy: proxy)
@@ -261,6 +263,7 @@ public struct SettingsView: View {
     } message: { confirmation in
       Text(destructiveConfirmationDetail(confirmation))
     }
+    .environment(\.locale, model.settings.language.formattingLocale)
   }
 
   private var permissionsSection: some View {

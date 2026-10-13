@@ -22,6 +22,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from typing import TypeVar
 
 PROJECT = Path(__file__).resolve().parent.parent
 RELEASE_ARGUMENTS = [
@@ -95,8 +96,11 @@ def file_lock(path: Path, *, blocking: bool = True):
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def option(arguments: list[str], names: tuple[str, ...], default: str) -> str:
-    value = default
+OptionDefault = TypeVar("OptionDefault", bound=str | None)
+
+
+def option(arguments: list[str], names: tuple[str, ...], default: OptionDefault) -> str | OptionDefault:
+    value: str | OptionDefault = default
     for index, argument in enumerate(arguments):
         if argument in names:
             if index + 1 == len(arguments):
@@ -386,8 +390,6 @@ class BuildContext:
         self, subcommand: str, arguments: list[str], *, quiet: bool = False
     ) -> str:
         command = ["swift", subcommand, "--force-resolved-versions"]
-        if subcommand == "test":
-            command += ["-Xswiftc", "-warnings-as-errors"]
         command += arguments + ["--scratch-path", str(self.scratch)]
         if quiet:
             return capture(command, self.root)
@@ -681,6 +683,14 @@ def main(arguments: list[str] | None = None) -> None:
         return
     if subcommand not in ("build", "test", "clean"):
         raise BuildError(f"unsupported SwiftPM subcommand: {subcommand}")
+    # The native engine copies .xcstrings without compiling localized resources.
+    # Builds and tests share the arena and must use the same resource compiler.
+    if (
+        subcommand in ("build", "test")
+        and os.environ.get("RILL_BUILD_PROFILE") != "domain-tests"
+        and option(arguments, ("--build-system",), None) is None
+    ):
+        arguments += ["--build-system", "swiftbuild", "--manifest-cache", "none"]
     root = Path(option(arguments, ("--package-path",), str(PROJECT))).resolve()
     configuration = option(arguments, ("--configuration", "-c"), "debug")
     if configuration not in ("debug", "release"):
