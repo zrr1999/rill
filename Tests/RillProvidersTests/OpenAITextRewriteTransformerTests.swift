@@ -630,6 +630,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
         "tools": [],
         "metadata": {},
         "parallel_tool_calls": false,
+        "tool_choice": "auto",
         "status": "completed"
       }
       """.utf8
@@ -676,6 +677,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
         "tools": [],
         "metadata": {},
         "parallel_tool_calls": false,
+        "tool_choice": "auto",
         "status": "completed"
       }
       """.utf8
