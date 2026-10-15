@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import RillInputMethodContracts
 import Testing
 
 @testable import RillPlatform

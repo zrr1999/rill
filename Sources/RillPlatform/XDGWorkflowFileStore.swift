@@ -9,7 +9,7 @@ import TOML
 /// specification. Files are deliberately independent so they remain easy to
 /// hand-author, diff, copy and remove with ordinary tools.
 public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
-  public static let currentSchemaVersion = 2
+  public static let currentSchemaVersion = WorkflowDocument.schemaVersion
   public static let maximumFileCount = 256
   public static let maximumFileSize = 1_048_576
 
@@ -63,7 +63,9 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     }
     guard isDirectory.boolValue else {
       return WorkflowFileLoadResult(issues: [
-        WorkflowFileIssue(filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.")
+        WorkflowFileIssue(
+          filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.",
+          reason: .file(.configurationPathIsNotDirectory))
       ])
     }
 
@@ -85,7 +87,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
         issues: [
           WorkflowFileIssue(
             filename: configurationDirectoryURL.lastPathComponent,
-            message: "The workflow configuration directory could not be read."
+            message: "The workflow configuration directory could not be read.",
+            reason: .directoryUnreadable
           )
         ]
       )
@@ -98,7 +101,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
       issues.append(
         WorkflowFileIssue(
           filename: configurationDirectoryURL.lastPathComponent,
-          message: "Only the first \(Self.maximumFileCount) TOML files were loaded."
+          message: "Only the first \(Self.maximumFileCount) TOML files were loaded.",
+          reason: .fileLimit(Self.maximumFileCount)
         )
       )
     }
@@ -126,6 +130,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
           WorkflowFileIssue(
             filename: fileURL.lastPathComponent,
             message: Self.safeMessage(for: error),
+            reason: (error as? WorkflowFileStoreError).map(WorkflowFileIssue.Reason.file) ?? .invalidDocument,
             workflowID: identifiedID ?? UUID(uuidString: String(fileURL.deletingPathExtension().lastPathComponent.suffix(36)))
           )
         )
@@ -142,6 +147,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
           WorkflowFileIssue(
             filename: record.fileURL.lastPathComponent,
             message: "The workflow ID is also declared by another TOML file.",
+            reason: .duplicateID,
             workflowID: record.workflow.id
           )
         )
@@ -316,32 +322,6 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
       return error.localizedDescription
     default:
       return "The TOML document could not be parsed. \(error.localizedDescription)"
-    }
-  }
-}
-
-enum WorkflowFileStoreError: Error, LocalizedError {
-  case configurationPathIsNotDirectory
-  case fileOutsideConfigurationDirectory
-  case unsupportedFile
-  case fileTooLarge
-  case unsupportedSchema(Int)
-  case invalidWorkflow(String)
-
-  var errorDescription: String? {
-    switch self {
-    case .configurationPathIsNotDirectory:
-      "The workflow configuration path is not a directory."
-    case .fileOutsideConfigurationDirectory:
-      "The workflow file is outside the configured workflow directory."
-    case .unsupportedFile:
-      "Only regular, non-symbolic-link TOML files are accepted."
-    case .fileTooLarge:
-      "The TOML file exceeds the 1 MiB size limit."
-    case .unsupportedSchema(let version):
-      "Unsupported workflow schema version \(version); expected \(XDGWorkflowFileStore.currentSchemaVersion)."
-    case .invalidWorkflow(let message):
-      "The workflow is invalid: \(message)"
     }
   }
 }

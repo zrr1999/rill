@@ -1925,7 +1925,9 @@ final class RecordingSessionManagerTests: XCTestCase {
       format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
       fileURL: URL(fileURLWithPath: "/dev/null")
     )
-    let captureService = MockAudioCaptureService(audio: audio)
+    let captureCancellationGate = RecordingCancellationGate()
+    let captureService = MockAudioCaptureService(
+      audio: audio, cancellationGate: captureCancellationGate)
     let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
@@ -1983,6 +1985,7 @@ final class RecordingSessionManagerTests: XCTestCase {
       await Task.yield()
     }
     guard cancellationWasAccepted else {
+      await captureCancellationGate.release()
       await transferGate.release()
       await cancellationTask.value
       await finishTask.value
@@ -1991,15 +1994,20 @@ final class RecordingSessionManagerTests: XCTestCase {
       return
     }
 
+    await captureCancellationGate.waitUntilEntered()
+
     // A new run must not start while queue-owned cancellation is still
     // draining. The old operation retains the busy claim until teardown
     // has actually completed.
     await manager.beginPushToTalk()
     let captureWhileCancelling = await captureService.snapshot()
+    let startsWhileCancelling = await captureService.startCalls()
     let stateWhileCancelling = await manager.currentState()
-    XCTAssertNil(captureWhileCancelling)
+    XCTAssertEqual(captureWhileCancelling?.runID, firstRunID)
+    XCTAssertEqual(startsWhileCancelling, 1)
     XCTAssertEqual(stateWhileCancelling, .cancelling(firstRunID))
 
+    await captureCancellationGate.release()
     await transferGate.release()
     await cancellationTask.value
     await finishTask.value

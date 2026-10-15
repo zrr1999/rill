@@ -418,10 +418,7 @@ extension SettingsView {
       descriptor.capability == .speechToText
       ? L10n.settingsText(.settingsSpeechModelCapabilitySTT, language: model.settings.language)
       : L10n.settingsText(.settingsSpeechModelCapabilityTTS, language: model.settings.language)
-    let size = ByteCountFormatter.string(
-      fromByteCount: Int64(clamping: descriptor.downloadByteCount),
-      countStyle: .file
-    )
+    let size = Int64(clamping: descriptor.downloadByteCount).formatted(.byteCount(style: .file).locale(model.settings.language.formattingLocale))
     let name =
       model.trustedLocalSpeechModels.first { $0.id == descriptor.id }
       .map { model.localSpeechModelDisplayName($0.id) }

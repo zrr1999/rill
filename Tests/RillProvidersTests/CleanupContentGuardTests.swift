@@ -1,0 +1,118 @@
+import Testing
+@testable import RillProviders
+
+struct CleanupContentGuardTests {
+  @Test(arguments: [
+    ("预算五百", "预算两千。"),
+    ("等半小时", "等半天。"),
+    ("下午三点半开会", "下午三点开会。"),
+    ("下午三点十分开会", "下午三点十五分开会。"),
+    ("下午三点十分开会", "下午三点开会。"),
+    ("预算五", "预算九。"),
+    ("预算千万", "预算两千万。"),
+    ("耗时十分", "耗时五分。"),
+    ("人民币十分", "人民币。"),
+    ("排第十", "排第九。"),
+    ("十", "九"),
+    ("选一", "选二。"),
+    ("下周三开会", "下周五开会。"),
+    ("星期三开会", "星期五开会。"),
+    ("礼拜三开会", "礼拜五开会。"),
+    ("第三章", "第五章。"),
+    ("五月三号", "五月五号。"),
+    ("三楼", "五楼。"),
+    ("两倍", "三倍。"),
+    ("买三本书", "买五本书。"),
+    ("共三页", "共五页。"),
+    ("预算500元", "预算500美元。"),
+    ("预算$500", "预算€500。"),
+    ("预算人民币500", "预算美元500。"),
+    ("延迟-5ms", "延迟5ms。"),
+    ("比例5%", "比例5。"),
+    ("预算五百", "预算500。"),
+    ("版本v1.2.3", "版本v1.2.4。"),
+    ("版本v2", "版本v3。"),
+    ("买5,卖6", "买6,卖5。"),
+    ("访问 https://example.org/a?x=1", "访问 https://example.org/a?y=1。"),
+    ("访问 https://example.org/a", "访问 https://example.com/a。"),
+    ("访问网页", "访问 https://example.org/a。"),
+    ("保留user_id", "保留userID。"),
+    ("调用getUser", "调用getUserBackup。"),
+    ("调用getUser", "调用my_getUser。"),
+    ("调用getUser(id:)", "调用getUser(name:)。"),
+    ("调用getUser()", "调用getUser。"),
+    ("调用api.getUser(id:)", "调用api.getUser(name:)。"),
+    ("保留HTTPClient", "保留HttpClient。"),
+    ("保留`user_id`", "保留`userID`。"),
+    ("使用sha256", "使用sha512。"),
+    ("运行--dry-run", "运行--force。"),
+    ("不要删除原件，删除副本", "删除原件，不要删除副本。"),
+    ("不能发布", "能发布。"),
+    ("暂时发布", "暂时不发布。"),
+    ("Don't delete it", "Delete it."),
+    ("Do not delete it", "Do not archive it."),
+    ("预算为1. 版本待定", "预算为2. 版本待定"),
+    ("1.2.3版本", "1.2.4版本"),
+    ("1. 预算500。\n2. 延迟5ms。", "3. 预算2000。\n4. 延迟5ms。"),
+    ("```\n1. 500\n```", "```\n1. 2000\n```"),
+  ])
+  func rejectsLiteralOrNegationChanges(_ pair: (String, String)) {
+    #expect(!CleanupContentGuard.accepts(transcript: pair.0, proposed: pair.1))
+  }
+
+  @Test(arguments: [
+    ("温度−5℃", "温度−5 ℃。"),
+    ("延迟5 ms", "延迟5ms。"),
+    ("内存2 MiB", "内存2MiB。"),
+    ("预算500元", "预算500 元。"),
+    ("预算1,000元", "预算1,000元。"),
+    ("买5,卖6", "买5，卖6。"),
+    ("访问 https://example.org/a?x=1", "访问 https://example.org/a?x=1。"),
+    ("https://example.org/a", "1. https://example.org/a"),
+    ("`user_id`", "1. `user_id`"),
+    ("打开 https://example.org/not-ready 接借口", "打开 https://example.org/not-ready 接接口。"),
+    ("运行--no-cache 接借口", "运行--no-cache 接接口。"),
+    ("调用getUser", "调用 getUser。"),
+    ("调用getUser(id:)", "调用 getUser(id:)。"),
+    ("保留`user_id`", "保留`user_id`。"),
+    ("这里调用 get user by eye dee", "这里调用 getUserByID。"),
+    ("调用 freeze transcript 这个方法", "调用 freeze(transcript:) 这个方法。"),
+    ("使用 sha two five six", "使用sha256。"),
+    ("把记录交给 Record Store", "把记录交给RecordStore。"),
+    ("这个变量叫 user ID，不是 user name", "这个变量叫userID，不是userName。"),
+    ("do not delete it", "Do not delete it."),
+    ("先接接口 文档暂时不改", "先接接口。文档暂时不改。"),
+    ("先接接口 文档暂时不改", "1. 先接接口。\n2. 文档暂时不改。"),
+    ("1. 预算500。\n2. 延迟5ms。", "3. 预算500。\n4. 延迟5ms。"),
+    ("1) 不改文档\n2) 预算500", "1. 不改文档。\n2. 预算500。"),
+    ("不要删原件。先接借口。", "不要删原件。先接接口。"),
+    ("总结一下这些内容", "总结一下这些内容。"),
+    ("河水是真实的", "河水是真实的。"),
+    ("这个特别好我们我们先测试", "这个特别好，我们先测试。"),
+    ("非常好我们我们先测试", "非常好，我们先测试。"),
+    ("类别区别我们我们先测试", "类别区别，我们先测试。"),
+    ("我们一起一起去", "我们一起去。"),
+    ("查看一下查看一下", "查看一下。"),
+    ("等一下等一下", "等一下。"),
+    ("选一下选一下", "选一下。"),
+    ("统一统一格式", "统一格式。"),
+    ("一经确认就开始", "已经确认就开始。"),
+    ("千万千万记得保存", "千万记得保存。"),
+    ("万一万一失败就停", "万一失败就停。"),
+    ("这个十分十分好", "这个十分好。"),
+    ("大家三三两两三三两两地来", "大家三三两两地来。"),
+    ("三三两两三三两两", "三三两两。"),
+  ])
+  func permitsFormattingAndSpokenIdentifierCorrections(_ pair: (String, String)) {
+    #expect(CleanupContentGuard.accepts(transcript: pair.0, proposed: pair.1))
+  }
+
+  @Test(arguments: [
+    ("暂时不改接囗", "暂时不改接口。"),
+    ("Do not delete it", "Never delete it."),
+    ("不要删原件。先接借口。", "不要删原件，先接接口。"),
+  ])
+  func conservativelyRejectsWordEditsInsideNegationSentences(_ pair: (String, String)) {
+    #expect(!CleanupContentGuard.accepts(transcript: pair.0, proposed: pair.1))
+  }
+}

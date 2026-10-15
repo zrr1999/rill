@@ -834,10 +834,16 @@ enum AppSettingsCodec {
       invalidKeys.insert(.recordingDurationLimit)
     }
     for role in LanguageModelRole.allCases {
-      if let value = values[role.baseURLKey], !OpenAISettings.isValidBaseURL(value) {
+      if let value = values[role.baseURLKey],
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        !OpenAISettings.isValidBaseURL(value)
+      {
         invalidKeys.insert(role.baseURLKey)
       }
-      if let value = values[role.modelKey], !OpenAISettings.isValidModelIdentifier(value) {
+      if let value = values[role.modelKey],
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        !OpenAISettings.isValidModelIdentifier(value)
+      {
         invalidKeys.insert(role.modelKey)
       }
     }

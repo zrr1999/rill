@@ -1617,7 +1617,8 @@ private enum AppContainerFactory {
         let response = await MainActor.run {
           CloudPrivacyConfirmation.confirm(
             workflow: workflow,
-            processingDestinations: processingDestinations
+            processingDestinations: processingDestinations,
+            language: authorizationBridge.model?.settings.language ?? .preferred
           )
         }
         switch response {
@@ -2919,17 +2920,16 @@ private enum CloudPrivacyConfirmation {
 
   static func confirm(
     workflow: WorkflowDefinition,
-    processingDestinations: [PrivacyProcessingDestination]
+    processingDestinations: [PrivacyProcessingDestination],
+    language: AppLanguage
   ) -> Response {
-    let usesChinese = Locale.current.identifier.lowercased().hasPrefix("zh")
-    let language: AppLanguage = usesChinese ? .simplifiedChinese : .english
     let alert = NSAlert()
     alert.alertStyle = .warning
     alert.messageText = L10n.cloudPrivacyTitle(language: language)
     alert.informativeText = CloudPrivacyConfirmationCopy.informativeText(
-      workflowName: workflow.name,
+      workflowName: L10n.workflowName(workflow.presentation, language: language),
       processingDestinations: processingDestinations,
-      usesChinese: usesChinese
+      language: language
     )
     alert.addButton(withTitle: L10n.cloudPrivacyAllowAndRemember(language: language))
     alert.addButton(withTitle: L10n.cloudPrivacyAllowOnce(language: language))
@@ -2946,11 +2946,10 @@ enum CloudPrivacyConfirmationCopy {
   static func informativeText(
     workflowName: String,
     processingDestinations: [PrivacyProcessingDestination],
-    usesChinese: Bool
+    language: AppLanguage
   ) -> String {
     let sendsSpeech = processingDestinations.contains(.cloudSpeech)
     let sendsText = processingDestinations.contains(.cloudText)
-    let language: AppLanguage = usesChinese ? .simplifiedChinese : .english
     let processingCopy = L10n.cloudPrivacyProcessing(
       workflowName: workflowName, sendsSpeech: sendsSpeech, sendsText: sendsText, language: language)
     let authorizationCopy = L10n.cloudPrivacyAuthorization(language: language)

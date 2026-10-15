@@ -1,12 +1,14 @@
 import AppKit
 import RillCore
 import RillPlatform
+import RillUI
 
 /// NSDraggingSession uses the drag pasteboard. It never touches NSPasteboard.general.
 @MainActor
 final class BufferDragView: NSView, NSDraggingSource {
   private let record: Record
   private let asFile: Bool
+  private var language: AppLanguage
   private let shouldBegin: () -> Bool
   private let completion: (BufferTextResult) -> Void
   private var writers: [BufferFilePromiseWriter] = []
@@ -17,9 +19,10 @@ final class BufferDragView: NSView, NSDraggingSource {
   private var completed = false
 
   init(
-    record: Record, asFile: Bool = false, shouldBegin: @escaping () -> Bool,
+    record: Record, asFile: Bool = false, language: AppLanguage, shouldBegin: @escaping () -> Bool,
     completion: @escaping (BufferTextResult) -> Void
   ) {
+    self.language = language
     self.shouldBegin = shouldBegin
     self.record = record
     self.asFile = asFile
@@ -30,14 +33,20 @@ final class BufferDragView: NSView, NSDraggingSource {
     layer?.cornerRadius = 10
     setAccessibilityElement(true)
     setAccessibilityRole(.button)
-    setAccessibilityLabel(asFile ? "Drag PNG file / 拖出 PNG 文件" : "Drag to copy / 拖到目标应用以复制")
+    updateLanguage(language)
   }
 
   required init?(coder: NSCoder) { nil }
 
+  func updateLanguage(_ language: AppLanguage) {
+    self.language = language
+    setAccessibilityLabel(L10n.bufferDragTitle(asFile: asFile, language: language))
+    needsDisplay = true
+  }
+
   override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
-    let label = asFile ? "↗ PNG 文件 / PNG file" : "↗ 拖到目标应用 / Drag to copy"
+    let label = "↗ " + L10n.bufferDragTitle(asFile: asFile, language: language)
     (label as NSString).draw(
       at: NSPoint(x: 18, y: 26),
       withAttributes: [

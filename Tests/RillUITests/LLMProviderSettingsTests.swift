@@ -4,6 +4,72 @@ import Testing
 
 @MainActor
 struct LLMProviderSettingsTests {
+  @Test(arguments: LanguageModelRole.allCases, ["", " \t\n"])
+  func blankSelectionsRemainEditableAfterReload(role: LanguageModelRole, blank: String) async throws {
+    let store = UITestSettingsStore(storage: [.languageModelRolesMigrated: "true"])
+    let credentials = UITestSecureCredentialStore(storage: [role.credentialKey: "synthetic-test-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials, settingsWriteDebounceDuration: .zero).model
+    await model.waitForInitialVoiceConfiguration()
+    model.setLanguageModelBaseURL(blank, for: role)
+    model.setLanguageModelIdentifier(blank, for: role)
+    await model.flushPendingPersistenceWrites()
+    await model.stopSettingsReadTasksForApplicationShutdown()
+
+    let reloaded = makeHarness(settingsStore: store, credentialStore: credentials, settingsWriteDebounceDuration: .zero).model
+    await reloaded.waitForInitialVoiceConfiguration()
+    #expect(reloaded.settings.languageModelSettings(for: role).baseURL == blank)
+    #expect(reloaded.settings.languageModelSettings(for: role).model == blank)
+    #expect(reloaded.settings.canMutateScalarSettings(in: role.settingsDomain))
+    #expect(reloaded.settings.credentialAvailability(for: role) == .available)
+    #expect(!reloaded.settings.canVerifyLanguageModel(role))
+    #expect(throws: LanguageModelConfigurationError.invalidConfiguration(role)) {
+      try reloaded.languageModelSettingsSource.currentSettings(for: role)
+    }
+
+    reloaded.setLanguageModelBaseURL("https://gateway.example/v1", for: role)
+    reloaded.setLanguageModelIdentifier("custom-model", for: role)
+    await reloaded.flushPendingPersistenceWrites()
+    #expect(reloaded.settings.canVerifyLanguageModel(role))
+    #expect(try await store.string(forKey: role.baseURLKey) == "https://gateway.example/v1")
+    #expect(try await store.string(forKey: role.modelKey) == "custom-model")
+    #expect(try reloaded.languageModelSettingsSource.currentSettings(for: role).baseURL == "https://gateway.example/v1")
+    await reloaded.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test(arguments: LanguageModelRole.allCases)
+  func retryRestoresBlankSelectionsWithoutUsingDefaults(role: LanguageModelRole) async {
+    let store = UITestSettingsStore(
+      storage: [.languageModelRolesMigrated: "true", role.baseURLKey: "", role.modelKey: ""],
+      unavailableKeys: [role.baseURLKey, role.modelKey])
+    let credentials = UITestSecureCredentialStore(storage: [role.credentialKey: "synthetic-test-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials).model
+    await model.waitForInitialVoiceConfiguration()
+    #expect(model.settings.credentialAvailability(for: role) == .inaccessible)
+    await store.setUnavailableKeys([])
+    model.retryUnavailableScalarSettings(in: role.settingsDomain)
+    await model.settings.settingsReadTaskOwner.waitForActiveTask(in: .scalarSettingsRetry(role.settingsDomain))
+    #expect(model.settings.languageModelSettings(for: role).baseURL == "")
+    #expect(model.settings.languageModelSettings(for: role).model == "")
+    #expect(model.settings.credentialAvailability(for: role) == .available)
+    #expect(model.settings.canMutateScalarSettings(in: role.settingsDomain))
+    #expect(!model.settings.canVerifyLanguageModel(role))
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test(arguments: LanguageModelRole.allCases)
+  func malformedNonblankSelectionsRemainUnavailable(role: LanguageModelRole) async {
+    let store = UITestSettingsStore(storage: [
+      .languageModelRolesMigrated: "true", role.baseURLKey: "http://public.example/v1", role.modelKey: "invalid model",
+    ])
+    let credentials = UITestSecureCredentialStore(storage: [role.credentialKey: "synthetic-test-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials).model
+    await model.waitForInitialVoiceConfiguration()
+    #expect(model.settings.credentialAvailability(for: role) == .inaccessible)
+    #expect(!model.settings.canMutateScalarSettings(in: role.settingsDomain))
+    #expect(!model.settings.canVerifyLanguageModel(role))
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
   @Test func failedSettingsLoadMakesBothRolesUnavailable() async {
     let model = makeHarness(settingsStore: UITestSettingsStore(failBatchReads: true)).model
     await model.waitForInitialVoiceConfiguration()

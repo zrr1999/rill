@@ -54,13 +54,6 @@ enum ContextCorrectionPrompts {
       vocabulary: request.vocabularyReference?.terms.isEmpty == false ? request.vocabularyReference : nil)
     return "reference_data:\n" + String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
   }
-
-  static func preservingNumbers(transcript: String, proposed: String) -> String {
-    let numbers = { (text: String) in
-      text.matches(of: /[0-9]+(?:[.,][0-9]+)*/).map { String($0.output) }
-    }
-    return numbers(transcript) == numbers(proposed) ? proposed : transcript
-  }
 }
 
 public struct ContextCorrectionProvider: CorrectionContextSummarizing, MemoryConsolidating {

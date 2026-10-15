@@ -342,6 +342,11 @@ used by a run into an ephemeral `WorkflowModelSnapshot`, which follows capture,
 queued processing, recognized text, transforms and speech output. Provider consent
 uses that same snapshot. Credential revocation is checked before each text request.
 
+Blank endpoint and model fields remain editable after settings reload or recovery.
+They represent incomplete configuration, retain their stored values, and cannot be
+verified or admitted to a workflow run until completed. Malformed nonblank values
+and unavailable storage still block the affected settings domain.
+
 Workflow v3 contains text roles and a single ASR category. Version 1/2 imports drop
 concrete ASR/TTS overrides and normalize text roles without rewriting source on read.
 The global ASR setting determines recognition options at admission. Classification

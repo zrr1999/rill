@@ -12,8 +12,8 @@ struct RecordRouteEditorView: View {
 
   @ViewBuilder
   private var routeSaveError: some View {
-    if let message = workspace.errorMessage {
-      Text(message).font(.callout).foregroundStyle(.red)
+    if let message = workspace.errorPresentation {
+      Text(message.string(for: language)).font(.callout).foregroundStyle(.red)
         .padding(RillSpacing.panel).textSelection(.enabled)
     }
   }
@@ -384,7 +384,7 @@ private struct CaptureRouteEditorSheet: View {
       }
       Text(L10n.recordText(.destinationCollections, language: language)).font(.headline)
       List(collections, selection: $draft.destinationCollectionIDs) { collection in
-        Text(collection.name).tag(collection.id)
+        Text(L10n.collectionName(collection, language: language)).tag(collection.id)
       }
       .frame(height: RouteEditorSheetMetrics.listHeight)
       Toggle(L10n.recordText(.enabledToggle, language: language), isOn: $draft.isEnabled)
@@ -444,7 +444,7 @@ private struct DeliveryRouteEditorSheet: View {
         Picker(L10n.recordText(.targetCollection, language: language), selection: $draft.sinkCollectionID) {
           Text(L10n.recordText(.chooseCollection, language: language)).tag(Optional<RecordCollectionID>.none)
           ForEach(collections) { collection in
-            Text(collection.name).tag(Optional(collection.id))
+            Text(L10n.collectionName(collection, language: language)).tag(Optional(collection.id))
           }
         }
       }
@@ -469,7 +469,7 @@ private struct DeliveryRouteEditorSheet: View {
       .frame(height: RouteEditorSheetMetrics.listHeight)
       Menu(L10n.recordText(.addSourceCollection, language: language)) {
         ForEach(collections.filter { !draft.sourceCollectionIDs.contains($0.id) }) { collection in
-          Button(collection.name) { draft.sourceCollectionIDs.append(collection.id) }
+          Button(L10n.collectionName(collection, language: language)) { draft.sourceCollectionIDs.append(collection.id) }
         }
       }
       Toggle(L10n.recordText(.enabledToggle, language: language), isOn: $draft.isEnabled)

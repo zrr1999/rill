@@ -37,7 +37,6 @@ __pycache__/
 .spark/
 .learnings/
 /.impeccable/
-/SPARK.md
 
 # Isolated development worktrees
 /.agents/worktrees/

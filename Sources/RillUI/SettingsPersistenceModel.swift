@@ -16,8 +16,10 @@ public final class SettingsPersistenceModel {
 
   public internal(set) var isLoadingPrivacySettings = false
   public internal(set) var isSavingPrivacySettings = false
-  public internal(set) var privacySettingsLoadError: String?
-  public internal(set) var privacySettingsSaveError: String?
+  var privacySettingsLoadFailure: LocalizedStringResource?
+  public var privacySettingsLoadError: String? { privacySettingsLoadFailure?.string(for: language) }
+  var privacySettingsSaveFailure: LocalizedStringResource?
+  public var privacySettingsSaveError: String? { privacySettingsSaveFailure?.string(for: language) }
 
   public internal(set) var language: AppLanguage
   public internal(set) var systemClipboardCaptureEnabled: Bool = false
@@ -146,7 +148,7 @@ public final class SettingsPersistenceModel {
     guard let store else {
       if writesPrivacy {
         isSavingPrivacySettings = false
-        privacySettingsSaveError = L10n.runText(.privacySaveStorageUnavailable, language: language)
+        privacySettingsSaveFailure = L10n.resource("run.privacySaveStorageUnavailable")
       }
       failed.merge(entries) { _, latest in latest }
       refreshState()
@@ -166,8 +168,8 @@ public final class SettingsPersistenceModel {
       if currentKeys.contains(where: { entries[$0]?.category == .privacy }) {
         isSavingPrivacySettings = false
         switch result {
-        case .success: privacySettingsSaveError = nil
-        case .failure: privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
+        case .success: privacySettingsSaveFailure = nil
+        case .failure: privacySettingsSaveFailure = localizedPrivacySettingsSaveFailure()
         }
       }
       switch result {
@@ -247,7 +249,7 @@ extension SettingsPersistenceModel {
     do {
       values = try AppSettingsCodec.privacySettingsStorageValues(for: policy)
     } catch {
-      privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
+      privacySettingsSaveFailure = localizedPrivacySettingsSaveFailure()
       isSavingPrivacySettings = false
       return
     }
@@ -258,8 +260,8 @@ extension SettingsPersistenceModel {
       }, onFailure: onFailure)
   }
 
-  private func localizedPrivacySettingsSaveFailure() -> String {
-    L10n.runText(.privacySaveFailedSessionOnly, language: language)
+  private func localizedPrivacySettingsSaveFailure() -> LocalizedStringResource {
+    L10n.resource("run.privacySaveFailedSessionOnly")
   }
 
 }

@@ -25,11 +25,21 @@ public struct WorkflowFileRecord: Sendable, Equatable {
 
 /// A bounded, display-safe parse or validation failure for one TOML file.
 public struct WorkflowFileIssue: Sendable, Equatable {
+  public enum Reason: Sendable, Equatable {
+    case directoryUnreadable
+    case fileLimit(Int)
+    case duplicateID
+    case file(WorkflowFileStoreError)
+    case invalidDocument
+  }
+
+  public var reason: Reason
   public var filename: String
   public var message: String
   public var workflowID: UUID?
 
-  public init(filename: String, message: String, workflowID: UUID? = nil) {
+  public init(filename: String, message: String, reason: Reason = .invalidDocument, workflowID: UUID? = nil) {
+    self.reason = reason
     self.filename = filename
     self.message = message
     self.workflowID = workflowID
@@ -116,4 +126,30 @@ public extension WorkflowFileStore {
   }
   func changes() async -> AsyncStream<Void> { AsyncStream { $0.finish() } }
   func versions(for workflowID: UUID) async throws -> [WorkflowFileVersion] { [] }
+}
+
+public enum WorkflowFileStoreError: Error, LocalizedError, Sendable, Equatable {
+  case configurationPathIsNotDirectory
+  case fileOutsideConfigurationDirectory
+  case unsupportedFile
+  case fileTooLarge
+  case unsupportedSchema(Int)
+  case invalidWorkflow(String)
+
+  public var errorDescription: String? {
+    switch self {
+    case .configurationPathIsNotDirectory:
+      "The workflow configuration path is not a directory."
+    case .fileOutsideConfigurationDirectory:
+      "The workflow file is outside the configured workflow directory."
+    case .unsupportedFile:
+      "Only regular, non-symbolic-link TOML files are accepted."
+    case .fileTooLarge:
+      "The TOML file exceeds the 1 MiB size limit."
+    case .unsupportedSchema(let version):
+      "Unsupported workflow schema version \(version); expected \(WorkflowDocument.schemaVersion)."
+    case .invalidWorkflow(let message):
+      "The workflow is invalid: \(message)"
+    }
+  }
 }
