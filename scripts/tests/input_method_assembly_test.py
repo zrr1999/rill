@@ -3,17 +3,52 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Check the signing boundary for a locally assembled input method bundle."""
+"""Check resources and the signing boundary of the standalone input method bundle."""
 
 import os
 from pathlib import Path
+import plistlib
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from assemble_input_method import sign_bundle
+from assemble_input_method import assemble, sign_bundle
+
+
+class InputMethodAssemblyTests(unittest.TestCase):
+    def test_input_source_icons_resolve_to_bundled_brand_artwork(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = root / "runtime"
+            (runtime / "lib/rime-plugins").mkdir(parents=True)
+            (runtime / "lib/librime.1.16.0.dylib").write_bytes(b"library")
+            (runtime / "bin").mkdir()
+            for name in ("rime_deployer", "rime_dict_manager"):
+                (runtime / "bin" / name).write_bytes(b"helper")
+            executable = root / "RillInputMethod"
+            executable.write_bytes(b"executable")
+            bundle = root / "RillInputMethod.app"
+            with patch("assemble_input_method.prepare", return_value=runtime), \
+                    patch("assemble_input_method.prepare_data"), \
+                    patch("assemble_input_method.subprocess.run"):
+                assemble(executable, bundle)
+
+            contents = bundle / "Contents"
+            info = plistlib.loads((contents / "Info.plist").read_bytes())
+            self.assertIs(info["TISIconIsTemplate"], True)
+            icons = [info["tsInputMethodIconFileKey"]]
+            modes = info["ComponentInputModeDict"]["tsInputModeListKey"].values()
+            for mode in modes:
+                icons.extend(mode[key] for key in (
+                    "tsInputModeMenuIconFileKey", "tsInputModeAlternateMenuIconFileKey",
+                    "tsInputModePaletteIconFileKey",
+                ))
+            brand = Path(__file__).resolve().parents[2] / "Sources/RillApp/Resources/RillMenuBarTemplate.pdf"
+            for icon in icons:
+                with self.subTest(icon=icon):
+                    self.assertEqual((contents / "Resources" / icon).read_bytes(), brand.read_bytes())
 
 
 class InputMethodSigningTests(unittest.TestCase):

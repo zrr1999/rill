@@ -242,16 +242,13 @@ extension AppModel {
     guard !self.history.isUpdatingHistoryRetentionSettings, !self.history.isLocalHistoryMaintenanceRunning else { return }
     guard !self.settings.isRestoringSettings else { return }
     guard let settingsStore else {
-      self.history.historyRetentionSettingsWriteError = L10n.runText(
-        .retentionSaveStorageUnavailable,
-        language: self.settings.language
-      )
-      refreshHistoryRetentionSettingsErrorPresentation()
+      self.history.historyRetentionSettingsWriteFailure = L10n.resource("run.retentionSaveStorageUnavailable")
+
       return
     }
 
-    self.history.historyRetentionSettingsWriteError = nil
-    refreshHistoryRetentionSettingsErrorPresentation()
+    self.history.historyRetentionSettingsWriteFailure = nil
+
     self.history.isUpdatingHistoryRetentionSettings = true
     let task = Task { [weak self, settingsStore] in
       do {
@@ -269,7 +266,7 @@ extension AppModel {
           self.history.applyRunHistoryRetentionPeriod(period)
           self.history.runHistoryRetentionSettingIsInvalid = false
         }
-        self.refreshHistoryRetentionSettingsErrorPresentation()
+
         self.history.isUpdatingHistoryRetentionSettings = false
 
         if shouldPrune {
@@ -281,17 +278,10 @@ extension AppModel {
         guard let self else { return }
         self.history.isUpdatingHistoryRetentionSettings = false
         guard !self.hasBegunApplicationShutdown else { return }
-        self.history.historyRetentionSettingsWriteError = L10n.runText(
-          .retentionSaveFailedRepair,
-          language: self.settings.language
-        )
-        self.refreshHistoryRetentionSettingsErrorPresentation()
+        self.history.historyRetentionSettingsWriteFailure = L10n.resource("run.retentionSaveFailedRepair")
+
         self.append(
-          english: L10n.runText(.retentionSaveFailedNotice, language: .english),
-          simplifiedChinese: L10n.runText(
-            .retentionSaveFailedNotice,
-            language: .simplifiedChinese
-          )
+          L10n.resource("run.retentionSaveFailedNotice")
         )
       }
     }
@@ -348,18 +338,10 @@ extension AppModel {
       self.history.localHistoryMaintenanceBlockedReason = nil
       if counts.totalRemovedCount > 0 || counts.preservedActiveRecordCount > 0 {
         append(
-          english: String(
-            format: L10n.runText(.localHistoryUpdatedFormat, language: .english),
-            counts.totalRemovedCount,
-            counts.preservedActiveRecordCount
-          ),
-          simplifiedChinese: String(
-            format: L10n.runText(
-              .localHistoryUpdatedFormat,
-              language: .simplifiedChinese
-            ),
-            counts.totalRemovedCount,
-            counts.preservedActiveRecordCount
+          L10n.resource(
+            "run.localHistoryUpdatedFormat",
+            defaultValue:
+              "Local history updated: removed \(String(counts.totalRemovedCount)), preserved \(String(counts.preservedActiveRecordCount)) active clipboard item(s)."
           )
         )
       }

@@ -104,9 +104,8 @@ Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/rele
 CI 同时启用原生渲染导出和 10,000 条记录压力验收，并保存渲染产物；
 真实输入、VoiceOver 和多显示器交互仍按 macOS QA 清单单独验收。
 面板重开复用原生宿主视图，同时创建新的搜索会话并替换投递回调；
-原生回归覆盖跨工作区重开后的输入和投递，压力测试保留 150 ms 门槛并报告呈现、布局耗时。
-窗口压力检查失败后，预检额外重放一次并用系统 `sample` 采集该测试进程的调用栈，
-随原生渲染产物保存。诊断重放不改变原检查的失败结果，也不参与通过判定。
+原生回归覆盖跨工作区重开后的输入和投递，万条记录验证保留结果、焦点与有界完成检查。
+呈现和布局耗时使用显式 Release 基准，测量方式与原始样本格式见 [性能基准](Benchmarks/README.md)。
 `test-domain` 从同一份 Package.swift 排除 App、UI、MLX 和原生验收测试目标，
 保留领域测试所需的依赖，并使用独立的 `.artifacts/build/domain-tests`。锁文件校验不变；
 完整 CI 仍使用未裁剪的生产图。该模式不替代 `just ci` 或 Release 模型验收。
@@ -250,7 +249,7 @@ git diff --cached --check
 
 1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
 2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
-3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储和面板压力测试分别放在独立串行进程中，与 `just test` 相同。
+3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储压力测试和一万条记录的面板功能验证分别放在独立串行进程中，与 `just test` 相同。面板验证保留结果、焦点与有界完成检查，不以共享 runner 的实际耗时判定性能退化。
 4. `desktop-tests` 验证真实桌面交互；环境不可用时本次完整门禁失败，后续阶段不运行。
 5. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
 6. 工作区 diff 检查。
@@ -296,6 +295,9 @@ GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可�
 
 `just validate-performance-workloads` 验证工作负载结果。macOS 共享 runner 的耗时日志不提供性能结论；
 `CI - Tests` 中的 `Record workload validation` 按相关源码范围运行。CPU simulation 比较由 `CI - Performance` 负责。
+
+`just bench-performance panel` 显式测量 Release 构建的原生面板展示，保存预热后的原始样本、源码指纹与工具链信息。
+`testBenchmark…` 用例不进入普通预检；性能结论需要同一固定机器上的 base/head 对照和噪声评估，见 [性能基准](Benchmarks/README.md)。
 
 ## GitHub Actions 命名
 
@@ -407,3 +409,7 @@ scripts/preflight.sh commit-messages origin/main HEAD
 - 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
 
 发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。项目许可见 [LICENSE](LICENSE)，安全报告渠道状态与披露规则见 [SECURITY.md](SECURITY.md)。
+
+## 项目演进
+
+[EVOLUTION.md](EVOLUTION.md) 保存项目起源和真实的方向变化。后续方向变化按真实日期追加，包含“触发”“变化”“理由”，同日变更合并；维护后运行 `zendev evolution check`。文中历史状态不替代当前实现和验收证据。

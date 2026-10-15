@@ -36,6 +36,7 @@ struct ContextMemoryControllerTests {
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while memory.isLoading && ContinuousClock.now < deadline { await Task.yield() }
     try #require(memory.isAuthorized)
+    let modelSnapshot = WorkflowModelSnapshot(languageModels: [.fast: await provider.read()])
     await provider.block()
     let context = ContextSnapshot(
       focus: .init(
@@ -47,7 +48,7 @@ struct ContextMemoryControllerTests {
       let result = try await BoundedOperation().run(timeout: .seconds(1)) { [workflow] in
         try await controller.prepare(
           runID: runID, workflow: workflow, context: context,
-          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: runID), vocabularyCandidates: candidates)
+          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: runID), vocabularyCandidates: candidates, modelSnapshot: modelSnapshot)
       }
       let preparation = try #require(result)
       preparation.recordingStarted()
@@ -61,18 +62,21 @@ struct ContextMemoryControllerTests {
       #expect(
         try await controller.prepare(
           runID: UUID(), workflow: workflow, context: secure,
-          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates) == nil)
+          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates, modelSnapshot: modelSnapshot)
+          == nil)
       privacy.update(.init(sensitiveAppRules: [.init(bundleIdentifier: "test.editor")]))
       #expect(
         try await controller.prepare(
           runID: UUID(), workflow: workflow, context: context,
-          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates) == nil)
+          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates, modelSnapshot: modelSnapshot)
+          == nil)
       privacy.update(.init())
       workflow.metadata[WorkflowMetadataKey.catalog] = "custom"
       #expect(
         try await controller.prepare(
           runID: UUID(), workflow: workflow, context: context,
-          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates) == nil)
+          recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates, modelSnapshot: modelSnapshot)
+          == nil)
       memory.invalidateAuthorization()
       #expect(frozen.request.authorization?.isValid == false)
     } catch {
@@ -84,7 +88,7 @@ struct ContextMemoryControllerTests {
     await controller.shutdown()
   }
 
-  @Test func slowOptionalSettingsCannotDelayRecordingOrStartLateReferences() async throws {
+  @Test func frozenProviderAvoidsLiveSettingsReadsDuringContextPreparation() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("rill-context-controller-\(UUID())")
     defer { try? FileManager.default.removeItem(at: directory) }
     let protector = try AESGCMDataProtector(key: Data(repeating: 0x42, count: AESGCMDataProtector.keyByteCount))
@@ -106,6 +110,7 @@ struct ContextMemoryControllerTests {
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while memory.isLoading && ContinuousClock.now < deadline { await Task.yield() }
     #expect(memory.isAuthorized)
+    let modelSnapshot = WorkflowModelSnapshot(languageModels: [.fast: await provider.read()])
     await provider.block()
     let runID = UUID()
     let start = ContinuousClock.now
@@ -119,14 +124,14 @@ struct ContextMemoryControllerTests {
           try await controller.prepare(
             runID: runID, workflow: workflow, context: context,
             recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: runID),
-            vocabularyCandidates: [.init(id: UUID(), term: "Rill", priority: 0)])
+            vocabularyCandidates: [.init(id: UUID(), term: "Rill", priority: 0)], modelSnapshot: modelSnapshot)
         })
       #expect(start.duration(to: .now) < .milliseconds(750))
       preparation.recordingStarted()
       let frozen = try preparation.freeze(transcript: "正文")
       #expect(frozen.request.referenceImage == nil)
       #expect(frozen.request.memorySummary == nil)
-      #expect(frozen.receipt.memorySummary == .timedOut)
+      #expect(frozen.receipt.memorySummary != .timedOut)
       #expect(frozen.request.vocabularyReference?.terms == ["Rill"])
       #expect(frozen.receipt.vocabulary?.status == .ready)
     } catch {

@@ -193,7 +193,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
           WorkflowProcessStep(kind: .normalizeWhitespace),
           WorkflowProcessStep(
             kind: .llmRewrite,
-            prompt: "Answer briefly for speech."
+            prompt: "Answer briefly for speech.", modelRole: .fast
           ),
         ]),
         output: WorkflowOutputPhase(
@@ -201,10 +201,8 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
             OutputActionReference(
               id: SpeechOutputActionID.speak,
               configuration: [
-                SpeechOutputActionConfigurationKey.provider:
-                  SpeechSynthesisProvider.automatic.rawValue,
                 SpeechOutputActionConfigurationKey.voice:
-                  Qwen3TTSVoice.vivian.rawValue,
+                  Qwen3TTSVoice.vivian.rawValue
               ]
             )
           ]

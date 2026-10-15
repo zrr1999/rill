@@ -1,13 +1,13 @@
 import Foundation
 import RillCore
 
-public struct JevHotwordRankingProvider: HotwordRankingProvider {
-  private let client: JevScoreClient
+public struct DecisionHotwordRankingProvider: HotwordRankingProvider {
+  private let client: DecisionScoreClient
 
-  public init() { client = JevScoreClient() }
-  init(session: URLSession) { client = JevScoreClient(session: session) }
+  public init() { client = DecisionScoreClient() }
+  init(session: URLSession) { client = DecisionScoreClient(session: session) }
 
-  public func score(_ request: HotwordRankingRequest, apiKey: String) async throws -> [HotwordRankingScore] {
+  public func score(_ request: HotwordRankingRequest, authorization: DecisionModelSettingsSource.Authorization) async throws -> [HotwordRankingScore] {
     guard (1...50).contains(request.candidates.count),
       request.selectedText.utf8.count <= 1_800,
       request.candidates.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1_800 })
@@ -16,7 +16,7 @@ public struct JevHotwordRankingProvider: HotwordRankingProvider {
       uniqueKeysWithValues: request.candidates.enumerated().map { index, term in
         (
           "term_\(index)",
-          JevScoreClient.Question(
+          DecisionScoreClient.Question(
             instructions: [
               "candidate": term,
               "question": "How relevant is candidate as a speech-recognition vocabulary hint to the supplied "
@@ -37,7 +37,7 @@ public struct JevHotwordRankingProvider: HotwordRankingProvider {
           "application": request.application,
           "workflow": request.workflow,
           "selected_text": request.selectedText,
-        ], questions: questions), apiKey: apiKey)
+        ], questions: questions), authorization: authorization)
     return try request.candidates.indices.map { index in
       guard let answer = response.answers["term_\(index)"] else {
         throw HotwordRankingError.invalidResponse

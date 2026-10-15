@@ -21,7 +21,7 @@ public final class AppModel {
     .ttsModel,
     .openAIAPIKey,
     .openAIBaseURL,
-    .openAIModel,
+    .openAIModel, .intelligentAPIKey, .intelligentBaseURL, .intelligentModel,
   ]
 
   static let recognizerIDsRequiringCapturedAudio: Set<String> = [
@@ -94,7 +94,8 @@ public final class AppModel {
   public var isSystemClipboardCaptureControlTransitioning: Bool {
     systemClipboardCaptureControlSnapshot.state.isTransitioning
   }
-  public var lastFailure: String?
+  var lastFailureResource: LocalizedStringResource?
+  public var lastFailure: String? { lastFailureResource?.string(for: settings.language) }
   public let vocabulary: VocabularyLibraryModel
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 
@@ -194,6 +195,7 @@ public final class AppModel {
   let credentialStore: (any SecureCredentialStore)?
   let vocabularyRuleSource: VocabularyRuleSource
   let privacySettingsSource: PrivacyPolicySettingsSource
+  let languageModelSettingsSource: LanguageModelSettingsSource
   let localSpeechSettingsSource: LocalSpeechSettingsSource
   let settingsWriteDebounceDuration: Duration
   let historyRetentionMaintenanceInterval: Duration?
@@ -270,6 +272,7 @@ public final class AppModel {
     localPersistenceStatus: LocalPersistenceStatus,
     vocabularyRuleSource: VocabularyRuleSource,
     privacySettingsSource: PrivacyPolicySettingsSource,
+    languageModelSettingsSource: LanguageModelSettingsSource = LanguageModelSettingsSource(),
     localSpeechSettingsSource: LocalSpeechSettingsSource,
     loadsPersistentSettingsOnInitialization: Bool,
     settingsWriteDebounceDuration: Duration,
@@ -298,7 +301,7 @@ public final class AppModel {
       @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void,
     finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void,
     verifyOpenAIConfigurationAction:
-      @escaping @Sendable (OpenAISettings) async throws -> Void,
+      @escaping @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void,
     retryFailedAudioRecoveryAction:
       @escaping @Sendable (
         UUID,
@@ -426,14 +429,14 @@ public final class AppModel {
       saveFailed: { [history] in
         history.append(
           EventFeedEntry(
-            english: L10n.runText(.settingsSaveFailedRetry, language: .english),
-            simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
+            L10n.resource("run.settingsSaveFailedRetry")))
       })
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
     self.localPersistenceStatus = localPersistenceStatus
     self.vocabularyRuleSource = vocabularyRuleSource
     self.privacySettingsSource = privacySettingsSource
+    self.languageModelSettingsSource = languageModelSettingsSource
     self.localSpeechSettingsSource = localSpeechSettingsSource
     self.settings.isLoadingPrivacySettings = !privacySettingsSource.hasAvailableSettings
     self.settingsWriteDebounceDuration = settingsWriteDebounceDuration
@@ -476,7 +479,9 @@ public final class AppModel {
       loadSettings()
     } else {
       self.settings.isLoading = false
-      self.settings.openAICredentialAvailability = .inaccessible
+      for role in LanguageModelRole.allCases {
+        self.settings.setCredentialAvailability(.inaccessible, for: role)
+      }
       if settingsStore == nil {
         self.settings.unavailableScalarSettingKeys.formUnion(
           ScalarSettingsDomain.systemClipboard.settingKeys
@@ -615,32 +620,9 @@ extension AppModel {
     handleResidentSpeechBudgetConfirmationChange(from: oldValue)
   }
 
-  func applyOpenAIAPIKey(_ newValue: String) {
-    let oldValue = self.settings.openAIAPIKey
-    self.settings.openAIAPIKey = newValue
-    if !self.settings.isLoading, oldValue != self.settings.openAIAPIKey {
-      contextMemory?.invalidateAuthorization()
-    }
-    handleOpenAIAPIKeyChange(from: oldValue)
-  }
-
-  func applyOpenAIBaseURL(_ newValue: String) {
-    let oldValue = self.settings.openAIBaseURL
-    self.settings.openAIBaseURL = newValue
-    if !self.settings.isLoading, oldValue != self.settings.openAIBaseURL {
-      contextMemory?.invalidateAuthorization()
-    }
-    handleOpenAIBaseURLChange(from: oldValue)
-  }
-
-  func applyOpenAIModel(_ newValue: String) {
-    let oldValue = self.settings.openAIModel
-    self.settings.openAIModel = newValue
-    if !self.settings.isLoading, oldValue != self.settings.openAIModel {
-      contextMemory?.invalidateAuthorization()
-    }
-    handleOpenAIModelChange(from: oldValue)
-  }
+  func applyOpenAIAPIKey(_ value: String) { applyLanguageModelAPIKey(value, for: .fast) }
+  func applyOpenAIBaseURL(_ value: String) { applyLanguageModelBaseURL(value, for: .fast) }
+  func applyOpenAIModel(_ value: String) { applyLanguageModelIdentifier(value, for: .fast) }
 
   func applyTTSModelIdentifier(_ newValue: String) {
     let oldValue = self.settings.ttsModelIdentifier

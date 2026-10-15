@@ -56,7 +56,7 @@ struct VocabularyCorrectionEvaluationTests {
     let key = try #require(environment["DEEPSEEK_API_KEY"].flatMap { $0.isEmpty ? nil : $0 }, "Supply DEEPSEEK_API_KEY in the process environment")
     let settings = OpenAISettings(apiKey: key, baseURL: LLMTextProcessing.deepSeekBaseURL, model: LLMTextProcessing.deepSeekModel)
     let grant = ContextReferenceAuthorization(providerFingerprint: ContextProviderIdentity.fingerprint(settings))
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings })
     let samples = try loadCases(path: environment["RILL_VOCABULARY_EVALUATION_CASES"])
     let workflow = WorkflowDefinition(
       name: "Vocabulary evaluation", pipeline: .init(recognizerID: "fixture", outputActions: []),

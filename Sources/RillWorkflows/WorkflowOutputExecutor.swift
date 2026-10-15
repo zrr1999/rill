@@ -24,7 +24,8 @@ struct WorkflowOutputExecutor: Sendable {
       bufferEntryID: bufferEntryID,
       bufferDraftInput: session.bufferDraftInput,
       startedAt: session.startedAt,
-      finishedAt: Date()
+      finishedAt: Date(),
+      modelSnapshot: session.modelSnapshot
     )
 
     var summary = DeliveryExecutionSummary()

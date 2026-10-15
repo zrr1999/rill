@@ -775,7 +775,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     )
     let privacyGate = PrivacyRunGate(
       settingsProvider: { await probe.readPrivacySettings() },
-      cloudConfirmationProvider: { _, _, _ in await probe.confirmCloudRun() }
+      cloudConfirmationProvider: { _, _, _, _ in await probe.confirmCloudRun() }
     )
     let controller = makeTestFailedAudioRecoveryController(
       store: store,
@@ -903,7 +903,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
           cloudConfirmationRequired: false
         )
       },
-      cloudConfirmationProvider: { _, _, _ in true },
+      cloudConfirmationProvider: { _, _, _, _ in true },
       destinationClassifier: { _ in .classified([.localSpeech]) }
     )
     let controller = makeTestFailedAudioRecoveryController(
@@ -1128,7 +1128,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let store = RecoveryControllerStoreProbe(receipt: receipt)
     let privacyGate = PrivacyRunGate(
       settingsProvider: { .defaults },
-      cloudConfirmationProvider: { _, _, _ in false },
+      cloudConfirmationProvider: { _, _, _, _ in false },
       destinationClassifier: { _ in .classified([.cloudSpeech]) }
     )
     let controller = makeController(
@@ -1191,7 +1191,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     )
     let privacyGate = PrivacyRunGate(
       settingsProvider: { await settings.read() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("A newly blocked recovery must not request confirmation.")
         return false
       },
@@ -1254,7 +1254,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let clock = LockedRecoveryDate(Date(timeIntervalSince1970: 199))
     let privacyGate = PrivacyRunGate(
       settingsProvider: { .defaults },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         clock.set(Date(timeIntervalSince1970: 201))
         return true
       },
@@ -1653,7 +1653,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
           cloudConfirmationRequired: false
         )
       },
-      cloudConfirmationProvider: { _, _, _ in true },
+      cloudConfirmationProvider: { _, _, _, _ in true },
       destinationClassifier: { _ in .classified([.localSpeech]) }
     ),
     runPreflight: @escaping RecognitionRunPreflight = { _ in },
