@@ -41,9 +41,14 @@ jobs:
           current_pr="$(gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}")"
           pr_title="$(jq --raw-output '.title' <<< "$current_pr")"
           pr_body="$(jq --raw-output '.body // ""' <<< "$current_pr")"
+          pr_author_type="$(jq --raw-output '.user.type' <<< "$current_pr")"
           uvx --no-build --from zendev==0.4.0 \
             --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
             zendev message check --title --profile zendev --text "$pr_title"
+          if [[ "$pr_author_type" == "Bot" ]]; then
+            echo "PR author is a bot; skipping the PR body template check."
+            exit 0
+          fi
           uvx --no-build --from zendev==0.4.0 \
             --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
             zendev message check --body --template "$RUNNER_TEMP/pr-body-template.md" --text "$pr_body"
