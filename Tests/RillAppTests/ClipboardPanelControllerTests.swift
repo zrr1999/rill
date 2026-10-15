@@ -659,64 +659,88 @@ final class RecordPanelControllerTests: XCTestCase {
 
   func testWarmPanelReadyToSearchWithTenThousandRecords() async throws {
     guard ProcessInfo.processInfo.environment["RILL_RECORD_STRESS"] == "1" else {
-      throw XCTSkip("Set RILL_RECORD_STRESS=1 to measure native panel presentation with 10,000 summaries.")
+      throw XCTSkip("Set RILL_RECORD_STRESS=1 to validate native panel presentation with 10,000 summaries.")
     }
+    _ = try await panelPresentationSamples(warmupCount: 0, sampleCount: 3)
+  }
+
+  func testBenchmarkWarmPanelPresentation() async throws {
+    guard let output = ProcessInfo.processInfo.environment["RILL_PANEL_BENCHMARK_OUTPUT"] else {
+      throw XCTSkip("Run just bench-performance panel to measure Release panel presentation.")
+    }
+    #if DEBUG
+      XCTFail("Panel latency must be measured with a Release build.")
+    #else
+      guard try await requireInteractiveDesktop() else { return }
+      let warmupCount = 10
+      let samples = try await panelPresentationSamples(warmupCount: warmupCount, sampleCount: 100)
+      guard try await requireInteractiveDesktop() else { return }
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      try encoder.encode(PanelPresentationMeasurements(warmupCount: warmupCount, samples: samples))
+        .write(to: URL(fileURLWithPath: output), options: .atomic)
+      let ready = samples.map(\.readyMilliseconds).sorted()
+      print("RECORD_PANEL_BENCHMARK samples=\(samples.count) warmup=\(warmupCount) ready_p50_ms=\(ready[49]) ready_p95_ms=\(ready[94])")
+    #endif
+  }
+
+  private struct PanelPresentationSample: Encodable {
+    let showMilliseconds: Double
+    let layoutMilliseconds: Double
+    let readyMilliseconds: Double
+  }
+
+  private struct PanelPresentationMeasurements: Encodable {
+    let warmupCount: Int
+    let samples: [PanelPresentationSample]
+  }
+
+  private func panelPresentationSamples(warmupCount: Int, sampleCount: Int) async throws -> [PanelPresentationSample] {
     let store = RecordStore(persistence: try await LargePanelCatalogFixture.make())
     let workspace = RecordWorkspaceModel(store: store)
     await workspace.refresh()
     let model = makeModel(recordWorkspace: workspace)
     let controller = RecordPanelController(pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
     let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
-    var timings: [Double] = []
-    var showTimings: [Double] = []
-    var layoutTimings: [Double] = []
-    let sampler = try samplePanelPresentationIfRequested()
-    defer { sampler?.waitUntilExit() }
-    func seconds(_ duration: Duration) -> Double {
+    var samples: [PanelPresentationSample] = []
+    func milliseconds(_ duration: Duration) -> Double {
       let value = duration.components
-      return Double(value.seconds) + Double(value.attoseconds) / 1e18
+      return Double(value.seconds) * 1000 + Double(value.attoseconds) / 1e15
     }
-    for iteration in 0..<31 {
-      let started = ContinuousClock.now
-      controller.show(model: model, deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
-      let shown = ContinuousClock.now
-      let window = try XCTUnwrap(
-        NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
-      window.contentView?.layoutSubtreeIfNeeded()
-      let laidOut = ContinuousClock.now
-      let deadline = started.advanced(by: .seconds(2))
-      while controller.quickPanelModel?.results.count != 50, ContinuousClock.now < deadline {
-        await Task.yield()
+    do {
+      for iteration in 0..<(warmupCount + sampleCount) {
+        let started = ContinuousClock.now
+        controller.show(model: model, deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+        let shown = ContinuousClock.now
+        let window = try XCTUnwrap(
+          NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
+        let deadline = started.advanced(by: .seconds(2))
+        while controller.quickPanelModel?.results.count != 50, ContinuousClock.now < deadline {
+          await waitForMainRunLoopDefaultMode()
+        }
+        let layoutStarted = ContinuousClock.now
+        window.contentView?.layoutSubtreeIfNeeded()
+        let ready = ContinuousClock.now
+        XCTAssertEqual(controller.quickPanelModel?.results.count, 50)
+        XCTAssertTrue(window.firstResponder is NSTextView, "The search field must own keyboard input")
+        if iteration >= warmupCount {
+          samples.append(
+            PanelPresentationSample(
+              showMilliseconds: milliseconds(started.duration(to: shown)),
+              layoutMilliseconds: milliseconds(layoutStarted.duration(to: ready)),
+              readyMilliseconds: milliseconds(started.duration(to: ready))))
+        }
+        controller.dismiss()
+        await waitForMainRunLoopDefaultMode()
       }
-      XCTAssertEqual(controller.quickPanelModel?.results.count, 50)
-      XCTAssertTrue(window.firstResponder is NSTextView, "The search field must own keyboard input")
-      if iteration > 0 {
-        timings.append(seconds(started.duration(to: .now)))
-        showTimings.append(seconds(started.duration(to: shown)))
-        layoutTimings.append(seconds(shown.duration(to: laidOut)))
-      }
-      controller.dismiss()
+    } catch {
+      await controller.shutdown()
+      await workspace.shutdown()
+      throw error
     }
     await controller.shutdown()
-    let p95 = timings.sorted()[28]
-    print("RECORD_PANEL_STRESS summaries=10000 warm_ready_p95_ms=\(p95 * 1000)")
-    XCTAssertLessThanOrEqual(
-      p95, 0.150,
-      "show_p95_ms=\(showTimings.sorted()[28] * 1000) layout_p95_ms=\(layoutTimings.sorted()[28] * 1000)")
-  }
-
-  private func samplePanelPresentationIfRequested() throws -> Process? {
-    guard let path = ProcessInfo.processInfo.environment["RILL_RECORD_PROFILE_DIR"] else { return nil }
-    let directory = URL(fileURLWithPath: path, isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let sampler = Process()
-    sampler.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
-    sampler.arguments = [
-      String(ProcessInfo.processInfo.processIdentifier), "5", "1", "-file",
-      directory.appendingPathComponent("record-panel.sample.txt").path,
-    ]
-    try sampler.run()
-    return sampler
+    await workspace.shutdown()
+    return samples
   }
 
   private func makeTarget(

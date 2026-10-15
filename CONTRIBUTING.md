@@ -250,7 +250,7 @@ git diff --cached --check
 
 1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
 2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
-3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储和面板压力测试分别放在独立串行进程中，与 `just test` 相同。
+3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储压力测试和一万条记录的面板功能验证分别放在独立串行进程中，与 `just test` 相同。面板验证保留结果、焦点与有界完成检查，不以共享 runner 的实际耗时判定性能退化。
 4. `desktop-tests` 验证真实桌面交互；环境不可用时本次完整门禁失败，后续阶段不运行。
 5. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
 6. 工作区 diff 检查。
@@ -296,6 +296,9 @@ GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可�
 
 `just validate-performance-workloads` 验证工作负载结果。macOS 共享 runner 的耗时日志不提供性能结论；
 `CI - Tests` 中的 `Record workload validation` 按相关源码范围运行。CPU simulation 比较由 `CI - Performance` 负责。
+
+`just bench-performance panel` 显式测量 Release 构建的原生面板展示，保存预热后的原始样本、源码指纹与工具链信息。
+`testBenchmark…` 用例不进入普通预检；性能结论需要同一固定机器上的 base/head 对照和噪声评估，见 [性能基准](Benchmarks/README.md)。
 
 ## GitHub Actions 命名
 
