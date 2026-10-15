@@ -12,7 +12,7 @@ struct CleanupProtectionFallbackTests {
     let settings = OpenAISettings(apiKey: "synthetic-test-key")
     let client = RejectedCleanupClient()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { settings }, clientFactory: { client }, rewriteTimeout: failureMode == .timeout ? .zero : .seconds(5))
+      settingsProvider: { _, _ in settings }, clientFactory: { client }, rewriteTimeout: failureMode == .timeout ? .zero : .seconds(5))
     let bus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: bus)
     let receipts = InMemoryWorkflowRunReceiptRepository()

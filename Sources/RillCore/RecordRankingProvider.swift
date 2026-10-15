@@ -21,5 +21,5 @@ public struct RecordRankingResponse: Sendable, Equatable {
 
 /// Scores are in candidate order, on a 0...2 relevance rubric, not correctness probabilities.
 public protocol RecordRankingProvider: Sendable {
-  func score(query: String, candidates: [String], apiKey: String) async throws -> RecordRankingResponse
+  func score(query: String, candidates: [String], authorization: DecisionModelSettingsSource.Authorization) async throws -> RecordRankingResponse
 }

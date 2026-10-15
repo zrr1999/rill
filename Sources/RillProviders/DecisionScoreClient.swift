@@ -1,13 +1,12 @@
 import Foundation
 import RillCore
 
-enum JevRequestError: Error {
+enum DecisionRequestError: Error {
   case invalidInput, invalidResponse, unauthorized, rateLimited, unavailable
 }
 
-/// Shared fixed-destination Jev transport. No retries, redirects, cookies or content diagnostics.
-struct JevScoreClient: Sendable {
-  static let model = "jev-1.13.0"
+/// Shared transport to the selected classification service. No retries, redirects, cookies or content diagnostics.
+struct DecisionScoreClient: Sendable {
   private let session: URLSession
 
   init() {
@@ -28,7 +27,7 @@ struct JevScoreClient: Sendable {
   }
 
   struct Request: Encodable, Sendable {
-    let model = JevScoreClient.model
+    var model = DecisionModel.jev.modelID
     let state: [String: String]
     let questions: [String: Question]
   }
@@ -55,48 +54,72 @@ struct JevScoreClient: Sendable {
     }
   }
 
-  func score(_ value: Request, apiKey: String) async throws -> Response {
-    guard JevAPIKey.isValid(apiKey) else { throw JevRequestError.invalidInput }
+  func score(_ value: Request, authorization: DecisionModelSettingsSource.Authorization) async throws -> Response {
+    let apiKey = authorization.apiKey
+    guard JevAPIKey.isValid(apiKey), let endpoint = authorization.configuration.endpoint else {
+      throw DecisionRequestError.invalidInput
+    }
+    var value = value
+    value.model = authorization.configuration.model.modelID
     let body = try JSONEncoder().encode(value)
-    guard body.count <= 30_000 else { throw JevRequestError.invalidInput }
-    var request = URLRequest(url: URL(string: "https://api.typesafe.ai/v1/systemone")!)
+    guard body.count <= 30_000 else { throw DecisionRequestError.invalidInput }
+    var request = URLRequest(url: endpoint)
     request.httpMethod = "POST"
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = body
     try Task.checkCancellation()
     do {
-      let (bytes, response) = try await session.bytes(for: request, delegate: NoJevRedirects())
+      let (bytes, response) = try await session.bytes(for: request, delegate: NoDecisionRedirects())
       defer { bytes.task.cancel() }
-      guard let http = response as? HTTPURLResponse else { throw JevRequestError.invalidResponse }
+      guard let http = response as? HTTPURLResponse else { throw DecisionRequestError.invalidResponse }
       switch http.statusCode {
       case 200: break
-      case 401, 403: throw JevRequestError.unauthorized
-      case 429, 529: throw JevRequestError.rateLimited
-      default: throw JevRequestError.unavailable
+      case 401, 403: throw DecisionRequestError.unauthorized
+      case 429, 529: throw DecisionRequestError.rateLimited
+      default: throw DecisionRequestError.unavailable
       }
       var data = Data()
       for try await byte in bytes {
-        guard data.count < 256 * 1_024 else { throw JevRequestError.invalidResponse }
+        guard data.count < 256 * 1_024 else { throw DecisionRequestError.invalidResponse }
         data.append(byte)
       }
       try Task.checkCancellation()
-      return try Self.decode(data, questionIDs: Set(value.questions.keys))
+      return try Self.decode(data, questionIDs: Set(value.questions.keys), model: authorization.configuration.model)
     } catch is CancellationError {
       throw CancellationError()
-    } catch let error as JevRequestError {
+    } catch let error as DecisionRequestError {
       throw error
     } catch {
       try Task.checkCancellation()
-      throw JevRequestError.unavailable
+      throw DecisionRequestError.unavailable
     }
   }
 
-  static func decode(_ data: Data, questionIDs: Set<String>) throws -> Response {
-    guard let value = try? JSONDecoder().decode(Response.self, from: data), value.model == model,
+  private struct CloudflareResponse: Decodable {
+    let success: Bool
+    let result: Response?
+    let errors: [CloudflareError]
+    struct CloudflareError: Decodable { let code: Int }
+  }
+
+  static func decode(_ data: Data, questionIDs: Set<String>, model: DecisionModel = .jev) throws -> Response {
+    let value: Response
+    do {
+      if model == .jev {
+        value = try JSONDecoder().decode(Response.self, from: data)
+      } else {
+        let envelope = try JSONDecoder().decode(CloudflareResponse.self, from: data)
+        guard envelope.success, envelope.errors.isEmpty, let result = envelope.result else {
+          throw DecisionRequestError.invalidResponse
+        }
+        value = result
+      }
+    } catch { throw DecisionRequestError.invalidResponse }
+    guard value.model == model.modelID,
       Set(value.answers.keys) == questionIDs,
       (0...1_000_000).contains(value.usage.inputTokens), (0...1_000_000).contains(value.usage.outputTokens)
-    else { throw JevRequestError.invalidResponse }
+    else { throw DecisionRequestError.invalidResponse }
     for answer in value.answers.values {
       guard answer.type == "score", answer.score.isFinite, (0...2).contains(answer.score),
         answer.confidence.isFinite, (0...1).contains(answer.confidence),
@@ -105,13 +128,13 @@ struct JevScoreClient: Sendable {
         abs(answer.probabilities.values.reduce(0, +) - 1) <= 0.01,
         let middle = answer.probabilities["1"], let high = answer.probabilities["2"],
         abs(answer.score - middle - 2 * high) <= 0.02
-      else { throw JevRequestError.invalidResponse }
+      else { throw DecisionRequestError.invalidResponse }
     }
     return value
   }
 }
 
-private final class NoJevRedirects: NSObject, URLSessionTaskDelegate {
+private final class NoDecisionRedirects: NSObject, URLSessionTaskDelegate {
   func urlSession(
     _: URLSession, task _: URLSessionTask,
     willPerformHTTPRedirection _: HTTPURLResponse, newRequest _: URLRequest,

@@ -21,15 +21,15 @@ struct CleanupBudgetProviderTests {
     let settings = settings(model: model)
     let fixture = try fixture(scenario)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
     #expect(try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context) == "预算五百元")
     let request = try #require(await client.requests.first)
     let deepSeek = model == LLMTextProcessing.deepSeekModel
     #expect(request.timeoutInterval == (scenario.usesShortBudget(deepSeek: deepSeek) ? 5 : 60))
     let deepSeekRewrite = deepSeek && fixture.step.kind == .llmRewrite && fixture.context.workflow.speechMode != .voiceAssistant
-    #expect(request.disablesThinking == deepSeekRewrite)
+    #expect(request.modelRole == fixture.step.resolvedModelRole)
     #expect(request.temperature == (deepSeekRewrite ? 0.1 : nil))
-    #expect(request.maxOutputTokens == OpenAITextRewriteTransformer.maximumOutputTokens)
+    #expect(request.maxOutputTokens == (fixture.step.resolvedModelRole == .fast ? 4_096 : 16_384))
     await transformer.shutdown()
   }
 
@@ -38,7 +38,7 @@ struct CleanupBudgetProviderTests {
     let settings = settings(model: model)
     let fixture = try fixture(scenario)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings }, clientFactory: { client }, rewriteTimeout: .zero)
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client }, rewriteTimeout: .zero)
     if scenario.usesShortBudget(deepSeek: model == LLMTextProcessing.deepSeekModel) {
       await #expect(throws: OpenAITextRewriteError.timedOut) {
         _ = try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context)
@@ -59,7 +59,7 @@ struct CleanupBudgetProviderTests {
     let input = upstreamIsLong ? "预算五百元" : long
     fixture.context.correctionRequest = .init(transcript: input)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
     if upstreamIsLong {
       #expect(try await transformer.transform(text: long, step: fixture.step, context: fixture.context) == input)
       #expect(await client.requests.map(\.input) == [input])
@@ -72,12 +72,27 @@ struct CleanupBudgetProviderTests {
     await transformer.shutdown()
   }
 
+  @Test(arguments: [Scenario.canonical, .contextual, .customRewrite], LanguageModelRole.allCases)
+  func explicitRolesPreserveCleanupBudgets(scenario: Scenario, role: LanguageModelRole) async throws {
+    let settings = settings(model: LLMTextProcessing.deepSeekModel)
+    var fixture = try fixture(scenario)
+    fixture.step.modelRole = role
+    let client = EchoBudgetClient()
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
+    _ = try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context)
+    let request = try #require(await client.requests.first)
+    #expect(request.modelRole == role)
+    #expect(request.maxOutputTokens == (role == .fast ? 4_096 : 16_384))
+    #expect(request.timeoutInterval == (scenario == .customRewrite && role == .intelligent ? 60 : 5))
+    await transformer.shutdown()
+  }
+
   @Test func compatibleCleanupDoesNotInheritDeepSeekInputLimit() async throws {
     let settings = settings(model: "compatible-model")
     let fixture = try fixture(.canonical)
     let input = String(repeating: "字", count: 4_001)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
     #expect(try await transformer.transform(text: input, step: fixture.step, context: fixture.context) == input)
     #expect(await client.requests.map(\.input) == [input])
     await transformer.shutdown()
@@ -89,7 +104,7 @@ struct CleanupBudgetProviderTests {
     let client = HeldBudgetClient()
     let diagnostics = BudgetDiagnosticProbe()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { settings }, clientFactory: { client }, diagnosticReporter: { await diagnostics.record($0) })
+      settingsProvider: { _, _ in settings }, clientFactory: { client }, diagnosticReporter: { await diagnostics.record($0) })
     let attempts = (0..<2).map { _ in
       Task { try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context) }
     }

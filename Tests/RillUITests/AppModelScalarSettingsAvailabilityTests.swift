@@ -16,7 +16,8 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       .builtinPushToTalkOutputMode: "teleport",
       .longRecordingModeEnabled: "occasionally",
     ]
-    let store = UITestSettingsStore(storage: invalidValues)
+    let initialStorage = invalidValues.merging([.languageModelRolesMigrated: "true"]) { _, new in new }
+    let store = UITestSettingsStore(storage: initialStorage)
     let harness = makeHarness(settingsStore: store)
 
     await waitUntil { !harness.model.settings.isLoading }
@@ -31,7 +32,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech))
     XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .input))
     let activity = await store.activitySnapshot()
-    XCTAssertEqual(activity.storage, invalidValues)
+    XCTAssertEqual(activity.storage, initialStorage)
     XCTAssertTrue(activity.setCounts.isEmpty)
     XCTAssertTrue(activity.removeCounts.isEmpty)
   }
@@ -68,8 +69,9 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       .builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.pasteIntoApp.rawValue,
       .longRecordingModeEnabled: "false",
     ]
+    let initialStorage = storedValues.merging([.languageModelRolesMigrated: "true"]) { _, new in new }
     let store = UITestSettingsStore(
-      storage: storedValues,
+      storage: initialStorage,
       unavailableKeys: Set(storedValues.keys)
     )
     let harness = makeHarness(
@@ -97,7 +99,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(harness.model.settings.builtinPushToTalkOutputMode, initialOutputMode)
     XCTAssertEqual(harness.model.settings.longRecordingModeEnabled, initialLongRecordingMode)
     let activity = await store.activitySnapshot()
-    XCTAssertEqual(activity.storage, storedValues)
+    XCTAssertEqual(activity.storage, initialStorage)
     XCTAssertTrue(activity.setCounts.isEmpty)
     XCTAssertTrue(activity.removeCounts.isEmpty)
   }
@@ -160,7 +162,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   }
 
   func testProductionScalarCommandsRejectAfterApplicationShutdown() async {
-    let store = UITestSettingsStore()
+    let store = UITestSettingsStore(storage: [.languageModelRolesMigrated: "true"])
     let harness = makeHarness(
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
@@ -234,6 +236,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testLocalSpeechNewNamespaceWinsLegacyConflictWithoutMigrationWrite() async {
     let store = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .localSpeechModel: "qwen3-asr-1.7b-mlx-8bit",
         .legacyWhisperKitModel: "legacy-model",
         .localSpeechPrewarm: "false",
@@ -256,6 +259,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let downloadedModels = "[\"legacy-model\"]"
     let store = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .legacyWhisperKitModel: "legacy-model",
         .legacyWhisperKitDownloadedModels: downloadedModels,
         .legacyWhisperKitPrewarm: "true",
@@ -309,6 +313,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testUnreadableNewLocalSpeechSettingDoesNotFallBackToLegacyValue() async {
     let store = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .localSpeechModel: "protected-new-model",
         .legacyWhisperKitModel: "legacy-model",
       ],
@@ -326,7 +331,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
   func testReadableNewLocalSpeechSettingIgnoresUnreadableLegacyValue() async {
     let store = UITestSettingsStore(
-      storage: [.localSpeechModel: "qwen3-asr-1.7b-mlx-8bit"],
+      storage: [.languageModelRolesMigrated: "true", .localSpeechModel: "qwen3-asr-1.7b-mlx-8bit"],
       unavailableKeys: [.legacyWhisperKitModel]
     )
     let harness = makeHarness(settingsStore: store)
@@ -458,7 +463,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let harness = makeHarness(
       settingsStore: store,
       credentialStore: credentials,
-      verifyOpenAIConfigurationAction: { settings in
+      verifyOpenAIConfigurationAction: { settings, _ in
         await probe.record(settings)
       }
     )
@@ -499,7 +504,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let harness = makeHarness(
       settingsStore: store,
       credentialStore: credentials,
-      verifyOpenAIConfigurationAction: { _ in
+      verifyOpenAIConfigurationAction: { _, _ in
         throw UITestOpenAIVerificationError(failure: .configurationInvalid)
       }
     )

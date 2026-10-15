@@ -15,21 +15,15 @@ public struct WorkflowSpeechRoute: Codable, Sendable, Equatable {
   public var selection: SpeechRouteSelection
   public var recognizerID: String
   public var language: String?
-  public var localModel: String?
-  public var providerModel: String?
 
   public init(
     selection: SpeechRouteSelection = .fixed,
     recognizerID: String,
-    language: String? = nil,
-    localModel: String? = nil,
-    providerModel: String? = nil
+    language: String? = nil
   ) {
     self.selection = selection
     self.recognizerID = recognizerID
     self.language = language
-    self.localModel = localModel
-    self.providerModel = providerModel
   }
 }
 
@@ -245,6 +239,7 @@ public struct WorkflowProcessStep: Identifiable, Codable, Sendable, Equatable {
   public var prompt: String?
   public var uncertaintyPolicy: UncertaintyPolicy?
   public var recordDuration: Bool?
+  public var modelRole: LanguageModelRole?
 
   public var recordsDuration: Bool {
     recordDuration ?? [.recognizeSpeech, .llmRewrite, .llmAnswer].contains(kind)
@@ -255,26 +250,29 @@ public struct WorkflowProcessStep: Identifiable, Codable, Sendable, Equatable {
     kind: WorkflowProcessStepKind,
     prompt: String? = nil,
     uncertaintyPolicy: UncertaintyPolicy? = nil,
-    recordDuration: Bool? = nil
+    recordDuration: Bool? = nil,
+    modelRole: LanguageModelRole? = nil
   ) {
     self.id = id
     self.kind = kind
     self.prompt = prompt
     self.uncertaintyPolicy = uncertaintyPolicy
     self.recordDuration = recordDuration
+    self.modelRole = modelRole
   }
 
   public init(_ step: PostProcessStep) {
     self.init(
       id: step.id,
       kind: WorkflowProcessStepKind(postProcessKind: step.kind),
-      prompt: step.prompt
+      prompt: step.prompt,
+      modelRole: step.modelRole
     )
   }
 
   public var postProcessStep: PostProcessStep? {
     guard let kind = kind.postProcessKind else { return nil }
-    return PostProcessStep(id: id, kind: kind, prompt: prompt)
+    return PostProcessStep(id: id, kind: kind, prompt: prompt, modelRole: modelRole)
   }
 }
 
@@ -374,6 +372,9 @@ public enum WorkflowPlanValidator {
   private static func validateStructure(_ steps: [WorkflowProcessStep], depth: Int) throws {
     guard depth < 16 else { throw WorkflowDocumentError("process", "Steps exceed the nesting limit of 16.") }
     for step in steps {
+      if step.modelRole != nil, ![.llmRewrite, .llmAnswer].contains(step.kind) {
+        throw WorkflowDocumentError("process.model_role", "Only LLM steps may select a language model role.")
+      }
       if step.kind == .conditional {
         guard let condition = step.condition, step.prompt == nil, step.uncertaintyPolicy == nil else {
           throw WorkflowDocumentError("process", "An if step requires a condition and cannot have a prompt or recognition policy.")

@@ -73,8 +73,8 @@ public struct SpeakTextAction: OutputAction {
       configuration = resolved
     } catch { return .failed(SpeechSynthesisActionError.invalidRequest.localizedDescription) }
     let request = SpeechSynthesisRequest(
-      runID: context.runID, text: text, provider: configuration.provider,
-      modelID: configuration.model, voice: configuration.voice, language: configuration.language)
+      runID: context.runID, text: text, provider: .automatic,
+      modelID: context.modelSnapshot?.speechSynthesisModelID, voice: configuration.voice, language: configuration.language)
     guard request.isValid else {
       return .failed(SpeechSynthesisActionError.invalidRequest.localizedDescription)
     }

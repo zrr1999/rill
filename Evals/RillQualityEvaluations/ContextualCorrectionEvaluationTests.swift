@@ -33,7 +33,7 @@ struct ContextualCorrectionEvaluationTests {
   @MainActor func compareLiveDeepSeekTextAndReferenceCorrection() async throws {
     let settings = try await evaluationSettings()
     let token = ContextReferenceAuthorization(providerFingerprint: ContextProviderIdentity.fingerprint(settings))
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings })
     let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup })
     let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
     var observations: [Observation] = []

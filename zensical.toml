@@ -34,7 +34,7 @@ nav = [
 docs_assets = [
   "LICENSE",
   "docs/examples/conditional-workflow.toml",
-  "docs/schemas/workflow-v2.schema.json",
+  "docs/schemas/workflow-v3.schema.json",
 ]
 
 [project.theme]

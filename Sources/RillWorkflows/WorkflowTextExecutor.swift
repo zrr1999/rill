@@ -11,6 +11,7 @@ struct WorkflowRunSession: Sendable {
   let resolvedPlan: ResolvedWorkflowPlan
   let startedAt: Date
   let receiptIsActive: Bool
+  var modelSnapshot: WorkflowModelSnapshot? = nil
   var bufferDraftInput: BufferDraftInputIntent? = nil
 
   var presentation: WorkflowPresentation {
@@ -136,7 +137,8 @@ struct WorkflowTextExecutor: Sendable {
             workflow: session.workflow,
             contextSnapshot: session.contextSnapshot,
             recognitionResult: recognition,
-            correctionRequest: correctionRequest
+            correctionRequest: correctionRequest,
+            modelSnapshot: session.modelSnapshot
           )
           // Prediction time is not LLM execution time. A skipped request has no LLM duration or trace.
           processingStartedAt = nil

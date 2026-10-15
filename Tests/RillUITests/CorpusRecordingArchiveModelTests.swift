@@ -57,7 +57,7 @@ struct CorpusRecordingArchiveModelTests {
 
   private func makeModel(reader: SelectionReadGate, exporter: SelectionExportProbe) -> CorpusRecordingArchiveModel {
     let store = UITestSettingsStore()
-    let settings = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
+    let settings = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _, _ in }, configurationChanged: {})
     settings.isLoading = false
     return CorpusRecordingArchiveModel(
       settings: settings, store: store,

@@ -8,7 +8,7 @@ struct CleanupProtectionProviderTests {
   func ordinaryAndContextualCleanupRejectChangedQuantities(contextual: Bool, model: String) async throws {
     let client = CleanupProtectionClient(output: "预算两千元。")
     let settings = OpenAISettings(apiKey: "synthetic-test-key", baseURL: "https://gateway.example/v1", model: model)
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
     let workflow = try cleanupWorkflow()
     var context = context(workflow)
     if contextual {
@@ -26,7 +26,7 @@ struct CleanupProtectionProviderTests {
   func cleanupCanAddSentenceBoundariesAndListMarkers(contextual: Bool) async throws {
     let output = "1. 先接接口。\n2. 文档暂时不改。"
     let client = CleanupProtectionClient(output: output)
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { .init(apiKey: "test") }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in .init(apiKey: "test") }, clientFactory: { client })
     var context = context(try cleanupWorkflow())
     if contextual { context.correctionRequest = .init(transcript: "先接接口 文档暂时不改") }
     let result = try await transformer.transformWithTrace(text: "先接接口 文档暂时不改", step: cleanupStep, context: context)
@@ -41,7 +41,7 @@ struct CleanupProtectionProviderTests {
     let step = PostProcessStep(kind: kind, prompt: instruction)
     workflow.plan.process.steps = [.init(kind: .init(postProcessKind: kind), prompt: instruction)]
     let client = CleanupProtectionClient(output: "Five hundred yuan.")
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { .init(apiKey: "test") }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in .init(apiKey: "test") }, clientFactory: { client })
     #expect(try await transformer.transform(text: "五百元", step: step, context: context(workflow)) == "Five hundred yuan.")
   }
 
@@ -49,7 +49,7 @@ struct CleanupProtectionProviderTests {
     var workflow = try cleanupWorkflow()
     workflow.metadata[WorkflowMetadataKey.speechMode] = SpeechWorkflowMode.voiceAssistant.rawValue
     let client = CleanupProtectionClient(output: "预算2000元。")
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { .init(apiKey: "test") }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in .init(apiKey: "test") }, clientFactory: { client })
     #expect(try await transformer.transform(text: "预算五百元", step: cleanupStep, context: context(workflow)) == "预算2000元。")
   }
 

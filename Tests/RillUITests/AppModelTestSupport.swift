@@ -609,7 +609,7 @@ func makeHarness(
     @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void = { _, _, _ in },
   finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void = {},
   verifyOpenAIConfigurationAction:
-    @escaping @Sendable (OpenAISettings) async throws -> Void = { _ in },
+    @escaping @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void = { _, _ in },
   retryFailedAudioRecoveryAction:
     @escaping @Sendable (
       UUID,

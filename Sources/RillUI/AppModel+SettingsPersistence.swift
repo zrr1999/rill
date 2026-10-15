@@ -80,6 +80,7 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
   case speechRoute
   case localSpeech
   case openAI
+  case intelligent
   case input
 
   public var id: String { rawValue }
@@ -108,6 +109,8 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
       ]
     case .openAI:
       [.openAIBaseURL, .openAIModel]
+    case .intelligent:
+      [.intelligentBaseURL, .intelligentModel]
     case .input:
       [
         .builtinPushToTalkOutputMode,
@@ -130,7 +133,8 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
     case .systemClipboard: L10n.resource("settings.domain.systemClipboard")
     case .speechRoute: L10n.resource("settings.domain.speechRoute")
     case .localSpeech: L10n.resource("settings.domain.localSpeech")
-    case .openAI: L10n.resource("settings.domain.openAI")
+    case .openAI: L10n.resource("models.fast")
+    case .intelligent: L10n.resource("models.intelligent")
     case .input: L10n.resource("settings.domain.input")
     }
   }
@@ -247,6 +251,10 @@ struct StoredAppSettingsSnapshot: Sendable {
   let openAICredentialAvailability: OpenAICredentialAvailability
   let openAIBaseURL: String?
   let openAIModel: String?
+  let intelligentAPIKey: String?
+  let intelligentCredentialAvailability: OpenAICredentialAvailability
+  let intelligentBaseURL: String?
+  let intelligentModel: String?
   let vocabularyRules: [VocabularyRule]
   let vocabularyCollections: [VocabularyCollection]
   let vocabularyBindings: [VocabularyCollectionBinding]
@@ -310,7 +318,10 @@ extension AppModel {
       applyResolvedClipboardCapturePreference(enabled: false)
       localSpeechSettingsSource.markUnavailable()
       self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
-      self.settings.openAICredentialAvailability = .inaccessible
+      for role in LanguageModelRole.allCases {
+        self.settings.setCredentialAvailability(.inaccessible, for: role)
+        self.publishLanguageModelSettings(for: role)
+      }
       vocabularyRuleSource.markUnavailable(
         reason: "Persistent settings storage is unavailable."
       )
@@ -380,7 +391,10 @@ extension AppModel {
         self.applyResolvedClipboardCapturePreference(enabled: false)
         self.localSpeechSettingsSource.markUnavailable()
         self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
-        self.settings.openAICredentialAvailability = .inaccessible
+        for role in LanguageModelRole.allCases {
+          self.settings.setCredentialAvailability(.inaccessible, for: role)
+          self.publishLanguageModelSettings(for: role)
+        }
         self.settings.isRestoringSettings = true
         self.applyPrivacyPolicySettings(.defaults)
         self.settings.isRestoringSettings = false
@@ -880,30 +894,30 @@ extension AppModel {
     }
   }
 
-  func applyStoredOpenAISettings(_ settings: StoredAppSettingsSnapshot) {
-    if shouldApplyStoredSetting(.openAIAPIKey) {
-      if let apiKey = settings.openAIAPIKey {
-        applyOpenAIAPIKey(apiKey)
+  func applyStoredOpenAISettings(_ snapshot: StoredAppSettingsSnapshot) {
+    for role in LanguageModelRole.allCases {
+      let key = role == .fast ? snapshot.openAIAPIKey : snapshot.intelligentAPIKey
+      let baseURL = role == .fast ? snapshot.openAIBaseURL : snapshot.intelligentBaseURL
+      let model = role == .fast ? snapshot.openAIModel : snapshot.intelligentModel
+      if shouldApplyStoredSetting(role.credentialKey.legacySettingKey) {
+        applyLanguageModelAPIKey(key ?? "", for: role)
+        settings.setCredentialAvailability(
+          role == .fast ? snapshot.openAICredentialAvailability : snapshot.intelligentCredentialAvailability,
+          for: role)
       }
-      self.settings.openAICredentialAvailability = settings.openAICredentialAvailability
-    }
-    if shouldApplyStoredSetting(.openAIBaseURL),
-      let baseURL = settings.openAIBaseURL,
-      OpenAISettings.isValidBaseURL(baseURL)
-    {
-      applyOpenAIBaseURL(baseURL)
-    }
-    if shouldApplyStoredSetting(.openAIModel),
-      let model = settings.openAIModel,
-      OpenAISettings.isValidModelIdentifier(model)
-    {
-      applyOpenAIModel(model)
+      if shouldApplyStoredSetting(role.baseURLKey), let baseURL {
+        applyLanguageModelBaseURL(baseURL, for: role)
+      }
+      if shouldApplyStoredSetting(role.modelKey), let model {
+        applyLanguageModelIdentifier(model, for: role)
+      }
+      publishLanguageModelSettings(for: role)
     }
   }
 
   public func retryUnavailableScalarSettings(in domain: ScalarSettingsDomain) {
-    if domain == .openAI {
-      retryOpenAICredentialLoad()
+    if domain == .openAI || domain == .intelligent {
+      retryOpenAICredentialLoad(for: domain == .openAI ? .fast : .intelligent)
       return
     }
     guard !hasBegunApplicationShutdown,
@@ -1044,18 +1058,21 @@ extension AppModel {
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
   }
 
-  public func retryOpenAICredentialLoad() {
+  public func retryOpenAICredentialLoad(for role: LanguageModelRole = .fast) {
     guard !hasBegunApplicationShutdown, !self.settings.isLoading else { return }
-    self.settings.openAICredentialLoadGeneration &+= 1
-    let generation = self.settings.openAICredentialLoadGeneration
+    let domain = role.settingsDomain
+    self.settings.credentialLoadGenerations[role, default: 0] &+= 1
+    let generation = self.settings.credentialLoadGenerations[role, default: 0]
     guard let settingsStore, let credentialStore else {
-      self.settings.openAICredentialAvailability = .inaccessible
+      self.settings.setCredentialAvailability(.inaccessible, for: role)
+      self.publishLanguageModelSettings(for: role)
       return
     }
 
-    self.settings.openAICredentialAvailability = .loading
-    self.settings.retryingUnavailableScalarSettingsDomains.insert(.openAI)
-    let slot = AppModelSettingsReadTaskSlot.openAICredentialRetry
+    self.settings.setCredentialAvailability(.loading, for: role)
+    self.publishLanguageModelSettings(for: role)
+    self.settings.retryingUnavailableScalarSettingsDomains.insert(domain)
+    let slot = AppModelSettingsReadTaskSlot.scalarSettingsRetry(domain)
     let taskID = UUID()
     let taskOwner = self.settings.settingsReadTaskOwner
     let task = Task { @MainActor [weak self, settingsStore, credentialStore, taskOwner] in
@@ -1064,49 +1081,58 @@ extension AppModel {
         taskOwner.isActive(in: slot, id: taskID),
         !Task.isCancelled,
         !self.hasBegunApplicationShutdown,
-        self.settings.openAICredentialLoadGeneration == generation
+        self.settings.credentialLoadGenerations[role, default: 0] == generation
       else {
         return
       }
       do {
-        async let settingsSnapshot = settingsStore.settingsSnapshot(
-          forKeys: Array(ScalarSettingsDomain.openAI.settingKeys)
-        )
-        async let storedCredential = credentialStore.credential(for: .openAIAPIKey)
-        let (snapshot, credential) = try await (settingsSnapshot, storedCredential)
+        let snapshot: SettingsStoreReadSnapshot
+        let credential: String?
+        if role == .intelligent {
+          let loaded = try await AppSettingsCodec.loadStoredAppSettings(from: settingsStore, credentialStore: credentialStore)
+          guard loaded.intelligentCredentialAvailability != .inaccessible else {
+            throw ProviderSettingsPersistenceError.unavailableStoredSettings
+          }
+          snapshot = SettingsStoreReadSnapshot(
+            values: [
+              .intelligentBaseURL: loaded.intelligentBaseURL ?? OpenAISettings.defaultBaseURL,
+              .intelligentModel: loaded.intelligentModel ?? OpenAISettings.defaultModel,
+            ], unavailableKeys: loaded.unavailableSettingKeys.intersection(domain.settingKeys))
+          credential = loaded.intelligentAPIKey
+        } else {
+          async let settingsSnapshot = settingsStore.settingsSnapshot(forKeys: Array(domain.settingKeys))
+          async let storedCredential = credentialStore.credential(for: role.credentialKey)
+          (snapshot, credential) = try await (settingsSnapshot, storedCredential)
+        }
         let unavailableKeys = snapshot.unavailableKeys
           .union(AppSettingsCodec.invalidScalarSettingKeys(in: snapshot.values))
-          .intersection(ScalarSettingsDomain.openAI.settingKeys)
+          .intersection(domain.settingKeys)
         guard unavailableKeys.isEmpty else {
           throw ProviderSettingsPersistenceError.unavailableStoredSettings
         }
         guard taskOwner.isActive(in: slot, id: taskID),
           !Task.isCancelled,
           !self.hasBegunApplicationShutdown,
-          self.settings.openAICredentialLoadGeneration == generation
+          self.settings.credentialLoadGenerations[role, default: 0] == generation
         else {
           return
         }
         let wasRestoringSettings = self.settings.isRestoringSettings
         self.settings.isRestoringSettings = true
-        if let baseURL = snapshot.values[.openAIBaseURL],
-          OpenAISettings.isValidBaseURL(baseURL)
-        {
-          self.applyOpenAIBaseURL(baseURL)
+        if let baseURL = snapshot.values[role.baseURLKey] {
+          self.applyLanguageModelBaseURL(baseURL, for: role)
         }
-        if let model = snapshot.values[.openAIModel],
-          OpenAISettings.isValidModelIdentifier(model)
-        {
-          self.applyOpenAIModel(model)
+        if let model = snapshot.values[role.modelKey] {
+          self.applyLanguageModelIdentifier(model, for: role)
         }
-        self.applyOpenAIAPIKey(credential ?? "")
+        self.applyLanguageModelAPIKey(credential ?? "", for: role)
         self.settings.isRestoringSettings = wasRestoringSettings
         self.settings.unavailableScalarSettingKeys.subtract(
-          ScalarSettingsDomain.openAI.settingKeys
+          domain.settingKeys
         )
-        self.settings.retryingUnavailableScalarSettingsDomains.remove(.openAI)
-        self.settings.openAICredentialAvailability =
-          AppSettingsCodec.openAICredentialAvailability(for: credential)
+        self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
+        self.settings.setCredentialAvailability(AppSettingsCodec.openAICredentialAvailability(for: credential), for: role)
+        self.publishLanguageModelSettings(for: role)
         self.workflowLibraryChangedAction()
         self.append(
           L10n.resource("run.openAISettingsAvailableAgain")
@@ -1117,12 +1143,13 @@ extension AppModel {
         guard taskOwner.isActive(in: slot, id: taskID),
           !Task.isCancelled,
           !self.hasBegunApplicationShutdown,
-          self.settings.openAICredentialLoadGeneration == generation
+          self.settings.credentialLoadGenerations[role, default: 0] == generation
         else {
           return
         }
-        self.settings.retryingUnavailableScalarSettingsDomains.remove(.openAI)
-        self.settings.openAICredentialAvailability = .inaccessible
+        self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
+        self.settings.setCredentialAvailability(.inaccessible, for: role)
+        self.publishLanguageModelSettings(for: role)
         self.workflowLibraryChangedAction()
         self.append(
           L10n.resource("run.openAISettingsStillUnavailable")
@@ -1185,16 +1212,13 @@ extension AppModel {
         applyLocalSpeechPrewarm(value)
       }
       normalizeTrustedLocalSpeechSelection()
-    case .openAI:
-      if let baseURL = values[.openAIBaseURL],
-        OpenAISettings.isValidBaseURL(baseURL)
-      {
-        applyOpenAIBaseURL(baseURL)
+    case .openAI, .intelligent:
+      let role: LanguageModelRole = domain == .openAI ? .fast : .intelligent
+      if let baseURL = values[role.baseURLKey] {
+        applyLanguageModelBaseURL(baseURL, for: role)
       }
-      if let model = values[.openAIModel],
-        OpenAISettings.isValidModelIdentifier(model)
-      {
-        applyOpenAIModel(model)
+      if let model = values[role.modelKey] {
+        applyLanguageModelIdentifier(model, for: role)
       }
     case .input:
       if let rawValue = values[.builtinPushToTalkOutputMode],
@@ -1622,11 +1646,13 @@ extension AppModel {
     for credentialKey: SecureCredentialKey,
     taskKey: AppSettingKey
   ) {
+    let role = LanguageModelRole.allCases.first { $0.credentialKey == credentialKey }
     markSettingModifiedDuringInitialLoad(taskKey)
     guard !self.settings.isRestoringSettings else { return }
     guard let credentialStore else {
-      if credentialKey == .openAIAPIKey {
-        self.settings.openAICredentialAvailability = .inaccessible
+      if let role {
+        self.settings.setCredentialAvailability(.inaccessible, for: role)
+        self.publishLanguageModelSettings(for: role)
       }
       append(
         L10n.resource("run.credentialSaveFailed")
@@ -1647,16 +1673,17 @@ extension AppModel {
       guard let self else { return }
       switch result {
       case .success:
-        if credentialKey == .openAIAPIKey {
-          self.settings.openAICredentialAvailability = AppSettingsCodec.openAICredentialAvailability(
-            for: value)
+        if let role {
+          self.settings.setCredentialAvailability(AppSettingsCodec.openAICredentialAvailability(for: value), for: role)
+          self.publishLanguageModelSettings(for: role)
           self.workflowLibraryChangedAction()
         }
       case .failure(is CancellationError):
         break
       case .failure:
-        if credentialKey == .openAIAPIKey {
-          self.settings.openAICredentialAvailability = .inaccessible
+        if let role {
+          self.settings.setCredentialAvailability(.inaccessible, for: role)
+          self.publishLanguageModelSettings(for: role)
           self.workflowLibraryChangedAction()
         }
         self.append(
@@ -1704,7 +1731,7 @@ extension AppModel {
     await self.workflowLibrary.workflowFileMonitorTask?.value
     self.workflowLibrary.workflowFileMonitorTask = nil
     self.settings.settingsLoadGeneration &+= 1
-    self.settings.openAICredentialLoadGeneration &+= 1
+    for role in LanguageModelRole.allCases { self.settings.credentialLoadGenerations[role, default: 0] &+= 1 }
     for domain in ScalarSettingsDomain.allCases {
       self.settings.scalarSettingsRetryGenerations[domain, default: 0] &+= 1
     }
@@ -1715,8 +1742,11 @@ extension AppModel {
     self.settings.settingsKeysModifiedDuringInitialLoad.removeAll()
     self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
     self.settings.retryingUnavailableScalarSettingsDomains.removeAll()
-    if self.settings.openAICredentialAvailability == .loading {
-      self.settings.openAICredentialAvailability = .inaccessible
+    for role in LanguageModelRole.allCases {
+      if self.settings.credentialAvailability(for: role) == .loading {
+        self.settings.setCredentialAvailability(.inaccessible, for: role)
+      }
+      languageModelSettingsSource.update(nil, for: role)
     }
     await self.settings.settingsReadTaskOwner.cancelAllAndDrain()
     await settings.waitForOpenAIVerificationTasks()
