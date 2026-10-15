@@ -4,6 +4,11 @@ Use [CONTRIBUTING.md](CONTRIBUTING.md) for development commands, generated
 files, validation, and Git delivery conventions. Check the current implementation
 before relying on older plans or acceptance notes.
 
+## Delivery and reporting
+
+- Wait until every check for the current head commit has finished before
+  reporting CI as passing; never reuse a green result from an older commit.
+
 ## Repository skills
 
 Load the skill that matches the task. Combine skills only when the work crosses
