@@ -26,7 +26,7 @@ RILL_PANEL_BENCHMARK_OUTPUT="$REPORT_DIR/samples.json" \
   --filter '^RillAppTests.RecordPanelControllerTests/testBenchmarkWarmPanelPresentation$' \
   2>&1 | tee "$REPORT_DIR/test.log"
 
-test -s "$REPORT_DIR/samples.json"
+[[ -s "$REPORT_DIR/samples.json" ]]
 uv run --no-build --locked --script scripts/build_driver.py \
   preflight-source verify "$PROJECT_DIR" "$REPORT_DIR/source.json"
 echo "Panel benchmark completed: $REPORT_DIR"
