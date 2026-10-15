@@ -101,14 +101,21 @@ final class GlobalInputOwnerTests: XCTestCase {
 
     await owner.start()
     hotkeyTap.testingEmit(.globalInputUnavailable)
+    // The owner notifies the capability observer before recording the
+    // diagnostic, so wait for both instead of snapshotting between them.
+    var events = await diagnostics.snapshot()
     for _ in 0..<200 {
-      if probe.capabilities == [.available, .installationFailed] { break }
+      if probe.capabilities == [.available, .installationFailed],
+        events.contains(where: { $0.event == "global-input.unavailable" })
+      {
+        break
+      }
       await Task.yield()
+      events = await diagnostics.snapshot()
     }
 
     XCTAssertEqual(probe.installCount, 2)
     XCTAssertEqual(probe.capabilities, [.available, .installationFailed])
-    let events = await diagnostics.snapshot()
     XCTAssertTrue(events.contains { $0.event == "global-input.installed" })
     XCTAssertTrue(events.contains { $0.event == "global-input.unavailable" })
 

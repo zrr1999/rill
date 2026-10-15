@@ -56,4 +56,3 @@
 
 开发环境、架构和发布流程见仓库中的
 [贡献指南](https://github.com/zrr1999/rill/blob/main/CONTRIBUTING.md)。
-历史研究与验收笔记不属于当前使用说明。

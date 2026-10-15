@@ -85,9 +85,10 @@ class DependencySecurityTests(unittest.TestCase):
         )
         security.validate_policy_freshness(policy)
         self.assertEqual(security.scan_offline_baseline(pins, policy.advisories), ())
-        self.assertEqual(len(pins), 35)
+        self.assertEqual(len(pins), 36)
         self.assertTrue(
             {
+                "grdb.swift",
                 "mlx-audio-swift",
                 "mlx-swift",
                 "openai",

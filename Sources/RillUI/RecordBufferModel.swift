@@ -6,7 +6,7 @@ import RillRecords
 @MainActor @Observable
 public final class RecordBufferModel {
   public private(set) var snapshot: RecordBufferSnapshot?
-  public var message: String?
+  public var message: LocalizedStringResource?
   public var isSending = false
   public var outputAction: (BufferEntryID?) -> Void = { _ in }
   public var openEditorAction: () -> Void = {}
@@ -14,7 +14,7 @@ public final class RecordBufferModel {
   public var confirmAction: () -> Void = {}
   public var retryAction: () -> Void = {}
   public var cancelAction: () -> Void = {}
-  public var showMessageAction: ((String) -> Void)?
+  public var showMessageAction: ((LocalizedStringResource) -> Void)?
   public var shutdownAction: () async -> Void = {}
   private let store: RecordStore
   private var observation: Task<Void, Never>?
@@ -35,7 +35,7 @@ public final class RecordBufferModel {
           guard !Task.isCancelled else { break }
           self?.snapshot = value
         }
-      } catch { self?.message = error.localizedDescription }
+      } catch { self?.message = L10n.recordStoreFailure(error) }
     }
   }
 
@@ -72,7 +72,7 @@ public final class RecordBufferModel {
     let previous = mutation
     mutation = Task {
       await previous?.value
-      do { try await operation() } catch { message = error.localizedDescription }
+      do { try await operation() } catch { message = L10n.recordStoreFailure(error) }
     }
   }
 }

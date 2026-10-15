@@ -34,9 +34,7 @@ struct ContextualCorrectionEvaluationTests {
     let settings = try await evaluationSettings()
     let token = ContextReferenceAuthorization(providerFingerprint: ContextProviderIdentity.fingerprint(settings))
     let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings })
-    let workflow = WorkflowDefinition(
-      name: "Context evaluation", pipeline: PipelineDeclaration(recognizerID: "fixture", outputActions: []),
-      ui: .init(symbolName: "waveform", accentColorName: "blue"))
+    let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup })
     let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
     var observations: [Observation] = []
     let cases = try loadCases()

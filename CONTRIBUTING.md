@@ -88,7 +88,8 @@ gitleaks version
 
 Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/release`。
 完整图的 Debug 构建与测试统一使用 SwiftBuild，编译 String Catalog 并保留同一增量构建目录；
-`test-domain` 继续使用原生构建引擎和独立目录。
+`test-domain` 继续使用原生构建引擎和独立目录；基准负载的 GRDB 原生构建使用独立的
+`.artifacts/build/benchmarks-grdb`，不会因构建引擎指纹不同而清空 Release 目录。
 构建、清理和产物快照由统一入口按配置加锁；不要在另一进程构建时手工删除目录，
 也不要在 worktree 之间复制或软链接 SwiftPM 的构建数据库。工具链、SDK、Metal、
 锁文件、Package 声明或构建参数变化会使相应配置失效；普通源文件变化由 SwiftPM
@@ -134,8 +135,6 @@ SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与�
 临时快照。手动指定回执目录时，由调用者在装配完成后清理该目录。共享缓存中的
 文件不参与签名；所有签名都在当前装配目录中完成。
 
-实测数据、计数口径和复现步骤见 [构建提速验证](docs/archive/validation/build-performance.md)。
-
 ## 本地 App 与发布
 
 `swift build` 只生成可执行文件，不会装配带权限声明的 macOS App。
@@ -170,8 +169,6 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 
 公开文档站只收录用户指南、高级工作流参考和隐私/许可说明。技术契约、发布流程与
 开发命令在本表维护入口，不进入站点正文或搜索索引。
-研究、计划、性能实测和历史 QA 已归入 [历史资料](docs/archive/README.md)，保留原始证据和
-适用范围；旧术语、模型选择和未实施方案不能作为当前能力或发布通过的依据。
 
 文档站使用 Zensical；`just docs` 严格构建并检查链接，`just docs-serve` 提供自动刷新的
 本地预览。页面清单、依赖锁定与站点交付边界见 [文档站维护](docs/documentation.md)。
@@ -253,7 +250,7 @@ git diff --cached --check
 
 1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
 2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
-3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试，与 `just test` 相同。
+3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储和面板压力测试分别放在独立串行进程中，与 `just test` 相同。
 4. `desktop-tests` 验证真实桌面交互；环境不可用时本次完整门禁失败，后续阶段不运行。
 5. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
 6. 工作区 diff 检查。
@@ -412,3 +409,7 @@ scripts/preflight.sh commit-messages origin/main HEAD
 - 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
 
 发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。项目许可见 [LICENSE](LICENSE)，安全报告渠道状态与披露规则见 [SECURITY.md](SECURITY.md)。
+
+## 项目演进
+
+[EVOLUTION.md](EVOLUTION.md) 保存项目起源和真实的方向变化。后续方向变化按真实日期追加，包含“触发”“变化”“理由”，同日变更合并；维护后运行 `zendev evolution check`。文中历史状态不替代当前实现和验收证据。

@@ -23,7 +23,7 @@ DEPENDENCIES = {
     "RillSpeech": {"RillCore", "RillPlatform", "RillSpeechContracts"},
     "RillClipboard": {"RillCore", "RillPlatform", "RillRecords"},
     "RillWorkflows": {"RillCore", "RillKnowledge", "RillRecords", "RillSpeech", "RillSpeechContracts"},
-    "RillPersistence": {"RillCore"},
+    "RillPersistence": {"GRDB", "RillCore"},
     "RillPlatform": {"RillCore", "RillInputMethodContracts", "TOML"},
     "RillProviders": {"OpenAI", "RillCore", "RillSpeech", "RillSpeechContracts"},
     "RillUI": {"RillCore", "RillInputMethodContracts", "RillInputMethodIPC", "RillKnowledge", "RillRecords", "RillSpeech", "RillWorkflows"},

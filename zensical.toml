@@ -41,9 +41,14 @@ docs_assets = [
 language = "zh"
 font = false
 features = [
+  "content.action.copy",
+  "content.action.edit",
+  "content.action.view",
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.instant",
   "navigation.sections",
   "navigation.top",
-  "content.code.copy",
   "search.highlight",
   "toc.follow",
 ]
@@ -67,6 +72,31 @@ toc.slugify.object = "pymdownx.slugs.slugify"
 toc.slugify.kwds.case = "lower"
 pymdownx.superfences.custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+
+# 发布 /llms.txt 与逐页 Markdown，并为“复制为 Markdown”提供内容。
+# 只显式收录 nav 中的使用说明与参考页，顺序与 nav 一致；许可、第三方与
+# 数据来源清单（THIRD_PARTY_NOTICES、LOCAL_MODEL_NOTICES、输入法依赖）不收录。
+[project.plugins.llmstxt]
+markdown_description = "Rill 是本地优先的 macOS 语音输入工具，提供 Record 记录与可配置工作流。"
+
+[project.plugins.llmstxt.sections]
+"使用指南" = [
+  "README.md",
+  "docs/usage.md",
+  "docs/voice.md",
+  "docs/input-method.md",
+  "docs/records.md",
+  "docs/workflows.md",
+  "docs/vocabulary-memory.md",
+  "docs/privacy-data.md",
+  "docs/troubleshooting.md",
+]
+"参考" = [
+  "docs/reference.md",
+  "docs/workflow-toml.md",
+  "PRIVACY.md",
+  "SECURITY.md",
 ]
 
 [project.validation]

@@ -30,6 +30,15 @@ Both PDFs are bundled in `Sources/RillApp/Resources`, loaded once through
 SwiftUI's named-image initializer does not resolve these loose PDF exports.
 The application name remains the menu label for accessibility.
 
+## Input source
+
+The standalone input method bundles the same `RillMenuBarTemplate.pdf` for its
+input source menu and switcher. `assemble_input_method.py` sets the parent icon
+and the mode's menu, alternate menu, and palette icons to this bundled resource.
+`TISIconIsTemplate` lets macOS supply the tint for the current appearance.
+The input source always uses the plain mark, without the App's records indicator.
+No additional artwork or generation step is required.
+
 ## Regeneration
 
 Install librsvg (`brew install librsvg`) when editing the artwork, then run:

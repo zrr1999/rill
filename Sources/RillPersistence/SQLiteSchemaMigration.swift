@@ -3,7 +3,7 @@ import Foundation
 import SQLite3
 import RillCore
 
-extension SQLitePersistenceStore {
+extension SQLitePersistenceSession {
   static func preexistingStorageMayContainResidue(
     at databaseURL: URL,
     fileManager: FileManager = .default

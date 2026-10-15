@@ -164,7 +164,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private var needsAttention: Bool { buffers.snapshot?.active != nil || buffers.message != nil }
   private var noticeText: String {
     if buffers.snapshot?.active != nil { return panelText(.previousOutputNeedsConfirmation) }
-    return buffers.message ?? panelText(.localContent)
+    return buffers.message?.string(for: model.settings.language) ?? panelText(.localContent)
   }
 
   private var outputFeedback: some View {
@@ -184,7 +184,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
         }.disabled(buffers.isSending)
       }
       if let message = buffers.message {
-        Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        Text(message.string(for: model.settings.language)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
       }
     }
     .accessibilityIdentifier("record-panel.output-feedback")
