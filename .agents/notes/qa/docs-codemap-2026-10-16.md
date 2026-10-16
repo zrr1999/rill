@@ -66,9 +66,9 @@ the complete current source snapshot with Gitleaks 8.30.1 passed after the lock
 schema change. Domain/native/desktop/Release stages were not reached by that
 local preflight, so it is not a complete local CI pass.
 
-The current Mac was inspected during this run. Xcode and Metal are installed,
-but the native computer-use surface reported a locked Mac and could not expose
-applications. This is a fresh observation, not the earlier missing-Xcode result.
+At initial inspection, Xcode and Metal were installed, but the native
+computer-use surface reported a locked Mac and could not expose applications.
+This was a fresh observation, not the earlier missing-Xcode result.
 Browser composition events do not establish physical IME behavior, and browser
 screenshots do not establish application, microphone, Fn, paste, VoiceOver,
 multi-display or notarized-release acceptance.
@@ -80,3 +80,47 @@ benchmark comparison requires base/head runs on the same machine with retained
 raw samples and matching toolchain/session conditions. No application was
 installed and no user records or settings were changed by this documentation
 work.
+
+## Exact-commit follow-up
+
+The signed implementation commit `350f153ee72518ef9b6c02199aa3134ae272fb52`
+subsequently passed all eight local preflight stages: toolchain, repository,
+domain, native, performance, desktop, release and working diff. Validation used
+a full-history independent clone of the delivery branch in `/private/tmp`; the
+original stash remains intact. A clone under Documents had acquired FinderInfo
+on the MLX resource bundle and failed codesign. Moving the clean validation
+checkout resolved this without changing signing policy or source.
+
+The desktop became available during the run. Its real AppKit focus probe passed,
+and the two initial native failures (the vocabulary fixture's external AX tree
+and the record panel's captured target) passed on the same commit without source
+changes. The native stage ran 1,097 XCTest cases with 15 explicit skips and no
+failures, plus 186 Swift Testing tests. The desktop stage passed all six cases;
+both 10,000-record stress fixtures also passed. The release stage verified bundle
+assembly, deep/strict signatures, resource relocation and the packaged input
+method. These checks do not establish physical microphone or Fn behavior.
+
+GitHub Actions run `38866501410` passed the same eight stages for PR #120,
+head `350f153ee72518ef9b6c02199aa3134ae272fb52`, base
+`0aa792c6fad8d6c5a4728eab71e364773a9e4118` and merge revision
+`bdbd5fbceb50a659b3811dc59e4b4b0d31769638`. Local and hosted source fingerprints
+both equal `4a8dbb37992ac59d97c036de347db329ab64c6ec61ffeaa2fff314775a605949`.
+The hosted preflight candidate and its checksum were retained locally, without
+installing it or replacing the existing application.
+
+`just test-render` passed 27 selected tests and produced 213 bitmap PNG images. Bitmap
+exports omit some native compositing layers, so they were not accepted as full
+window appearance evidence. Four targeted native compositor fixtures then
+passed and produced 135 PNG images using existing Screen Recording permission, with
+no permission prompt. Representative record, draft, floating-panel and vocabulary
+confirmation windows were inspected; their content and native layers were
+present. Fixture window captures still do not establish physical gestures,
+cross-application output, IME composition or the audible VoiceOver experience.
+
+`just bench-performance panel` passed on the same commit, using Release mode on
+Mac17,9 (18 CPUs, 64 GiB), Xcode 27.0 and macOS 27.0.1. Both desktop probes passed.
+After 10 warmups, 100 samples gave ready latency p50 **38.560958 ms** and p95
+**40.926833 ms**. Raw samples, toolchain and source fingerprint were retained.
+This is one candidate measurement, not a before/after performance improvement
+claim. The application's Sources, Tests and package definitions are unchanged
+from the stated base; a separate baseline benchmark was not run.
