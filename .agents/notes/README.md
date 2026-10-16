@@ -31,6 +31,8 @@
 
 ## QA
 
+- [Documentation and code-map acceptance — 2026-10-16](qa/docs-codemap-2026-10-16.md)
+
 - [Optional Jev clipboard ranking verification](qa/jev-ranking-2026-09-21.md)
 - [Jev hotword selection acceptance](qa/jev-hotwords.md)
 - [Clipboard upgrade — 2026-09-15](qa/clipboard-upgrade-2026-09-15.md)
