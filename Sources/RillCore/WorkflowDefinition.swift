@@ -420,11 +420,24 @@ public struct PostProcessStep: Identifiable, Codable, Sendable, Equatable {
   public var id: UUID
   public var kind: PostProcessStepKind
   public var prompt: String?
+  public var modelRole: LanguageModelRole?
 
-  public init(id: UUID = UUID(), kind: PostProcessStepKind, prompt: String? = nil) {
+  public init(
+    id: UUID = UUID(), kind: PostProcessStepKind, prompt: String? = nil,
+    modelRole: LanguageModelRole? = nil
+  ) {
     self.id = id
     self.kind = kind
     self.prompt = prompt
+    self.modelRole = modelRole
+  }
+
+  public var resolvedModelRole: LanguageModelRole? {
+    switch kind {
+    case .llmRewrite: modelRole ?? .fast
+    case .llmAnswer: modelRole ?? .intelligent
+    case .snippetReplacement, .normalizeWhitespace: nil
+    }
   }
 }
 
@@ -487,8 +500,7 @@ public struct PipelineDeclaration: Codable, Sendable, Equatable {
         speechRoute: WorkflowSpeechRoute(
           selection: selection,
           recognizerID: recognizerID,
-          language: metadata[WorkflowMetadataKey.languageOverride],
-          localModel: metadata[WorkflowMetadataKey.localSpeechModelOverride]
+          language: metadata[WorkflowMetadataKey.languageOverride]
         )
       ),
       process: WorkflowProcessPhase(steps: processSteps),

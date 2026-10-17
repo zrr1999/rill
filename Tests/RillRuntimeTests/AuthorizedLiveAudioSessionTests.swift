@@ -259,7 +259,7 @@ final class AuthorizedLiveAudioSessionTests: XCTestCase {
     let revocations = LiveRevocationProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { try await settings.read() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmations.record()
         return true
       }

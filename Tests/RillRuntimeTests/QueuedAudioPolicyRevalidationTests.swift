@@ -325,7 +325,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
     let confirmation = QueuedConfirmationProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { try await settings.read() },
-      cloudConfirmationProvider: { workflow, _, destinations in
+      cloudConfirmationProvider: { workflow, _, destinations, _ in
         await confirmation.confirm(workflow: workflow, destinations: destinations)
       }
     )
@@ -544,7 +544,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
   let confirmation = QueuedConfirmationProbe()
   let gate = PrivacyRunGate(
     settingsProvider: { try await settings.read() },
-    cloudConfirmationProvider: { workflow, _, destinations in
+    cloudConfirmationProvider: { workflow, _, destinations, _ in
       await confirmation.confirm(workflow: workflow, destinations: destinations)
     }
   )

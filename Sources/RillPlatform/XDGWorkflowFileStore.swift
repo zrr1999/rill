@@ -9,7 +9,7 @@ import TOML
 /// specification. Files are deliberately independent so they remain easy to
 /// hand-author, diff, copy and remove with ordinary tools.
 public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
-  public static let currentSchemaVersion = 2
+  public static let currentSchemaVersion = WorkflowDocument.schemaVersion
   public static let maximumFileCount = 256
   public static let maximumFileSize = 1_048_576
 
@@ -63,7 +63,9 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     }
     guard isDirectory.boolValue else {
       return WorkflowFileLoadResult(issues: [
-        WorkflowFileIssue(filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.")
+        WorkflowFileIssue(
+          filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.",
+          reason: .file(.configurationPathIsNotDirectory))
       ])
     }
 
@@ -85,7 +87,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
         issues: [
           WorkflowFileIssue(
             filename: configurationDirectoryURL.lastPathComponent,
-            message: "The workflow configuration directory could not be read."
+            message: "The workflow configuration directory could not be read.",
+            reason: .directoryUnreadable
           )
         ]
       )
@@ -98,7 +101,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
       issues.append(
         WorkflowFileIssue(
           filename: configurationDirectoryURL.lastPathComponent,
-          message: "Only the first \(Self.maximumFileCount) TOML files were loaded."
+          message: "Only the first \(Self.maximumFileCount) TOML files were loaded.",
+          reason: .fileLimit(Self.maximumFileCount)
         )
       )
     }
@@ -126,6 +130,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
           WorkflowFileIssue(
             filename: fileURL.lastPathComponent,
             message: Self.safeMessage(for: error),
+            reason: (error as? WorkflowFileStoreError).map(WorkflowFileIssue.Reason.file) ?? .invalidDocument,
             workflowID: identifiedID ?? UUID(uuidString: String(fileURL.deletingPathExtension().lastPathComponent.suffix(36)))
           )
         )
@@ -142,6 +147,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
           WorkflowFileIssue(
             filename: record.fileURL.lastPathComponent,
             message: "The workflow ID is also declared by another TOML file.",
+            reason: .duplicateID,
             workflowID: record.workflow.id
           )
         )
@@ -182,7 +188,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     let destination = try fileURL.map(validatedDirectChild) ?? configurationDirectoryURL.appendingPathComponent(Self.filename(for: document.workflow))
     try await Self.writer.save(
       source: source, to: destination, expected: expected, historyDirectory: stateDirectoryURL.appendingPathComponent(document.workflow.id.uuidString))
-    return WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: destination, source: source)
+    return try Self.decode(source, fileURL: destination)
   }
 
   public func changes() async -> AsyncStream<Void> {
@@ -316,32 +322,6 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
       return error.localizedDescription
     default:
       return "The TOML document could not be parsed. \(error.localizedDescription)"
-    }
-  }
-}
-
-enum WorkflowFileStoreError: Error, LocalizedError {
-  case configurationPathIsNotDirectory
-  case fileOutsideConfigurationDirectory
-  case unsupportedFile
-  case fileTooLarge
-  case unsupportedSchema(Int)
-  case invalidWorkflow(String)
-
-  var errorDescription: String? {
-    switch self {
-    case .configurationPathIsNotDirectory:
-      "The workflow configuration path is not a directory."
-    case .fileOutsideConfigurationDirectory:
-      "The workflow file is outside the configured workflow directory."
-    case .unsupportedFile:
-      "Only regular, non-symbolic-link TOML files are accepted."
-    case .fileTooLarge:
-      "The TOML file exceeds the 1 MiB size limit."
-    case .unsupportedSchema(let version):
-      "Unsupported workflow schema version \(version); expected \(XDGWorkflowFileStore.currentSchemaVersion)."
-    case .invalidWorkflow(let message):
-      "The workflow is invalid: \(message)"
     }
   }
 }
@@ -513,8 +493,8 @@ struct WorkflowTOMLSetup: Codable {
 }
 
 struct WorkflowTOMLSpeechRoute: Codable {
-  var selection: String
-  var recognizer: String
+  var selection: String?
+  var recognizer: String?
   var language: String?
   var localModel: String?
   var providerModel: String?
@@ -534,42 +514,33 @@ struct WorkflowTOMLSpeechRoute: Codable {
   }
 
   init(route: WorkflowSpeechRoute) {
-    selection = route.selection.rawValue
-    recognizer = route.recognizerID
+    selection = nil
+    recognizer = nil
     language = route.language
-    localModel = route.localModel
-    providerModel = route.providerModel
+    localModel = nil
+    providerModel = nil
     livePreview = nil
     livePreviewPlacement = nil
     streamingProfile = nil
   }
 
   func route() throws -> WorkflowSpeechRoute {
-    guard let selection = SpeechRouteSelection(rawValue: selection) else {
+    guard let selection = SpeechRouteSelection(rawValue: selection ?? "automatic") else {
       throw WorkflowFileStoreError.invalidWorkflow(
-        "Unknown speech selection '\(selection)'."
+        "Unknown speech selection."
       )
     }
     let normalizedRecognizer: String
-    switch recognizer.lowercased() {
+    switch (recognizer ?? "local-speech").lowercased() {
     case "auto", "sherpa-onnx.local", "sherpa-onnx.streaming":
       normalizedRecognizer = "local-speech"
     default:
-      normalizedRecognizer = recognizer
+      normalizedRecognizer = recognizer ?? "local-speech"
     }
     return WorkflowSpeechRoute(
       selection: selection,
       recognizerID: normalizedRecognizer,
-      language: language,
-      localModel: localModel.map { modelID in
-        switch modelID.lowercased() {
-        case "auto", "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25":
-          "qwen3-asr-0.6b-mlx-8bit"
-        default:
-          modelID
-        }
-      },
-      providerModel: providerModel
+      language: language
     )
   }
 

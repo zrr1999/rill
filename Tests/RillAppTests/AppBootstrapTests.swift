@@ -462,7 +462,7 @@ final class AppBootstrapTests: XCTestCase {
           cloudConfirmationRequired: true
         )
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await probe.recordConfirmation()
         return true
       }
@@ -563,7 +563,7 @@ final class AppBootstrapTests: XCTestCase {
     }
   }
 
-  func testRecognitionRunPreflightRejectsUnknownTrustedLocalModelOverride() async {
+  func testRecognitionRunPreflightIgnoresRetiredWorkflowModelOverride() async {
     let trustedModels = LocalSpeechModelCatalog.distributableModelIdentifiers
     let preflight = AppBootstrap.makeRecognitionRunPreflight(
       trustedLocalModelIdentifiers: trustedModels
@@ -580,9 +580,6 @@ final class AppBootstrapTests: XCTestCase {
 
     do {
       try await preflight(workflow)
-      XCTFail("Expected an unknown local model override to fail closed.")
-    } catch let error as LocalSpeechModelSelectionError {
-      XCTAssertEqual(error, .unsupportedModelIdentifier("unreviewed-model"))
     } catch {
       XCTFail("Unexpected preflight error: \(error)")
     }
@@ -673,13 +670,7 @@ final class AppBootstrapTests: XCTestCase {
 
     do {
       try await preflight(workflow)
-      XCTFail("A preview-only workflow override must fail before capture.")
-    } catch {
-      XCTAssertEqual(
-        error as? LocalSpeechModelSelectionError,
-        .unsupportedModelIdentifier("retired-sense-voice-model")
-      )
-    }
+    } catch { XCTFail("Only the globally selected model should affect preflight: \(error)") }
   }
 
   func testBuiltinCatalogContainsSpeechRecognitionVoiceAssistantAndCleanup() throws {
@@ -691,7 +682,7 @@ final class AppBootstrapTests: XCTestCase {
       workflows.first { $0.titleKey == .speechRecognition }
     )
     XCTAssertEqual(speechRecognition.trigger, .hotkey)
-    XCTAssertFalse(speechRecognition.prefersAutomaticRecognizerSelection)
+    XCTAssertTrue(speechRecognition.prefersAutomaticRecognizerSelection)
     XCTAssertEqual(speechRecognition.plan.setup.speechRoute?.recognizerID, "local-speech")
     XCTAssertEqual(
       speechRecognition.plan.process.steps.map(\.kind),
@@ -725,7 +716,7 @@ final class AppBootstrapTests: XCTestCase {
       workflows.first { $0.titleKey == .voiceAssistant }
     )
     XCTAssertEqual(voiceAssistant.trigger, .wakeWord)
-    XCTAssertFalse(voiceAssistant.prefersAutomaticRecognizerSelection)
+    XCTAssertTrue(voiceAssistant.prefersAutomaticRecognizerSelection)
     XCTAssertEqual(voiceAssistant.plan.setup.speechRoute?.recognizerID, "local-speech")
     XCTAssertEqual(voiceAssistant.plan.setup.wakeWord?.phrases, ["Hey Rill"])
     XCTAssertEqual(
@@ -738,10 +729,7 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(voiceAssistant.plan.output.actions.map(\.id), ["record.store", SpeechOutputActionID.speak])
     let speak = try XCTUnwrap(voiceAssistant.plan.output.actions.last)
     XCTAssertEqual(speak.id, SpeechOutputActionID.speak)
-    XCTAssertEqual(
-      speak.configuration[SpeechOutputActionConfigurationKey.provider],
-      SpeechSynthesisProvider.automatic.rawValue
-    )
+    XCTAssertNil(speak.configuration[SpeechOutputActionConfigurationKey.provider])
     XCTAssertEqual(
       speak.configuration[SpeechOutputActionConfigurationKey.voice],
       Qwen3TTSVoice.vivian.rawValue
@@ -817,6 +805,20 @@ final class AppBootstrapTests: XCTestCase {
     } catch {
       XCTFail("Unexpected preflight error: \(error)")
     }
+  }
+
+  func testRecognitionRunPreflightRejectsDisabledGlobalModel() async {
+    let selected = LocalSpeechModelCatalog.defaultModelIdentifier
+    let preflight = AppBootstrap.makeRecognitionRunPreflight(localSpeechSettingsProvider: {
+      LocalSpeechSettings(model: selected, enabledModelIDs: [])
+    })
+    let workflow = WorkflowDefinition(
+      name: "Local", pipeline: PipelineDeclaration(recognizerID: "local-speech", outputActions: []),
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"))
+    do {
+      try await preflight(workflow)
+      XCTFail("A disabled global model must fail before capture")
+    } catch { XCTAssertEqual(error as? LocalSpeechModelSelectionError, .modelNotEnabled(selected)) }
   }
 
   func testLegacySherpaSettingsNormalizeToTheDefaultMLXModel() {
@@ -1345,7 +1347,7 @@ final class AppBootstrapTests: XCTestCase {
     let speechOnly = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [.cloudSpeech],
-      usesChinese: false
+      language: .english
     )
     XCTAssertTrue(speechOnly.contains("microphone audio"))
     XCTAssertTrue(speechOnly.contains("cloud-recognition terms"))
@@ -1356,7 +1358,7 @@ final class AppBootstrapTests: XCTestCase {
     let textOnly = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [.cloudText],
-      usesChinese: false
+      language: .english
     )
     XCTAssertTrue(textOnly.contains("final transcript"))
     XCTAssertTrue(textOnly.contains("configured cloud text service"))
@@ -1367,7 +1369,7 @@ final class AppBootstrapTests: XCTestCase {
     let mixed = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [.cloudSpeech, .cloudText],
-      usesChinese: true
+      language: .simplifiedChinese
     )
     XCTAssertTrue(mixed.contains("麦克风音频"))
     XCTAssertTrue(mixed.contains("云端识别术语"))
@@ -1379,7 +1381,7 @@ final class AppBootstrapTests: XCTestCase {
     let defensive = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",
       processingDestinations: [],
-      usesChinese: false
+      language: .english
     )
     XCTAssertTrue(defensive.contains("could not be classified"))
     XCTAssertTrue(defensive.contains("Nothing from this run has left this Mac yet"))

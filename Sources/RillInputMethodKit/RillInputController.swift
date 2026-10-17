@@ -13,7 +13,6 @@ public final class RillInputController: IMKInputController {
   private var session: RimeSession?
   private var inputClient: (any IMKTextInput)?
   private let candidates = CandidateWindow()
-  private var shiftPressed = false
   private var composition = InputMethodComposition()
 
   public override func activateServer(_ sender: Any!) {
@@ -45,7 +44,6 @@ public final class RillInputController: IMKInputController {
     candidates.hide()
     inputClient = nil
     session = nil
-    shiftPressed = false
     composition = InputMethodComposition()
   }
 
@@ -77,37 +75,12 @@ public final class RillInputController: IMKInputController {
       candidates.hide()
     }
     inputClient = client
-    if event.modifierFlags.contains(.command) {
+    if event.type == .keyDown, event.modifierFlags.contains(.command) {
       commit(sender)
       return false
     }
-    var modifiers: Int32 = 0
-    if event.modifierFlags.contains(.shift) { modifiers |= 1 }
-    if event.modifierFlags.contains(.capsLock) { modifiers |= 2 }
-    if event.modifierFlags.contains(.control) { modifiers |= 4 }
-    if event.modifierFlags.contains(.option) { modifiers |= 8 }
-    if event.type == .flagsChanged {
-      let pressed = event.modifierFlags.contains(.shift)
-      guard pressed != shiftPressed else { return false }
-      shiftPressed = pressed
-      _ = rill_rime_process_key(session.id, 0xffe1, pressed ? modifiers : modifiers | (1 << 30))
-      update(client)
-      return false
-    }
-    let special: [UInt16: Int32] = [
-      36: 0xff0d, 76: 0xff0d, 48: 0xff09, 51: 0xff08, 53: 0xff1b,
-      117: 0xffff, 123: 0xff51, 124: 0xff53, 125: 0xff54, 126: 0xff52,
-      115: 0xff50, 119: 0xff57, 116: 0xff55, 121: 0xff56,
-    ]
-    let key: Int32
-    if let mapped = special[event.keyCode] {
-      key = mapped
-    } else if let character = event.charactersIgnoringModifiers?.unicodeScalars.first {
-      key = Int32(character.value < 256 ? character.value : character.value | 0x0100_0000)
-    } else {
-      return false
-    }
-    let handled = rill_rime_process_key(session.id, key, modifiers) != 0
+    guard let key = InputMethodKeyEvent(event) else { return false }
+    let handled = rill_rime_process_key(session.id, key.key, key.modifiers) != 0
     update(client)
     return handled
   }

@@ -7,6 +7,18 @@ import Testing
 @testable import RillKnowledge
 
 struct RecordCloudRankingTests {
+  @Test func changingClassificationProviderRequiresANewReview() async throws {
+    let (store, _, provider, service) = fixture()
+    let record = try await store.ingest(draft("sample"), into: [])
+    try await service.setKey("unit-test-key")
+    let review = try await service.prepare(query: "sample", recordIDs: [record.id])
+    service.settings.select(.init(model: .clef, accountID: String(repeating: "a", count: 32)))
+    try await service.setKey("new-test-key")
+    await #expect(throws: RecordRankingError.changed) { try await service.confirm(review) }
+    #expect(await provider.calls == 0)
+    await service.shutdown()
+  }
+
   @Test func reviewIsBoundedAndDoesNotCallProviderUntilConfirmed() async throws {
     let (store, privacy, provider, service) = fixture()
     let record = try await store.ingest(draft(String(repeating: "中😀", count: 1_000)), into: [])
@@ -23,7 +35,9 @@ struct RecordCloudRankingTests {
     #expect(review.candidates[1].text == "report.pdf")
     await #expect(throws: RecordRankingError.missingKey) { try await service.confirm(review) }
     try await service.setKey("unit-test-key")
-    let result = try await service.confirm(review)
+    await #expect(throws: RecordRankingError.changed) { try await service.confirm(review) }
+    let refreshed = try await service.prepare(query: "report", recordIDs: [record.id, file.id])
+    let result = try await service.confirm(refreshed)
     #expect(result.orderedIndices == [1, 0])
     #expect(await provider.inputs == review.candidates.map(\.text))
     await #expect(throws: RecordRankingError.changed) { try await service.confirm(review) }
@@ -135,7 +149,7 @@ private actor RankingFixture: RecordRankingProvider {
   var calls = 0
   var inputs: [String] = []
   init(held: Bool) { self.held = held }
-  func score(query _: String, candidates: [String], apiKey _: String) async -> RecordRankingResponse {
+  func score(query _: String, candidates: [String], authorization _: DecisionModelSettingsSource.Authorization) async -> RecordRankingResponse {
     inputs = candidates
     calls += 1
     if held {

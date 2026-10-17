@@ -5,8 +5,6 @@ enum RecordPanelText: CaseIterable {
   case drafts
   case collections
   case panelContent
-  case keepOpen
-  case keepOpenHelp
   case outputStatus
   case done
   case review
@@ -17,8 +15,6 @@ enum RecordPanelText: CaseIterable {
   case retrySave
   case inserted
   case retryItem
-  case moveAndOpen
-  case needsAttention
   case closeFloatingWindow
   case draftSources
   case configureDraftSources
@@ -46,8 +42,6 @@ extension L10n {
     case .drafts: return catalogString("recordPanel.drafts", language: language)
     case .collections: return catalogString("recordPanel.collections", language: language)
     case .panelContent: return catalogString("recordPanel.panelContent", language: language)
-    case .keepOpen: return catalogString("recordPanel.keepOpen", language: language)
-    case .keepOpenHelp: return catalogString("recordPanel.keepOpenHelp", language: language)
     case .outputStatus: return catalogString("recordPanel.outputStatus", language: language)
     case .done: return catalogString("recordPanel.done", language: language)
     case .review: return catalogString("recordPanel.review", language: language)
@@ -58,8 +52,6 @@ extension L10n {
     case .retrySave: return catalogString("recordPanel.retrySave", language: language)
     case .inserted: return catalogString("recordPanel.inserted", language: language)
     case .retryItem: return catalogString("recordPanel.retryItem", language: language)
-    case .moveAndOpen: return catalogString("recordPanel.moveAndOpen", language: language)
-    case .needsAttention: return catalogString("recordPanel.needsAttention", language: language)
     case .closeFloatingWindow: return catalogString("recordPanel.closeFloatingWindow", language: language)
     case .draftSources: return catalogString("recordPanel.draftSources", language: language)
     case .configureDraftSources: return catalogString("recordPanel.configureDraftSources", language: language)

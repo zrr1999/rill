@@ -21,7 +21,7 @@ struct DiagnosticEventRow: View {
           Text(DiagnosticEventPresentation.title(for: event, language: model.settings.language))
             .fixedSize(horizontal: false, vertical: true)
           Spacer(minLength: RillSpacing.row)
-          Text(event.timestamp.formatted(date: .omitted, time: .standard))
+          Text(event.timestamp.formatted(.dateTime.hour().minute().second().locale(model.settings.language.formattingLocale)))
             .monospacedDigit()
             .foregroundStyle(.secondary)
         }

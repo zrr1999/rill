@@ -239,14 +239,26 @@ extension SettingsView {
     }
   }
 
+  var selectedLanguageModelSettings: OpenAISettings {
+    model.settings.languageModelSettings(for: selectedLanguageModelRole)
+  }
+
+  var llmModelOptions: [LLMModelSelection] {
+    switch LanguageModelProvider.infer(from: selectedLanguageModelSettings.baseURL) {
+    case .deepSeek: [.deepSeek, .custom]
+    case .openAI: [.luna, .terra, .sol, .custom]
+    case .compatible: LLMModelSelection.allCases
+    }
+  }
+
   var llmModelSelection: Binding<LLMModelSelection> {
     Binding(
-      get: { LLMModelSelection(modelIdentifier: model.settings.openAIModel) },
+      get: { LLMModelSelection(modelIdentifier: selectedLanguageModelSettings.model) },
       set: { selection in
         if let modelIdentifier = selection.modelIdentifier {
-          model.setOpenAIModel(modelIdentifier)
-        } else if LLMModelSelection(modelIdentifier: model.settings.openAIModel) != .custom {
-          model.setOpenAIModel("")
+          model.setLanguageModelIdentifier(modelIdentifier, for: selectedLanguageModelRole)
+        } else if LLMModelSelection(modelIdentifier: selectedLanguageModelSettings.model) != .custom {
+          model.setLanguageModelIdentifier("", for: selectedLanguageModelRole)
         }
       }
     )
@@ -257,7 +269,7 @@ extension SettingsView {
   }
 
   var usesThirdPartyOpenAIEndpoint: Bool {
-    guard let host = URLComponents(string: model.settings.openAIBaseURL)?.host?.lowercased() else {
+    guard let host = URLComponents(string: selectedLanguageModelSettings.baseURL)?.host?.lowercased() else {
       return false
     }
     return host != "api.openai.com"
@@ -269,7 +281,7 @@ extension SettingsView {
 
   var openAIVerificationFailureMessage: String {
     L10n.openAIVerificationFailureMessage(
-      model.settings.openAIVerificationFailure,
+      model.settings.verificationFailure(for: selectedLanguageModelRole),
       language: model.settings.language
     )
   }
@@ -406,10 +418,7 @@ extension SettingsView {
       descriptor.capability == .speechToText
       ? L10n.settingsText(.settingsSpeechModelCapabilitySTT, language: model.settings.language)
       : L10n.settingsText(.settingsSpeechModelCapabilityTTS, language: model.settings.language)
-    let size = ByteCountFormatter.string(
-      fromByteCount: Int64(clamping: descriptor.downloadByteCount),
-      countStyle: .file
-    )
+    let size = Int64(clamping: descriptor.downloadByteCount).formatted(.byteCount(style: .file).locale(model.settings.language.formattingLocale))
     let name =
       model.trustedLocalSpeechModels.first { $0.id == descriptor.id }
       .map { model.localSpeechModelDisplayName($0.id) }

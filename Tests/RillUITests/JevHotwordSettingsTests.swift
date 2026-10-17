@@ -56,7 +56,7 @@ struct JevHotwordSettingsTests {
 }
 
 private struct NeverHotwordProvider: HotwordRankingProvider {
-  func score(_: HotwordRankingRequest, apiKey _: String) async throws -> [HotwordRankingScore] {
+  func score(_: HotwordRankingRequest, authorization _: DecisionModelSettingsSource.Authorization) async throws -> [HotwordRankingScore] {
     Issue.record("Editing settings must not send requests.")
     throw HotwordRankingError.invalidInput
   }

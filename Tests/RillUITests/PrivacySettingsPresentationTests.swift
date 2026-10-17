@@ -20,6 +20,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
     let rulesData = try JSONEncoder().encode([rule])
     let settingsStore = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .privacySensitiveAppRules: String(decoding: rulesData, as: UTF8.self),
         .privacyCloudConfirmationRequired: "false",
         .privacyHistoryPreviewMode: PrivacyHistoryPreviewMode.disabled.rawValue,
@@ -106,7 +107,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
     XCTAssertFalse(runtimeDecision.allowsClipboardCapture)
     let runtimeGate = PrivacyRunGate(
       settingsProvider: { try privacySettingsSource.currentSettings() },
-      cloudConfirmationProvider: { _, _, _ in true }
+      cloudConfirmationProvider: { _, _, _, _ in true }
     )
     do {
       _ = try await runtimeGate.authorize(
@@ -303,6 +304,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
   func testCorruptPrivacyRulesKeepSafeDefaultsAndExposeLoadFailure() async {
     let settingsStore = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .interfaceLanguage: AppLanguage.simplifiedChinese.rawValue,
         .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
         .privacySensitiveAppRules: "{not-json",
@@ -433,7 +435,8 @@ private actor ControlledPrivacySettingsStore: SettingsStore {
     let atomicSnapshots: [[AppSettingKey: String]]
   }
 
-  private var storage: [AppSettingKey: String] = [:]
+  // These barriers exercise privacy writes after model migration has completed.
+  private var storage: [AppSettingKey: String] = [.languageModelRolesMigrated: "true"]
   private var atomicSnapshots: [[AppSettingKey: String]] = []
   private var atomicWriteCount = 0
   private var failingAtomicWriteCount: Int

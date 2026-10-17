@@ -58,8 +58,7 @@ public struct RecordCleanupSheet: View {
           L10n.quickRecord(.protectedRecords, language: language), value: "\(plan.protectedCount)")
         LabeledContent(
           L10n.quickRecord(.freeSpace, language: language),
-          value: ByteCountFormatter.string(
-            fromByteCount: Int64(plan.byteCount), countStyle: .binary))
+          value: Int64(plan.byteCount).formatted(.byteCount(style: .binary).locale(language.formattingLocale)))
       }
       if let message = model.message {
         Text(L10n.quickRecord(message, language: language)).foregroundStyle(.orange)
@@ -138,11 +137,11 @@ public struct RecordQuickPanelView: View {
                   get: { model.collectionID }, set: { model.setCollection($0) })
               ) {
                 Text(panelText(.allRecords)).tag(RecordCollectionID?.none)
-                ForEach(model.collections) { Text($0.name).tag(Optional($0.id)) }
+                ForEach(model.collections) { Text(L10n.collectionName($0, language: language)).tag(Optional($0.id)) }
               }.pickerStyle(.inline)
             } label: {
               Text(
-                model.collections.first(where: { $0.id == model.collectionID })?.name
+                model.collections.first(where: { $0.id == model.collectionID }).map { L10n.collectionName($0, language: language) }
                   ?? panelText(.allRecords)
               ).lineLimit(1)
             }
@@ -237,7 +236,7 @@ public struct RecordQuickPanelView: View {
   private var addToDrafts: some View {
     Menu {
       ForEach(model.buffers.snapshot?.buffers ?? []) { summary in
-        Button(summary.buffer.name) {
+        Button(L10n.bufferName(summary.buffer, language: language)) {
           if let id = model.selectedID { model.buffers.enqueue(id, bufferID: summary.id) }
         }
       }
@@ -287,7 +286,7 @@ public struct RecordQuickPanelView: View {
           VStack(alignment: .leading, spacing: 4) {
             Text(text(.preview)).font(.title3.weight(.medium)).lineLimit(1)
             HStack(spacing: 5) {
-              if let application = preview.record.provenance.sourceApplicationName { Text(application) }
+              Text(L10n.recordSource(preview.record.provenance, language: language))
               Text(preview.record.createdAt, style: .relative)
             }.font(.caption).foregroundStyle(.secondary)
           }.padding(.horizontal, 22).padding(.top, 18).frame(height: 72, alignment: .top)
@@ -423,7 +422,7 @@ public struct RecordQuickPanelView: View {
           .font(.callout.weight(.medium)).lineLimit(1)
         HStack(spacing: 5) {
           if item.metadata.isPinned { Image(systemName: RillSystemSymbol.pinFill.rawValue) }
-          Text(item.header.provenance.sourceApplicationName ?? "").lineLimit(1)
+          Text(L10n.recordSource(item.header.provenance, language: language)).lineLimit(1)
           Text(item.header.createdAt, style: .relative)
         }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
       }

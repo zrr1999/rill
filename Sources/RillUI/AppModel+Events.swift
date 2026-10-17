@@ -252,7 +252,7 @@ extension AppModel {
     case .runStarted(let run):
       voice.begin(run)
       self.voice.workflowAudioRunState = .idle
-      lastFailure = nil
+      lastFailureResource = nil
       append(L10n.resource("event.runStarted", defaultValue: "Run started: \(L10n.workflowNameResource(run.workflow))"))
     case .runReceiptRepositoryChanged(let change):
       history.noteNewRunAvailableForHistoryBrowsing()
@@ -329,7 +329,7 @@ extension AppModel {
     case .recordBufferInputFailed:
       let message = L10n.resource("AppModel.Events.A.copied.item.was.saved.in.All.Records.but.was.not.added")
       append(message)
-      recordWorkspace.buffers.showMessageAction?(message.string(for: settings.language))
+      recordWorkspace.buffers.showMessageAction?(message)
     case .recordPanelRequested:
       showRecordPanel()
     case .runHistoryUpdated(let update):
@@ -352,7 +352,7 @@ extension AppModel {
           self.voice.activeRunID = nil
         }
       }
-      if ownsPresentation { lastFailure = nil }
+      if ownsPresentation { lastFailureResource = nil }
       if summary.trigger.isVoiceCapture {
         appendPrivacyProtectedBody(
           body: summary.finalText, kind: .runCompleted
@@ -371,7 +371,7 @@ extension AppModel {
       if ownsPresentation || discardedCapture {
         self.voice.isRunning = !pendingRuns.isEmpty
         if self.voice.activeRunID == runID { self.voice.activeRunID = nil }
-        lastFailure = nil
+        lastFailureResource = nil
       }
       if self.voice.currentCaptureLiveSubtitleSnapshot?.runID == runID {
         self.voice.applyCurrentCaptureLiveSubtitleSnapshot(nil)
@@ -402,7 +402,7 @@ extension AppModel {
     case .runFailed(let failedRunID, _, let message):
       let failurePresentation = RunFailurePresentation.localizedText(for: message)
       if failedRunID == self.voice.activeRunID || self.voice.activeRunID == nil {
-        lastFailure = failurePresentation.string(for: self.settings.language)
+        lastFailureResource = failurePresentation
       }
       let failedCurrentCapture =
         failedRunID != nil
@@ -619,12 +619,9 @@ extension AppModel {
       records.first(where: { record in
         record.outcome == .completed && !(record.finalText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
       })?.finalText
-    lastFailure = records.first(where: { $0.outcome == .failed })
+    lastFailureResource = records.first(where: { $0.outcome == .failed })
       .map {
-        RunFailurePresentation.text(
-          for: $0.failureMessage,
-          language: self.settings.language
-        )
+        RunFailurePresentation.localizedText(for: $0.failureMessage)
       }
     self.voice.pendingResolution = nil
     self.history.eventFeed.removeAll()
