@@ -568,4 +568,36 @@ done
 uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --validate \
   <"$MANIFEST_DESTINATION"
 
+extract_app_intents_metadata() {
+  local const_file list source_list dependency xcode_version
+  const_file="$(
+    find "$PROJECT_DIR/.build" "$PROJECT_DIR/.artifacts" \
+      -name 'RillAppIntents.swiftconstvalues' -print 2>/dev/null | head -n 1
+  )"
+  [[ -n "$const_file" ]] || error "App Intents compiler metadata was not produced"
+  list="$(mktemp)"
+  source_list="$(mktemp)"
+  dependency="$(mktemp)"
+  printf '%s\n' "$const_file" >"$list"
+  printf '%s\n' "$PROJECT_DIR/Sources/RillApp/RillAppIntents.swift" >"$source_list"
+  xcode_version="$(xcodebuild -version | awk '/Build version/ { print $3 }')"
+  xcrun appintentsmetadataprocessor \
+    --output "$APP_BUNDLE/Contents/Resources" \
+    --toolchain-dir "$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" \
+    --module-name RillApp \
+    --sdk-root "$(xcrun --show-sdk-path)" \
+    --xcode-version "$xcode_version" \
+    --platform-family macOS \
+    --deployment-target "$MIN_MACOS" \
+    --target-triple "arm64-apple-macos${MIN_MACOS}" \
+    --source-file-list "$source_list" \
+    --swift-const-vals-list "$list" \
+    --dependency-file "$dependency" \
+    --force || error "App Intents metadata extraction failed"
+  [[ -d "$APP_BUNDLE/Contents/Resources/Metadata.appintents" ]] ||
+    error "App Intents metadata bundle was not written"
+}
+
+extract_app_intents_metadata
+
 info "Assembled unsigned $APP_BUNDLE (${#RESOURCE_SOURCES[@]} resource bundles; $dependency_bundle_count dependencies)"
