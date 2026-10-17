@@ -151,9 +151,10 @@ actor WakeWordCoordinator {
         message: "A configured local wake phrase was detected."
       )
     )
-    await MainActor.run {
+    let playback = await MainActor.run {
       cuePlayer.play(.started)
     }
+    await playback?.wait()
     do {
       if let command = await source.claimPrefilledCommand(for: event.id) {
         try await runPrefilledCommand(workflow, event, command)

@@ -29,18 +29,21 @@ struct AppContainer {
 @MainActor
 enum AppBootstrap {
   static func recordingCueAction(
-    playSound: @escaping @MainActor @Sendable (RecordingInteractionCue) -> Void
+    playSound: @escaping @MainActor @Sendable (RecordingInteractionCue) -> RecordingCuePlayback?
   ) -> @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void {
     { cue, token in
-      await MainActor.run {
+      let playback = await MainActor.run {
+        var playback: RecordingCuePlayback?
         token.performIfValid {
-          playSound(cue)
+          playback = playSound(cue)
           NSHapticFeedbackManager.defaultPerformer.perform(
             cue == .started ? .alignment : .generic,
             performanceTime: .now
           )
         }
+        return playback
       }
+      await playback?.wait()
     }
   }
 
@@ -1869,6 +1872,7 @@ private enum AppContainerFactory {
           await model.drainRecordMutationsForApplicationShutdown()
         },
         cancelRecording: {
+          await platform.recordingCuePlayer.stop()
           await runtime.recordingSessionManager.stopForApplicationShutdown()
         },
         cancelWorkflowRun: {

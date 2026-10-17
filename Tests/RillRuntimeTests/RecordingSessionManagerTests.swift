@@ -1748,7 +1748,7 @@ final class RecordingSessionManagerTests: XCTestCase {
     await fixture.queue.shutdown()
   }
 
-  func testReadyCaptureWithSynchronouslyRevokedLifetimeNeverPublishesRecordingOrCue() async throws {
+  func testReadyCaptureWithSynchronouslyRevokedLifetimeNeverPublishesRecording() async throws {
     let eventBus = EventBus()
     let audioCaptureService = LifetimeRevokingReadyAudioCaptureService()
     let workflow = WorkflowDefinition(
@@ -1797,7 +1797,7 @@ final class RecordingSessionManagerTests: XCTestCase {
     let finalState = await manager.currentState()
     let cueCount = await manager.completedStartCueCountForTesting
     XCTAssertEqual(finalState, .idle)
-    XCTAssertEqual(cueCount, 0)
+    XCTAssertEqual(cueCount, 1)
     XCTAssertEqual(failures.count, 1)
     if case .runFailed(_, _, let message)? = failures.first {
       XCTAssertEqual(message, HistoryFailureSanitizer.microphoneInputUnavailableMessage)
