@@ -215,10 +215,12 @@ exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
 
-Native window and panel depth carries the hierarchy. The unified panel uses a
-standard material backdrop, with Liquid Glass on the pending capsule, navigation
-sidebar, selected mode, and action buttons. Each mounted mode owns a separate
-`GlassEffectContainer` so hidden effects cannot join the visible pane. The header
+Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, navigation
+sidebar, mode track, selected mode, and action buttons. Reading surfaces, record
+previews, and draft editing stay opaque. Reduce Transparency or Increase
+Contrast selects an opaque control background through `RillGlass`. Each mounted
+mode owns a separate `GlassEffectContainer` so hidden effects cannot join the
+visible pane. The header
 has its own container. Custom effects apply directly to their content;
 native `.glass` and `.glassProminent` button styles own pointer, pressed, and
 disabled feedback. The primary action uses the system accent color. Reading
@@ -236,13 +238,13 @@ Apply translucent material to navigation and controls without lowering the
 opacity of their text or icons.
 
 The recorder and floating workspace share [RillGlass](Sources/RillUI/RillGlass.swift).
-It applies native regular Liquid Glass directly to the custom surface. Reduce
-Transparency or Increase Contrast selects an opaque control background. Glass
-buttons retain the system's accessibility adaptations. The recorder retains its
-fixed compact and expanded frames, waveform, network disclosure, countdown,
-continue action, and Esc hint. System glass supplies its depth; no custom tint,
-outline, or additional shadow is layered over the surface. The native floating
-panels use `NSPanel.hasShadow`.
+It applies native regular Liquid Glass directly to the custom surface, including
+the recorder's Esc hint. Reduce Transparency or Increase Contrast selects an
+opaque control background. Glass buttons retain the system's accessibility
+adaptations. The recorder retains its fixed compact and expanded frames,
+waveform, network disclosure, countdown, continue action, and Esc hint. System
+glass supplies its depth; no custom tint, outline, or additional shadow is
+layered over the surface. The native floating panels use `NSPanel.hasShadow`.
 
 Main-window Drafts, Copy, Settings, and workflow actions use native glass button
 styles. Primary workflow and explicit output actions use `.glassProminent`.
@@ -350,8 +352,9 @@ button, and content changes never move its controls. These behaviors are owned b
 `rillCard` uses the frontmatter padding and radius by default, with prominent,
 regular, and subdued quaternary fills. Use it for existing grouped or actionable
 content. Native lists and forms do not need additional card wrappers.
-`RillCardButtonStyle` supplies a hover border and a small press response for
-interactive cards, with reduced-motion behavior.
+`RillHoverButtonStyle` supplies the shared hover cue: a border and small press
+response for cards, a stroke for chips, a quiet fill for settings rows, and a
+tint for compact navigation labels. Reduce Motion disables those transitions.
 
 Record bodies and Copy lead the detail view; collection membership and metadata
 use disclosure. Activity emphasizes current work, pending choices, and recovery,

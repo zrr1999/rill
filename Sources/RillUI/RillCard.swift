@@ -19,17 +19,6 @@ public enum RillSpacing {
   public static let page: CGFloat = 24
 }
 
-struct RillEmptyState: View {
-  let title: String
-  let symbol: RillSystemSymbol
-
-  var body: some View {
-    ContentUnavailableView {
-      Label(title, systemImage: symbol.rawValue)
-    }
-  }
-}
-
 /// Visual weight of a Rill card, mapped to one consistent fill treatment.
 ///
 /// Cards communicate hierarchy through named levels instead of ad-hoc opacity
@@ -68,49 +57,63 @@ extension View {
   }
 }
 
-/// Button style for interactive cards, such as the tappable Dashboard
-/// summaries.
+/// Pointer acknowledgement shared by cards, chips, navigation rows, and tinted labels.
 ///
-/// HIG (Feedback, Direct Manipulation): a clickable card must acknowledge the
-/// pointer. Hovering raises a hairline stroke and pressing gently compresses
-/// the card, without changing layout. Reduce Motion disables the animation.
-public struct RillCardButtonStyle: ButtonStyle {
-  let cornerRadius: CGFloat
-
-  public init(cornerRadius: CGFloat = RillRadius.card) {
-    self.cornerRadius = cornerRadius
+/// Reduce Motion disables the transition. The kind only changes the cue, not layout.
+struct RillHoverButtonStyle: ButtonStyle {
+  enum Kind {
+    case card(cornerRadius: CGFloat)
+    case stroke(cornerRadius: CGFloat)
+    case fill(cornerRadius: CGFloat)
+    case tint
   }
 
-  public func makeBody(configuration: Configuration) -> some View {
-    RillCardButtonBody(configuration: configuration, cornerRadius: cornerRadius)
+  var kind: Kind
+
+  func makeBody(configuration: Configuration) -> some View {
+    RillHoverButtonBody(configuration: configuration, kind: kind)
   }
 }
 
-private struct RillCardButtonBody: View {
+private struct RillHoverButtonBody: View {
   let configuration: ButtonStyleConfiguration
-  let cornerRadius: CGFloat
+  let kind: RillHoverButtonStyle.Kind
 
   @State private var isHovering = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  private var shape: RoundedRectangle {
-    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+  var body: some View {
+    switch kind {
+    case .card(let cornerRadius):
+      stroked(cornerRadius: cornerRadius, scalesWhenPressed: true)
+    case .stroke(let cornerRadius):
+      stroked(cornerRadius: cornerRadius, scalesWhenPressed: false)
+    case .fill(let cornerRadius):
+      configuration.label
+        .background {
+          RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.quaternary.opacity(isHovering ? RillCardProminence.regular.fillOpacity : 0))
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovering)
+        .onHover { isHovering = $0 }
+    case .tint:
+      configuration.label
+        .foregroundStyle(isHovering ? Color.accentColor : Color.primary)
+        .opacity(configuration.isPressed ? 0.7 : 1)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovering)
+        .onHover { isHovering = $0 }
+    }
   }
 
-  var body: some View {
-    configuration.label
+  private func stroked(cornerRadius: CGFloat, scalesWhenPressed: Bool) -> some View {
+    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    return configuration.label
       .contentShape(shape)
       .overlay {
-        shape.strokeBorder(
-          Color.primary.opacity(isHovering ? 0.22 : 0),
-          lineWidth: 1
-        )
+        shape.strokeBorder(Color.primary.opacity(isHovering ? 0.22 : 0), lineWidth: 1)
       }
-      .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
-      .animation(
-        reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 1.0),
-        value: isHovering
-      )
+      .scaleEffect(scalesWhenPressed && configuration.isPressed && !reduceMotion ? 0.985 : 1)
+      .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 1.0), value: isHovering)
       .animation(
         reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8),
         value: configuration.isPressed
@@ -157,11 +160,18 @@ struct RillCopyButton: View {
       feedbackID = UUID()
     } label: {
       Text(title).hidden().overlay {
-        Text(feedbackID == nil ? title : L10n.presentation(.copied, language: language))
+        HStack(spacing: RillSpacing.compact) {
+          if feedbackID != nil {
+            Image(systemName: RillSystemSymbol.checkmark.rawValue)
+              .symbolEffect(.bounce, value: feedbackID)
+          }
+          Text(feedbackID == nil ? title : L10n.presentation(.copied, language: language))
+        }
       }
     }
     .accessibilityLabel(feedbackID == nil ? title : L10n.presentation(.copied, language: language))
     .buttonStyle(.borderless)
+    .sensoryFeedback(.success, trigger: feedbackID)
     .task(id: feedbackID) {
       guard feedbackID != nil else { return }
       do { try await Task.sleep(for: .milliseconds(1500)) } catch { return }
