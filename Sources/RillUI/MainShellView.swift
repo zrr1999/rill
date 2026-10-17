@@ -380,36 +380,10 @@ public struct MainShellView: View {
     }
     .toolbar {
       if !model.voiceSetupReadiness.isComplete, model.voiceSetupPresentation != .waiting {
-        ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
-          Button {
-            model.voiceSetupPresentation = .presented
-          } label: {
-            Label(L10n.surface(.finishSetup, language: model.settings.language), systemImage: RillSystemSymbol.checklist.rawValue)
-          }
-          .labelStyle(.titleAndIcon)
-          .accessibilityIdentifier("voice-setup.resume")
-        }
+        voiceSetupToolbarItem
       }
       ToolbarSpacer(.fixed, placement: .primaryAction)
-      ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
-        Button(action: presentGlobalSearch) {
-          Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
-        }
-        .help(GlobalSearchText.searchCommand(language: model.settings.language))
-        .accessibilityLabel(GlobalSearchText.searchCommand(language: model.settings.language))
-        .accessibilityIdentifier("global-search.open")
-        .disabled(
-          !MainShellInteractionPolicy.allowsToolbarInteraction(
-            isGlobalSearchPresented: isGlobalSearchPresented
-          )
-        )
-        .accessibilityHidden(
-          !MainShellInteractionPolicy.allowsToolbarInteraction(
-            isGlobalSearchPresented: isGlobalSearchPresented
-          )
-        )
-      }
-
+      globalSearchToolbarItem
     }
     .onAppear {
       model.refreshPermissions()
@@ -445,6 +419,66 @@ public struct MainShellView: View {
 }
 
 extension MainShellView {
+  @ToolbarContentBuilder
+  private var voiceSetupToolbarItem: some ToolbarContent {
+    if #available(macOS 26.1, *) {
+      ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
+        voiceSetupButton
+      }
+      .visibilityPriority(.low)
+    } else {
+      ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
+        voiceSetupButton
+      }
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var globalSearchToolbarItem: some ToolbarContent {
+    if #available(macOS 26.1, *) {
+      ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
+        globalSearchButton
+      }
+      .visibilityPriority(.high)
+    } else {
+      ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
+        globalSearchButton
+      }
+    }
+  }
+
+  private var voiceSetupButton: some View {
+    Button {
+      model.voiceSetupPresentation = .presented
+    } label: {
+      Label(
+        L10n.surface(.finishSetup, language: model.settings.language),
+        systemImage: RillSystemSymbol.checklist.rawValue
+      )
+    }
+    .labelStyle(.titleAndIcon)
+    .accessibilityIdentifier("voice-setup.resume")
+  }
+
+  private var globalSearchButton: some View {
+    Button(action: presentGlobalSearch) {
+      Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
+    }
+    .help(GlobalSearchText.searchCommand(language: model.settings.language))
+    .accessibilityLabel(GlobalSearchText.searchCommand(language: model.settings.language))
+    .accessibilityIdentifier("global-search.open")
+    .disabled(
+      !MainShellInteractionPolicy.allowsToolbarInteraction(
+        isGlobalSearchPresented: isGlobalSearchPresented
+      )
+    )
+    .accessibilityHidden(
+      !MainShellInteractionPolicy.allowsToolbarInteraction(
+        isGlobalSearchPresented: isGlobalSearchPresented
+      )
+    )
+  }
+
   @ViewBuilder
   private var contentSidebar: some View {
     List(selection: sidebarSelection) {
