@@ -349,7 +349,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 `Policy - PR` 独立响应 `pull_request` 事件，只有读取权限。它用 `actions/checkout`
 只检出事件中 base commit 的 PR 模板，再由 `octokit/request-action` 读取当前标题和
 正文，交给 ZenDev 官方的 `validate-title`、`validate-body` Actions 校验。
-它不依赖 Automation，也不豁免机器人。
+它不依赖 Automation；所有作者都检查标题，作者类型为 Bot 的 PR 跳过正文模板检查。
 
 `Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
 仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
