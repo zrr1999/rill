@@ -38,7 +38,7 @@
 | --- | --- |
 | 常规 | 界面语言 |
 | 输入 | Fn 行为、输出方式、剪贴板采集、面板与输出下一项快捷键 |
-| 语音与模型 | 识别/合成模型、LLM 与 Jev API、语音助手资源 |
+| 语音与模型 | 识别/合成模型、文本与分类模型配置、语音助手资源 |
 | 词汇与记忆 | 词汇映射、热词、上下文纠错与长期记忆 |
 | 隐私 | 系统权限、敏感应用、云端与预览策略 |
 | 数据 | 留存、分类清理、恢复与诊断 |
@@ -50,7 +50,7 @@
 
 - [工作流 TOML 参考](workflow-toml.md)
 - [可下载的条件工作流](examples/conditional-workflow.toml)
-- [JSON Schema](schemas/workflow-v2.schema.json)
+- [JSON Schema](schemas/workflow-v3.schema.json)
 - [完整隐私与数据流说明](../PRIVACY.md)
 - [第三方依赖许可](../THIRD_PARTY_NOTICES.md)与[本地模型许可](../LOCAL_MODEL_NOTICES.md)
 

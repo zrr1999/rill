@@ -6,10 +6,13 @@
 
 ## 计划
 
+- [全局模型配置与工作流模型类别（2026-10-11）](plans/global-model-roles-2026-10-11.md)
 - [Rill 架构、ASR 与产品质量改进](plans/improvement-plan.md)
 - [通用能力复用续接（2026-10-10）](plans/common-capability-reuse-2026-10-10.md)
 
 ## 研究
+
+- [大陆直连云端 ASR 调研（2026-10-11）](research/cloud-asr-mainland-2026-10-11.md)
 
 - [ASR Dogfood Benchmark 计划](research/asr-benchmark-plan.md)
 - [Rill 竞品雷达与持续改进队列](research/competitive-radar.md)

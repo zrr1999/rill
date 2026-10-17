@@ -38,15 +38,15 @@ A workflow runs sequentially, with structured `if` branches and ordered outputs.
 The XDG layout follows the [Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/).
 Files use [TOML 1.0](https://toml.io/en/v1.0.0).
 
-## Document v2
+## Document v3
 
 See the complete [conditional example](examples/conditional-workflow.toml) and
-[JSON Schema](schemas/workflow-v2.schema.json). The schema describes the parsed
+[JSON Schema](schemas/workflow-v3.schema.json). The schema describes the parsed
 TOML data model; the application also checks identity, nesting, step ordering,
 installed components and credential policy.
 
 ```toml
-schema_version = 2
+schema_version = 3
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "Prepare a reply"
 enabled = false
@@ -69,6 +69,7 @@ condition = { field = "text", op = "contains", value = "?" }
 [[process.then]]
 id = "rewrite"
 kind = "llm-rewrite"
+model_role = "fast"
 prompt = "Rewrite as a concise question. Keep the original language and meaning."
 
 [output]
@@ -85,11 +86,11 @@ kind = "system-clipboard.copy"
 
 | Field | Contract |
 | --- | --- |
-| `schema_version` | Required integer, currently `2`. Future versions fail validation and are not rewritten. |
+| `schema_version` | Required integer, currently `3`. Future versions fail validation and are not rewritten. |
 | `id` | Required workflow UUID. Renaming a document preserves it; duplicating or importing creates a new UUID. |
 | `name` | Required non-blank display name, up to 160 Unicode scalars. |
 | `description` | Optional descriptive text. |
-| `enabled` | Boolean, defaults to `false` in v2. Saving activates this preference; provider readiness and trigger conflicts are separate execution checks. |
+| `enabled` | Boolean, defaults to `false`. Saving activates this preference; provider readiness and trigger conflicts are separate execution checks. |
 | `trigger.kind` | `manual`, `hotkey`, `menu-bar`, `wake-word`. |
 | `trigger.gesture` | Optional existing Rill gesture identifier. |
 | `input.kind` | `audio`, `text`, `record`. Text can be supplied explicitly with Run clipboard text. |
@@ -113,17 +114,12 @@ styles. Merely opening a hand-written file does not reformat it.
 
 Audio input requires `setup.speech` and exactly one root `recognize-speech` step,
 placed first. Text and Record input omit both speech setup and recognition or
-resolution steps. Fixed speech routes are preserved when files are loaded.
+resolution steps. All audio workflows use the one ASR model selected globally.
 
-`setup.speech` requires `selection` (`automatic` or `fixed`) and `recognizer`.
-Optional fields are `language`, `local_model`, `provider_model`, `live_preview`
-(boolean), `live_preview_placement` (`overlay` or `cursor`) and
-`streaming_profile`. Provider availability is checked separately from syntax.
-
-Built-in workflows and bundled templates omit `local_model`. They use the selected
-speech model while it is enabled, otherwise another enabled model from the
-supported catalog. An explicit `local_model` remains an override and must be
-enabled; Rill does not enable a disabled model on the user's behalf.
+`setup.speech` accepts `language`, `live_preview` (boolean),
+`live_preview_placement` (`overlay` or `cursor`) and `streaming_profile`.
+It cannot select a recognizer, provider or model. The selected ASR model must be
+enabled; a disabled model produces a readiness error instead of choosing another model.
 
 Each `[[setup.vocabulary]]` binding has its own UUID `id`, a `collection` UUID and
 non-empty `uses` (`recognition-hints`, `text-replacement`, or both). Optional `when`
@@ -143,15 +139,15 @@ budget. This projection is frozen at admission and is not limited to ASR's final
 hints. It does not change mapping rules or enable reference uploads for custom
 workflows, text input or imported audio. See [vocabulary and memory](vocabulary-memory.md).
 
-The experimental **Jev hotword selection** switch in Voice & Models is separate
+The experimental **Classification hotword selection** switch in Voice & Models is separate
 from workflow TOML and from the polishing gate. It defaults off and retains its
-shared Jev key and independent consent only for the app session. Enabling it permits sending up to 50
+shared classification key and independent consent only for the app session. Enabling it permits sending up to 50
 applicable hotword candidates, the application and workflow names, and the
-already-authorized text selection to `api.typesafe.ai`. A selection above 1,800
+already-authorized text selection to the globally selected TypeSafe or Cloudflare endpoint. A selection above 1,800
 UTF-8 bytes is omitted entirely. Audio, clipboard, screen and history are not
 included, and this feature does not capture additional context.
 
-Recording never waits for Jev. A cache miss uses the existing rule order for the
+Recording never waits for classification. A cache miss uses the existing rule order for the
 entire run and starts one background request only after capture begins. A later
 matching run can use the result. The memory-only cache holds at most 32 entries
 for five minutes and includes workflow, vocabulary, context, language, model,
@@ -196,6 +192,7 @@ Failed, cancelled and fallback calls retain elapsed time when timing is enabled.
 [[process]]
 id = "polish"
 kind = "llm-rewrite"
+model_role = "fast"
 prompt = "Correct transcription errors while preserving meaning."
 record_duration = true
 ```
@@ -208,11 +205,11 @@ output-action timing; older records without measurements show “Not recorded”
 These are input diagnostics, not a workflow profiling requirement for ordinary
 speech use.
 
-### Optional Jev polishing prediction
+### Optional classification polishing prediction
 
-In Settings → text provider, enter a TypeSafe API key and enable Jev polishing
+In Settings → Voice & Models → API Providers, select Jev or Cloudflare Clef, enter its credential and enable classification polishing
 prediction for the current app session. Smart Cleanup can then skip its
-`llm-rewrite` request when Jev considers the complete text ready to use unchanged.
+`llm-rewrite` request when the classification model considers the complete text ready to use unchanged.
 The normal ordered outputs still save and deliver that text. History records a
 skipped rewrite with no LLM request trace, token count or LLM duration; prediction
 latency is not reported as LLM execution time.
@@ -221,18 +218,18 @@ Custom cleanup workflows opt in through the existing options dictionary:
 
 ```toml
 [options]
-"text.polishing-gate" = "jev"
+"text.polishing-gate" = "classification"
 ```
 
 The switch defaults off, and neither the key nor the switch is persisted.
 Enabling it authorizes sending the current transcript and that step's rewrite
-instructions to `api.typesafe.ai`. Audio, clipboard/selection context, screen
+instructions to the globally selected TypeSafe or Cloudflare endpoint. Audio, clipboard/selection context, screen
 images, memory and polishing-vocabulary references are excluded. Runs using correction references
 continue directly to the configured LLM; answer steps and voice assistants never
 use this gate. Current and source-app privacy rules are checked before and after
 prediction; cancellation or a privacy restriction stops the run.
 
-Only a validated `jev-1.13.0` score with both confidence and the probability of
+Only a validated score matching the globally selected model with both confidence and the probability of
 “already usable unchanged” at least 0.9 skips rewriting. These are conservative
 decision thresholds, not a measured accuracy claim. Uncertainty, service errors,
 malformed responses, missing credentials or the two-second prediction deadline
@@ -279,7 +276,7 @@ and an optional string `config` dictionary. Shipped choices include:
 | `record.store` | Existing Record routing options in `options`. |
 | `system-clipboard.copy` | No required config. |
 | `focused-application.insert` | Normal focus and input authorization. |
-| `speech.speak` | `speech.provider`, `speech.model`, `speech.voice`, `speech.language`. |
+| `speech.speak` | `speech.voice`, `speech.language`. The synthesis model comes from global settings. |
 | `external.shortcuts.run` | `shortcuts.name`. |
 | `external.markdown.append` | `markdown.append.path`. |
 
@@ -301,8 +298,9 @@ History shows the steps and results from that run. Missing timing measurements r
 
 Document v1 remains readable. Its string trigger, speech setup, UUID process IDs,
 legacy action aliases and metadata are converted in memory. Loading does not
-rewrite a v1 file. Its first successful save creates a v2 file and retains the
-original v1 source in history. Unknown v1 structural fields also fail validation.
+rewrite a v1 or v2 file. Model and provider overrides are discarded in memory;
+rewrite steps default to `fast`, and answer steps to `intelligent`. Its next
+successful save creates a v3 file and retains the original source in history. Unknown v1 structural fields also fail validation.
 
 A customization keeps the built-in workflow UUID and overrides that definition.
 Restoring the default removes its override. Duplicating a workflow, importing a
@@ -312,15 +310,29 @@ user workflow file.
 
 ## LLM Provider and smart cleanup
 
-Settings → Voice & Models → API Providers → **LLM Provider** is the single OpenAI-compatible Responses
-API configuration for cleanup, assistant answers and custom text workflows.
-Set the Base URL, API key and model there. Existing settings and Keychain storage
-remain compatible; workflows do not select a separate provider or credential.
+Settings → Voice & Models → API Providers owns two independent text roles:
+**Fast** always sends `reasoning.effort = "none"`; **Intelligent** sends `"high"`.
+Each role has its own provider, endpoint, model and Keychain credential.
+OpenAI and DeepSeek presets share the Responses API transport; compatible
+endpoints remain configurable. Changing the provider clears that role's key.
+Verification uses the selected role's reasoning policy. Models that require
+reasoning cannot be assigned to Fast.
 
-For DeepSeek V4.1 Flash, use `https://api.deepseek.com` (or its `/v1` base path)
-and model `deepseek-flash`. A compatible gateway can use the same model ID.
-Selecting a model preset changes only the model; the configured endpoint and key
-remain under your control.
+An LLM step may declare `model_role = "fast"` or `"intelligent"`.
+Omitting it defaults rewrites to Fast and answers to Intelligent. Other step
+kinds cannot declare a language model role. Concrete model IDs, endpoints and
+credentials never belong in workflow files. Existing text settings are copied
+to both global roles once; subsequent edits are independent.
+
+A run freezes the roles it uses before privacy authorization. Changing settings
+applies to later runs. Revoking credentials still blocks later requests in an
+active run. These snapshots are ephemeral and never encoded in a workflow or receipt.
+
+The global **Classification model** selects TypeSafe Jev, Cloudflare Clef or
+Clef Flash for candidate scoring, hotword ranking and polishing prediction.
+Cloudflare requires a 32-character account ID and API token with Workers AI access.
+The selection, credential and separate automatic-use consents remain session-only.
+Changing provider/account clears the credential and revokes existing authorizations.
 
 Enable **Smart Cleanup** from the Workflows page; this switches off the other
 built-in Fn mode. Recognition stays local. After recognition and vocabulary
@@ -334,6 +346,14 @@ cleanup must not answer it or ask for the material to summarize. The same rule
 applies to contextual correction. `llm-answer` and voice-assistant workflows
 still answer requests. User-authored TOML prompts are not overwritten by updates.
 
+Canonical Smart Cleanup with its default instruction also applies a local content
+guard, shared with contextual correction. It preserves literal numbers and
+common attached units, HTTP(S) URLs, existing explicit code, and normalized
+negative sentences. List numbering and added sentence punctuation are allowed.
+The check is intentionally conservative: spelling fixes within a negative
+sentence and number-format changes can skip cleanup and preserve the prior text.
+Custom rewrite instructions are not filtered by this builtin policy.
+
 The provider request contract and cleanup examples are covered by offline checks.
 An opt-in model evaluation sends only fixed synthetic samples in
 `Evals/TextRewrite/cases.json`, in both ordinary and contextual correction
@@ -345,12 +365,19 @@ only to the tested provider, model and corpus.
 Comparisons ignore punctuation and whitespace but retain words, case and numbers.
 The emphasis sample retains a repetition whose intent is ambiguous without audio.
 
-DeepSeek rewrite requests use `reasoning.effort = "none"`, temperature 0.1 and a
-4096-token output limit. The rewrite has a 5-second budget; cancellation drains
-the request before any fallback is delivered. Inputs above 12,000 UTF-8 bytes skip
-cleanup whole. Assistant steps retain their existing thinking policy. Other
-compatible models retain their existing request parameters. These initial
-limits need real usage and latency evaluation.
+Fast DeepSeek rewrite requests use `reasoning.effort = "none"`, temperature 0.1 and a
+4096-token output limit. Fast DeepSeek inputs above 12,000 UTF-8 bytes skip cleanup
+whole; the limit applies to the actual request transcript, without truncation.
+Intelligent requests enable reasoning and use a 16,384-token output budget.
+These model parameters remain separate from the workflow budget.
+
+Default builtin Smart Cleanup and contextual correction have a 5-second transport
+timeout and local deadline with every compatible model. Fast DeepSeek non-assistant
+rewrite steps use that same budget with custom instructions. Other custom rewrites
+and assistant steps retain 60 seconds. At the deadline, the owner requests transport
+cancellation and reports timeout without waiting for late work. It retains that
+work until completion; late results cannot replace delivered text. Thinking policy
+follows the selected global role. These limits need real usage and latency evaluation.
 
 For captured speech or explicitly supplied text, temporary network, rate-limit,
 timeout, incomplete or invalid-result errors can retain the text before rewriting.

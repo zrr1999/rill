@@ -1,8 +1,6 @@
 import Foundation
 
 public struct SpeechActionConfiguration: Sendable, Equatable {
-  public let provider: SpeechSynthesisProvider
-  public let model: String?
   public let voice: String
   public let language: String?
 }
@@ -55,12 +53,8 @@ public enum WorkflowActionConfiguration: Sendable, Equatable {
       }
       self = .markdown(file: file)
     case SpeechOutputActionID.speak:
-      let model = text(SpeechOutputActionConfigurationKey.model)
       self = .speech(
         .init(
-          provider: values[SpeechOutputActionConfigurationKey.provider].flatMap(
-            SpeechSynthesisProvider.init(rawValue:)) ?? .automatic,
-          model: model.isEmpty ? nil : model,
           voice: values[SpeechOutputActionConfigurationKey.voice] ?? Qwen3TTSVoice.vivian.rawValue,
           language: values[SpeechOutputActionConfigurationKey.language]))
     default: self = .custom(values)

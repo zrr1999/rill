@@ -263,15 +263,8 @@ enum AppBootstrap {
             selectedModelIdentifier
           )
         }
-        if let modelOverride =
-          (workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride]
-          ?? workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])?
-          .trimmingCharacters(
-            in: .whitespacesAndNewlines),
-          !modelOverride.isEmpty,
-          !trustedLocalModelIdentifiers.contains(modelOverride)
-        {
-          throw LocalSpeechModelSelectionError.unsupportedModelIdentifier(modelOverride)
+        guard settings.enabledModelIDs.contains(selectedModelIdentifier) else {
+          throw LocalSpeechModelSelectionError.modelNotEnabled(selectedModelIdentifier)
         }
       }
     }
@@ -677,8 +670,8 @@ private enum AppContainerFactory {
     speechPlaybackPresentationBridge: SpeechPlaybackPresentationBridge,
     speechModelPoolPresentationBridge: SpeechModelPoolPresentationBridge
   ) -> ProviderServices {
-    let jevSessionSettings = JevSessionSettingsSource()
-    let jevPolishingGate = JevTextPolishingGate(
+    let jevSessionSettings = DecisionModelSettingsSource()
+    let jevPolishingGate = DecisionTextPolishingGate(
       settings: jevSessionSettings, privacy: core.privacySettingsSource,
       currentFocus: {
         await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
@@ -744,11 +737,9 @@ private enum AppContainerFactory {
         ]
     )
     let localSpeechSettingsSource = LocalSpeechSettingsSource()
+    let languageModelSettingsSource = LanguageModelSettingsSource()
     let openAISettingsProvider: @Sendable () async throws -> OpenAISettings = {
-      try await AppSettingsLoader.loadOpenAISettings(
-        from: core.persistence.settingsStore,
-        credentialStore: platform.credentialStore
-      )
+      try languageModelSettingsSource.currentSettings(for: .fast)
     }
     let speechWorkerSupervisor = SpeechWorkerSupervisor(
       configuration: .init(executableURL: speechWorkerExecutableURL)
@@ -866,12 +857,12 @@ private enum AppContainerFactory {
     )
     return ProviderServices(
       textRewriteTransformer: OpenAITextRewriteTransformer(
-        settingsProvider: openAISettingsProvider,
+        settingsSource: languageModelSettingsSource,
         diagnosticReporter: { event in await core.diagnostics.record(event) }),
       jevSessionSettings: jevSessionSettings,
       jevPolishingGate: jevPolishingGate,
       hotwordSelection: HotwordSelection(
-        provider: JevHotwordRankingProvider(), settings: jevSessionSettings, privacy: core.privacySettingsSource,
+        provider: DecisionHotwordRankingProvider(), settings: jevSessionSettings, privacy: core.privacySettingsSource,
         currentFocus: { platform.focusTracker.capturePrivacyIdentitySample().focus },
         report: { event in await core.diagnostics.record(event) }),
       diagnosticsAudioCaptureService: AVAudioCaptureService(
@@ -879,6 +870,7 @@ private enum AppContainerFactory {
       ),
       managedTemporaryAudioCleanupOwner: managedTemporaryAudioCleanupOwner,
       markdownFileAppendCoordinator: markdownFileAppendCoordinator,
+      languageModelSettingsSource: languageModelSettingsSource,
       localSpeechSettingsSource: localSpeechSettingsSource,
       openAISettingsProvider: openAISettingsProvider,
       localSpeechAvailability: localSpeechAvailability,
@@ -952,9 +944,10 @@ private enum AppContainerFactory {
       providers: providers,
       authorizationBridge: cloudProcessingAuthorizationBridge
     )
-    privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, vocabulary, lifetime in
+    privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, vocabulary, lifetime, snapshot in
       try await contextMemoryController?.prepare(
-        runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime, vocabularyCandidates: vocabulary)
+        runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime, vocabularyCandidates: vocabulary,
+        modelSnapshot: snapshot)
     }
     let liveRecognition = LiveRecognitionContextResolver(
       compiler: WorkflowPlanCompiler(
@@ -1326,27 +1319,24 @@ private enum AppContainerFactory {
     providers: ProviderServices,
     authorizationBridge: CloudProcessingAuthorizationBridge
   ) -> PrivacyRunGate {
-    PrivacyRunGate(
+    var gate = PrivacyRunGate(
       settingsProvider: {
         try core.privacySettingsSource.currentSettings()
       },
-      cloudConfirmationProvider: { workflow, _, processingDestinations in
+      cloudConfirmationProvider: { workflow, _, processingDestinations, modelSnapshot in
         var providerIdentities: [String] = []
         if processingDestinations.contains(.cloudText) {
-          do {
-            let settings = try await providers.openAISettingsProvider()
+          guard let bindings = modelSnapshot?.languageModels,
+            workflow.languageModelRoles.isSubset(of: Set(bindings.keys))
+          else { return false }
+          for role in workflow.languageModelRoles.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let settings = bindings[role] else { return false }
             providerIdentities.append(
               cloudAuthorizationScopeIdentity([
-                LLMTextProcessing.providerID,
+                LLMTextProcessing.providerID, role.rawValue,
                 settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                settings.model.trimmingCharacters(in: .whitespacesAndNewlines),
-                settings.apiKey,
-              ])
-            )
-          } catch {
-            // Keep this failure state in the scope. Once provider settings are
-            // available, its fingerprint changes and Rill asks again.
-            providerIdentities.append("cloud-text.configuration-unavailable")
+                settings.model.trimmingCharacters(in: .whitespacesAndNewlines), settings.apiKey,
+              ]))
           }
         }
         if processingDestinations.contains(.cloudSpeech) {
@@ -1355,7 +1345,6 @@ private enum AppContainerFactory {
             cloudAuthorizationScopeIdentity([
               "cloud-speech",
               route?.recognizerID ?? "unavailable",
-              route?.providerModel ?? "",
             ])
           )
         }
@@ -1380,7 +1369,8 @@ private enum AppContainerFactory {
         let response = await MainActor.run {
           CloudPrivacyConfirmation.confirm(
             workflow: workflow,
-            processingDestinations: processingDestinations
+            processingDestinations: processingDestinations,
+            language: authorizationBridge.model?.settings.language ?? .preferred
           )
         }
         switch response {
@@ -1397,6 +1387,13 @@ private enum AppContainerFactory {
         }
       }
     )
+    gate.modelSnapshotProvider = { workflow in
+      var snapshot = try providers.languageModelSettingsSource.snapshot(for: workflow.languageModelRoles)
+      snapshot.speechSynthesisModelID = providers.ttsModelSelectionSource.currentModelIdentifier()
+      snapshot.decisionAuthorization = providers.jevSessionSettings.currentAuthorization()
+      return snapshot
+    }
+    return gate
   }
 
   nonisolated private static func cloudAuthorizationScopeIdentity(
@@ -1804,7 +1801,7 @@ private enum AppModelFactory {
         store: core.recordStore,
         semanticSearch: RecordSemanticSearch(store: core.recordStore, embedder: providers.recordEmbedder),
         cloudRanking: RecordCloudRanking(
-          store: core.recordStore, provider: JevRecordRankingProvider(),
+          store: core.recordStore, provider: DecisionRecordRankingProvider(),
           settings: providers.jevSessionSettings,
           privacy: core.privacySettingsSource,
           currentFocus: {
@@ -1823,6 +1820,7 @@ private enum AppModelFactory {
       localPersistenceStatus: core.persistence.localPersistenceStatus,
       vocabularyRuleSource: core.vocabularyRuleSource,
       privacySettingsSource: core.privacySettingsSource,
+      languageModelSettingsSource: providers.languageModelSettingsSource,
       localSpeechSettingsSource: providers.localSpeechSettingsSource,
       loadsPersistentSettingsOnInitialization: true,
       settingsWriteDebounceDuration: .milliseconds(300),
@@ -1988,9 +1986,10 @@ private enum AppModelFactory {
       finishWorkflowAudioRunAction: {
         try await runtime.workflowAudioRunController.finishRun()
       },
-      verifyOpenAIConfigurationAction: { settings in
+      verifyOpenAIConfigurationAction: { settings, role in
         try await OpenAIConfigurationVerifier.verify(
           settings: settings,
+          role: role,
           diagnosticReporter: { event in
             await core.diagnostics.record(event)
           }
@@ -2673,17 +2672,16 @@ private enum CloudPrivacyConfirmation {
 
   static func confirm(
     workflow: WorkflowDefinition,
-    processingDestinations: [PrivacyProcessingDestination]
+    processingDestinations: [PrivacyProcessingDestination],
+    language: AppLanguage
   ) -> Response {
-    let usesChinese = Locale.current.identifier.lowercased().hasPrefix("zh")
-    let language: AppLanguage = usesChinese ? .simplifiedChinese : .english
     let alert = NSAlert()
     alert.alertStyle = .warning
     alert.messageText = L10n.cloudPrivacyTitle(language: language)
     alert.informativeText = CloudPrivacyConfirmationCopy.informativeText(
-      workflowName: workflow.name,
+      workflowName: L10n.workflowName(workflow.presentation, language: language),
       processingDestinations: processingDestinations,
-      usesChinese: usesChinese
+      language: language
     )
     alert.addButton(withTitle: L10n.cloudPrivacyAllowAndRemember(language: language))
     alert.addButton(withTitle: L10n.cloudPrivacyAllowOnce(language: language))
@@ -2700,57 +2698,15 @@ enum CloudPrivacyConfirmationCopy {
   static func informativeText(
     workflowName: String,
     processingDestinations: [PrivacyProcessingDestination],
-    usesChinese: Bool
+    language: AppLanguage
   ) -> String {
     let sendsSpeech = processingDestinations.contains(.cloudSpeech)
     let sendsText = processingDestinations.contains(.cloudText)
-    let language: AppLanguage = usesChinese ? .simplifiedChinese : .english
     let processingCopy = L10n.cloudPrivacyProcessing(
       workflowName: workflowName, sendsSpeech: sendsSpeech, sendsText: sendsText, language: language)
     let authorizationCopy = L10n.cloudPrivacyAuthorization(language: language)
     return processingCopy + "\n\n" + authorizationCopy
   }
-}
-
-private enum AppSettingsLoader {
-  private enum LoadError: Error {
-    case unavailable
-  }
-
-  static func loadOpenAISettings(
-    from settingsStore: (any SettingsStore)?,
-    credentialStore: (any SecureCredentialStore)?
-  ) async throws -> OpenAISettings {
-    let settingKeys: [AppSettingKey] = [.openAIBaseURL, .openAIModel]
-    let storedSnapshot =
-      try await settingsStore?.settingsSnapshot(
-        forKeys: settingKeys
-      ) ?? .empty
-    guard storedSnapshot.unavailableKeys.isDisjoint(with: Set(settingKeys)) else {
-      throw LoadError.unavailable
-    }
-    let baseURL =
-      trimmedNonEmpty(storedSnapshot.values[.openAIBaseURL])
-      ?? OpenAISettings.defaultBaseURL
-    let model =
-      trimmedNonEmpty(storedSnapshot.values[.openAIModel])
-      ?? OpenAISettings.defaultModel
-    guard
-      OpenAISettings.isValidBaseURL(baseURL),
-      OpenAISettings.isValidModelIdentifier(model)
-    else {
-      throw LoadError.unavailable
-    }
-    let apiKey = try await credentialStore?.credential(for: .openAIAPIKey) ?? ""
-    return OpenAISettings(apiKey: apiKey, baseURL: baseURL, model: model)
-  }
-
-  static func trimmedNonEmpty(_ value: String?) -> String? {
-    guard let value else { return nil }
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
-  }
-
 }
 
 @MainActor

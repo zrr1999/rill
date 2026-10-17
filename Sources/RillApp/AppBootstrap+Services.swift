@@ -97,12 +97,13 @@ struct PlatformServices {
 
 struct ProviderServices {
   let textRewriteTransformer: OpenAITextRewriteTransformer
-  let jevSessionSettings: JevSessionSettingsSource
-  let jevPolishingGate: JevTextPolishingGate
+  let jevSessionSettings: DecisionModelSettingsSource
+  let jevPolishingGate: DecisionTextPolishingGate
   let hotwordSelection: HotwordSelection
   let diagnosticsAudioCaptureService: AVAudioCaptureService
   let managedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   let markdownFileAppendCoordinator: MarkdownFileAppendCoordinator
+  let languageModelSettingsSource: LanguageModelSettingsSource
   let localSpeechSettingsSource: LocalSpeechSettingsSource
   let openAISettingsProvider: @Sendable () async throws -> OpenAISettings
   let localSpeechAvailability: LocalSpeechAvailability

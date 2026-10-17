@@ -32,7 +32,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
       isEnabled: false
     )
     let source = try XCTUnwrap(String(data: data, encoding: .utf8))
-    XCTAssertTrue(source.contains("schema_version = 2"))
+    XCTAssertTrue(source.contains("schema_version = 3"))
     XCTAssertTrue(source.contains("enabled = false"))
     XCTAssertTrue(source.contains("[setup.speech]"))
     XCTAssertTrue(source.contains("[[process]]"))
@@ -118,7 +118,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     _ = try await store.saveDocument(WorkflowDocument(workflow: loaded, isEnabled: true), replacing: fileURL, expected: .source(legacy))
     let history = try await store.versions(for: loaded.id)
     XCTAssertEqual(history.first?.source, legacy)
-    XCTAssertTrue(try String(contentsOf: fileURL, encoding: .utf8).contains("schema_version = 2"))
+    XCTAssertTrue(try String(contentsOf: fileURL, encoding: .utf8).contains("schema_version = 3"))
 
   }
 
@@ -295,7 +295,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
           WorkflowProcessStep(
             id: UUID(uuidString: "AAAAAAAA-2222-3333-4444-555555555555")!,
             kind: .llmAnswer,
-            prompt: "Answer directly."
+            prompt: "Answer directly.", modelRole: .intelligent
           ),
         ]),
         output: WorkflowOutputPhase(

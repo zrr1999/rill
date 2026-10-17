@@ -6,11 +6,12 @@ import Testing
 @testable import RillProviders
 
 @Suite(.serialized)
-struct JevRecordRankingProviderTests {
+struct DecisionRecordRankingProviderTests {
   @Test func sendsOnlyReviewedTextAndMapsScoresByCandidateIndex() async throws {
     JevFixtureProtocol.requests.withLock { $0 = [] }
     let provider = makeProvider()
-    let result = try await provider.score(query: "保留修改", candidates: ["git reset --soft HEAD~1", "git revert HEAD"], apiKey: "unit-test-key")
+    let result = try await provider.score(
+      query: "保留修改", candidates: ["git reset --soft HEAD~1", "git revert HEAD"], authorization: .init(apiKey: "unit-test-key"))
     #expect(result.scores == [1.7, 0.2])
     #expect(result.inputTokens == 123)
     let requests = JevFixtureProtocol.requests.withLock { $0 }
@@ -26,6 +27,31 @@ struct JevRecordRankingProviderTests {
     #expect(body["model"] as? String == "jev-1.13.0")
   }
 
+  @Test(arguments: [DecisionModel.clef, .clefFlash])
+  func cloudflareUsesTheSelectedAccountModelAndEnvelope(model: DecisionModel) async throws {
+    JevFixtureProtocol.requests.withLock { $0 = [] }
+    let account = String(repeating: "a", count: 32)
+    let authorization = DecisionModelSettingsSource.Authorization(
+      apiKey: "cloudflare-test-token", configuration: .init(model: model, accountID: account))
+    let response = try await makeProvider().score(query: "query", candidates: ["one", "two"], authorization: authorization)
+    #expect(response.model == model.rawValue)
+    #expect(response.scores == [1.7, 0.2])
+    let request = try #require(JevFixtureProtocol.requests.withLock { $0.first })
+    #expect(request.url?.absoluteString == "https://api.cloudflare.com/client/v4/accounts/\(account)/ai/run/@cf/cloudflare/\(model.rawValue)")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer cloudflare-test-token")
+    let body = try #require(try JSONSerialization.jsonObject(with: JevFixtureProtocol.body(request)) as? [String: Any])
+    #expect(body["model"] as? String == model.rawValue)
+    #expect(body["images"] == nil)
+    for data in [
+      "{\"success\":false,\"errors\":[],\"result\":null}",
+      "{\"success\":true,\"errors\":[],\"result\":\(JevFixtureProtocol.response)}",
+    ] {
+      #expect(throws: DecisionRequestError.self) {
+        try DecisionScoreClient.decode(Data(data.utf8), questionIDs: ["candidate_0", "candidate_1"], model: model)
+      }
+    }
+  }
+
   @Test(arguments: [401, 403, 429, 529, 422, 500, 302])
   func errorsDoNotRetryOrExposeResponseBodies(status: Int) async throws {
     JevFixtureProtocol.requests.withLock { $0 = [] }
@@ -37,7 +63,7 @@ struct JevRecordRankingProviderTests {
       default: .unavailable
       }
     await #expect(throws: expected) {
-      try await provider.score(query: "query", candidates: ["text"], apiKey: "unit-test-key")
+      try await provider.score(query: "query", candidates: ["text"], authorization: .init(apiKey: "unit-test-key"))
     }
     #expect(JevFixtureProtocol.requests.withLock { $0.count } == 1)
   }
@@ -47,18 +73,18 @@ struct JevRecordRankingProviderTests {
     for mutation in ["\"score\":1.7", "\"confidence\":0.5", "\"input_tokens\":123", "jev-1.13.0"] {
       let invalid = valid.replacingOccurrences(of: mutation, with: mutation == "jev-1.13.0" ? "other-model" : mutation.components(separatedBy: ":")[0] + ":-10")
       #expect(throws: RecordRankingError.invalidResponse) {
-        try JevRecordRankingProvider.decode(Data(invalid.utf8), count: 2)
+        try DecisionRecordRankingProvider.decode(Data(invalid.utf8), count: 2)
       }
     }
     #expect(throws: RecordRankingError.invalidResponse) {
-      try JevRecordRankingProvider.decode(Data(valid.utf8), count: 1)
+      try DecisionRecordRankingProvider.decode(Data(valid.utf8), count: 1)
     }
     JevFixtureProtocol.requests.withLock { $0 = [] }
     await #expect(throws: RecordRankingError.invalidInput) {
-      try await makeProvider().score(query: "q", candidates: [String(repeating: "中", count: 1_000)], apiKey: "unit-test-key")
+      try await makeProvider().score(query: "q", candidates: [String(repeating: "中", count: 1_000)], authorization: .init(apiKey: "unit-test-key"))
     }
     await #expect(throws: RecordRankingError.invalidInput) {
-      try await makeProvider().score(query: "q", candidates: ["text"], apiKey: "unit-test-key\r\nX: injected")
+      try await makeProvider().score(query: "q", candidates: ["text"], authorization: .init(apiKey: "unit-test-key\r\nX: injected"))
     }
     #expect(JevFixtureProtocol.requests.withLock { $0.isEmpty })
   }
@@ -67,17 +93,17 @@ struct JevRecordRankingProviderTests {
     JevFixtureProtocol.requests.withLock { $0 = [] }
     let task = Task {
       withUnsafeCurrentTask { $0?.cancel() }
-      return try await makeProvider().score(query: "q", candidates: ["text"], apiKey: "unit-test-key")
+      return try await makeProvider().score(query: "q", candidates: ["text"], authorization: .init(apiKey: "unit-test-key"))
     }
     await #expect(throws: CancellationError.self) { try await task.value }
     #expect(JevFixtureProtocol.requests.withLock { $0.isEmpty })
   }
 
-  private func makeProvider(status: Int = 200) -> JevRecordRankingProvider {
+  private func makeProvider(status: Int = 200) -> DecisionRecordRankingProvider {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [JevFixtureProtocol.self]
     configuration.httpAdditionalHeaders = ["X-Test-Status": "\(status)"]
-    return JevRecordRankingProvider(session: URLSession(configuration: configuration))
+    return DecisionRecordRankingProvider(session: URLSession(configuration: configuration))
   }
 }
 
@@ -94,7 +120,11 @@ private final class JevFixtureProtocol: URLProtocol {
     let status = Int(request.value(forHTTPHeaderField: "X-Test-Status") ?? "200") ?? 200
     let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
     client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-    client?.urlProtocol(self, didLoad: Data((status == 200 ? Self.response : "untrusted credential echo").utf8))
+    var body = Self.response
+    if request.url?.host == "api.cloudflare.com", let model = request.url?.lastPathComponent {
+      body = "{\"success\":true,\"errors\":[],\"result\":\(body.replacingOccurrences(of: "jev-1.13.0", with: model))}"
+    }
+    client?.urlProtocol(self, didLoad: Data((status == 200 ? body : "untrusted credential echo").utf8))
     client?.urlProtocolDidFinishLoading(self)
   }
   override func stopLoading() {

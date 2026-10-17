@@ -610,7 +610,7 @@ private func makeManager(
         cloudConfirmationRequired: false
       )
     },
-    cloudConfirmationProvider: { _, _, _ in true },
+    cloudConfirmationProvider: { _, _, _, _ in true },
     destinationClassifier: { _ in .classified([.localSpeech]) }
   )
 

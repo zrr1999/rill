@@ -12,6 +12,7 @@ struct RecordJevSheet: View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
       Text(text(.title)).font(.title2.weight(.semibold))
       Text(text(.disclosure)).font(.callout).foregroundStyle(.secondary)
+      Text(verbatim: model.settings.configuration.model.displayName).font(.caption.weight(.medium))
       HStack {
         Text(text(model.isConfigured ? .keyReady : .configureNotice))
           .font(.caption).foregroundStyle(.secondary)

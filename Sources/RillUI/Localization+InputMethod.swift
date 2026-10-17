@@ -1,3 +1,4 @@
+import Foundation
 import RillCore
 import RillInputMethodContracts
 
@@ -8,6 +9,35 @@ enum InputMethodText: CaseIterable {
 }
 
 extension L10n {
+  static func inputMethodInstallationError(_ error: Error) -> LocalizedStringResource {
+    if let error = error as? RimeProfileImportError {
+      let key: String
+      switch error {
+      case .sourceRunning: key = "sourceRunning"
+      case .inputMethodRunning: key = "inputMethodRunning"
+      case .alreadyImported: key = "alreadyImported"
+      case .incompleteSource: key = "incompleteSource"
+      case .sourceChanged: key = "sourceChanged"
+      case .unsafeLink: key = "unsafeLink"
+      case .deploymentFailed: key = "deploymentFailed"
+      case .helperMissing: key = "helperMissing"
+      case .installationBusy: key = "installationBusy"
+      }
+      return resource("inputMethod.installError.\(key)")
+    }
+    if let error = error as? InputMethodRegistrationError {
+      switch error {
+      case .registrationFailed(let status):
+        return resource(
+          "inputMethod.installError.registrationFailed",
+          defaultValue: "The component was saved, but system registration failed (\(String(status))). Try Repair again.")
+      case .unavailable: return resource("inputMethod.installError.unavailable")
+      }
+    }
+    return resource(
+      "inputMethod.installError.system", defaultValue: "The input method could not be installed. Try again. Details: \(error.localizedDescription)")
+  }
+
   static func inputMethod(_ key: InputMethodText, language: AppLanguage) -> String {
     switch key {
     case .description: return catalogString("inputMethod.description", language: language)
@@ -36,8 +66,7 @@ extension L10n {
   public static func inputMethodSuggestionDetail(
     count: Int, applications: String, language: AppLanguage
   ) -> String {
-    L10n.resource("Localization.InputMethod.times", defaultValue: "\(String(describing: count)) times · \(String(describing: applications))").string(
-      for: language)
+    pluralString("inputMethod.suggestionDetail", language: language, count, applications)
   }
 
   static func inputMethodState(_ state: InputMethodInstallationState, language: AppLanguage)

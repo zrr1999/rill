@@ -116,23 +116,21 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       name: "Local Meeting",
       recognizer: .automatic,
       speechLanguageOverride: "zh-CN",
-      localSpeechModelOverride: "distil-large-v3",
       destination: .saveToQueue
     )
 
     let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
 
     XCTAssertEqual(workflow.pipeline.recognizerID, "local-speech")
-    XCTAssertEqual(workflow.plan.setup.speechRoute?.selection, .fixed)
+    XCTAssertEqual(workflow.plan.setup.speechRoute?.selection, .automatic)
     XCTAssertNil(workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode])
     XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.languageOverride], "zh-CN")
-    XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride], "distil-large-v3")
+    XCTAssertNil(workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride])
     XCTAssertNil(workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
 
     let roundTrip = WorkflowEditorDraft(workflow: workflow)
     XCTAssertEqual(roundTrip?.recognizer, .localSpeech)
     XCTAssertEqual(roundTrip?.speechLanguageOverride, "zh-CN")
-    XCTAssertEqual(roundTrip?.localSpeechModelOverride, "distil-large-v3")
   }
 
   func testLivePreviewPlacementDefaultsToOverlayAndRoundTripsCursor() throws {

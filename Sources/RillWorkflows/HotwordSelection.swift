@@ -37,7 +37,7 @@ public final class HotwordSelection {
   }
 
   private let provider: any HotwordRankingProvider
-  private let settings: JevSessionSettingsSource
+  private let settings: DecisionModelSettingsSource
   private let privacy: PrivacyPolicySettingsSource
   private let currentFocus: @MainActor @Sendable () -> FocusSnapshot
   private let now: @Sendable () -> Date
@@ -45,7 +45,7 @@ public final class HotwordSelection {
   private let operations = BoundedOperation(maxConcurrentOperations: 1)
   private let report: @Sendable (DiagnosticEvent) async -> Void
   private var authorization: UUID?
-  private var credential: JevSessionSettingsSource.Authorization?
+  private var credential: DecisionModelSettingsSource.Authorization?
   private var cache: [String: CacheEntry] = [:]
   private var access: UInt64 = 0
   private var preparations: [UUID: HotwordRankingPreparation] = [:]
@@ -54,7 +54,7 @@ public final class HotwordSelection {
   private var closed = false
 
   public init(
-    provider: any HotwordRankingProvider, settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource,
+    provider: any HotwordRankingProvider, settings: DecisionModelSettingsSource, privacy: PrivacyPolicySettingsSource,
     currentFocus: @escaping @MainActor @Sendable () -> FocusSnapshot,
     report: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in },
     now: @escaping @Sendable () -> Date = Date.init, timeout: Duration = .seconds(2)
@@ -167,7 +167,7 @@ public final class HotwordSelection {
             authorization: authorization, policy: policy,
             focus: focus, lifetime: lifetime)
         else { throw CancellationError() }
-        return try await provider.score(request, apiKey: credential.apiKey)
+        return try await provider.score(request, authorization: credential)
       }
       try Task.checkCancellation()
       guard !closed, self.authorization == authorization, credentialIsCurrent, !Self.wasRevoked(lifetime),
