@@ -173,9 +173,15 @@ The validated 1,024-dimension vectors are scored with Swift SIMD, keeping platfo
 SDKs out of Runtime.
 
 Qwen3-Embedding-0.6B runs in the helper via the existing locked MLX graph. Queries have a
-256-token limit; document windows are 248 tokens with stride 192 and a maximum of 16
-(first 15 plus last). Large UTF-8/JSON inputs are bounded before IPC. Partial coverage is
-reported rather than presented as exhaustive. The 128 MiB logical vector cache is transient,
+256-token limit; document windows are 248 tokens with stride 192 and a maximum of 16.
+When there are more windows, starts are sampled evenly across the document, including
+both endpoints. Before IPC, long documents contribute head, center and tail segments
+within a total 40 KiB UTF-8 budget, including separators. Segment boundaries preserve
+Unicode scalars, even when one combining grapheme exceeds the budget. If JSON escaping
+exceeds 48 KiB, all three segments are resampled from the complete document within
+8,191 total UTF-8 bytes and the encoded size is checked again. Partial coverage from
+either input sampling or model windows is reported and retained in the cache rather
+than presented as exhaustive. The 128 MiB logical vector cache is transient,
 observes committed catalog changes for deletion/tag invalidation, and is cleared at shutdown.
 Resident vectors are scored before admitting missing records, so crossing the cache budget
 does not turn every warm query into a full re-encode. Failed or cancelled searches reconcile
