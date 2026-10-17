@@ -13,8 +13,8 @@ public struct WorkflowDocumentCodec: Sendable {
     decoder.limits.maxArrayLength = 1_024
     decoder.limits.maxTableKeys = 1_024
     let shape = try decoder.decode(DocumentShape.self, from: source)
-    guard shape.table?["format"]?.string == "rill.workflow", shape.table?["version"]?.integer == 1 else {
-      throw WorkflowDocumentError("format", "Unsupported workflow format. Use rill.workflow version 1; this file has not been changed.")
+    guard shape.table?["schema_version"]?.integer == WorkflowDocument.schemaVersion else {
+      throw WorkflowDocumentError("schema_version", "Unsupported workflow format. Use schema_version = 1; this file has not been changed.")
     }
     try shape.validateDocument()
     let document = try decoder.decode(WorkflowFileDocument.self, from: source).document()
@@ -68,8 +68,7 @@ public struct WorkflowDocumentCodec: Sendable {
 }
 
 private struct WorkflowFileDocument: Codable {
-  var format = "rill.workflow"
-  var version = 1
+  var schema_version = WorkflowDocument.schemaVersion
   var id: UUID
   var name: String
   var description: String?
@@ -379,7 +378,7 @@ private indirect enum DocumentShape: Decodable {
   }
 
   func validateDocument() throws {
-    try check(["format", "version", "id", "name", "description", "enabled", "trigger", "input", "ui", "setup", "process", "output"], path: "")
+    try check(["schema_version", "id", "name", "description", "enabled", "trigger", "input", "ui", "setup", "process", "output"], path: "")
     try table?["trigger"]?.check(["kind", "gesture", "exclusive_group"], path: "trigger")
     try table?["input"]?.check(["kind"], path: "input")
     try table?["ui"]?.check(["symbol", "accent"], path: "ui")

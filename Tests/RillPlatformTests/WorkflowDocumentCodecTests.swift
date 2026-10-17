@@ -5,8 +5,7 @@ import Testing
 
 struct WorkflowDocumentCodecTests {
   static let source = """
-    format = "rill.workflow"
-    version = 1
+    schema_version = 1
     id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
     name = "Reply"
     enabled = false
@@ -34,6 +33,8 @@ struct WorkflowDocumentCodecTests {
     let codec = WorkflowDocumentCodec()
     let original = try codec.decode(Self.source)
     let encoded = try codec.encode(original)
+    #expect(encoded.contains("schema_version = 1"))
+    #expect(!encoded.contains("format ="))
     #expect(try codec.decode(encoded) == original)
     #expect(original.workflow.plan.process.steps.first?.reasoning == .some(.none))
     #expect(original.workflow.plan.process.steps.first?.decision?.optional == true)
@@ -62,10 +63,19 @@ struct WorkflowDocumentCodecTests {
     ]
     for source in invalid { #expect(throws: (any Error).self) { try WorkflowDocumentCodec().decode(source) } }
   }
-  @Test(arguments: [1, 2, 3])
-  func rejectsEveryRetiredVersion(_ version: Int) {
-    #expect(throws: (any Error).self) { try WorkflowDocumentCodec().decode("schema_version = \(version)\n" + Self.source) }
-    #expect(throws: (any Error).self) { try WorkflowDocumentCodec().decode("schema_version = \(version)\nid = \"54B31E01-96AC-4A0F-BB82-0A8CB12DD629\"\n") }
+  @Test(arguments: ["0", "2", "3", "\"1\"", "1.0", "true"])
+  func rejectsUnsupportedSchemaVersions(_ version: String) {
+    let source = Self.source.replacingOccurrences(of: "schema_version = 1", with: "schema_version = \(version)")
+    #expect(throws: (any Error).self) { try WorkflowDocumentCodec().decode(source) }
+  }
+  @Test func rejectsMissingSchemaVersionAndRetiredLayouts() {
+    let invalid = [
+      Self.source.replacingOccurrences(of: "schema_version = 1", with: ""),
+      Self.source.replacingOccurrences(of: "schema_version = 1", with: "format = \"rill.workflow\"\nversion = 1"),
+      Self.source.replacingOccurrences(of: "schema_version = 1", with: "schema_version = 1\nformat = \"rill.workflow\"\nversion = 1"),
+      Self.source.replacingOccurrences(of: "schema_version = 1", with: "schema_version = 1\npipeline = []"),
+    ]
+    for source in invalid { #expect(throws: (any Error).self) { try WorkflowDocumentCodec().decode(source) } }
   }
   @Test func rejectsJSON() {
     #expect(throws: (any Error).self) { try WorkflowDocumentCodec().decode("{\"schemaVersion\":2,\"workflows\":[]}") }

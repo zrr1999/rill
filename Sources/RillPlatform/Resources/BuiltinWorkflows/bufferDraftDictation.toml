@@ -1,5 +1,4 @@
-format = "rill.workflow"
-version = 1
+schema_version = 1
 id = "0E66CFD3-81A0-44BE-9C19-C7CD66D16095"
 name = "Dictate to Draft"
 enabled = true

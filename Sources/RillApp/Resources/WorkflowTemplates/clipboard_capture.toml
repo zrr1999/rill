@@ -1,8 +1,7 @@
 # Rill workflow v1: Capture into the Voice clipboard group
 # Change `id` before keeping more than one copy of this template.
 
-format = "rill.workflow"
-version = 1
+schema_version = 1
 enabled = false
 id = "D0000000-0000-4000-8000-000000000002"
 name = "Clipboard Capture"

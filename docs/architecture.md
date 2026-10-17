@@ -358,7 +358,7 @@ effect at request and effect boundaries. Missing optional processing services
 produce skipped receipts; missing required services stop admission with a settings
 prompt. Optional Decision prediction can be absent while the rewrite continues.
 
-All execution definitions use `rill.workflow` version 1 TOML. Built-in resources,
+All execution definitions use the new `schema_version = 1` TOML layout. Built-in resources,
 user files, templates and imports share `WorkflowDocumentCodec` and validation;
 packaging validates the actual resource bundle using the executable's validation
 entry point. Old TOML and JSON definitions are unsupported. Legacy settings data

@@ -1,5 +1,4 @@
-format = "rill.workflow"
-version = 1
+schema_version = 1
 id = "AECBC65F-2509-43AF-98D8-61BD4E8E1BD2"
 name = "Dictate to Pending"
 enabled = true

@@ -9,12 +9,12 @@ Workflows never select a provider, model, credential or native reasoning paramet
 Each executable definition is one TOML file with this header:
 
 ```toml
-format = "rill.workflow"
-version = 1
+schema_version = 1
 ```
 
-This is a new format. Files using `schema_version`, previous TOML versions, JSON
-manifests or the retired settings library cannot execute. Reading never upgrades
+This is a new layout. Previous workflow layouts, including old `schema_version = 1`
+files with a `pipeline`, retired `format` / `version` headers, JSON manifests and
+the retired settings library cannot execute. Reading never upgrades
 or rewrites them. Invalid files report a diagnostic; an invalid override blocks
 its workflow instead of reactivating a packaged definition.
 
@@ -40,8 +40,7 @@ writable TOML override in the user directory.
 ## Declaration
 
 ```toml
-format = "rill.workflow"
-version = 1
+schema_version = 1
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "Prepare a reply"
 enabled = false
@@ -72,7 +71,7 @@ kind = "system-clipboard.copy"
 optional = true
 ```
 
-Root fields are `format`, `version`, `id`, `name`, optional `description`,
+Root fields are `schema_version`, `id`, `name`, optional `description`,
 `enabled` (default false), `trigger`, `input`, optional `ui` and `setup`,
 `process` and `output`. Names contain 1–160 Unicode scalars. Unknown fields fail
 with a path diagnostic at every structural level. There are no open `options`,

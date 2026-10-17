@@ -39,8 +39,7 @@
 复制成另一个工作流时，用 uuidgen 生成不同的 id。
 
 ~~~toml
-format = "rill.workflow"
-version = 1
+schema_version = 1
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "整理并复制"
 enabled = false

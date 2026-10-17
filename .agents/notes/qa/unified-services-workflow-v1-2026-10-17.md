@@ -36,3 +36,13 @@
 5. 本地 TTS 的真实可听输出；本地构建不等同于发布产物签名、公证与 Gatekeeper 验收。
 
 不使用真实供应商凭据执行外部模型请求；请求参数与能力错误通过受控 transport 验证。
+
+## 后续确认：单字段版本头与完整窗口
+
+- 用户确认新 TOML 只使用 `schema_version = 1`，替换此前的 `format` / `version` 双字段；旧 pipeline、版本 2/3、缺失或错误类型的版本头仍拒绝执行。内置资源、模板、Schema 和文档同步修改。
+- 定向 codec、文件存储与输出状态测试通过（9 个 XCTest、20 个 Swift Testing 用例）；`just check` 和 `just docs` 通过。此前 `408aa71` 已在解锁桌面完整通过 `RILL_RECORD_STRESS=1 just ci`，包括 8 个桌面用例；后续 head 的完整门禁以 PR 当前检查为准。
+- 通过仓库包装器构建 Release App，父提交 `408aa71`，工作树含本次格式修改；构建回执源码指纹为 `c1d418014c5c5d95c313d959d826f20a15e4825979b036f960f98de2240834e9`。截图来自这个真实运行的 App，而非单独控件的渲染。
+- 使用本机既有 Apple Development 身份签名测试副本，未安装。仅在副本 Info.plist 设置 `CFFIXED_USER_HOME` 与 XDG 配置/状态目录，数据库、模型缓存和工作流均实际落在 `.artifacts/schema-version-1-native/profile/`。未修改凭据或系统授权，未执行云端配置验证。
+- 实际打开设置和工作流页；关闭可选的直接输入输出后，两处 UI 均显示关闭，自动保存输出仍不可关闭。检查测试目录生成的 TOML 为 `schema_version = 1`，相邻状态文件的 `outputs.deliver` 为 false。
+- 完整窗口截图保存在 `.github/pr-screenshots/workflow-v1/`：`settings-services-zh.png` 展示四类服务及侧栏；`settings-output-choices-zh.png` 展示 Fn 输出设置；`workflow-detail-zh.png` 展示工作流列表、处理步骤和输出状态。均为未裁切、未拼接的电脑控制工具截图；凭据字段保持掩码，画面不含私人记录。
+- 截图前退出原安装版，截图后退出测试副本与 worker，再恢复 `/Applications/Rill.app`，回到原先的语音与模型设置页。物理 Fn、IME、跨应用投递、实际 VoiceOver 和可听 TTS 仍未在此轮验证。

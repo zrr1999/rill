@@ -3,10 +3,8 @@
   "title": "Rill workflow v1",
   "type": "object",
   "properties": {
-    "format": {
-      "const": "rill.workflow"
-    },
-    "version": {
+    "schema_version": {
+      "type": "integer",
       "const": 1
     },
     "id": {
@@ -205,8 +203,7 @@
     }
   },
   "required": [
-    "format",
-    "version",
+    "schema_version",
     "id",
     "name",
     "trigger",

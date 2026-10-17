@@ -33900,13 +33900,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Old settings workflows are unsupported. Their data is preserved. Import a new rill.workflow v1 TOML file to run."
+            "value": "Old settings workflows are unsupported. Their data is preserved. Import a new schema_version = 1 TOML file to run."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "旧设置中的工作流格式已不受支持，原数据仍然保留。请导入新的 rill.workflow v1 TOML 文件以运行。"
+            "value": "旧设置中的工作流格式已不受支持，原数据仍然保留。请导入新的 schema_version = 1 TOML 文件以运行。"
           }
         }
       }

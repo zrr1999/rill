@@ -1,5 +1,4 @@
-format = "rill.workflow"
-version = 1
+schema_version = 1
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "Prepare a reply"
 description = "Normalize a draft; rewrite messages that include a question."

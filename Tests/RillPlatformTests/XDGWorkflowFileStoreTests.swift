@@ -32,7 +32,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
       isEnabled: false
     )
     let source = try XCTUnwrap(String(data: data, encoding: .utf8))
-    XCTAssertTrue(source.contains("format = \"rill.workflow\""))
+    XCTAssertTrue(source.contains("schema_version = 1"))
     XCTAssertTrue(source.contains("enabled = false"))
     XCTAssertTrue(source.contains("[setup.speech]"))
     XCTAssertTrue(source.contains("[[process]]"))

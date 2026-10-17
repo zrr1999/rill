@@ -1,5 +1,4 @@
-format = "rill.workflow"
-version = 1
+schema_version = 1
 id = "B9E19A88-F9FB-4AB3-8444-CDBF7E215A88"
 name = "Speech Recognition"
 enabled = true

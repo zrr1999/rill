@@ -1,5 +1,4 @@
-format = "rill.workflow"
-version = 1
+schema_version = 1
 id = "E2E19A88-F9FB-4AB3-8444-CDBF7E215A88"
 name = "Voice Assistant"
 enabled = false
