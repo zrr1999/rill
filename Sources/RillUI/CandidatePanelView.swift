@@ -8,7 +8,6 @@ public struct CandidatePanelView: View {
   let onDismiss: () -> Void
 
   @State private var selections: [UUID: UUID] = [:]
-  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
   public init(
     candidateCase: CandidateResolutionCase,
@@ -79,9 +78,21 @@ public struct CandidatePanelView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(RillSpacing.dense)
-                .rillSelection(isSelected, cornerRadius: RillRadius.section)
+                .background {
+                  RoundedRectangle(cornerRadius: RillRadius.section, style: .continuous)
+                    .fill(
+                      isSelected
+                        ? AnyShapeStyle(Color(nsColor: .selectedContentBackgroundColor))
+                        : AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
+                    )
+                }
+                .foregroundStyle(
+                  isSelected
+                    ? AnyShapeStyle(Color(nsColor: .alternateSelectedControlTextColor))
+                    : AnyShapeStyle(.primary)
+                )
               }
-              .buttonStyle(CandidateButtonStyle(cornerRadius: RillRadius.section))
+              .buttonStyle(RillHoverButtonStyle(kind: .stroke(cornerRadius: RillRadius.section)))
               .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
           }
@@ -115,14 +126,7 @@ public struct CandidatePanelView: View {
       }
     }
     .padding(RillSpacing.panel)
-    .background {
-      let shape = RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous)
-      if reduceTransparency {
-        shape.fill(Color(nsColor: .windowBackgroundColor))
-      } else {
-        shape.fill(.thinMaterial)
-      }
-    }
+    .rillGlass(in: RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous))
   }
 
   private func currentSelection(for set: CandidateSet) -> UUID? {
@@ -139,36 +143,6 @@ public struct CandidatePanelView: View {
 
   private var resolvedPreview: String {
     candidateCase.recognitionResult.applyingSelections(mergedSelections()).bestText
-  }
-}
-
-/// Hover feedback for candidate chips: a hairline stroke on hover, following
-/// RillCardButtonStyle's treatment (including its Reduce Motion rule) without
-/// the card press scale.
-private struct CandidateButtonStyle: ButtonStyle {
-  let cornerRadius: CGFloat
-
-  @State private var isHovering = false
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  private var shape: RoundedRectangle {
-    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-  }
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .contentShape(shape)
-      .overlay {
-        shape.strokeBorder(
-          Color.primary.opacity(isHovering ? 0.22 : 0),
-          lineWidth: 1
-        )
-      }
-      .animation(
-        reduceMotion ? nil : .easeInOut(duration: 0.15),
-        value: isHovering
-      )
-      .onHover { isHovering = $0 }
   }
 }
 

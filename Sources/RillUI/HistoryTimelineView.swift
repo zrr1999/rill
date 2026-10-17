@@ -537,15 +537,17 @@ public struct HistoryTimelineView: View {
   }
 
   private var emptyState: some View {
-    RillEmptyState(
-      title: L10n.text(
-        model.history.usesPagedRunHistory && model.history.canLoadNewerRunHistoryPage
-          ? .historyPageEmpty
-          : emptyKey,
-        language: model.settings.language
-      ),
-      symbol: .clockArrowCirclepath
-    )
+    ContentUnavailableView {
+      Label(
+        L10n.text(
+          model.history.usesPagedRunHistory && model.history.canLoadNewerRunHistoryPage
+            ? .historyPageEmpty
+            : emptyKey,
+          language: model.settings.language
+        ),
+        systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue
+      )
+    }
     .frame(maxWidth: .infinity, minHeight: Self.stateMinHeight)
   }
 

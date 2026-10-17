@@ -166,7 +166,11 @@ struct RecordBufferToolbar: View {
               workspace.buffers.outputAction(entry.id)
             }.lineLimit(2)
           }
-          if setEntries.isEmpty { RillEmptyState(title: text(.noItems), symbol: .tray) }
+          if setEntries.isEmpty {
+            ContentUnavailableView {
+              Label(text(.noItems), systemImage: RillSystemSymbol.tray.rawValue)
+            }
+          }
         }
       }.padding().frame(width: 320, height: 320)
     }

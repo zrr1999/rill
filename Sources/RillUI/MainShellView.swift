@@ -345,8 +345,10 @@ public struct MainShellView: View {
           }.keyboardShortcut(.cancelAction)
         }
       }
-      .padding(20).frame(width: 540)
+      .padding(20)
+      .frame(maxWidth: 640)
       .fixedSize(horizontal: false, vertical: true)
+      .presentationSizing(.fitted)
       .accessibilityIdentifier("voice-setup.initial")
     }
     .onChange(of: model.isShowingSettings) { _, isShowing in
@@ -468,6 +470,7 @@ extension MainShellView {
       sidebarSettingsFooter
     }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .listStyle(.sidebar)
     .navigationSplitViewColumnWidth(
       min: MainShellLayoutMetrics.sidebarColumnMinWidth,
       ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
@@ -510,6 +513,7 @@ extension MainShellView {
         }
       }
     }
+    .listStyle(.sidebar)
     .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
   }
 

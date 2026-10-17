@@ -123,6 +123,7 @@ struct SettingsPermissionPresentation: Equatable {
 
 public struct SettingsView: View {
   @Bindable var model: AppModel
+  @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
   let privacyNoticeDocument: PrivacyNoticeDocument?
   @State var vocabularyKind: VocabularyRuleKind = .mapping
   @State var vocabularyPattern = ""
@@ -451,7 +452,7 @@ extension SettingsView {
       }
       .contentShape(Rectangle())
     }
-    .buttonStyle(SettingsNavigationRowButtonStyle())
+    .buttonStyle(RillHoverButtonStyle(kind: .fill(cornerRadius: RillRadius.row)))
     .accessibilityIdentifier("settings.diagnostics.open")
     .id(SettingsSection.diagnostics)
     .focused($focusedSettingsSection, equals: .diagnostics)
@@ -660,9 +661,15 @@ extension SettingsView {
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
           .font(.subheadline.weight(.medium))
-        Text(presentation.detail)
-          .font(.caption)
-          .foregroundStyle(permissionColor(presentation.tone))
+        HStack(spacing: 4) {
+          if differentiateWithoutColor {
+            Image(systemName: permissionSymbol(presentation.tone).rawValue)
+              .accessibilityHidden(true)
+          }
+          Text(presentation.detail)
+        }
+        .font(.caption)
+        .foregroundStyle(permissionColor(presentation.tone))
       }
       Spacer()
       switch presentation.action {
@@ -864,6 +871,15 @@ extension SettingsView {
     }
   }
 
+  private func permissionSymbol(_ tone: SettingsPermissionTone) -> RillSystemSymbol {
+    switch tone {
+    case .success: .checkmarkCircle
+    case .secondary: .infoCircle
+    case .warning: .exclamationmarkTriangle
+    case .error: .exclamationmarkCircle
+    }
+  }
+
   private func permissionColor(_ tone: SettingsPermissionTone) -> Color {
     switch tone {
     case .success: return .green
@@ -918,36 +934,5 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
         .padding(.top, 8)
       }
     }
-  }
-}
-
-/// Hover feedback for plain navigation rows in settings, mirroring
-/// RillCardButtonStyle's pointer acknowledgement as a quiet fill instead of
-/// a stroke so the row's layout inside the grouped form stays untouched.
-private struct SettingsNavigationRowButtonStyle: ButtonStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    SettingsNavigationRowButtonBody(configuration: configuration)
-  }
-}
-
-private struct SettingsNavigationRowButtonBody: View {
-  let configuration: ButtonStyleConfiguration
-
-  @State private var isHovering = false
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  var body: some View {
-    configuration.label
-      .background {
-        RoundedRectangle(cornerRadius: RillRadius.row, style: .continuous)
-          .fill(
-            .quaternary.opacity(isHovering ? RillCardProminence.regular.fillOpacity : 0)
-          )
-      }
-      .animation(
-        reduceMotion ? nil : .easeInOut(duration: 0.15),
-        value: isHovering
-      )
-      .onHover { isHovering = $0 }
   }
 }
