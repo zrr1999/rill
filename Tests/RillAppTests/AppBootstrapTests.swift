@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillSpeechContracts
 @testable import RillSpeech
 @testable import RillWorkflows
@@ -545,12 +546,7 @@ final class AppBootstrapTests: XCTestCase {
     let preflight = AppBootstrap.makeRecognitionRunPreflight()
     let workflow = WorkflowDefinition(
       name: "Unavailable workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local"),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
       properties: .init(availability: .planned))
 
@@ -573,12 +569,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     let workflow = WorkflowDefinition(
       name: "Unknown Local Model",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "local-speech"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
       properties: .init())
 
@@ -660,12 +651,7 @@ final class AppBootstrapTests: XCTestCase {
 
     let workflow = WorkflowDefinition(
       name: "Preview Override",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "local-speech"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
       properties: .init())
     let preflight = AppBootstrap.makeRecognitionRunPreflight()
@@ -753,12 +739,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     let workflow = WorkflowDefinition(
       name: "Local",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "local-speech"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
 
@@ -786,12 +767,7 @@ final class AppBootstrapTests: XCTestCase {
   func testRecognitionRunPreflightRejectsConfiguredModelOutsideTrustedCatalog() async {
     let workflow = WorkflowDefinition(
       name: "Local",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "local-speech"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
 
@@ -819,12 +795,7 @@ final class AppBootstrapTests: XCTestCase {
     })
     let workflow = WorkflowDefinition(
       name: "Local",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "local-speech"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"))
     do {
       try await preflight(workflow)

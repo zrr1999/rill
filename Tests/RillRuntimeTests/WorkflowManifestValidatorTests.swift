@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
@@ -51,12 +52,7 @@ final class WorkflowManifestValidatorTests: XCTestCase {
       workflows: [
         WorkflowDefinition(
           name: "Invalid Workflow",
-          plan: WorkflowPlan(
-            setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "missing.recognizer")),
-            process: WorkflowProcessPhase(steps: [
-              WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-              WorkflowProcessStep(kind: .applyVocabulary),
-            ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "validator.action")], deliveryPolicy: .init(strategy: .immediate))),
+          plan: makeTestAudioPlan(recognizerID: "missing.recognizer", actions: [OutputActionReference(id: "validator.action")]),
           ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
       ]
@@ -80,12 +76,7 @@ final class WorkflowManifestValidatorTests: XCTestCase {
       workflows: [
         WorkflowDefinition(
           name: "Valid Workflow",
-          plan: WorkflowPlan(
-            setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "validator.recognizer")),
-            process: WorkflowProcessPhase(steps: [
-              WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-              WorkflowProcessStep(kind: .applyVocabulary),
-            ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "validator.action")], deliveryPolicy: .init(strategy: .immediate))),
+          plan: makeTestAudioPlan(recognizerID: "validator.recognizer", actions: [OutputActionReference(id: "validator.action")]),
           ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
       ]

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -286,12 +287,7 @@ final class GlobalSearchIndexTests: XCTestCase {
     WorkflowDefinition(
       name: name,
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

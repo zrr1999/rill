@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 
 @testable import RillCore
@@ -43,12 +44,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       name: "Speech Recognition",
       trigger: .hotkey,
       plan: {
-        var plan = WorkflowPlan(
-          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: AppModel.localSpeechRecognizerID)),
-          process: WorkflowProcessPhase(steps: [
-            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-            WorkflowProcessStep(kind: .applyVocabulary),
-          ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate)))
+        var plan = makeTestAudioPlan(recognizerID: AppModel.localSpeechRecognizerID, actions: [OutputActionReference(id: "focused-application.insert")])
         plan.setup.speechRoute?.selection = .automatic
         return plan
       }(),

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillUI
@@ -42,12 +43,7 @@ final class WebhookReleaseGateTests: XCTestCase {
     ] {
       let workflow = WorkflowDefinition(
         name: "Supported External Output",
-        plan: WorkflowPlan(
-          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-          process: WorkflowProcessPhase(steps: [
-            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-            WorkflowProcessStep(kind: .applyVocabulary),
-          ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: actionID)], deliveryPolicy: .init(strategy: .immediate))),
+        plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: actionID)]),
         ui: WorkflowUIConfig(symbolName: "square.and.arrow.up", accentColorName: "blue")
       )
       let harness = makeHarness(workflow: workflow)

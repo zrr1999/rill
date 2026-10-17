@@ -601,12 +601,7 @@ private func makeManager(
   let workflow = WorkflowDefinition(
     name: "Recording Timing Workflow",
     trigger: .hotkey,
-    plan: WorkflowPlan(
-      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.timing-recognizer")),
-      process: WorkflowProcessPhase(steps: [
-        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-        WorkflowProcessStep(kind: .applyVocabulary),
-      ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+    plan: makeTestAudioPlan(recognizerID: "recording.timing-recognizer"),
     ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
   )
   let privacyRunGate = PrivacyRunGate(

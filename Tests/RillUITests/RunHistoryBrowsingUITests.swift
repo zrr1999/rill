@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -777,12 +778,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
     WorkflowDefinition(
       name: name,
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

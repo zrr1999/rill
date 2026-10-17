@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillUI
@@ -164,12 +165,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         name: "Cursor preview",
         trigger: .manual,
         plan: {
-          var plan = WorkflowPlan(
-            setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-            process: WorkflowProcessPhase(steps: [
-              WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-              WorkflowProcessStep(kind: .applyVocabulary),
-            ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: .init(strategy: .immediate)))
+          var plan = makeTestAudioPlan(recognizerID: "local-speech", actions: [OutputActionReference(id: "record.store")])
           plan.setup.speechRoute?.livePreviewEnabled = "true" != "false"
           plan.setup.speechRoute?.livePreviewPlacement = LivePreviewPlacement(rawValue: "cursor") ?? .overlay
           return plan

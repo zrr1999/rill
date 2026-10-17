@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import Foundation
@@ -190,12 +191,7 @@ final class WorkflowRunReceiptRecorderTests: XCTestCase {
     let recorder = WorkflowRunReceiptRecorder(repository: store, eventBus: EventBus())
     let workflow = WorkflowDefinition(
       name: "Headless voice",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "test"),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     let runID = UUID()
     try await recorder.begin(runID: runID, workflowID: workflow.id, trigger: .hotkey, historyWorkflow: workflow)

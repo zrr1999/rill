@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import Testing
 import RillWorkflows
@@ -19,12 +20,7 @@ struct JevHotwordSettingsTests {
     let settings = JevAPISettingsModel(service: fixture.service, hotwordSelection: service)
     let workflow = WorkflowDefinition(
       name: "Dictation",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "local-speech"),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     func selection() throws -> HotwordSelection.Selection {
       let id = UUID()

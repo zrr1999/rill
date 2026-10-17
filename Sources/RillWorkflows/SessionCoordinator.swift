@@ -1433,7 +1433,6 @@ private extension SessionCoordinator {
       recordCollectionID: workflow.targetRecordCollectionIDs.first?.rawValue,
       locale: recognitionOptions.language
         ?? workflow.plan.setup.speechRoute?.language
-        ?? workflow.plan.setup.speechRoute?.language
     )
     let collections: [VocabularyCollection]
     if let snapshot = recognitionOptions.vocabulary {

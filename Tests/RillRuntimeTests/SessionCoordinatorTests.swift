@@ -391,20 +391,9 @@ private enum BlockingDiagnosticTarget: Sendable {
   case failureEvent
 }
 
-private actor BlockingDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
-  func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+private actor BlockingDiagnosticRepository: NonMaintainingDiagnosticRepository {
+  func reportUnexpectedHistoryMaintenance() async {
     XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteAllEvents() async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
   }
 
   func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
@@ -509,12 +498,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let runID = UUID()
     let workflow = WorkflowDefinition(
       name: "Cancelled",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "mock.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [.init(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "mock.recognizer", actions: [.init(id: "probe.action")]),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     await bus.publish(.recordPanelRequested)
     let run = Task { await coordinator.run(workflow: workflow, runID: runID, contextSnapshot: .empty) }
@@ -539,12 +523,7 @@ final class SessionCoordinatorTests: XCTestCase {
     ])
     var workflow = WorkflowDefinition(
       name: "Hints",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "options.probe")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "options.probe", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
@@ -592,12 +571,7 @@ final class SessionCoordinatorTests: XCTestCase {
     ])
     var workflow = WorkflowDefinition(
       name: "Unsupported Hints",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "options.probe")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "options.probe", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
@@ -1524,12 +1498,7 @@ final class SessionCoordinatorTests: XCTestCase {
 
     let workflow = WorkflowDefinition(
       name: "Explicit RunID Workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "mock.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "mock.recognizer", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
     )
 
@@ -1588,12 +1557,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let expectedRunID = UUID()
     let workflow = WorkflowDefinition(
       name: "Failing Workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "failing.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "failing.recognizer", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "red")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -1883,12 +1847,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let probe = ActionProbe()
     let workflow = WorkflowDefinition(
       name: "Vocabulary Fallback Workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "mock.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "mock.recognizer", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "text.badge.xmark", accentColorName: "orange")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -2089,12 +2048,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
     let workflow = WorkflowDefinition(
       name: "Legacy Webhook Workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "failing.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: ExternalOutputActionID.webhookPost)], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "failing.recognizer", actions: [OutputActionReference(id: ExternalOutputActionID.webhookPost)]),
       ui: WorkflowUIConfig(symbolName: "network.slash", accentColorName: "orange")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -2132,12 +2086,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let actionProbe = ActionProbe()
     let workflow = WorkflowDefinition(
       name: "Reported Failure",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "failing.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "failing.recognizer", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "red")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -2253,12 +2202,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let probe = ActionProbe()
     let workflow = WorkflowDefinition(
       name: "Committed Output",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "mock.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "selected.record.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "mock.recognizer", actions: [OutputActionReference(id: "selected.record.action")]),
       ui: WorkflowUIConfig(symbolName: "checkmark", accentColorName: "orange")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -2377,12 +2321,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let eventBus = EventBus()
     let workflow = WorkflowDefinition(
       name: "Missing Output",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "failing.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "missing.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "failing.recognizer", actions: [OutputActionReference(id: "missing.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "red")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -2421,12 +2360,7 @@ final class SessionCoordinatorTests: XCTestCase {
     let actionProbe = ActionProbe()
     let workflow = WorkflowDefinition(
       name: "Authorization Boundary",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "options.probe")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "options.probe", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "lock.shield", accentColorName: "red")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -2540,12 +2474,7 @@ extension SessionCoordinatorTests {
     ])
     var workflow = WorkflowDefinition(
       name: "Queued Hints",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "options.probe")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "options.probe", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     workflow.plan.setup.vocabularyBindings = migration.bindings
@@ -2639,22 +2568,12 @@ extension SessionCoordinatorTests {
     )
     let firstWorkflow = WorkflowDefinition(
       name: "First Output",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizer.id)),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "blocking.queue.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: recognizer.id, actions: [OutputActionReference(id: "blocking.queue.action")]),
       ui: WorkflowUIConfig(symbolName: "1.circle", accentColorName: "blue")
     )
     let secondWorkflow = WorkflowDefinition(
       name: "Second Capture",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizer.id)),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: recognizer.id, actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "2.circle", accentColorName: "green")
     )
     let firstRunID = UUID()
@@ -2798,12 +2717,7 @@ extension SessionCoordinatorTests {
     let actionProbe = ActionProbe()
     let workflow = WorkflowDefinition(
       name: "Failure State Workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "missing.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "probe.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "missing.recognizer", actions: [OutputActionReference(id: "probe.action")]),
       ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -2858,22 +2772,12 @@ extension SessionCoordinatorTests {
     )
     let workflowA = WorkflowDefinition(
       name: "Queue Workflow A",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "mock.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "blocking.queue.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "mock.recognizer", actions: [OutputActionReference(id: "blocking.queue.action")]),
       ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
     )
     let workflowB = WorkflowDefinition(
       name: "Queue Workflow B",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "mock.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "blocking.queue.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "mock.recognizer", actions: [OutputActionReference(id: "blocking.queue.action")]),
       ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "blue")
     )
     let coordinator = makeTestSessionCoordinator(

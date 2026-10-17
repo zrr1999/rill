@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
@@ -372,12 +373,7 @@ final class AppModelRunReceiptTests: XCTestCase {
   func testLegacyGroupMetadataCannotClassifyClipboardBodyAsVoiceWithoutReceipt() async {
     let workflow = WorkflowDefinition(
       name: "Legacy Group Rewrite",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.selection")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "context.selection", actions: [OutputActionReference(id: "record.store")]),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
       properties: .init())
     let runID = UUID()

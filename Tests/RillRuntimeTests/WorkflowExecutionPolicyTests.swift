@@ -154,12 +154,7 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
     WorkflowDefinition(
       name: "Legacy Clipboard Automation",
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "policy.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "policy.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "policy.recognizer", actions: [OutputActionReference(id: "policy.action")]),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
       properties: .init())
   }

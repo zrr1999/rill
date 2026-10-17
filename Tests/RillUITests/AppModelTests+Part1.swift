@@ -1,22 +1,12 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
 @testable import RillUI
 
-private actor FailThenSucceedDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
-  func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+private actor FailThenSucceedDiagnosticRepository: NonMaintainingDiagnosticRepository {
+  func reportUnexpectedHistoryMaintenance() async {
     XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteAllEvents() async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
   }
 
   func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
@@ -181,12 +171,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "Local Dictation",
       titleKey: .rewriteDemoStack,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let harness = makeHarness(
@@ -254,12 +239,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "Local Dictation",
       titleKey: .rewriteDemoStack,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let harness = makeHarness(
@@ -304,12 +284,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "File Dictation",
       titleKey: .rewriteDemoStack,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "cyan")
     )
     let harness = makeHarness(
@@ -345,12 +320,7 @@ extension AppModelTests {
       workflow: WorkflowDefinition(
         name: "Internal Name Changed",
         titleKey: .ambiguousDemoStack,
-        plan: WorkflowPlan(
-          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-          process: WorkflowProcessPhase(steps: [
-            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-            WorkflowProcessStep(kind: .applyVocabulary),
-          ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+        plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
       )
     )
@@ -380,12 +350,7 @@ extension AppModelTests {
     let secondaryWorkflow = WorkflowDefinition(
       name: "Secondary Workflow",
       titleKey: .rewriteDemoStack,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let settingsStore = UITestSettingsStore(
@@ -409,12 +374,7 @@ extension AppModelTests {
     let secondaryWorkflow = WorkflowDefinition(
       name: "Secondary Workflow",
       titleKey: .rewriteDemoStack,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let settingsStore = UITestSettingsStore(
@@ -708,12 +668,7 @@ extension AppModelTests {
     let secondaryWorkflow = WorkflowDefinition(
       name: "Secondary Workflow",
       titleKey: .rewriteDemoStack,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let settingsStore = UITestSettingsStore()
@@ -1070,12 +1025,7 @@ extension AppModelTests {
     let customHotkeyWorkflow = WorkflowDefinition(
       name: "Custom Hotkey Workflow",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "custom.hotkey.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "custom.hotkey.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange"),
       properties: .init())
     let harness = makeHarness(workflows: [customHotkeyWorkflow])
@@ -1247,12 +1197,7 @@ extension AppModelTests {
       id: UUID(),
       name: "Secondary Workflow",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange")
     )
     let storedEnabledStates = try XCTUnwrap(

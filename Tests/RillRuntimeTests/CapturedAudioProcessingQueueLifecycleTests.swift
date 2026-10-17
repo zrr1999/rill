@@ -1258,12 +1258,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
   private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Audio Lifecycle Workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "audio-lifecycle.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: RecordActionID.store)], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "audio-lifecycle.recognizer", actions: [OutputActionReference(id: RecordActionID.store)]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

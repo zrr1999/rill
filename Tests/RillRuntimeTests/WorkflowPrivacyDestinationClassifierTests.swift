@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
@@ -36,23 +37,13 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
     let offline = WorkflowDefinition(
       name: "Local Dictation",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "focused-application.insert")]),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "green")
     )
     let unknown = WorkflowDefinition(
       name: "Unknown Provider",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "unclassified.speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "unclassified.speech"),
       ui: WorkflowUIConfig(symbolName: "questionmark", accentColorName: "orange")
     )
 
@@ -70,12 +61,7 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Read Item",
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: SpeechOutputActionID.speak)], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "remote.speech", actions: [OutputActionReference(id: SpeechOutputActionID.speak)]),
       ui: WorkflowUIConfig(symbolName: "speaker.wave.2", accentColorName: "blue")
     )
     let invocation = WorkflowRunInvocation.record(

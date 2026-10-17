@@ -42,20 +42,9 @@ private struct RegressionRecognizer: SpeechRecognizer {
   }
 }
 
-private actor StageBlockingDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
-  func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+private actor StageBlockingDiagnosticRepository: NonMaintainingDiagnosticRepository {
+  func reportUnexpectedHistoryMaintenance() async {
     XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteAllEvents() async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
   }
 
   func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
@@ -168,12 +157,7 @@ private func makeRegressionWorkflow(
 ) -> WorkflowDefinition {
   WorkflowDefinition(
     name: name,
-    plan: WorkflowPlan(
-      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizerID)),
-      process: WorkflowProcessPhase(steps: [
-        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-        WorkflowProcessStep(kind: .applyVocabulary),
-      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: actionID)], deliveryPolicy: .init(strategy: .immediate))),
+    plan: makeTestAudioPlan(recognizerID: recognizerID, actions: [OutputActionReference(id: actionID)]),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

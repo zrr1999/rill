@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import Foundation
@@ -272,12 +273,7 @@ struct VocabularyCorrectionCompilationTests {
       })
     var workflow = WorkflowDefinition(
       name: "Voice",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [.init(id: "compiler.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "recognizer", actions: [.init(id: "compiler.action")]),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     workflow.plan.setup.vocabularyBindings = [.init(collectionID: collection.id, uses: [.recognitionHints])]
     let compiler = WorkflowPlanCompiler(

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import Foundation
@@ -450,12 +451,7 @@ private func makeExplanationWorkflow(name: String) -> WorkflowDefinition {
   WorkflowDefinition(
     name: name,
     trigger: .manual,
-    plan: WorkflowPlan(
-      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-      process: WorkflowProcessPhase(steps: [
-        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-        WorkflowProcessStep(kind: .applyVocabulary),
-      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+    plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

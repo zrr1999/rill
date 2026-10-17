@@ -749,12 +749,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Legacy Clipboard Automation",
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.recovery-boundary")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recovery-controller.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "remote.recovery-boundary", actions: [OutputActionReference(id: "recovery-controller.action")]),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
       properties: .init(availability: .planned))
     let receipt = makeReceipt(workflowID: workflow.id)
@@ -1164,12 +1159,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Cloud recovery final authorization",
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.recovery-boundary")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recovery-controller.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "remote.recovery-boundary", actions: [OutputActionReference(id: "recovery-controller.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let receipt = makeReceipt(workflowID: workflow.id)
@@ -1713,12 +1703,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
   private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Recovery Workflow",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.selection")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recovery-controller.action")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "context.selection", actions: [OutputActionReference(id: "recovery-controller.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

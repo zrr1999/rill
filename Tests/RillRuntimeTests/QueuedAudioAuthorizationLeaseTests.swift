@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import Foundation
@@ -334,12 +335,7 @@ private func makeLeaseWorkflow() -> WorkflowDefinition {
   WorkflowDefinition(
     name: "Queued Lease",
     trigger: .hotkey,
-    plan: WorkflowPlan(
-      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-      process: WorkflowProcessPhase(steps: [
-        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-        WorkflowProcessStep(kind: .applyVocabulary),
-      ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
+    plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local"),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

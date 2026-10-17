@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import RillTestSupport
 
 @testable import RillCore
@@ -625,24 +626,14 @@ extension AppModelTests {
       id: UUID(),
       name: "Hotkey A",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let hotkeyB = WorkflowDefinition(
       id: UUID(),
       name: "Hotkey B",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange")
     )
     let harness = makeHarness(workflows: [hotkeyA, hotkeyB])
@@ -665,24 +656,14 @@ extension AppModelTests {
       id: UUID(),
       name: "Menu A",
       trigger: .menuBar,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "menubar.rectangle", accentColorName: "red")
     )
     let menuBarB = WorkflowDefinition(
       id: UUID(),
       name: "Menu B",
       trigger: .menuBar,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "menubar.rectangle", accentColorName: "orange")
     )
     let harness = makeHarness(workflows: [menuBarA, menuBarB])
@@ -744,24 +725,14 @@ extension AppModelTests {
       id: UUID(),
       name: "Hotkey A",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     var hotkeyB = WorkflowDefinition(
       id: UUID(),
       name: "Hotkey B",
       trigger: .hotkey,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange")
     )
     hotkeyB.properties.defaultEnabled = false
@@ -812,12 +783,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "Unknown Event Workflow",
       trigger: .wakeWord,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
       properties: .init())
     let harness = makeHarness(workflows: [workflow])
@@ -850,12 +816,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "Unavailable Local Speech",
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
     let harness = makeHarness(
@@ -880,12 +841,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "Architecture Unsupported Local Speech",
       trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
     let harness = makeHarness(

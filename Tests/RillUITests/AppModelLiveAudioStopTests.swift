@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillUI
@@ -240,12 +241,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
   private func makeCapturedAudioWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Local Dictation",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
   }
