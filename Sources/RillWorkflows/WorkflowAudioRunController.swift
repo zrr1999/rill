@@ -825,6 +825,7 @@ public actor WorkflowAudioRunController {
     await cancelRun()
     let cueTasks = Array(startCueTasks.values)
     for task in cueTasks {
+      task.cancel()
       await task.value
     }
     await drainCaptureSignalTasks()

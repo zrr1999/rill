@@ -1872,7 +1872,6 @@ private enum AppContainerFactory {
           await model.drainRecordMutationsForApplicationShutdown()
         },
         cancelRecording: {
-          await platform.recordingCuePlayer.stop()
           await runtime.recordingSessionManager.stopForApplicationShutdown()
         },
         cancelWorkflowRun: {
