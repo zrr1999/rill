@@ -68,6 +68,7 @@ struct RillApplication: App {
       await recordPanelController.shutdown()
       await shutdown()
     }
+    MenuImageVisibilityPolicy.install()
   }
 
   var body: some Scene {
@@ -106,6 +107,38 @@ struct RillApplication: App {
   }
 }
 
+@MainActor
+private enum MenuImageVisibilityPolicy {
+  private static let observer = MenuImageVisibilityObserver()
+
+  static func install() {
+    observer.install()
+  }
+}
+
+@MainActor
+private final class MenuImageVisibilityObserver: NSObject {
+  func install() {
+    guard #available(macOS 27, *) else { return }
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(menuDidBeginTracking(_:)),
+      name: NSMenu.didBeginTrackingNotification,
+      object: nil
+    )
+  }
+
+  @objc func menuDidBeginTracking(_ notification: Notification) {
+    guard #available(macOS 27, *),
+      let menu = notification.object as? NSMenu,
+      menu !== NSApp.mainMenu
+    else { return }
+    for item in menu.items {
+      item.preferredImageVisibility = .automatic
+    }
+  }
+}
+
 private struct MenuBarContent: View {
   @Environment(\.openWindow) private var openWindow
 
@@ -121,7 +154,7 @@ private struct MenuBarContent: View {
   }
 
   private func openMainWindowFromMenu() {
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activate()
 
     if let existingWindow = NSApp.windows.first(where: { window in
       window.title == model.localizedWindowTitle && window.isVisible
@@ -134,7 +167,7 @@ private struct MenuBarContent: View {
   }
 
   private func openAboutFromMenu() {
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activate()
     NSApp.orderFrontStandardAboutPanel(nil)
   }
 
