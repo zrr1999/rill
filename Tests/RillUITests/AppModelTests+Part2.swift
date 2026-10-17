@@ -459,8 +459,8 @@ extension AppModelTests {
     let savedRecord = try XCTUnwrap(savedRecords.first)
     XCTAssertEqual(savedRecord.workflow.id, builtInWorkflow.id)
     XCTAssertEqual(savedRecord.workflow.name, "Focused Dictation")
-    XCTAssertEqual(savedRecord.workflow.plan.setup.speechRoute?.selection, .fixed)
-    XCTAssertFalse(savedRecord.workflow.prefersAutomaticRecognizerSelection)
+    XCTAssertEqual(savedRecord.workflow.plan.setup.speechRoute?.selection, .automatic)
+    XCTAssertTrue(savedRecord.workflow.prefersAutomaticRecognizerSelection)
     XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [builtInWorkflow.id])
     XCTAssertTrue(harness.model.userCreatedWorkflows.isEmpty)
     XCTAssertEqual(harness.model.editableBuiltInWorkflows.map(\.name), ["Focused Dictation"])
@@ -1054,13 +1054,12 @@ extension AppModelTests {
     XCTAssertFalse(harness.model.lastFailure?.contains("reviewed local speech model") == true)
   }
 
-  func testSavingLocalWorkflowPersistsSpecificModelOverride() async {
+  func testSavingLocalWorkflowUsesGlobalASR() async {
     let harness = makeHarness()
     await harness.model.saveWorkflowDraft(
       WorkflowEditorDraft(
         name: "Local Override",
         recognizer: .localSpeech,
-        localSpeechModelOverride: "qwen3-asr-0.6b-mlx-8bit",
         postProcessSteps: [.init(kind: .normalizeWhitespace)],
         destination: .pasteIntoApp
       )
@@ -1070,11 +1069,9 @@ extension AppModelTests {
       XCTFail("Expected saved workflow")
       return
     }
-    XCTAssertEqual(
-      savedWorkflow.metadata[WorkflowMetadataKey.localSpeechModelOverride],
-      "qwen3-asr-0.6b-mlx-8bit"
-    )
-    XCTAssertEqual(savedWorkflow.metadata["provider"], "local-speech")
+    XCTAssertNil(savedWorkflow.metadata[WorkflowMetadataKey.localSpeechModelOverride])
+    XCTAssertNil(savedWorkflow.metadata["provider"])
+    XCTAssertEqual(savedWorkflow.plan.setup.speechRoute?.selection, .automatic)
     XCTAssertNil(savedWorkflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
   }
 
@@ -1146,18 +1143,12 @@ extension AppModelTests {
 
     let legacyOnly = try XCTUnwrap(loaded.first(where: { $0.id == legacyOnlyID }))
     XCTAssertEqual(legacyOnly.pipeline.recognizerID, "local-speech")
-    XCTAssertEqual(
-      legacyOnly.metadata[WorkflowMetadataKey.localSpeechModelOverride],
-      "sense-voice-small-int8"
-    )
+    XCTAssertNil(legacyOnly.metadata[WorkflowMetadataKey.localSpeechModelOverride])
     XCTAssertNil(legacyOnly.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
 
     let bothKeys = try XCTUnwrap(loaded.first(where: { $0.id == bothKeysID }))
     XCTAssertEqual(bothKeys.pipeline.recognizerID, "local-speech")
-    XCTAssertEqual(
-      bothKeys.metadata[WorkflowMetadataKey.localSpeechModelOverride],
-      "qwen3-asr-0.6b-int8"
-    )
+    XCTAssertNil(bothKeys.metadata[WorkflowMetadataKey.localSpeechModelOverride])
     XCTAssertNil(bothKeys.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
   }
 

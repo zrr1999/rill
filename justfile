@@ -48,14 +48,18 @@ validate-performance-workloads:
 eval-quality suite *args:
     uv run --script scripts/eval_quality.py "$@"
 
-# Compare paired ASR performance; --target defines the measurement boundary.
+# Compare paired ASR performance or measure native panel presentation.
 [positional-arguments]
 bench-performance suite *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    test "$1" = asr || { echo "Supported performance comparison suite: asr" >&2; exit 2; }
+    suite="$1"
     shift
-    uv run --script scripts/asr_perf.py "$@"
+    case "$suite" in
+      asr) uv run --script scripts/asr_perf.py "$@" ;;
+      panel) bash scripts/benchmark_panel.sh "$@" ;;
+      *) echo "Supported performance suites: asr, panel" >&2; exit 2 ;;
+    esac
 
 # Apply the explicit ASR experiment admission policy to two matching reports.
 [positional-arguments]

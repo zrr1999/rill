@@ -2,26 +2,26 @@ import Foundation
 import RillCore
 
 /// Optional transcript-only prediction. Uncertain or unavailable predictions keep the rewrite.
-public struct JevTextPolishingGate: TextPolishingGate {
-  private let settings: JevSessionSettingsSource
+public struct DecisionTextPolishingGate: TextPolishingGate {
+  private let settings: DecisionModelSettingsSource
   private let privacy: PrivacyPolicySettingsSource
   private let currentFocus: @Sendable () async -> FocusSnapshot
-  private let client: JevScoreClient
+  private let client: DecisionScoreClient
   private let timeout: Duration
   private let operations = BoundedOperation(maxConcurrentOperations: 2)
 
   public init(
-    settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource,
+    settings: DecisionModelSettingsSource, privacy: PrivacyPolicySettingsSource,
     currentFocus: @escaping @Sendable () async -> FocusSnapshot
   ) {
     self.init(
       settings: settings, privacy: privacy, currentFocus: currentFocus,
-      client: JevScoreClient())
+      client: DecisionScoreClient())
   }
 
   init(
-    settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource,
-    currentFocus: @escaping @Sendable () async -> FocusSnapshot, client: JevScoreClient,
+    settings: DecisionModelSettingsSource, privacy: PrivacyPolicySettingsSource,
+    currentFocus: @escaping @Sendable () async -> FocusSnapshot, client: DecisionScoreClient,
     timeout: Duration = .seconds(2)
   ) {
     self.settings = settings
@@ -35,17 +35,17 @@ public struct JevTextPolishingGate: TextPolishingGate {
     try Task.checkCancellation()
     guard step.kind == .llmRewrite, context.workflow.speechMode != .voiceAssistant,
       context.workflow.metadata[WorkflowMetadataKey.builtinKind] == "push-to-talk.polish"
-        || context.workflow.metadata["text.polishing-gate"] == "jev",
-      let authorization = settings.currentAuthorization(),
+        || context.workflow.metadata["text.polishing-gate"] == "classification",
+      let authorization = context.modelSnapshot?.decisionAuthorization,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 1_800,
       let prompt = step.prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       prompt.utf8.count <= 4_000
     else { return false }
-    // Jev cannot evaluate references it has not seen; leave contextual correction to the LLM.
+    // Classification cannot evaluate references it has not seen; leave contextual correction to the LLM.
     if context.correctionRequest?.hasCorrectionReferences == true {
       return false
     }
-    let request = JevScoreClient.Request(
+    let request = DecisionScoreClient.Request(
       state: ["transcript": text],
       questions: [
         "polishing": .init(
@@ -72,7 +72,7 @@ public struct JevTextPolishingGate: TextPolishingGate {
       skip = try await operations.run(timeout: timeout) {
         try await validatePrivacy(context.contextSnapshot)
         guard settings.isCurrent(authorization) else { return false }
-        let response = try await client.score(request, apiKey: authorization.apiKey)
+        let response = try await client.score(request, authorization: authorization)
         guard let answer = response.answers["polishing"] else { return false }
         return answer.confidence >= 0.9 && (answer.probabilities["2"] ?? 0) >= 0.9
       }

@@ -4,6 +4,133 @@ import Testing
 
 @MainActor
 struct LLMProviderSettingsTests {
+  @Test(arguments: LanguageModelRole.allCases, ["", " \t\n"])
+  func blankSelectionsRemainEditableAfterReload(role: LanguageModelRole, blank: String) async throws {
+    let store = UITestSettingsStore(storage: [.languageModelRolesMigrated: "true"])
+    let credentials = UITestSecureCredentialStore(storage: [role.credentialKey: "synthetic-test-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials, settingsWriteDebounceDuration: .zero).model
+    await model.waitForInitialVoiceConfiguration()
+    model.setLanguageModelBaseURL(blank, for: role)
+    model.setLanguageModelIdentifier(blank, for: role)
+    await model.flushPendingPersistenceWrites()
+    await model.stopSettingsReadTasksForApplicationShutdown()
+
+    let reloaded = makeHarness(settingsStore: store, credentialStore: credentials, settingsWriteDebounceDuration: .zero).model
+    await reloaded.waitForInitialVoiceConfiguration()
+    #expect(reloaded.settings.languageModelSettings(for: role).baseURL == blank)
+    #expect(reloaded.settings.languageModelSettings(for: role).model == blank)
+    #expect(reloaded.settings.canMutateScalarSettings(in: role.settingsDomain))
+    #expect(reloaded.settings.credentialAvailability(for: role) == .available)
+    #expect(!reloaded.settings.canVerifyLanguageModel(role))
+    #expect(throws: LanguageModelConfigurationError.invalidConfiguration(role)) {
+      try reloaded.languageModelSettingsSource.currentSettings(for: role)
+    }
+
+    reloaded.setLanguageModelBaseURL("https://gateway.example/v1", for: role)
+    reloaded.setLanguageModelIdentifier("custom-model", for: role)
+    await reloaded.flushPendingPersistenceWrites()
+    #expect(reloaded.settings.canVerifyLanguageModel(role))
+    #expect(try await store.string(forKey: role.baseURLKey) == "https://gateway.example/v1")
+    #expect(try await store.string(forKey: role.modelKey) == "custom-model")
+    #expect(try reloaded.languageModelSettingsSource.currentSettings(for: role).baseURL == "https://gateway.example/v1")
+    await reloaded.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test(arguments: LanguageModelRole.allCases)
+  func retryRestoresBlankSelectionsWithoutUsingDefaults(role: LanguageModelRole) async {
+    let store = UITestSettingsStore(
+      storage: [.languageModelRolesMigrated: "true", role.baseURLKey: "", role.modelKey: ""],
+      unavailableKeys: [role.baseURLKey, role.modelKey])
+    let credentials = UITestSecureCredentialStore(storage: [role.credentialKey: "synthetic-test-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials).model
+    await model.waitForInitialVoiceConfiguration()
+    #expect(model.settings.credentialAvailability(for: role) == .inaccessible)
+    await store.setUnavailableKeys([])
+    model.retryUnavailableScalarSettings(in: role.settingsDomain)
+    await model.settings.settingsReadTaskOwner.waitForActiveTask(in: .scalarSettingsRetry(role.settingsDomain))
+    #expect(model.settings.languageModelSettings(for: role).baseURL == "")
+    #expect(model.settings.languageModelSettings(for: role).model == "")
+    #expect(model.settings.credentialAvailability(for: role) == .available)
+    #expect(model.settings.canMutateScalarSettings(in: role.settingsDomain))
+    #expect(!model.settings.canVerifyLanguageModel(role))
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test(arguments: LanguageModelRole.allCases)
+  func malformedNonblankSelectionsRemainUnavailable(role: LanguageModelRole) async {
+    let store = UITestSettingsStore(storage: [
+      .languageModelRolesMigrated: "true", role.baseURLKey: "http://public.example/v1", role.modelKey: "invalid model",
+    ])
+    let credentials = UITestSecureCredentialStore(storage: [role.credentialKey: "synthetic-test-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials).model
+    await model.waitForInitialVoiceConfiguration()
+    #expect(model.settings.credentialAvailability(for: role) == .inaccessible)
+    #expect(!model.settings.canMutateScalarSettings(in: role.settingsDomain))
+    #expect(!model.settings.canVerifyLanguageModel(role))
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test func failedSettingsLoadMakesBothRolesUnavailable() async {
+    let model = makeHarness(settingsStore: UITestSettingsStore(failBatchReads: true)).model
+    await model.waitForInitialVoiceConfiguration()
+    for role in LanguageModelRole.allCases {
+      #expect(model.settings.credentialAvailability(for: role) == .inaccessible)
+      #expect(!model.settings.canVerifyLanguageModel(role))
+    }
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test func migrationRetryDoesNotCopyCredentialsBeforeTheDestinationIsSaved() async throws {
+    let store = UITestSettingsStore(storage: [.openAIBaseURL: "https://api.deepseek.com", .openAIModel: "deepseek-flash"])
+    let credentials = UITestSecureCredentialStore(storage: [.openAIAPIKey: "original-key"])
+    await store.rejectNextAtomicWrite()
+    let model = makeHarness(settingsStore: store, credentialStore: credentials).model
+    await model.waitForInitialVoiceConfiguration()
+    #expect(model.settings.intelligentCredentialAvailability == .inaccessible)
+    #expect(try await credentials.credential(for: .intelligentAPIKey) == nil)
+    #expect(try await store.string(forKey: .languageModelRolesMigrated) == nil)
+    model.retryOpenAICredentialLoad(for: .intelligent)
+    await model.settings.settingsReadTaskOwner.waitForActiveTask(in: .scalarSettingsRetry(.intelligent))
+    #expect(model.settings.intelligentCredentialAvailability == .available)
+    #expect(model.settings.intelligentBaseURL == "https://api.deepseek.com")
+    #expect(model.settings.intelligentAPIKey == "original-key")
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test func migratesOnceAndKeepsIndependentRoleSelections() async throws {
+    let store = UITestSettingsStore(storage: [.openAIBaseURL: "https://api.deepseek.com", .openAIModel: "deepseek-flash"])
+    let credentials = UITestSecureCredentialStore(storage: [.openAIAPIKey: "original-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials, settingsWriteDebounceDuration: .zero).model
+    await model.waitForInitialVoiceConfiguration()
+    #expect(model.settings.languageModelSettings(for: .fast) == model.settings.languageModelSettings(for: .intelligent))
+    #expect(try await store.string(forKey: .languageModelRolesMigrated) == "true")
+    #expect(try await credentials.credential(for: .intelligentAPIKey) == "original-key")
+    model.setLanguageModelBaseURL("https://api.openai.com/v1", for: .intelligent)
+    model.setLanguageModelIdentifier("gpt-6-astra", for: .intelligent)
+    model.setLanguageModelAPIKey("smart-key", for: .intelligent)
+    await model.flushPendingPersistenceWrites()
+    #expect(model.settings.openAIModel == "deepseek-flash")
+    let reloaded = makeHarness(settingsStore: store, credentialStore: credentials).model
+    await reloaded.waitForInitialVoiceConfiguration()
+    #expect(reloaded.settings.intelligentModel == "gpt-6-astra")
+    #expect(reloaded.settings.intelligentAPIKey == "smart-key")
+    #expect(reloaded.settings.openAIAPIKey == "original-key")
+    await model.stopSettingsReadTasksForApplicationShutdown()
+    await reloaded.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @Test func inaccessibleIntelligentSettingsDoNotBlockFastWorkflows() async throws {
+    let store = UITestSettingsStore(storage: [.languageModelRolesMigrated: "true"], unavailableKeys: [.intelligentModel])
+    let credentials = UITestSecureCredentialStore(storage: [.openAIAPIKey: "fast-key"])
+    let model = makeHarness(settingsStore: store, credentialStore: credentials).model
+    await model.waitForInitialVoiceConfiguration()
+    #expect(model.settings.credentialAvailability(for: .fast) == .available)
+    #expect(model.settings.credentialAvailability(for: .intelligent) == .inaccessible)
+    #expect(model.settings.canVerifyLanguageModel(.fast))
+    #expect(!model.settings.canVerifyLanguageModel(.intelligent))
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
   @Test func sharedSettingsKeepExistingStorageAndVerifyTheConfiguredProvider() async throws {
     let settings = UITestSettingsStore(storage: [
       .openAIBaseURL: "https://gateway.example/v1",
@@ -14,7 +141,7 @@ struct LLMProviderSettingsTests {
     let model = makeHarness(
       settingsStore: settings, credentialStore: credentials,
       settingsWriteDebounceDuration: .zero,
-      verifyOpenAIConfigurationAction: { await verification.record($0) }
+      verifyOpenAIConfigurationAction: { settings, _ in await verification.record(settings) }
     ).model
     await model.waitForInitialVoiceConfiguration()
     #expect(model.settings.openAIAPIKey == "existing-key")

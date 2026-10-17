@@ -232,7 +232,7 @@ final class AppModelSettingsReadTaskOwnerTests: XCTestCase {
 
   func testReplacementCancelsOldTaskButConcurrentDrainsWaitForRetiredAndActive() async {
     let owner = AppModelSettingsReadTaskOwner()
-    let slot = AppModelSettingsReadTaskSlot.openAICredentialRetry
+    let slot = AppModelSettingsReadTaskSlot.scalarSettingsRetry(.openAI)
     let retiredGate = CancellationIgnoringSettingsReadGate()
     let activeGate = CancellationIgnoringSettingsReadGate()
 

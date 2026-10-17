@@ -6,7 +6,6 @@ public struct LanguageModelProviderDescriptor: Sendable, Equatable {
   public let family: Family
   public let supportsReferenceImages: Bool
   public let authorizationFingerprint: String
-  public let disablesThinkingForRewrite: Bool
 
   public init(settings: OpenAISettings) {
     let endpoint = URLComponents(
@@ -24,6 +23,5 @@ public struct LanguageModelProviderDescriptor: Sendable, Equatable {
       data: Data(fields.map { "\($0.utf8.count):\($0)" }.joined().utf8)
     )
     .map { String(format: "%02x", $0) }.joined()
-    disablesThinkingForRewrite = family == .deepSeek
   }
 }

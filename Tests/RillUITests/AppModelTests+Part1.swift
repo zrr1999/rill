@@ -409,6 +409,7 @@ extension AppModelTests {
     )
     let settingsStore = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .interfaceLanguage: AppLanguage.simplifiedChinese.rawValue,
         .selectedWorkflowID: secondaryWorkflow.id.uuidString,
         .openAIAPIKey: "legacy-plaintext-must-not-load",
@@ -721,7 +722,7 @@ extension AppModelTests {
 
   func testLoadSettingsPreservesRetiredClipboardPreferenceWithoutApplyingOrRewritingIt() async {
     let settingsStore = UITestSettingsStore(
-      storage: [.recordMergeSimilar: "legacy-value"]
+      storage: [.languageModelRolesMigrated: "true", .recordMergeSimilar: "legacy-value"]
     )
     let harness = makeHarness(
       settingsStore: settingsStore,
@@ -740,7 +741,7 @@ extension AppModelTests {
 
   func testLoadSettingsRestoresRecordHistoryVisibilityPreference() async {
     let settingsStore = UITestSettingsStore(
-      storage: [.recordHistoryVisibility: RecordHistoryVisibility.all.rawValue]
+      storage: [.languageModelRolesMigrated: "true", .recordHistoryVisibility: RecordHistoryVisibility.all.rawValue]
     )
     let harness = makeHarness(
       settingsStore: settingsStore,

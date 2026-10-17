@@ -32,7 +32,7 @@
 复制成另一个工作流时，用 uuidgen 生成不同的 id。
 
 ~~~toml
-schema_version = 2
+schema_version = 3
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "整理并复制"
 enabled = false
@@ -63,7 +63,7 @@ kind = "system-clipboard.copy"
 
 [工作流 TOML 参考](workflow-toml.md)解释字段、条件、处理步骤和输出。
 也可以下载[条件示例](examples/conditional-workflow.toml)和
-[JSON Schema](schemas/workflow-v2.schema.json)。
+[JSON Schema](schemas/workflow-v3.schema.json)。
 
 运行详情显示本次使用的步骤与结果。record_duration 可选择计时；
 没有测量的数据不应当作零耗时或估算值。错误恢复见[排查问题](troubleshooting.md)。

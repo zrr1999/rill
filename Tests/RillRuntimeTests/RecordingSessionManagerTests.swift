@@ -20,7 +20,7 @@ private func makeRecordingTestPrivacyGate() -> PrivacyRunGate {
         cloudConfirmationRequired: false
       )
     },
-    cloudConfirmationProvider: { _, _, _ in true },
+    cloudConfirmationProvider: { _, _, _, _ in true },
     destinationClassifier: { _ in .classified([.localSpeech]) }
   )
 }
@@ -33,7 +33,7 @@ private func makeRecordingCloudTestPrivacyGate() -> PrivacyRunGate {
         cloudConfirmationRequired: false
       )
     },
-    cloudConfirmationProvider: { _, _, _ in true },
+    cloudConfirmationProvider: { _, _, _, _ in true },
     destinationClassifier: { _ in .classified([.cloudSpeech]) }
   )
 }
@@ -2063,7 +2063,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         _ = await ordering.readContext()
         return .defaults
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await ordering.confirmCloudRun()
       }
     )
@@ -2141,7 +2141,7 @@ final class RecordingSessionManagerTests: XCTestCase {
     let ordering = RecordingRunOrderingProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { .defaults },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await ordering.confirmCloudRun()
       }
     )
@@ -2364,7 +2364,7 @@ final class RecordingSessionManagerTests: XCTestCase {
           ]
         )
       },
-      cloudConfirmationProvider: { _, _, _ in true }
+      cloudConfirmationProvider: { _, _, _, _ in true }
     )
     let optionsProbe = RecordingOptionsProbe()
     let manager = makeTestRecordingSessionManager(
@@ -3227,7 +3227,7 @@ final class RecordingSessionManagerTests: XCTestCase {
       diagnostics: diagnostics,
       privacyRunGate: PrivacyRunGate(
         settingsProvider: { .defaults },
-        cloudConfirmationProvider: { _, _, _ in true }
+        cloudConfirmationProvider: { _, _, _, _ in true }
       ),
       workflowProvider: { [workflow] },
       privacyContextProvider: { await contexts.read() },

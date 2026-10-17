@@ -223,7 +223,7 @@ public struct ContextCorrectionProvider: CorrectionContextSummarizing, MemoryCon
     let request = OpenAIResponsesRequest(
       input: input, instructions: instructions, baseURL: settings.baseURL, model: settings.model,
       store: false, stream: false, maxOutputTokens: 4_096,
-      disablesThinking: LLMTextProcessing.usesDeepSeek(settings), temperature: 0.1,
+      modelRole: .fast, temperature: 0.1,
       timeoutInterval: timeout, referenceImage: image, jsonOutput: true
     )
     try await onRequest()

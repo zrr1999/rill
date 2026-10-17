@@ -37,7 +37,7 @@ struct TextRewriteEvaluationTests {
     let baseURL = try #require(environment["OPENAI_BASE_URL"])
     let model = try #require(environment["OPENAI_MODEL"])
     let settings = OpenAISettings(apiKey: apiKey, baseURL: baseURL, model: model)
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings })
     let startedAt = Date()
     let samples = try JSONDecoder().decode(
       [Sample].self,

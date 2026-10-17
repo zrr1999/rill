@@ -41,6 +41,9 @@ enum AppSettingsCodec {
     .legacyWhisperKitPrewarm,
     .openAIBaseURL,
     .openAIModel,
+    .intelligentBaseURL,
+    .intelligentModel,
+    .languageModelRolesMigrated,
     vocabularyRulesSettingKey,
     vocabularyLibrarySettingKey,
     .privacySensitiveAppRules,
@@ -339,6 +342,43 @@ enum AppSettingsCodec {
       openAICredentialAvailability = .inaccessible
     }
 
+    var intelligentAPIKey: String?
+    var intelligentCredentialAvailability: OpenAICredentialAvailability = .inaccessible
+    if let credentialStore, let settingsStore {
+      do {
+        intelligentAPIKey = try await credentialStore.credential(for: .intelligentAPIKey)
+        let keys: Set<AppSettingKey> = [.intelligentBaseURL, .intelligentModel]
+        guard unavailableSettingKeys.isDisjoint(with: keys.union([.languageModelRolesMigrated])) else {
+          throw ProviderSettingsPersistenceError.unavailableStoredSettings
+        }
+        if storedSettings[.languageModelRolesMigrated] != "true" {
+          guard openAICredentialAvailability != .inaccessible else {
+            throw ProviderSettingsPersistenceError.unavailableStoredSettings
+          }
+          // Persist the destination before copying its credential. A failed Keychain copy
+          // leaves a configured role needing a key, never a key paired with another endpoint.
+          let migration: [AppSettingKey: String] = [
+            .intelligentBaseURL: storedSettings[.intelligentBaseURL]
+              ?? storedSettings[.openAIBaseURL] ?? OpenAISettings.defaultBaseURL,
+            .intelligentModel: storedSettings[.intelligentModel]
+              ?? storedSettings[.openAIModel] ?? OpenAISettings.defaultModel,
+            .languageModelRolesMigrated: "true",
+          ]
+          try Task.checkCancellation()
+          try await settingsStore.setStringsAtomically(migration)
+          storedSettings.merge(migration) { _, migrated in migrated }
+          if intelligentAPIKey == nil, let openAIAPIKey {
+            try Task.checkCancellation()
+            try await credentialStore.setCredential(openAIAPIKey, for: .intelligentAPIKey)
+            intelligentAPIKey = openAIAPIKey
+          }
+        }
+        intelligentCredentialAvailability = Self.openAICredentialAvailability(for: intelligentAPIKey)
+      } catch {
+        intelligentCredentialAvailability = .inaccessible
+      }
+    }
+
     return StoredAppSettingsSnapshot(
       persistentSettingsStoreWasAvailable: settingsStore != nil,
       unavailableSettingKeys: unavailableSettingKeys,
@@ -371,6 +411,10 @@ enum AppSettingsCodec {
       openAICredentialAvailability: openAICredentialAvailability,
       openAIBaseURL: storedSettings[.openAIBaseURL],
       openAIModel: storedSettings[.openAIModel],
+      intelligentAPIKey: intelligentAPIKey,
+      intelligentCredentialAvailability: intelligentCredentialAvailability,
+      intelligentBaseURL: storedSettings[.intelligentBaseURL],
+      intelligentModel: storedSettings[.intelligentModel],
       vocabularyRules: vocabularyRules,
       vocabularyCollections: vocabularyCollections,
       vocabularyBindings: vocabularyBindings,
@@ -424,7 +468,7 @@ enum AppSettingsCodec {
       .residentSpeechBudgetConfirmation,
       .speechModelMeasuredPeaks,
       .openAIBaseURL,
-      .openAIModel:
+      .openAIModel, .intelligentBaseURL, .intelligentModel:
       .speech
     case .builtinPushToTalkOutputMode, .longRecordingModeEnabled, .recordingDurationLimit:
       .input
@@ -447,7 +491,7 @@ enum AppSettingsCodec {
       .retiredDeepgramBaseURL,
       .retiredDeepgramModel,
       .retiredDeepgramLanguage,
-      .openAIAPIKey,
+      .openAIAPIKey, .intelligentAPIKey, .languageModelRolesMigrated,
       .privacySensitiveAppRules,
       .privacyCloudConfirmationRequired,
       .privacyCloudProcessingAuthorizations,
@@ -654,24 +698,7 @@ enum AppSettingsCodec {
     var workflow = workflow
     workflow.titleKey = nil
     workflow.metadata[workflowOriginMetadataKey] = userWorkflowOriginMetadataValue
-    if ["whisperkit.local", "auto", sherpaOnnxRecognizerID, sherpaStreamingRecognizerID]
-      .contains(workflow.plan.setup.speechRoute?.recognizerID ?? "")
-    {
-      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
-    }
-    if workflow.plan.setup.speechRoute?.recognizerID == "deepgram.prerecorded" {
-      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
-      workflow.plan.setup.speechRoute?.providerModel = nil
-      workflow.metadata["provider"] = "local-speech"
-      workflow.metadata.removeValue(forKey: "deepgram.model")
-    }
-    if workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] == nil,
-      let legacyModelOverride = workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
-    {
-      workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] = legacyModelOverride
-    }
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
-    return workflow
+    return workflow.followingGlobalModels()
   }
 
   static func privacySettingsStorageValues(
@@ -806,17 +833,19 @@ enum AppSettingsCodec {
     {
       invalidKeys.insert(.recordingDurationLimit)
     }
-    if let value = values[.openAIBaseURL],
-      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      !OpenAISettings.isValidBaseURL(value)
-    {
-      invalidKeys.insert(.openAIBaseURL)
-    }
-    if let value = values[.openAIModel],
-      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      !OpenAISettings.isValidModelIdentifier(value)
-    {
-      invalidKeys.insert(.openAIModel)
+    for role in LanguageModelRole.allCases {
+      if let value = values[role.baseURLKey],
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        !OpenAISettings.isValidBaseURL(value)
+      {
+        invalidKeys.insert(role.baseURLKey)
+      }
+      if let value = values[role.modelKey],
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        !OpenAISettings.isValidModelIdentifier(value)
+      {
+        invalidKeys.insert(role.modelKey)
+      }
     }
 
     return invalidKeys

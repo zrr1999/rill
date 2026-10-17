@@ -37,6 +37,10 @@ public final class SettingsPersistenceModel {
   public internal(set) var openAIAPIKey: String = ""
   public internal(set) var openAIBaseURL: String = OpenAISettings().baseURL
   public internal(set) var openAIModel: String = OpenAISettings().model
+  public internal(set) var intelligentAPIKey = ""
+  public internal(set) var intelligentBaseURL = OpenAISettings.defaultBaseURL
+  public internal(set) var intelligentModel = OpenAISettings.defaultModel
+  public internal(set) var intelligentCredentialAvailability: OpenAICredentialAvailability = .loading
   public internal(set) var ttsModelIdentifier: String = ""
   public internal(set) var recordHistoryVisibility: RecordHistoryVisibility = .remainingOnly
 
@@ -53,8 +57,11 @@ public final class SettingsPersistenceModel {
   var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
   var localSpeechModelMutationGeneration = 0
   let settingsReadTaskOwner = AppModelSettingsReadTaskOwner()
-  var openAICredentialLoadGeneration = 0
-  var openAIVerificationGeneration = 0
+  var credentialLoadGenerations: [LanguageModelRole: Int] = [:]
+  public internal(set) var intelligentVerificationState: OpenAIConfigurationVerificationState = .idle
+  public internal(set) var intelligentVerificationFailure: OpenAIVerificationFailure?
+  var verificationGenerations: [LanguageModelRole: Int] = [:]
+  let intelligentVerificationTaskOwner = ReplacingTaskOwner()
   let openAIVerificationTaskOwner = ReplacingTaskOwner()
 
   public internal(set) var isLoading = true
@@ -65,13 +72,13 @@ public final class SettingsPersistenceModel {
   private var retrying: Set<AppSettingKey> = []
   var hasUnsavedWrites: Bool { !failed.isEmpty }
 
-  let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings) async throws -> Void
+  let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void
   let configurationChanged: @MainActor () -> Void
   private(set) var hasBegunApplicationShutdown = false
 
   init(
     store: (any SettingsStore)?, language: AppLanguage,
-    verifyOpenAIConfiguration: @escaping @Sendable (OpenAISettings) async throws -> Void,
+    verifyOpenAIConfiguration: @escaping @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void,
     configurationChanged: @escaping @MainActor () -> Void
   ) {
     self.verifyOpenAIConfigurationAction = verifyOpenAIConfiguration
@@ -92,20 +99,20 @@ public final class SettingsPersistenceModel {
     !hasBegunApplicationShutdown && !hasUnavailableScalarSettings(in: domain)
   }
 
-  func invalidateOpenAIVerification() {
-    openAIVerificationTaskOwner.cancel()
-    openAIVerificationGeneration &+= 1
-    openAIVerificationFailure = nil
-    openAIConfigurationVerificationState = .idle
+  func invalidateOpenAIVerification(for role: LanguageModelRole = .fast) {
+    verificationTaskOwner(for: role).cancel()
+    verificationGenerations[role, default: 0] &+= 1
+    setVerification(.idle, failure: nil, for: role)
   }
 
   func waitForOpenAIVerificationTasks() async {
     await openAIVerificationTaskOwner.waitUntilIdle()
+    await intelligentVerificationTaskOwner.waitUntilIdle()
   }
 
   func beginShutdown() {
     hasBegunApplicationShutdown = true
-    invalidateOpenAIVerification()
+    for role in LanguageModelRole.allCases { invalidateOpenAIVerification(for: role) }
   }
 
   func submit(
