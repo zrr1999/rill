@@ -4,6 +4,24 @@ Rill separates domain contracts, runtime decisions, external effects, and UI
 state. `Package.swift` defines the module graph; `AppBootstrap` assembles the
 concrete implementations.
 
+## Explore and verify the architecture
+
+Open [the interactive code map](codemap/index.md) for the complete source inventory,
+module callers, injected runtime relationships, and four end-to-end traces. Its
+20 primary nodes follow actual source targets and group external dependencies.
+The map distinguishes build dependencies from runtime data flow: RecordStore
+uses Core persistence ports wired to SQLite in AppBootstrap, so a runtime
+RecordStore → SQLite relationship does not mean a RillRecords → RillPersistence import.
+
+`codemap.lock` binds source and test evidence to exact SHA-256 bytes and a Git
+baseline. Run `python3 scripts/codemap.py check` after source changes; rebuild only
+after reviewing changed claims and updating the inventory. Test declarations are
+navigation evidence, not passing tests or a claim of measured coverage.
+
+The four traces cover local-model dictation, clipboard reuse, optional LLM cleanup/receipts,
+and the independently running input method. Model downloads and remote services
+are dependencies, not evidence that those flows have run on a physical Mac.
+
 ## Module dependencies
 
 Arrows point from a consumer to its dependencies.
