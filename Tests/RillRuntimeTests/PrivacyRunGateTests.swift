@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
@@ -755,17 +756,11 @@ private func makeRunWorkflow(
   let usesCloudTextFixture = recognizerID == "remote.speech"
   return WorkflowDefinition(
     name: "Privacy Run",
-    plan: WorkflowPlan(
-      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID)),
-      process: WorkflowProcessPhase(
-        steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]
-          + (usesCloudTextFixture
-          ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]
-          : []).map(WorkflowProcessStep.init)),
-      output: WorkflowOutputPhase(actions: actionIDs.map { OutputActionReference(id: $0) }, deliveryPolicy: .init(strategy: .immediate))),
+    plan: makeTestAudioPlan(
+      recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID,
+      postProcessSteps: usesCloudTextFixture
+        ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]
+        : [], actions: actionIDs.map { OutputActionReference(id: $0) }),
     ui: WorkflowUIConfig(symbolName: "lock", accentColorName: "blue")
   )
 }
