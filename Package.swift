@@ -115,6 +115,7 @@ let package = Package(
         "RillUI",
       ],
       resources: [
+        .process("Resources/Localizable.xcstrings"),
         .process("Resources/BuiltinWorkflowManifest.json"),
         .process("Resources/BuiltinWorkflows.toml"),
         .process("Resources/RillMenuBarTemplate.pdf"),

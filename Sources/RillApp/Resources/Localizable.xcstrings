@@ -1,0 +1,104 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "intent.copyLastTranscription.description" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copies the last transcription and returns it to Shortcuts." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "复制上次转写，并把它交给快捷指令。" } }
+      }
+    },
+    "intent.copyLastTranscription.shortTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy Last Transcription" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "复制上次转写" } }
+      }
+    },
+    "intent.copyLastTranscription.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy Last Transcription" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "复制上次转写" } }
+      }
+    },
+    "intent.error.noTranscription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "There is no transcription to copy." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有可复制的转写。" } }
+      }
+    },
+    "intent.error.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Rill is not ready." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Rill 尚未就绪。" } }
+      }
+    },
+    "intent.error.workflowUnavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "That workflow is not available." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这个工作流不可用。" } }
+      }
+    },
+    "intent.runWorkflow.description" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Runs an enabled manual workflow. Output follows the workflow." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "运行已启用的手动工作流。输出只按工作流自己的声明进行。" } }
+      }
+    },
+    "intent.runWorkflow.parameter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Workflow" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "工作流" } }
+      }
+    },
+    "intent.runWorkflow.shortTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Run Workflow" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "运行工作流" } }
+      }
+    },
+    "intent.runWorkflow.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Run Workflow" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "运行工作流" } }
+      }
+    },
+    "intent.toggleVoiceInput.description" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Starts or stops voice input. Holding Fn is unchanged." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开始或停止语音输入。按住 Fn 的方式不变。" } }
+      }
+    },
+    "intent.toggleVoiceInput.shortTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Voice Input" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "语音输入" } }
+      }
+    },
+    "intent.toggleVoiceInput.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start or Stop Voice Input" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开始或停止语音输入" } }
+      }
+    },
+    "intent.workflow.type" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Workflow" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "工作流" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}
