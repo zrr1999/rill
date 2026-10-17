@@ -236,4 +236,4 @@ Quality and performance summaries are separate schema-2 reports under each run's
 `summaries/` directory. Vocabulary and context results are report-only (`not_assessed`),
 not automatic quality passes. Provider latency is request-scoped and has no regression
 verdict without a comparison policy. [CE](../Evals/README.md) runs these evaluations
-only on explicit request; their scoring and corpus checks remain in ordinary CI.
+weekly or on manual dispatch; their scoring and corpus checks remain in ordinary CI.

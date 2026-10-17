@@ -1,60 +1,93 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# dependencies = []
-# ///
 import copy
-import sys
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
-import asr_eval as ASR
-import asr_run_data as RUNS
-import asr_perf as PERF
-import asr_acceptance as ACCEPT
+from rill_dev.evaluation import asr_acceptance as ACCEPT
+from rill_dev.evaluation import asr_performance as PERF
+from rill_dev.evaluation import asr_quality as ASR
+from rill_dev.evaluation import run_data as RUNS
 
 
 class AnalysisTests(unittest.TestCase):
     def setUp(self):
         self.cases = {
-            f"case-{i}": {"audio_sha256": f"{i:064x}", "split": "validation" if i < 40 else "development",
-                          "references": {stage: "不要删除 Rill 2026" for stage in ASR.STAGES},
-                          "tags": ["negative", "mixed"], "required_terms": ["不要", "2026"]}
+            f"case-{i}": {
+                "audio_sha256": f"{i:064x}",
+                "split": "validation" if i < 40 else "development",
+                "references": {stage: "不要删除 Rill 2026" for stage in ASR.STAGES},
+                "tags": ["negative", "mixed"],
+                "required_terms": ["不要", "2026"],
+            }
             for i in range(120)
         }
-        self.header = {key: "test" for key in (
-            "run_id", "source_revision", "source_digest", "model_id", "model_revision",
-            "configuration_digest", "device", "os_version")}
+        self.header = {
+            key: "test"
+            for key in (
+                "run_id",
+                "source_revision",
+                "source_digest",
+                "model_id",
+                "model_revision",
+                "configuration_digest",
+                "device",
+                "os_version",
+            )
+        }
         self.header.update(schema_version=1, evidence_kind="microphone")
         self.rows = {
             (identifier, "warm", repetition): {
-                "case_id": identifier, "cache_state": "warm", "repetition": repetition,
-                "audio_sha256": f"{i:064x}", "status": "ok",
+                "case_id": identifier,
+                "cache_state": "warm",
+                "repetition": repetition,
+                "audio_sha256": f"{i:064x}",
+                "status": "ok",
                 "texts": {stage: "不要删除 Rill 2026" for stage in ASR.STAGES},
-                "metrics": {metric: 100 for metric in RUNS.METRICS}}
-            for i, identifier in enumerate(self.cases) for repetition in (1, 2, 3)
+                "metrics": {metric: 100 for metric in RUNS.METRICS},
+            }
+            for i, identifier in enumerate(self.cases)
+            for repetition in (1, 2, 3)
         }
 
     def test_unannotated_export_can_replay_but_cannot_claim_quality(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "corpus.json"
-            path.write_text(json.dumps({"schema_version": 1, "cases": [{
-                "id": "one", "split": "validation", "tags": ["unreviewed"], "references": {}}]}))
-            self.assertEqual(RUNS.read_corpus(path, require_references=False)["one"]["references"], {})
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "cases": [
+                            {
+                                "id": "one",
+                                "split": "validation",
+                                "tags": ["unreviewed"],
+                                "references": {},
+                            }
+                        ],
+                    }
+                )
+            )
+            self.assertEqual(
+                RUNS.read_corpus(path, require_references=False)["one"]["references"], {}
+            )
             with self.assertRaisesRegex(ValueError, "missing is not silence"):
                 RUNS.read_corpus(path, require_references=True)
 
     def compare(self, rows=None, **kwargs):
-        return ASR.compare(self.cases, (self.header, self.rows),
-                           (self.header, self.rows if rows is None else rows), **kwargs)
+        return ASR.compare(
+            self.cases,
+            (self.header, self.rows),
+            (self.header, self.rows if rows is None else rows),
+            **kwargs,
+        )
 
     def reports(self, rows=None):
         baseline = (self.header, self.rows)
         candidate = (self.header, self.rows if rows is None else rows)
-        return self.compare(rows), PERF.compare(self.cases, baseline, candidate, "release_to_final_ms")
+        return self.compare(rows), PERF.compare(
+            self.cases, baseline, candidate, "release_to_final_ms"
+        )
 
     def test_equal_performance_passes_but_does_not_prove_improvement(self):
         quality, performance = self.reports()
@@ -69,8 +102,12 @@ class AnalysisTests(unittest.TestCase):
 
     def test_quality_does_not_require_performance_or_product_acceptance_corpus(self):
         self.header["evidence_kind"] = "synthetic"
-        self.cases = {key: value for key, value in self.cases.items() if key in {"case-0", "case-1"}}
-        self.rows = {key: value for key, value in self.rows.items() if key[0] in self.cases and key[2] == 1}
+        self.cases = {
+            key: value for key, value in self.cases.items() if key in {"case-0", "case-1"}
+        }
+        self.rows = {
+            key: value for key, value in self.rows.items() if key[0] in self.cases and key[2] == 1
+        }
         for row in self.rows.values():
             row["metrics"] = {}
         self.assertEqual(self.compare()["decision"], "pass")
@@ -87,8 +124,12 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(ACCEPT.assess(quality, performance, "performance")["decision"], "fail")
         for case in self.cases.values():
             case["references"] = {}
-        self.assertEqual(PERF.compare(self.cases, (self.header, self.rows),
-                                     (self.header, changed), "release_to_final_ms")["decision"], "pass")
+        self.assertEqual(
+            PERF.compare(
+                self.cases, (self.header, self.rows), (self.header, changed), "release_to_final_ms"
+            )["decision"],
+            "pass",
+        )
         with self.assertRaisesRegex(ValueError, "reference"):
             self.compare(changed)
 
@@ -102,7 +143,9 @@ class AnalysisTests(unittest.TestCase):
     def test_worker_and_product_memory_scopes_cannot_be_compared(self):
         different = dict(self.header, memory_scope="worker_process_lifetime_peak_resident_bytes")
         with self.assertRaises(ValueError):
-            PERF.compare(self.cases, (self.header, self.rows), (different, self.rows), "release_to_final_ms")
+            PERF.compare(
+                self.cases, (self.header, self.rows), (different, self.rows), "release_to_final_ms"
+            )
 
     def test_missing_measurement_is_unknown_not_zero(self):
         changed = copy.deepcopy(self.rows)
@@ -143,8 +186,10 @@ class AnalysisTests(unittest.TestCase):
     def test_zero_baseline_cannot_prove_improvement(self):
         for row in self.rows.values():
             row["metrics"]["release_to_final_ms"] = 0
-        self.assertIn("warm.release_to_final_ms.zero_baseline",
-                      ACCEPT.assess(*self.reports(), "performance")["incomplete"])
+        self.assertIn(
+            "warm.release_to_final_ms.zero_baseline",
+            ACCEPT.assess(*self.reports(), "performance")["incomplete"],
+        )
 
     def test_report_excludes_text_and_unknown_header_fields_and_is_private(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -174,7 +219,9 @@ class AnalysisTests(unittest.TestCase):
     def test_stale_results_cannot_use_new_audio_and_references(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "run.jsonl"
-            path.write_text("\n".join(json.dumps(value) for value in [self.header, *self.rows.values()]))
+            path.write_text(
+                "\n".join(json.dumps(value) for value in [self.header, *self.rows.values()])
+            )
             self.cases["case-0"]["audio_sha256"] = "f" * 64
             with self.assertRaisesRegex(ValueError, "current corpus"):
                 RUNS.read_run(path, self.cases)
@@ -192,7 +239,9 @@ class AnalysisTests(unittest.TestCase):
     def test_a_cache_state_cannot_silently_omit_cases(self):
         for key, row in list(self.rows.items()):
             if key[0] == "case-0":
-                self.rows[(key[0], "first_inference", key[2])] = dict(row, cache_state="first_inference")
+                self.rows[(key[0], "first_inference", key[2])] = dict(
+                    row, cache_state="first_inference"
+                )
         quality, performance = self.reports()
         self.assertIn("missing_cases", quality["incomplete"])
         self.assertIn("missing_cases", performance["incomplete"])
@@ -203,7 +252,9 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(self.reports(changed)[1]["decision"], "incomplete")
         header = dict(self.header, preview_time_origin="different")
         with self.assertRaisesRegex(ValueError, "preview_time_origin"):
-            PERF.compare(self.cases, (self.header, self.rows), (header, self.rows), "first_preview_ms")
+            PERF.compare(
+                self.cases, (self.header, self.rows), (header, self.rows), "first_preview_ms"
+            )
 
     def test_exact_terms_and_silence(self):
         self.assertFalse(ASR.contains("20260", "2026"))
@@ -211,7 +262,3 @@ class AnalysisTests(unittest.TestCase):
         self.assertTrue(ASR.contains("不要删除 Rill", "不要"))
         self.assertEqual(ASR.distance([], ASR.characters("嗯")), 1)
         self.assertEqual(RUNS.percentiles([]), {"n": 0, "p50": None, "p95": None})
-
-
-if __name__ == "__main__":
-    unittest.main()

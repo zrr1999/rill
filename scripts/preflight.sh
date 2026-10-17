@@ -284,10 +284,7 @@ run_script_tests() {
   echo 'Testing dependency security policy...'
   uv run --script "$test_dir/dependency_security_test.py"
   echo 'Testing evaluation and performance analysis tools...'
-  uv run --script "$test_dir/asr_analysis_test.py"
-  uv run --script "$test_dir/quality_evaluation_test.py"
-  uv run --script "$test_dir/asr_replay_test.py"
-  uv run --script "$test_dir/product_path_replay_test.py"
+  uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'

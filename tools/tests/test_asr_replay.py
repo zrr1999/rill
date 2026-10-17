@@ -1,18 +1,11 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# dependencies = []
-# ///
 import hashlib
-import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
 import wave
+from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import asr_replay as replay
+from rill_dev.evaluation import asr_replay as replay
 
 
 class ReplayTests(unittest.TestCase):
@@ -20,14 +13,14 @@ class ReplayTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "worker"
             for wrong in (False, True):
-                executable.write_text(f'''#!{sys.executable}
+                executable.write_text(f"""#!{sys.executable}
 import json, sys
 for line in sys.stdin:
  f=json.loads(line)
  f.update(kind="event", sequence=0, body={{"response":{{"_0":{{"modelPrepared":{{"_0":"model"}}}}}}}})
  if {wrong}: f["generation"]=2
  print(json.dumps(f), flush=True)
-''')
+""")
                 executable.chmod(0o700)
                 worker = replay.Worker(executable, 2)
                 try:
@@ -49,7 +42,7 @@ for line in sys.stdin:
                 audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
                 audio.writeframes(b"\0\0" * 1601)
             executable = Path(directory) / "worker"
-            executable.write_text(f'''#!{sys.executable}
+            executable.write_text(f"""#!{sys.executable}
 import json, sys, base64
 sequence = total = 0
 for line in sys.stdin:
@@ -63,7 +56,7 @@ for line in sys.stdin:
  if event is not None:
   f.update(kind="event", sequence=sequence, body={{"event":{{"_0":event}}}})
   sequence+=1; print(json.dumps(f), flush=True)
-''')
+""")
             executable.chmod(0o700)
             worker = replay.Worker(executable, 2)
             try:
@@ -72,7 +65,12 @@ for line in sys.stdin:
                 self.assertNotIn("worker_first_hypothesis_ms", metrics)
             finally:
                 worker.close()
-            executable.write_text(executable.read_text().replace('event={"started":{"modelID":"model"}}', 'event={"completed":{"previewText":""}}'))
+            executable.write_text(
+                executable.read_text().replace(
+                    'event={"started":{"modelID":"model"}}',
+                    'event={"completed":{"previewText":""}}',
+                )
+            )
             worker = replay.Worker(executable, 2)
             try:
                 with self.assertRaisesRegex(replay.WorkerError, "before_all_samples"):
@@ -86,17 +84,22 @@ for line in sys.stdin:
             with wave.open(str(path), "wb") as audio:
                 audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
                 audio.writeframes(b"\0\0" * 160)
-            case = {"audio_path": path.name, "audio_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            case = {
+                "audio_path": path.name,
+                "audio_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
             with self.assertRaises(ValueError):
                 replay.audio_fixture(case, path.parent)
             case["consent"] = "authorized"
             validated, duration = replay.audio_fixture(case, path.parent)
-            self.assertEqual(duration, .01)
+            self.assertEqual(duration, 0.01)
+
             class Failure:
                 def request(self, operation, payload):
                     self.path = Path(payload["audioFilePath"])
                     self.was_private = self.path.stat().st_mode & 0o777 == 0o600
                     raise replay.WorkerError("timeout")
+
             worker = Failure()
             with self.assertRaises(replay.WorkerError):
                 replay.replay_case(worker, case, validated, duration, "model", "revision", [], None)
@@ -105,7 +108,3 @@ for line in sys.stdin:
             path.write_bytes(b"changed")
             with self.assertRaises(ValueError):
                 replay.audio_fixture(case, path.parent)
-
-
-if __name__ == "__main__":
-    unittest.main()
