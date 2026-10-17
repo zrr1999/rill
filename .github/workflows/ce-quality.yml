@@ -1,6 +1,8 @@
 name: "CE - Quality"
 
 on:
+  schedule:
+    - cron: "30 1 * * 1" # Monday 09:30 Asia/Shanghai (UTC+8)
   workflow_dispatch:
     inputs:
       suite:
@@ -25,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite == 'all' && '["text-rewrite","vocabulary-correction","context-correction"]' || format('["{0}"]', inputs.suite)) }}
+        suite: ${{ fromJSON((github.event_name == 'schedule' || inputs.suite == 'all') && '["text-rewrite","vocabulary-correction","context-correction"]' || format('["{0}"]', inputs.suite)) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

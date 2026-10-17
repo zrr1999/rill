@@ -102,7 +102,7 @@ just accept-asr --quality-report /private/asr/quality-report.json \
 这些是实验准入规则，**不是完整产品或发布验收**。整段遗漏、尾音、误改、编辑成本以及 Fn、权限、
 焦点、IME、VoiceOver 等仍需人工核验。
 
-ASR 的 CE 在本机显式运行，私有录音不上传 GitHub。三套 LLM 的托管手动 CE、报告规则和凭据配置见
+ASR 的 CE 在本机显式运行，私有录音不上传 GitHub。三套 LLM 的每周与手动托管 CE、报告规则和凭据配置见
 [质量评测入口](../Evals/README.md)；普通 PR CI 只验证工具、契约和性能工作负载。
 
 ## Release worker 回放

@@ -283,7 +283,7 @@ the migration adapter reads the file. Runtime test defaults live in
 
 ### 评测、诊断和功能命令
 
-质量评测位于 `Evals/`，真实模型由手动 CE 的 `RillQualityEvaluations` target 执行；
+质量评测位于 `Evals/`，真实模型由每周或手动 CE 的 `RillQualityEvaluations` target 执行；
 性能工作负载位于 `Benchmarks/`，CodSpeed 仅报告 CPU simulation。
 `tools/` 内部包的 `rill_dev.evaluation.run_data` 拥有原始回放数据的读取与配对，
 质量评分、性能比较和显式综合验收分别消费该数据。

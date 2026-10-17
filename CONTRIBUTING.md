@@ -312,7 +312,7 @@ GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可�
 
 `Evals/` 属于质量评测：ASR、文本改写、词汇纠错和上下文纠错。`Benchmarks/` 属于性能基准。
 `just eval-quality <suite>` 显式运行质量评测，`just bench-performance asr --target <metric>` 比较已采集的性能。
-真实 LLM 评测集中在 `RillQualityEvaluations`，由手动 CE 或本地显式命令执行；普通 CI 不运行它们，
+真实 LLM 评测集中在 `RillQualityEvaluations`，由每周 CE、手动 CE 或本地显式命令执行；普通 CI 不运行它们，
 但始终测试评分器、回放数据校验和语料格式。详见 [质量评测](Evals/README.md)、
 [性能基准](Benchmarks/README.md) 和 [ASR 回放及验收](docs/asr-evaluation.md)。
 
@@ -335,7 +335,7 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
 | [ci-performance.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-performance.yml) | CI - Performance | CodSpeed Linux 文本预览 CPU simulation |
-| [ce-quality.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ce-quality.yml) | CE - Quality | 手动运行固定合成语料的 LLM 质量评测，不作为 PR 检查 |
+| [ce-quality.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ce-quality.yml) | CE - Quality | 每周一北京时间 09:30 运行三套固定合成语料的 LLM 质量评测，也支持手动选择，不作为 PR 检查 |
 | [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
