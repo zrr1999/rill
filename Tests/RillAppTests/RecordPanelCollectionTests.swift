@@ -12,7 +12,7 @@ import RillWorkflows
 
 @MainActor
 final class RecordPanelCollectionTests: XCTestCase {
-  func testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture() async throws {
+  func testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget() async throws {
     for voice in [false, true] {
       let settings: [AppSettingKey: String] =
         voice
@@ -29,31 +29,32 @@ final class RecordPanelCollectionTests: XCTestCase {
       addTeardownBlock { await controller.shutdown() }
       let clipboardCount = NSPasteboard.general.changeCount
       let keyWindow = NSApp.keyWindow
-      observeCollection(controller, model: model)
       XCTAssertFalse(controller.isVisible)
 
-      try await waitUntil { controller.isVisible }
+      try await waitUntil { !model.settings.isLoading }
+      await waitForMainRunLoopDefaultMode()
+      XCTAssertFalse(controller.isVisible)
       XCTAssertFalse(controller.isKey)
-      XCTAssertTrue(controller.presentation.isCollapsed)
       XCTAssertTrue(NSApp.keyWindow === keyWindow)
-      XCTAssertTrue(model.recordWorkspace.buffers.editor.isVisible)
+      XCTAssertFalse(model.recordWorkspace.buffers.editor.isVisible)
       XCTAssertEqual(NSPasteboard.general.changeCount, clipboardCount)
       await model.recordWorkspace.buffers.editor.shutdown()
       await output.shutdown()
     }
   }
 
-  func testEachCollectionSwitchOpensAndKeepsTheEditingSelection() async throws {
+  func testCollectionSwitchesStayHiddenAndExplicitOpeningRestoresEditingSelection() async throws {
     let store = RecordStore()
     let id = try await store.createBufferDraft(text: "Keep this draft")
     let (model, output) = makeHarness(store)
     let controller = makeController(model: model, output: output, editingActivity: { _ in })
     addTeardownBlock { await controller.shutdown() }
-    observeCollection(controller, model: model)
     XCTAssertFalse(controller.isVisible)
 
     XCTAssertTrue(model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
-    try await waitUntil { controller.isVisible }
+    await waitForMainRunLoopDefaultMode()
+    XCTAssertFalse(controller.isVisible)
+    show(controller, model: model)
     let editor = model.recordWorkspace.buffers.editor
     await editor.refresh()
     editor.select(id)
@@ -64,12 +65,14 @@ final class RecordPanelCollectionTests: XCTestCase {
     XCTAssertFalse(controller.isVisible)
 
     XCTAssertTrue(model.setSystemClipboardCaptureEnabled(true))
-    try await waitUntil { controller.isVisible }
+    await waitForMainRunLoopDefaultMode()
+    XCTAssertFalse(controller.isVisible)
+    show(controller, model: model)
     await editor.waitForPendingWrites()
     XCTAssertTrue(editor.session === session)
     XCTAssertEqual(session.selection, .init(location: 5, length: 4))
     XCTAssertEqual(session.text, "Keep this draft")
-    XCTAssertFalse(controller.isKey)
+    XCTAssertTrue(controller.isVisible)
 
     await controller.shutdown()
     XCTAssertTrue(model.setSystemClipboardCaptureEnabled(false))
@@ -79,78 +82,81 @@ final class RecordPanelCollectionTests: XCTestCase {
     XCTAssertFalse(controller.isVisible)
   }
 
-  func testSendingKeepsPanelVisibleAndDoesNotRecaptureAChangedTarget() async throws {
-    for changeTarget in [false, true] {
-      let store = RecordStore()
-      let id = try await store.createBufferDraft(text: "Review before sending")
-      let element = BufferVerifiableTarget()
-      var captureCount = 0
-      let textOutput = RecordBufferTextOutput(
-        capture: {
-          captureCount += 1
-          return .init(
-            element: element, isCurrent: { true },
-            post: { _ in
-              XCTFail("A readable text target must use verified replacement")
-              return false
-            })
-        }, modifiersHeld: { false }, isSecure: { false })
-      let (model, output) = makeHarness(store, textOutput: textOutput)
-      let controller = makeController(
-        model: model, output: output,
-        textOutput: textOutput, editingActivity: { _ in })
-      addTeardownBlock { await controller.shutdown() }
-      show(controller, model: model)
-      let editor = model.recordWorkspace.buffers.editor
-      await editor.refresh()
-      editor.select(id)
-      await editor.waitForPendingWrites()
-      let capturesBeforeSend = captureCount
-      XCTAssertGreaterThan(capturesBeforeSend, 0)
-      controller.selectMode(.collections)
-      controller.selectMode(.drafts)
-      XCTAssertEqual(captureCount, capturesBeforeSend)
-      if changeTarget {
-        XCTAssertTrue(
-          element.replaceText(
-            in: .init(location: 0, length: 0), with: "external edit",
-            selection: .init(location: 13, length: 0)))
-      }
-      let clipboardCount = NSPasteboard.general.changeCount
-
-      editor.send()
-      await editor.waitForPendingWrites()
-      try await waitUntil { !model.recordWorkspace.buffers.isSending }
-
-      XCTAssertTrue(controller.isVisible)
-      XCTAssertTrue(editor.isVisible)
-      XCTAssertFalse(controller.isKey)
-      XCTAssertEqual(captureCount, capturesBeforeSend)
-      let snapshot = try await store.bufferSnapshot()
-      XCTAssertEqual(snapshot.remainingCount, changeTarget ? 1 : 0)
-      XCTAssertEqual(element.value, changeTarget ? "external edit" : "Review before sending")
-      XCTAssertEqual(NSPasteboard.general.changeCount, clipboardCount)
-      if changeTarget {
+  func testSendingDismissesPanelAndDoesNotRecaptureAChangedTarget() async throws {
+    for reduceMotion in [false, true] {
+      for changeTarget in [false, true] {
+        let store = RecordStore()
+        let id = try await store.createBufferDraft(text: "Review before sending")
+        let element = BufferVerifiableTarget()
+        var captureCount = 0
+        let textOutput = RecordBufferTextOutput(
+          capture: {
+            captureCount += 1
+            return .init(
+              element: element, isCurrent: { true },
+              post: { _ in
+                XCTFail("A readable text target must use verified replacement")
+                return false
+              })
+          }, modifiersHeld: { false }, isSecure: { false })
+        let (model, output) = makeHarness(store, textOutput: textOutput)
+        let controller = makeController(
+          model: model, output: output,
+          textOutput: textOutput, reduceMotion: reduceMotion, editingActivity: { _ in })
+        addTeardownBlock { await controller.shutdown() }
         show(controller, model: model)
+        let editor = model.recordWorkspace.buffers.editor
+        await editor.refresh()
+        editor.select(id)
         await editor.waitForPendingWrites()
-        XCTAssertGreaterThan(captureCount, capturesBeforeSend)
-        do {
-          _ = try await store.beginBufferOutput(manualEntryID: id)
-          XCTFail("Returning to edit must protect the selected draft from direct output")
-          try await store.retryBufferOutput(id)
-        } catch let error as BufferOutputError {
-          XCTAssertEqual(error, .editing)
+        let capturesBeforeSend = captureCount
+        XCTAssertGreaterThan(capturesBeforeSend, 0)
+        controller.selectMode(.collections)
+        controller.selectMode(.drafts)
+        XCTAssertEqual(captureCount, capturesBeforeSend)
+        if changeTarget {
+          XCTAssertTrue(
+            element.replaceText(
+              in: .init(location: 0, length: 0), with: "external edit",
+              selection: .init(location: 13, length: 0)))
         }
+        let clipboardCount = NSPasteboard.general.changeCount
+
         editor.send()
         await editor.waitForPendingWrites()
-        try await waitUntil { !model.recordWorkspace.buffers.isSending }
-        XCTAssertEqual(element.value, "external editReview before sending")
-        let settled = try await store.bufferSnapshot()
-        XCTAssertEqual(settled.remainingCount, 0)
-        XCTAssertTrue(controller.isVisible)
+        try await waitUntil { !controller.isVisible && !model.recordWorkspace.buffers.isSending }
+
+        XCTAssertFalse(controller.isVisible)
+        XCTAssertFalse(editor.isVisible)
+        XCTAssertEqual(output.isVisible, changeTarget)
+        XCTAssertFalse(controller.isKey)
+        XCTAssertEqual(captureCount, capturesBeforeSend)
+        let snapshot = try await store.bufferSnapshot()
+        XCTAssertEqual(snapshot.remainingCount, changeTarget ? 1 : 0)
+        XCTAssertEqual(element.value, changeTarget ? "external edit" : "Review before sending")
+        XCTAssertEqual(NSPasteboard.general.changeCount, clipboardCount)
+        if changeTarget {
+          show(controller, model: model)
+          await editor.waitForPendingWrites()
+          XCTAssertGreaterThan(captureCount, capturesBeforeSend)
+          do {
+            _ = try await store.beginBufferOutput(manualEntryID: id)
+            XCTFail("Returning to edit must protect the selected draft from direct output")
+            try await store.retryBufferOutput(id)
+          } catch let error as BufferOutputError {
+            XCTAssertEqual(error, .editing)
+          }
+          editor.send()
+          await editor.waitForPendingWrites()
+          try await waitUntil { !controller.isVisible && !model.recordWorkspace.buffers.isSending }
+          XCTAssertEqual(element.value, "external editReview before sending")
+          let settled = try await store.bufferSnapshot()
+          XCTAssertEqual(settled.remainingCount, 0)
+          XCTAssertFalse(controller.isVisible)
+        }
+        await editor.shutdown()
+        await output.shutdown()
       }
-      await editor.shutdown()
-      await output.shutdown()
     }
   }
 
@@ -180,10 +186,9 @@ final class RecordPanelCollectionTests: XCTestCase {
         },
         onDeliveryAbort: {}, restoring: returned)
     }
-    observeCollection(controller, model: model)
     XCTAssertTrue(model.setSystemClipboardCaptureEnabled(true))
-    try await waitUntil { controller.isVisible }
-    XCTAssertTrue(controller.presentation.isCollapsed)
+    await waitForMainRunLoopDefaultMode()
+    XCTAssertFalse(controller.isVisible)
     XCTAssertEqual(model.comparisonReturn, context)
 
     model.resumeComparison()
@@ -202,28 +207,14 @@ final class RecordPanelCollectionTests: XCTestCase {
   private func makeController(
     model: AppModel, output: BufferOutputController,
     textOutput: RecordBufferTextOutput = .init(capture: { nil }),
+    reduceMotion: Bool = true,
     editingActivity: @escaping (Bool) -> Void
   ) -> RecordPanelController {
     let controller = RecordPanelController(
       pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false },
-      reduceMotionProvider: { true })
+      reduceMotionProvider: { reduceMotion })
     controller.configureDrafts(model: model, output: output, textOutput: textOutput, editingActivity: editingActivity)
-    output.presentStatus = { [weak controller, weak model] in
-      guard let controller, let model else { return }
-      controller.show(
-        model: model, mode: .drafts, toggle: false, activate: false,
-        deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
-    }
     return controller
-  }
-
-  private func observeCollection(_ controller: RecordPanelController, model: AppModel) {
-    controller.startCollectionObservation { [weak controller, weak model] in
-      guard let controller, let model else { return }
-      controller.show(
-        model: model, mode: .drafts, toggle: false, activate: false,
-        deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
-    }
   }
 
   private func show(_ controller: RecordPanelController, model: AppModel) {
