@@ -56,7 +56,9 @@ extension L10n {
       switch section {
       case .permissions: .settingsSummaryPermissions
       case .speech: .settingsSummarySpeech
-      case .providers: .settingsSummaryProviders
+      case .decision: .settingsSummaryDecision
+      case .llm: .settingsSummaryLLM
+      case .tts: .settingsSummaryTTS
       case .input: .settingsSummaryInput
       case .voiceAssistant: .settingsSummaryVoiceAssistant
       case .recordPanel: .settingsSummaryRecordPanel
@@ -250,7 +252,6 @@ enum SettingsTextKey: String, CaseIterable, Sendable {
   case settingsGroupAdvanced
   case settingsGroupFeaturesAndPersonalization
   case settingsGroupPrivacyAndData
-  case settingsGroupVoiceAndModels
   case settingsHotkeyKeyClear
   case settingsHotkeyKeyDelete
   case settingsHotkeyKeyDown
@@ -333,7 +334,9 @@ enum SettingsTextKey: String, CaseIterable, Sendable {
   case settingsSummaryPrivacy
   case settingsSummaryRecordPanel
   case settingsSummarySpeech
-  case settingsSummaryProviders
+  case settingsSummaryDecision
+  case settingsSummaryLLM
+  case settingsSummaryTTS
   case settingsSummaryStorage
   case settingsSummaryVocabulary
   case settingsSummaryVoiceAssistant

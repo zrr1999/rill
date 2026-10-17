@@ -4,7 +4,7 @@ import RillCore
 
 extension SettingsView {
   var ttsServiceSettingsSection: some View {
-    VStack(alignment: .leading, spacing: RillSpacing.row) {
+    settingsDisclosure(.tts) {
       Picker(
         L10n.resource("models.service.tts").string(for: model.settings.language),
         selection: Binding(
@@ -13,6 +13,7 @@ extension SettingsView {
       ) {
         ForEach(model.ttsModelOptions) { option in Text(option.precision).tag(option.id) }
       }
+      .accessibilityIdentifier("settings.tts.model")
       speechModelPoolSettings(for: .textToSpeech)
     }
   }

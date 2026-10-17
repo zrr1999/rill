@@ -3,7 +3,7 @@ import SwiftUI
 
 extension SettingsView {
   var decisionProviderSettingsSection: some View {
-    settingsDisclosure(.providers) {
+    settingsDisclosure(.decision) {
       if let settings = model.recordWorkspace.jevSettings {
         JevAPISettingsView(
           settings: settings, language: model.settings.language,
@@ -20,9 +20,7 @@ extension SettingsView {
   }
 
   var llmProviderSettingsSection: some View {
-    VStack(alignment: .leading, spacing: RillSpacing.card) {
-      Text(L10n.string(.settingsOpenAITitle, language: model.settings.language))
-        .font(.subheadline.weight(.medium))
+    settingsDisclosure(.llm) {
       Text(L10n.string(.settingsOpenAIDescription, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)

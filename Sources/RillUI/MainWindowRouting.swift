@@ -4,7 +4,9 @@ import SwiftUI
 public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
   case permissions
   case speech
-  case providers
+  case decision
+  case llm
+  case tts
   case input
   case voiceAssistant
   case recordPanel
@@ -33,8 +35,12 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
       L10n.privacyText(.title, language: language)
     case .storage:
       L10n.historySettingsText(.title, language: language)
-    case .providers:
-      L10n.jev(.providersTitle, language: language)
+    case .decision:
+      L10n.resource("models.service.decision").string(for: language)
+    case .llm:
+      L10n.resource("models.service.llm").string(for: language)
+    case .tts:
+      L10n.resource("models.service.tts").string(for: language)
     case .speech:
       L10n.text(.settingsSpeechEngine, language: language)
     case .vocabulary:
@@ -56,7 +62,9 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     case .privacy: RillSystemSymbol.handRaised.rawValue
     case .storage: RillSystemSymbol.externaldrive.rawValue
     case .speech: RillSystemSymbol.waveformPathEcg.rawValue
-    case .providers: RillSystemSymbol.globe.rawValue
+    case .decision: RillSystemSymbol.globe.rawValue
+    case .llm: RillSystemSymbol.sparkles.rawValue
+    case .tts: RillSystemSymbol.speakerWave2.rawValue
     case .vocabulary: RillSystemSymbol.textBadgeCheckmark.rawValue
     case .input: RillSystemSymbol.micBadgePlus.rawValue
     case .voiceAssistant: RillSystemSymbol.waveformBadgeMic.rawValue
@@ -83,9 +91,13 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     case .storage:
       "storage retention history clear recovery data 保留 历史 清理 恢复 本地 数据"
     case .speech:
-      "speech stt tts mlx qwen model local 语音 识别 合成 音色 模型 本地"
-    case .providers:
-      "providers openai deepseek llm api key jev typesafe 提供商 大模型 密钥 排序 润色"
+      "speech asr stt mlx qwen model local 语音 识别 模型 本地"
+    case .decision:
+      "decision classification scoring jev typesafe cloudflare clef api key token 分类 评分 密钥 排序 润色"
+    case .llm:
+      "providers openai deepseek llm api key 语言 大模型 提供商 密钥"
+    case .tts:
+      "tts speech synthesis qwen system voice local 语音 合成 音色 系统 本地"
     case .vocabulary:
       "vocabulary hotword mapping replacement keyterm 词汇 热词 映射 替换"
     case .input:
@@ -97,29 +109,33 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
-  case general, input, voice, vocabulary, privacy, data
+  case general, input, asr, decision, llm, tts, vocabulary, privacy, data
   public var id: String { rawValue }
   var sections: [SettingsSection] {
     switch self {
     case .general: [.language]
-    case .input: [.input, .recordPanel]
-    case .voice: [.speech, .providers, .voiceAssistant]
+    case .input: [.input, .voiceAssistant, .recordPanel]
+    case .asr: [.speech]
+    case .decision: [.decision]
+    case .llm: [.llm]
+    case .tts: [.tts]
     case .vocabulary: [.vocabulary, .contextMemory]
     case .privacy: [.permissions, .privacy]
     case .data: [.storage, .diagnostics]
     }
   }
   func title(language: AppLanguage) -> String {
-    let key: WorkspaceText =
-      switch self {
-      case .general: .general
-      case .input: .input
-      case .voice: .voiceModels
-      case .vocabulary: .vocabularyMemory
-      case .privacy: .privacy
-      case .data: .data
-      }
-    return L10n.workspace(key, language: language)
+    switch self {
+    case .asr: L10n.resource("models.service.asr").string(for: language)
+    case .decision: L10n.resource("models.service.decision").string(for: language)
+    case .llm: L10n.resource("models.service.llm").string(for: language)
+    case .tts: L10n.resource("models.service.tts").string(for: language)
+    case .general: L10n.workspace(.general, language: language)
+    case .input: L10n.workspace(.input, language: language)
+    case .vocabulary: L10n.workspace(.vocabularyMemory, language: language)
+    case .privacy: L10n.workspace(.privacy, language: language)
+    case .data: L10n.workspace(.data, language: language)
+    }
   }
   var symbolName: String { sections[0].symbolName }
 }
@@ -128,8 +144,11 @@ extension SettingsSection {
   var pane: SettingsPane {
     switch self {
     case .language: .general
-    case .input, .recordPanel: .input
-    case .speech, .providers, .voiceAssistant: .voice
+    case .input, .recordPanel, .voiceAssistant: .input
+    case .speech: .asr
+    case .decision: .decision
+    case .llm: .llm
+    case .tts: .tts
     case .vocabulary, .contextMemory: .vocabulary
     case .permissions, .privacy: .privacy
     case .storage, .diagnostics: .data
@@ -139,7 +158,7 @@ extension SettingsSection {
 
 public enum SettingsItem: String, CaseIterable, Hashable, Sendable {
   case jevCredential, jevPolishing
-  public var section: SettingsSection { .providers }
+  public var section: SettingsSection { .decision }
   var title: JevText { self == .jevCredential ? .credentialTitle : .polishingTitle }
   var searchKeywords: String {
     switch self {

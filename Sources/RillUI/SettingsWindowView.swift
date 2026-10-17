@@ -27,6 +27,7 @@ struct SettingsDetailView: View {
             .opacity(model.selectedSettingsPane == pane ? 1 : 0)
             .allowsHitTesting(model.selectedSettingsPane == pane)
             .disabled(model.selectedSettingsPane != pane)
+            .accessibilityElement(children: model.selectedSettingsPane == pane ? .contain : .ignore)
             .accessibilityHidden(model.selectedSettingsPane != pane)
         }
       }

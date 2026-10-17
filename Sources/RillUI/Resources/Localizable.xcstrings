@@ -2540,13 +2540,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add a classification key in Settings → Voice & Models → API Providers."
+            "value": "Add a classification key in Settings → Model services → Decision."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "请在设置 → 语音与模型 → API 服务中配置 分类模型 Key。"
+            "value": "请在设置 → 模型服务 → 分类与评分 · Decision 中配置分类模型 Key。"
           }
         }
       }
@@ -13521,13 +13521,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose whether Fn dictation types into the current app or collects results in Drafts. Collecting opens the resident Drafts window without taking focus, including after restart."
+            "value": "Choose which outputs to enable. They run in workflow order; Save Record is automatic and cannot be turned off."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选择 Fn 听写直接输入当前应用，或先进入待发区。选择收集后，待发区自动常驻显示，不抢焦点，重启后也会恢复。"
+            "value": "选择要启用的输出。启用项按工作流声明顺序执行；保存记录为自动输出，不能关闭。"
           }
         }
       }
@@ -23264,23 +23264,6 @@
         }
       }
     },
-    "settings.settingsGroupVoiceAndModels": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voice & Models"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "语音与模型"
-          }
-        }
-      }
-    },
     "settings.settingsHotkeyKeyClear": {
       "extractionState": "manual",
       "localizations": {
@@ -24641,7 +24624,7 @@
         }
       }
     },
-    "settings.settingsSummaryProviders": {
+    "settings.settingsSummaryDecision": {
       "extractionState": "manual",
       "localizations": {
         "en": {
@@ -33862,19 +33845,19 @@
         }
       }
     },
-    "workspace.voiceModels": {
+    "workspace.modelServices": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Voice & Models"
+            "value": "Model services"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "语音与模型"
+            "value": "模型服务"
           }
         }
       }
@@ -34019,6 +34002,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "请从已保存的 Record 发起此工作流。"
+          }
+        }
+      }
+    },
+    "settings.settingsSummaryLLM": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One connection shared by all workflows"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有工作流共用一个连接"
+          }
+        }
+      }
+    },
+    "settings.settingsSummaryTTS": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local voice resources and system speech fallback"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地语音资源与系统语音回退"
           }
         }
       }

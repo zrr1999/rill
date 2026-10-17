@@ -202,8 +202,10 @@ insets and the native editor's padding, remain local to their owners.
 | Pending strip | Fixed capsule, separate from the page; drag, hover, accessible open, and close | [RecordPanelCapsuleView](Sources/RillUI/RecordPanelCapsuleView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
-The six Settings panes are General, Input, Voice & Models, Vocabulary & Memory,
-Privacy, and Data. They replace the main sidebar until Back. The selected pane
+Settings has General and Input, a Model services group with four peer pages
+(ASR, Decision, LLM, and TTS), then Vocabulary & Memory, Privacy, and Data.
+Input owns Fn, wake listening, and panel shortcuts; service pages own their
+connection or local model resources. They replace the main sidebar until Back. The selected pane
 is the window subtitle; mounted hidden panes preserve drafts while remaining
 outside hit testing and accessibility navigation.
 
@@ -316,8 +318,8 @@ be off. Each choice is stored in the workflow's adjacent state file and reports
 conflicts without discarding external edits. Explicit new-item and draft dictation
 use dedicated workflow declarations with a single Record destination.
 
-The speech settings pane groups ASR, Decision, LLM and TTS as four services. Model
-identifiers, resources and residency stay inside their owning service. Workflows
+The Model services sidebar group opens independent ASR, Decision, LLM and TTS
+pages. Model identifiers, resources and residency stay inside their owning service. Workflows
 show their tasks and reasoning levels without connection or credential controls.
 The item list uses `.listStyle(.inset)` with native selection colors. See
 [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift).

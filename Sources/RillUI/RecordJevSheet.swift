@@ -18,7 +18,7 @@ struct RecordJevSheet: View {
           .font(.caption).foregroundStyle(.secondary)
         Spacer()
         Button(text(.openSettings)) {
-          onConfigure(.init(section: .providers, item: .jevCredential))
+          onConfigure(.init(section: .decision, item: .jevCredential))
         }
         .disabled(model.isWorking)
         .accessibilityIdentifier("records.jev-settings")
@@ -66,7 +66,7 @@ struct RecordJevSheet: View {
         if error == .privacyBlocked {
           Button(text(.privacySettings)) { onConfigure(.init(section: .privacy)) }
         } else if error == .missingKey || error == .unauthorized {
-          Button(text(.openSettings)) { onConfigure(.init(section: .providers, item: .jevCredential)) }
+          Button(text(.openSettings)) { onConfigure(.init(section: .decision, item: .jevCredential)) }
         }
         Button(text(.retryPreview), action: onRetry)
           .accessibilityIdentifier("records.jev-retry")

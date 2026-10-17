@@ -173,19 +173,18 @@ public struct SettingsView: View {
         case .general:
           Section { languageSection }
         case .input:
-          Section {
-            builtinPushToTalkSection
-            recordPanelSection
-          }
+          Section { builtinPushToTalkSection }
+          Section { voiceAssistantResourcesSection }
+          Section { recordPanelSection }
           if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
-        case .voice:
-          Section(L10n.resource("models.service.asr").string(for: model.settings.language)) { speechEngineSection }
-          Section(L10n.resource("models.service.decision").string(for: model.settings.language)) { decisionProviderSettingsSection }
-          Section(L10n.resource("models.service.llm").string(for: model.settings.language)) { llmProviderSettingsSection }
-          Section(L10n.resource("models.service.tts").string(for: model.settings.language)) {
-            ttsServiceSettingsSection
-            voiceAssistantResourcesSection
-          }
+        case .asr:
+          Section { speechEngineSection }
+        case .decision:
+          Section { decisionProviderSettingsSection }
+        case .llm:
+          Section { llmProviderSettingsSection }
+        case .tts:
+          Section { ttsServiceSettingsSection }
         case .vocabulary:
           Section {
             vocabularySection

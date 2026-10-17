@@ -107,14 +107,14 @@ final class SmartCleanupRenderTests: XCTestCase {
             "vocabulary-manager", AnyView(VocabularyCollectionCard(model: model, collection: model.vocabulary.vocabularyCollections[0]).padding(24)),
             NSSize(width: 560, height: 360)
           ),
-          ("llm-provider", AnyView(SettingsView(model: model, pane: .voice).llmProviderSettingsSection.padding(24)), NSSize(width: 720, height: 760)),
-          ("llm-provider-compact", AnyView(SettingsView(model: model, pane: .voice).llmProviderSettingsSection.padding(20)), NSSize(width: 480, height: 880)),
+          ("llm-provider", AnyView(SettingsView(model: model, pane: .llm).llmProviderSettingsSection.padding(24)), NSSize(width: 720, height: 760)),
+          ("llm-provider-compact", AnyView(SettingsView(model: model, pane: .llm).llmProviderSettingsSection.padding(20)), NSSize(width: 480, height: 880)),
           (
-            "decision-provider-compact", AnyView(SettingsView(model: model, pane: .voice).decisionProviderSettingsSection.padding(20)),
+            "decision-provider-compact", AnyView(SettingsView(model: model, pane: .decision).decisionProviderSettingsSection.padding(20)),
             NSSize(width: 480, height: 680)
           ),
-          ("tts-provider-compact", AnyView(SettingsView(model: model, pane: .voice).ttsServiceSettingsSection.padding(20)), NSSize(width: 480, height: 680)),
-          ("asr-provider-compact", AnyView(SettingsView(model: model, pane: .voice).speechEngineSection.padding(20)), NSSize(width: 480, height: 880)),
+          ("tts-provider-compact", AnyView(SettingsView(model: model, pane: .tts).ttsServiceSettingsSection.padding(20)), NSSize(width: 480, height: 680)),
+          ("asr-provider-compact", AnyView(SettingsView(model: model, pane: .asr).speechEngineSection.padding(20)), NSSize(width: 480, height: 880)),
           (
             "workflow-outputs-compact",
             AnyView(

@@ -38,14 +38,14 @@ final class LocalizationSettingsTests: XCTestCase {
     }
   }
 
-  func testSettingsGroupHeadersMatchMigratedCopy() {
+  func testModelServicesGroupIsLocalized() {
     XCTAssertEqual(
-      L10n.settingsText(.settingsGroupVoiceAndModels, language: .english),
-      "Voice & Models"
+      L10n.workspace(.modelServices, language: .english),
+      "Model services"
     )
     XCTAssertEqual(
-      L10n.settingsText(.settingsGroupVoiceAndModels, language: .simplifiedChinese),
-      "语音与模型"
+      L10n.workspace(.modelServices, language: .simplifiedChinese),
+      "模型服务"
     )
     XCTAssertEqual(
       L10n.settingsText(.settingsRetryLoading, language: .simplifiedChinese),
