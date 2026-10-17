@@ -22,7 +22,9 @@ extension AppModel {
     else { return nil }
     if !duplicate, let fileURL = self.workflowLibrary.workflowFileURLsByID[workflow.id] { return fileURL }
     guard self.workflowLibrary.usesWorkflowFilesAsSource || self.workflowLibrary.customWorkflows.isEmpty else {
-      self.workflowLibrary.workflowLibraryError = L10n.surface(.theLegacyWorkflowLibraryHas, language: self.settings.language)
+      self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+        return L10n.surface(.theLegacyWorkflowLibraryHas, language: language)
+      }
       return nil
     }
     var definition = workflow
@@ -48,7 +50,9 @@ extension AppModel {
       persistCustomWorkflows()
       return record.fileURL
     } catch {
-      self.workflowLibrary.workflowLibraryError = error.localizedDescription
+      self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+        return L10n.workflowFileFailureDetail(error, language: language)
+      }
       return nil
     }
   }
@@ -74,15 +78,17 @@ extension AppModel {
     guard let workflowFileStore else { return nil }
     do {
       let properties = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
-      guard properties.isRegularFile == true, properties.isSymbolicLink != true,
-        properties.fileSize ?? 0 <= 1_048_576
+      guard properties.isRegularFile == true, properties.isSymbolicLink != true
       else {
-        throw WorkflowDocumentError("import", "Choose a regular TOML file of at most 1 MiB.")
+        throw WorkflowFileStoreError.unsupportedFile
       }
+      guard properties.fileSize ?? 0 <= 1_048_576 else { throw WorkflowFileStoreError.fileTooLarge }
       let document = try workflowFileStore.decodeDocument(String(contentsOf: url, encoding: .utf8))
       return await workflowFileForEditing(document.workflow, duplicate: true)
     } catch {
-      self.workflowLibrary.workflowLibraryError = error.localizedDescription
+      self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+        return L10n.workflowFileFailureDetail(error, language: language)
+      }
       return nil
     }
   }
@@ -112,7 +118,7 @@ extension AppModel {
         self.voice.isRunning = false
       } catch {
         self.voice.isRunning = false
-        self.lastFailure = L10n.surface(.theWorkflowCouldNotFinish, language: self.settings.language)
+        self.lastFailureResource = L10n.resource("surface.theWorkflowCouldNotFinish")
       }
     }
   }

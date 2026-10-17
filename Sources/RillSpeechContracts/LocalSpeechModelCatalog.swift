@@ -231,7 +231,7 @@ public enum LocalSpeechModelCatalog {
     settings: LocalSpeechSettings, workflow: WorkflowDefinition
   ) -> SpeechRecognitionRequestOptions {
     SpeechRecognitionRequestOptions(
-      modelID: effectiveModelIdentifier(settings: settings, modelOverride: SpeechRequestConfiguration(workflow: workflow).modelOverride),
+      modelID: effectiveModelIdentifier(settings: settings),
       language: LocalSpeechRecognitionPolicy.resolvedLanguage(
         requestLanguage: workflow.plan.setup.speechRoute?.language,
         workflowLanguage: workflow.metadata[WorkflowMetadataKey.languageOverride],
@@ -253,22 +253,12 @@ public enum LocalSpeechModelCatalog {
   }
 
   public static func effectiveModelIdentifier(
-    settings: LocalSpeechSettings, modelOverride: String? = nil
+    settings: LocalSpeechSettings
   ) -> String {
-    if let override = modelOverride?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !override.isEmpty
-    {
-      return normalizedLegacyModelID(override)
-    }
     let configured = normalizedLegacyModelID(
       settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
     )
-    guard distributableModelIdentifiers.contains(configured),
-      !settings.enabledModelIDs.contains(configured)
-    else { return configured }
-    return MLXAudioModelCatalog.distributable.first {
-      settings.enabledModelIDs.contains($0.id.rawValue)
-    }?.id.rawValue ?? configured
+    return configured
   }
 
   public static func normalizedLegacyModelID(_ modelID: String) -> String {

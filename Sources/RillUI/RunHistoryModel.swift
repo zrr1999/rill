@@ -29,7 +29,15 @@ public final class RunHistoryModel {
   public internal(set) var diagnosticsLoadState: DiagnosticsLoadState = .loading
   public internal(set) var isUpdatingHistoryRetentionSettings = false
   public internal(set) var isLocalHistoryMaintenanceRunning = false
-  public internal(set) var historyRetentionSettingsError: String?
+  public var historyRetentionSettingsError: String? {
+    let language = library.settings.language
+    var messages: [String] = []
+    if let failure = historyRetentionSettingsLoadFailure { messages.append(failure.string(for: language)) }
+    if clipboardHistoryRetentionSettingIsInvalid { messages.append(L10n.runText(.clipboardRetentionDamaged, language: language)) }
+    if runHistoryRetentionSettingIsInvalid { messages.append(L10n.runText(.runRetentionDamaged, language: language)) }
+    if let failure = historyRetentionSettingsWriteFailure { messages.append(failure.string(for: language)) }
+    return messages.isEmpty ? nil : messages.joined(separator: "\n")
+  }
   public internal(set) var areHistoryRetentionSettingsAvailable = true
   public internal(set) var localHistoryMaintenancePendingReason: String?
   public internal(set) var localHistoryMaintenanceBlockedReason: String?
@@ -39,8 +47,8 @@ public final class RunHistoryModel {
   var runReceiptLoadGeneration = 0
   var historyProjectionLoadTasks: [UUID: Task<Void, Never>] = [:]
   var historyRetentionRerunRequested = false
-  var historyRetentionSettingsLoadError: String?
-  var historyRetentionSettingsWriteError: String?
+  var historyRetentionSettingsLoadFailure: LocalizedStringResource?
+  var historyRetentionSettingsWriteFailure: LocalizedStringResource?
   var clipboardHistoryRetentionSettingIsInvalid = false
   var runHistoryRetentionSettingIsInvalid = false
   var shouldStartPeriodicHistoryRetentionMaintenance = false

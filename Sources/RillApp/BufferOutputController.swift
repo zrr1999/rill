@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import RillCore
 import RillPlatform
 import RillRecords
@@ -20,9 +21,9 @@ final class BufferOutputController: NSObject {
   private var dragGeneration: UInt64 = 0
   private var dragStarted = false
   private var isPresentingDrag = false
-  private var pendingMessage: String?
+  private var pendingMessage: LocalizedStringResource?
+  private var cancelButton: NSButton?
 
-  var presentStatus: (() -> Void)?
   var isVisible: Bool { panel?.isVisible ?? false }
 
   init(
@@ -39,6 +40,7 @@ final class BufferOutputController: NSObject {
     self.injectionEngine = injectionEngine
     self.isRillFrontmost = isRillFrontmost
     super.init()
+    observeLanguage()
   }
 
   func output(_ manualEntry: BufferEntryID? = nil) {
@@ -61,7 +63,7 @@ final class BufferOutputController: NSObject {
       do {
         if let manualEntry { try await store.requestBufferEntry(manualEntry) }
         if isRillFrontmost() {
-          notify("请聚焦目标输入框，再按输出快捷键。", "Focus the target, then press the output shortcut.")
+          notify(L10n.bufferOutputMessage(.focusTarget))
           return
         }
         let snapshot = try await store.bufferSnapshot()
@@ -86,7 +88,7 @@ final class BufferOutputController: NSObject {
         case .text(let text):
           guard let target else {
             try await store.retryBufferOutput(output.entry.id)
-            notify("此输入控件不支持输出，内容已保留。", "This control cannot receive text. The item is retained.")
+            notify(L10n.bufferOutputMessage(.unsupportedControl))
             return
           }
           let result = await injectionEngine.insertBufferText(text, into: target, using: textOutput)
@@ -95,13 +97,13 @@ final class BufferOutputController: NSObject {
           showDrag(output)
         }
       } catch BufferOutputError.empty {
-        notify("没有待输出内容", "Nothing pending")
+        notify(L10n.bufferOutputMessage(.empty))
       } catch BufferOutputError.processing {
-        notify("下一项仍在处理中", "The next item is still processing")
+        notify(L10n.bufferOutputMessage(.processing))
       } catch BufferOutputError.editing {
-        notify("此项仍有草稿，请在待发区确认发送。", "This item has a draft. Send it from the draft editor.")
+        notify(L10n.bufferOutputMessage(.draft))
       } catch {
-        notify("操作未完成，内容已保留。", "The operation could not finish. The item is retained.")
+        notify(L10n.bufferOutputMessage(.operationFailed))
       }
     }
   }
@@ -116,12 +118,10 @@ final class BufferOutputController: NSObject {
       case .rejected:
         try await store.retryBufferOutput(entry)
         panel?.orderOut(nil)
-        notify("目标未接收，内容已保留。", "The target did not accept the item. It is retained.")
+        notify(L10n.bufferOutputMessage(.rejected))
       }
     } catch {
-      notify(
-        "输出状态尚未保存；再次触发只重试保存。",
-        "Output state could not be saved. The next request retries settlement only.")
+      notify(L10n.bufferOutputMessage(.settlementPending))
       showConfirmation()
     }
   }
@@ -143,7 +143,7 @@ final class BufferOutputController: NSObject {
       }
       guard let active = try? await store.bufferSnapshot().active else { return }
       do { try await settle(active.id) } catch {
-        notify("状态保存失败；内容不会再次发送。", "Settlement failed. The item will not be sent again.")
+        notify(L10n.bufferOutputMessage(.settlementFailed))
       }
     }
   }
@@ -162,10 +162,8 @@ final class BufferOutputController: NSObject {
         try await store.retryBufferOutput(active.id, keepSelected: true)
         dragGeneration += 1
         panel?.orderOut(nil)
-        notify(
-          "请聚焦目标输入框，再按输出快捷键重试这一项。",
-          "Focus the target, then press the output shortcut to retry this item.")
-      } catch { notify("状态保存失败，暂未重试。", "Could not save state; nothing was resent.") }
+        notify(L10n.bufferOutputMessage(.retryTarget))
+      } catch { notify(L10n.bufferOutputMessage(.retryFailed)) }
     }
   }
 
@@ -194,7 +192,7 @@ final class BufferOutputController: NSObject {
     panel?.orderOut(nil)
   }
 
-  func showMessage(_ message: String) {
+  func showMessage(_ message: LocalizedStringResource) {
     guard !isClosed else { return }
     pendingMessage = message
     presentPendingMessageIfPossible()
@@ -212,15 +210,9 @@ final class BufferOutputController: NSObject {
   private func showConfirmation() {
     guard let model else { return }
     isPresentingDrag = false
-    if let presentStatus {
-      panel?.orderOut(nil)
-      presentStatus()
-      return
-    }
     show(
       content: NSHostingView(
-        rootView: RecordBufferStatusView(
-          model: model.recordWorkspace.buffers, language: model.settings.language)))
+        rootView: BufferOutputStatusView(model: model, summaryOnly: false)))
   }
 
   private func showDrag(_ output: BufferOutput) {
@@ -232,8 +224,7 @@ final class BufferOutputController: NSObject {
     if let model {
       stack.addArrangedSubview(
         NSHostingView(
-          rootView: RecordBufferSummaryView(
-            model: model.recordWorkspace.buffers, language: model.settings.language)))
+          rootView: BufferOutputStatusView(model: model, summaryOnly: true)))
     }
     switch output.record.payload {
     case .image(let data):
@@ -262,13 +253,13 @@ final class BufferOutputController: NSObject {
     dragStarted = false
     retainedDragViews = [
       BufferDragView(
-        record: output.record, shouldBegin: { [weak self] in self?.beginDrag() ?? false },
+        record: output.record, language: model?.settings.language ?? .preferred, shouldBegin: { [weak self] in self?.beginDrag() ?? false },
         completion: completion)
     ]
     if case .image = output.record.payload {
       retainedDragViews.append(
         BufferDragView(
-          record: output.record, asFile: true,
+          record: output.record, asFile: true, language: model?.settings.language ?? .preferred,
           shouldBegin: { [weak self] in self?.beginDrag() ?? false }, completion: completion))
     }
     for view in retainedDragViews {
@@ -276,7 +267,8 @@ final class BufferOutputController: NSObject {
       view.widthAnchor.constraint(equalToConstant: 340).isActive = true
       view.heightAnchor.constraint(equalToConstant: 70).isActive = true
     }
-    let cancel = NSButton(title: "取消 / Cancel", target: self, action: #selector(cancelDrag))
+    let cancel = NSButton(title: L10n.surface(.cancel, language: model?.settings.language ?? .preferred), target: self, action: #selector(cancelDrag))
+    cancelButton = cancel
     stack.addArrangedSubview(cancel)
     show(content: stack)
   }
@@ -308,10 +300,30 @@ final class BufferOutputController: NSObject {
     }
   }
 
-  private func notify(_ chinese: String, _ english: String) {
+  private func notify(_ message: LocalizedStringResource) {
     guard let model else { return }
-    model.recordWorkspace.buffers.message = model.settings.language == .simplifiedChinese ? chinese : english
+    model.recordWorkspace.buffers.message = message
     showConfirmation()
+  }
+
+  private func observeLanguage() {
+    guard !isClosed else { return }
+    withObservationTracking {
+      _ = model?.settings.language
+    } onChange: { [weak self] in
+      Task { @MainActor [weak self] in
+        guard let self, !self.isClosed else { return }
+        self.synchronizeLanguage()
+        self.observeLanguage()
+      }
+    }
+  }
+
+  private func synchronizeLanguage() {
+    let language = model?.settings.language ?? .preferred
+    panel?.title = L10n.surface(.rillOutputNext, language: language)
+    cancelButton?.title = L10n.surface(.cancel, language: language)
+    for view in retainedDragViews { view.updateLanguage(language) }
   }
 
   private func show(content: NSView) {
@@ -328,9 +340,26 @@ final class BufferOutputController: NSObject {
         .rillOutputNext, language: model?.settings.language ?? .english)
       panel?.center()
     }
+    synchronizeLanguage()
     panel?.contentView = content
     panel?.setContentSize(
       NSSize(width: 390, height: max(230, min(420, content.fittingSize.height))))
     panel?.orderFrontRegardless()
+  }
+}
+
+private struct BufferOutputStatusView: View {
+  let model: AppModel
+  let summaryOnly: Bool
+
+  var body: some View {
+    Group {
+      if summaryOnly {
+        RecordBufferSummaryView(model: model.recordWorkspace.buffers, language: model.settings.language)
+      } else {
+        RecordBufferStatusView(model: model.recordWorkspace.buffers, language: model.settings.language)
+      }
+    }
+    .environment(\.locale, model.settings.language.formattingLocale)
   }
 }

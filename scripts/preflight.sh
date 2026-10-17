@@ -16,6 +16,7 @@ RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 NATIVE_TESTS='RillPlatformTests|RillUITests|RillAppTests'
 DESKTOP_TESTS='/testDesktop'
+BENCHMARK_TESTS='/testBenchmark'
 STORAGE_STRESS_TESTS='RillRuntimeTests.RecordCatalogStressTests'
 PANEL_STRESS_TESTS='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
 REPORT_DIR=""
@@ -244,12 +245,12 @@ check_record_domain_boundary() {
 
 run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
+  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|$BENCHMARK_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
 }
 
 run_native_swift_tests() {
   echo 'Running native platform, UI, and app tests without desktop interaction...'
-  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$PANEL_STRESS_TESTS"
+  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$BENCHMARK_TESTS|$PANEL_STRESS_TESTS"
 }
 
 run_performance_swift_tests() {
@@ -262,21 +263,13 @@ run_performance_swift_tests() {
   done
   echo 'Running 10,000-record storage performance tests in a fresh serial process...'
   locked_swift test --skip-build --filter "$STORAGE_STRESS_TESTS"
-  echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
-  if locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
-    return
-  fi
-  info "Native panel stress failed; sampling one diagnostic replay"
-  if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
-    locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
-    info "Diagnostic replay also failed; the original failure remains authoritative"
-  fi
-  error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
+  echo 'Validating 10,000-record native panel presentation in a fresh serial process...'
+  locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"
 }
 
 run_desktop_swift_tests() {
   echo 'Running desktop tests; an unlocked interactive macOS session is required...'
-  locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip RillQualityEvaluations
+  locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip "$BENCHMARK_TESTS|RillQualityEvaluations"
 }
 
 run_swift_tests() {

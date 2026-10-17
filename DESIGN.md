@@ -160,7 +160,7 @@ the recording waveform.
 Use the macOS system font and platform Chinese fallback. There is no separate
 display face. Floating workspace text uses semantic styles: `.title3` for
 document headings, `.body` for previews and the native editor, `.callout` for
-actions and list titles, and `.caption` for supporting text. Capsule, recorder,
+actions and list titles, and `.caption` for supporting text. Panel, recorder,
 mode, and sidebar frames use `RillDynamicLength` so they follow the body text
 size between a control minimum and a screen-safe maximum. The 668×468 page and
 194pt sidebar are preferred sizes; available screen space can still shrink the
@@ -202,7 +202,7 @@ insets and the native editor's padding, remain local to their owners.
 | Unified panel | Default and compact verification sizes in frontmatter; geometry is selected before opening and stays fixed during interaction | [RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Collections preview | Fixed 194pt list column beside an opaque content preview | [RecordQuickPanelView](Sources/RillUI/RecordQuickPanelView.swift) |
 | Drafts | Fixed 194pt native list with single-line titles and metadata beside the native editor | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
-| Pending strip | Fixed capsule, separate from the page; drag, hover, accessible open, and close | [RecordPanelCapsuleView](Sources/RillUI/RecordPanelCapsuleView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
+| Unified panel | Centered on the pointer screen; preferred size scales with body text and shrinks to the visible frame | [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
 The six Settings panes are General, Input, Voice & Models, Vocabulary & Memory,
@@ -218,7 +218,7 @@ exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
 
-Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, pending capsule, navigation
+Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, navigation
 sidebar, mode track, selected mode, and action buttons. Reading surfaces, record
 previews, and draft editing stay opaque. Reduce Transparency or Increase
 Contrast selects an opaque control background through `RillGlass`. Each mounted

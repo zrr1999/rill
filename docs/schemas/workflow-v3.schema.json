@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Rill workflow document v2",
+  "title": "Rill workflow document v3",
   "description": "Structural schema for the TOML data model. The application additionally validates IDs, nesting, speech ordering, component readiness and credential policy.",
   "type": "object",
   "properties": {
     "schema_version": {
-      "const": 2
+      "const": 3
     },
     "id": {
       "type": "string",
@@ -81,22 +81,7 @@
         "speech": {
           "type": "object",
           "properties": {
-            "selection": {
-              "enum": [
-                "automatic",
-                "fixed"
-              ]
-            },
-            "recognizer": {
-              "type": "string"
-            },
             "language": {
-              "type": "string"
-            },
-            "local_model": {
-              "type": "string"
-            },
-            "provider_model": {
               "type": "string"
             },
             "live_preview": {
@@ -112,10 +97,6 @@
               "type": "string"
             }
           },
-          "required": [
-            "selection",
-            "recognizer"
-          ],
           "additionalProperties": false
         },
         "vocabulary": {
@@ -228,6 +209,14 @@
                 "type": "object",
                 "additionalProperties": {
                   "type": "string"
+                },
+                "propertyNames": {
+                  "not": {
+                    "enum": [
+                      "speech.provider",
+                      "speech.model"
+                    ]
+                  }
                 }
               },
               "condition": {
@@ -253,6 +242,26 @@
       "type": "object",
       "additionalProperties": {
         "type": "string"
+      },
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "recognizer.selection",
+            "recognizer.local.model",
+            "recognizer.whisperkit.model",
+            "provider",
+            "deepgram.model",
+            "openai.model",
+            "openai.base-url",
+            "speech.provider",
+            "speech.model"
+          ]
+        }
+      },
+      "properties": {
+        "text.polishing-gate": {
+          "const": "classification"
+        }
       }
     },
     "metadata": {
@@ -456,6 +465,13 @@
           },
           "minItems": 0,
           "maxItems": 256
+        },
+        "model_role": {
+          "enum": [
+            "fast",
+            "intelligent"
+          ],
+          "description": "LLM steps only; defaults to fast for rewrite and intelligent for answer."
         }
       },
       "required": [
@@ -509,6 +525,25 @@
                     "else"
                   ]
                 }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "llm-rewrite",
+                  "llm-answer"
+                ]
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "model_role"
               ]
             }
           }

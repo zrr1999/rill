@@ -30,6 +30,8 @@ struct RecordJevPanelTests {
     #expect(model.state == .review)
     model.settings.setKey("unit-test-key")
     try await waitUntil { model.isConfigured }
+    model.prepare(query: model.query, recordIDs: model.candidateIDs)
+    try await waitUntil { model.state == .review }
     model.confirm()
     try await waitUntil { model.state == .ready }
     #expect(await fixture.provider.calls == 1)
@@ -61,6 +63,8 @@ struct RecordJevPanelTests {
     #expect(model.review?.candidates.map(\.id) == [allowed.id])
     model.settings.setKey("unit-test-key")
     try await waitUntil { model.isConfigured }
+    model.prepare(query: model.query, recordIDs: model.candidateIDs)
+    try await waitUntil { model.state == .review }
     model.confirm()
     await fixture.provider.waitUntilEntered()
     panel.setSearchText("reset")
@@ -115,6 +119,11 @@ struct RecordJevPanelTests {
     firstReview.confirm()
     #expect(await fixture.provider.calls == 0)
     settings.setKey("replacement-key")
+    firstReview.confirm()
+    try await waitUntil { firstReview.state == .failed(.changed) }
+    #expect(await fixture.provider.calls == 0)
+    firstReview.prepare(query: "git", recordIDs: [record.id])
+    try await waitUntil { firstReview.state == .review }
     firstReview.confirm()
     try await waitUntil { firstReview.state == .ready }
     #expect(await fixture.provider.keys == ["replacement-key"])
@@ -285,9 +294,9 @@ actor JevPanelProvider: RecordRankingProvider {
   private var continuation: CheckedContinuation<Void, Never>?
   private var entered: CheckedContinuation<Void, Never>?
   init(held: Bool) { self.held = held }
-  func score(query _: String, candidates: [String], apiKey: String) async -> RecordRankingResponse {
+  func score(query _: String, candidates: [String], authorization: DecisionModelSettingsSource.Authorization) async -> RecordRankingResponse {
     calls += 1
-    keys.append(apiKey)
+    keys.append(authorization.apiKey)
     if held {
       await withCheckedContinuation {
         continuation = $0

@@ -5,6 +5,7 @@ import RillWorkflows
 
 @MainActor @Observable
 public final class JevAPISettingsModel {
+  public private(set) var configuration: DecisionModelConfiguration
   public private(set) var isConfigured: Bool
   private var polishingEnabled: Bool
   private var hotwordsEnabled = false
@@ -30,9 +31,27 @@ public final class JevAPISettingsModel {
 
   public init(service: RecordCloudRanking, hotwordSelection: HotwordSelection? = nil) {
     self.service = service
+    configuration = service.settings.configuration
     self.hotwordSelection = hotwordSelection
     isConfigured = service.settings.isConfigured
     polishingEnabled = service.settings.isPolishingEnabled
+  }
+
+  public func selectModel(_ model: DecisionModel) {
+    select(.init(model: model, accountID: configuration.accountID))
+  }
+
+  public func setAccountID(_ value: String) {
+    select(.init(model: configuration.model, accountID: value.trimmingCharacters(in: .whitespacesAndNewlines)))
+  }
+
+  private func select(_ selection: DecisionModelConfiguration) {
+    guard !closed, selection != configuration else { return }
+    service.settings.select(selection)
+    configuration = selection
+    isConfigured = false
+    polishingEnabled = false
+    isHotwordSelectionEnabled = false
   }
 
   public func setKey(_ value: String) {

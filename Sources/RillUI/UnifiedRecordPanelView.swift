@@ -12,12 +12,14 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private let onModeChange: (RecordPanelPresentation.Mode) -> Void
   private let onFinishEditing: () -> Void
   private let onInteractionChange: () -> Void
+  private let onClose: () -> Void
 
   public init(
     presentation: RecordPanelPresentation, model: AppModel,
     onModeChange: @escaping (RecordPanelPresentation.Mode) -> Void,
     onFinishEditing: @escaping () -> Void = {},
     onInteractionChange: @escaping () -> Void = {},
+    onClose: @escaping () -> Void = {},
     @ViewBuilder records: () -> Records
   ) {
     self.presentation = presentation
@@ -25,6 +27,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
     self.onModeChange = onModeChange
     self.onFinishEditing = onFinishEditing
     self.onInteractionChange = onInteractionChange
+    self.onClose = onClose
     self.records = records()
   }
 
@@ -43,7 +46,6 @@ public struct UnifiedRecordPanelView<Records: View>: View {
       .containerShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
       .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
       .accessibilityIdentifier("record-panel.unified")
-      .onChange(of: presentation.isPinned) { _, _ in onInteractionChange() }
       .onChange(of: buffers.editor.session?.isFocused) { _, _ in onInteractionChange() }
       .onChange(of: buffers.editor.session?.hasMarkedText) { _, _ in onInteractionChange() }
       .sheet(isPresented: $showsOutputReview) {
@@ -66,14 +68,16 @@ public struct UnifiedRecordPanelView<Records: View>: View {
         HStack(spacing: 12) {
           modeControl
           Spacer(minLength: 8)
-          Toggle(isOn: $presentation.isPinned) {
-            Label(panelText(.keepOpen), systemImage: presentation.isPinned ? RillSystemSymbol.pinFill.rawValue : RillSystemSymbol.pin.rawValue)
+          Button(action: onClose) {
+            Image(systemName: RillSystemSymbol.xmark.rawValue)
           }
-          .toggleStyle(.button).labelStyle(.iconOnly).buttonStyle(.glass)
+          .buttonStyle(.glass)
           .buttonBorderShape(.circle).buttonSizing(.flexible)
           .font(.callout).frame(width: 30, height: 30)
-          .help(panelText(.keepOpenHelp))
-          .accessibilityIdentifier("record-panel.pin")
+          .help(panelText(.closeFloatingWindow))
+          .accessibilityLabel(panelText(.closeFloatingWindow))
+          .accessibilityIdentifier("record-panel.close")
+          .disabled(buffers.editor.session?.hasMarkedText == true)
         }
         .controlSize(.regular).padding(.horizontal, 14).frame(height: 53)
       }
@@ -86,15 +90,15 @@ public struct UnifiedRecordPanelView<Records: View>: View {
           GlassEffectContainer(spacing: 8) { records }
             .opacity(presentation.mode == .collections ? 1 : 0)
             .allowsHitTesting(presentation.mode == .collections)
-            .disabled(presentation.mode != .collections || presentation.isCollapsed)
-            .accessibilityHidden(presentation.mode != .collections || presentation.isCollapsed)
+            .disabled(presentation.mode != .collections)
+            .accessibilityHidden(presentation.mode != .collections)
           GlassEffectContainer(spacing: 8) {
             RecordBufferDraftView(model: model, onFinishEditing: onFinishEditing)
           }
           .opacity(presentation.mode == .drafts ? 1 : 0)
           .allowsHitTesting(presentation.mode == .drafts)
-          .disabled(presentation.mode != .drafts || presentation.isCollapsed)
-          .accessibilityHidden(presentation.mode != .drafts || presentation.isCollapsed)
+          .disabled(presentation.mode != .drafts)
+          .accessibilityHidden(presentation.mode != .drafts)
         }
         .frame(width: viewport.size.width, height: viewport.size.height)
       }
@@ -177,7 +181,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private var needsAttention: Bool { buffers.snapshot?.active != nil || buffers.message != nil }
   private var noticeText: String {
     if buffers.snapshot?.active != nil { return panelText(.previousOutputNeedsConfirmation) }
-    return buffers.message ?? panelText(.localContent)
+    return buffers.message?.string(for: model.settings.language) ?? panelText(.localContent)
   }
 
   private var outputFeedback: some View {
@@ -197,7 +201,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
         }.disabled(buffers.isSending)
       }
       if let message = buffers.message {
-        Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        Text(message.string(for: model.settings.language)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
       }
     }
     .accessibilityIdentifier("record-panel.output-feedback")

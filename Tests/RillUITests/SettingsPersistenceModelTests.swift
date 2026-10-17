@@ -34,7 +34,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
     var changes = 0
     let model = SettingsPersistenceModel(
       store: nil, language: .english,
-      verifyOpenAIConfiguration: { _ in
+      verifyOpenAIConfiguration: { _, _ in
         await withTaskCancellationHandler {
           await gate.suspend()
         } onCancel: {
@@ -64,7 +64,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
   func testFailedTransactionRetriesWithoutOverwritingNewerUserEdit() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
+    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _, _ in }, configurationChanged: {})
     await store.rejectNextAtomicWrite()
     model.submitAtomically(
       [
@@ -90,7 +90,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
   func testFailedTransactionRetriesAllKeysInOneWrite() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
+    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _, _ in }, configurationChanged: {})
     await store.rejectNextAtomicWrite()
     model.submitAtomically(
       [
@@ -113,7 +113,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
   func testRetryCannotReplaceNewerInFlightWriteWithOldFailedSnapshot() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
+    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _, _ in }, configurationChanged: {})
     let gate = SettingsWriteGate()
     model.submit(
       key: .interfaceLanguage, category: .interface, debounce: .zero,

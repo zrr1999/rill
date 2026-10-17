@@ -6,6 +6,55 @@ import XCTest
 @testable import RillProviders
 
 final class OpenAITextRewriteTransformerTests: XCTestCase {
+  func testCredentialRevokedDuringRequestRejectsReturnedText() async throws {
+    let source = LanguageModelSettingsSource()
+    source.update(OpenAISettings(apiKey: "test-key"), for: .fast)
+    let client = OpenAIResponsesClientStub(
+      result: .success(.init(status: .completed, outputText: "must not deliver", containsRefusal: false, httpStatusCode: 200)),
+      suspendResponse: true
+    )
+    let transformer = OpenAITextRewriteTransformer(settingsSource: source, clientFactory: { client })
+    var context = makeTransformContext()
+    context.modelSnapshot = try source.snapshot(for: [.fast])
+    let capturedContext = context
+    let task = Task {
+      try await transformer.transform(text: "input", step: PostProcessStep(kind: .llmRewrite, prompt: "Edit"), context: capturedContext)
+    }
+    await client.waitUntilInvoked()
+    source.update(nil, for: .fast)
+    await client.resumeResponse()
+    do {
+      _ = try await task.value
+      XCTFail("Revoked credentials must reject a response already in flight")
+    } catch { XCTAssertEqual(error as? OpenAITextRewriteError, .credentialUnavailable) }
+  }
+
+  func testProductionResolverUsesFrozenRoleAndHonorsCredentialRevocation() async throws {
+    let source = LanguageModelSettingsSource()
+    let original = OpenAISettings(apiKey: "smart-key", baseURL: "https://api.deepseek.com", model: "deepseek-flash")
+    source.update(original, for: .intelligent)
+    let client = OpenAIResponsesClientStub(
+      result: .success(
+        .init(
+          status: .completed, outputText: "result", containsRefusal: false, httpStatusCode: 200)))
+    let transformer = OpenAITextRewriteTransformer(settingsSource: source, clientFactory: { client })
+    var context = makeTransformContext()
+    context.modelSnapshot = try source.snapshot(for: [.intelligent])
+    source.update(.init(apiKey: "smart-key", model: "next-run-model"), for: .intelligent)
+    let step = PostProcessStep(kind: .llmRewrite, prompt: "Edit", modelRole: .intelligent)
+    _ = try await transformer.transform(text: "input", step: step, context: context)
+    let invocation = await client.lastInvocation()
+    XCTAssertEqual(invocation?.request.model, "deepseek-flash")
+    XCTAssertEqual(invocation?.request.baseURL, "https://api.deepseek.com")
+    XCTAssertEqual(invocation?.request.modelRole, .intelligent)
+    XCTAssertNil(invocation?.request.temperature)
+    source.update(nil, for: .intelligent)
+    do {
+      _ = try await transformer.transform(text: "input", step: step, context: context)
+      XCTFail("Revoked credentials must block the next request")
+    } catch { XCTAssertEqual(error as? OpenAITextRewriteError, .credentialUnavailable) }
+  }
+
   func testOnlyRecoverableProviderFailuresPermitSpeechTextFallback() {
     for error in [
       OpenAITextRewriteError.rateLimited,
@@ -39,7 +88,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: {
+      settingsProvider: { _, _ in
         OpenAISettings(
           apiKey: " test-key ",
           baseURL: "https://gateway.example.com/openai/v1",
@@ -86,7 +135,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      settingsProvider: { _, _ in OpenAISettings(apiKey: "test-key") },
       clientFactory: { client }
     )
 
@@ -116,7 +165,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: {
+      settingsProvider: { _, _ in
         OpenAISettings(
           apiKey: "secret-key-canary",
           baseURL: "https://private-gateway.example/v1",
@@ -158,7 +207,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      settingsProvider: { _, _ in OpenAISettings(apiKey: "test-key") },
       clientFactory: { client }
     )
 
@@ -188,7 +237,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     ] {
       let client = OpenAIResponsesClientStub(result: .failure(expectedError))
       let transformer = OpenAITextRewriteTransformer(
-        settingsProvider: { settings },
+        settingsProvider: { _, _ in settings },
         clientFactory: { client }
       )
       await assertRewriteError(expectedError) {
@@ -227,7 +276,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     for (response, expectedError) in cases {
       let client = OpenAIResponsesClientStub(result: .success(response))
       let transformer = OpenAITextRewriteTransformer(
-        settingsProvider: { OpenAISettings(apiKey: "test-key") },
+        settingsProvider: { _, _ in OpenAISettings(apiKey: "test-key") },
         clientFactory: { client }
       )
       await assertRewriteError(expectedError) {
@@ -253,7 +302,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       delay: .seconds(30)
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      settingsProvider: { _, _ in OpenAISettings(apiKey: "test-key") },
       clientFactory: { client }
     )
     let task = Task {
@@ -339,7 +388,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     XCTAssertEqual(json["store"] as? Bool, false)
     XCTAssertEqual(json["stream"] as? Bool, false)
     XCTAssertEqual(json["max_output_tokens"] as? Int, 4_096)
-    XCTAssertNil(json["reasoning"])
+    XCTAssertEqual((json["reasoning"] as? [String: String])?["effort"], "none")
     XCTAssertNil(json["metadata"])
     XCTAssertNil(json["user"])
     XCTAssertNil(json["previous_response_id"])
@@ -693,10 +742,13 @@ private actor OpenAIResponsesClientStub: OpenAIResponsesServing {
   private let delay: Duration?
   private var invocation: Invocation?
   private var invocationWaiters: [CheckedContinuation<Void, Never>] = []
+  private var suspendResponse: Bool
+  private var responseWaiter: CheckedContinuation<Void, Never>?
 
-  init(result: Result<OpenAIResponsesResult, Error>, delay: Duration? = nil) {
+  init(result: Result<OpenAIResponsesResult, Error>, delay: Duration? = nil, suspendResponse: Bool = false) {
     self.result = result
     self.delay = delay
+    self.suspendResponse = suspendResponse
   }
 
   func createResponse(
@@ -707,6 +759,9 @@ private actor OpenAIResponsesClientStub: OpenAIResponsesServing {
     let waiters = invocationWaiters
     invocationWaiters.removeAll()
     waiters.forEach { $0.resume() }
+    if suspendResponse {
+      await withCheckedContinuation { responseWaiter = $0 }
+    }
     if let delay {
       try await Task.sleep(for: delay)
     }
@@ -714,6 +769,12 @@ private actor OpenAIResponsesClientStub: OpenAIResponsesServing {
   }
 
   func lastInvocation() -> Invocation? { invocation }
+
+  func resumeResponse() {
+    suspendResponse = false
+    responseWaiter?.resume()
+    responseWaiter = nil
+  }
 
   func waitUntilInvoked() async {
     guard invocation == nil else { return }

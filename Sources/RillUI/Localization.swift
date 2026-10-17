@@ -8,7 +8,30 @@ public enum AppLanguage: String, CaseIterable, Identifiable, Codable, Sendable {
   public var id: String { rawValue }
 
   public static var preferred: AppLanguage {
-    Locale.preferredLanguages.first?.hasPrefix("zh") == true ? .simplifiedChinese : .english
+    preferred(for: Locale.preferredLanguages)
+  }
+
+  public static func preferred(for languages: [String]) -> AppLanguage {
+    for identifier in languages {
+      switch Locale(identifier: identifier).language.languageCode?.identifier {
+      case "en": return .english
+      case "zh": return .simplifiedChinese
+      default: continue
+      }
+    }
+    return .english
+  }
+
+  public var formattingLocale: Locale { formattingLocale(region: .current) }
+
+  public func formattingLocale(region: Locale) -> Locale {
+    var components = Locale.Components(locale: region)
+    components.languageComponents = Locale.Language.Components(identifier: self == .english ? "en" : "zh-Hans")
+    components.region = region.region
+    components.calendar = region.calendar.identifier
+    components.hourCycle = region.hourCycle
+    components.numberingSystem = region.numberingSystem
+    return Locale(components: components)
   }
 
   public var displayName: String {
@@ -278,6 +301,10 @@ extension L10n {
     _ availability: LocalSpeechAvailability,
     language: AppLanguage
   ) -> String {
+    localSpeechAvailabilityResource(availability).string(for: language)
+  }
+
+  static func localSpeechAvailabilityResource(_ availability: LocalSpeechAvailability) -> LocalizedStringResource {
     let key: InterfaceKey =
       switch availability {
       case .available:
@@ -287,7 +314,7 @@ extension L10n {
       case .trustMaterialUnavailable:
         .localSpeechTrustMaterialUnavailable
       }
-    return text(key, language: language)
+    return resource("interface.\(key.rawValue)")
   }
 
   public static func settingsSaveCategory(

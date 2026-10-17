@@ -48,6 +48,46 @@ struct WorkflowDocumentCodecTests {
     "user.team" = "design"
     """
 
+  @Test func migratesConcreteSpeechSelectionsAndPreservesBranchRoles() throws {
+    let codec = WorkflowDocumentCodec()
+    let source = Self.source.replacingOccurrences(
+      of: "kind = \"text\"",
+      with:
+        "kind = \"audio\"\n[setup.speech]\nselection = \"fixed\"\nrecognizer = \"deepgram.prerecorded\"\nprovider_model = \"old-model\"\nlocal_model = \"old-local\"\n[[process]]\nid = \"recognize\"\nkind = \"recognize-speech\""
+    )
+    let document = try codec.decode(source)
+    #expect(document.workflow.plan.setup.speechRoute?.recognizerID == "local-speech")
+    #expect(document.workflow.plan.setup.speechRoute?.selection == .automatic)
+    #expect(document.workflow.languageModelRoles == [.intelligent])
+    let encoded = try codec.encode(document)
+    #expect(encoded.contains("schema_version = 3"))
+    #expect(!encoded.contains("old-model") && !encoded.contains("local_model") && !encoded.contains("recognizer ="))
+    #expect(try codec.decode(encoded) == document)
+  }
+
+  @Test func migratesJevOptionToGlobalClassification() throws {
+    let codec = WorkflowDocumentCodec()
+    let document = try codec.decode(Self.source + "\n[options]\n\"text.polishing-gate\" = \"jev\"")
+    #expect(document.workflow.metadata["text.polishing-gate"] == "classification")
+    #expect(try codec.decode(codec.encode(document)) == document)
+  }
+
+  @Test func rejectsConcreteModelsAndInvalidRolesInVersionThree() throws {
+    let current = Self.source.replacingOccurrences(of: "schema_version = 2", with: "schema_version = 3")
+    let codec = WorkflowDocumentCodec()
+    let defaults = try codec.decode(current)
+    #expect(try codec.decode(codec.encode(defaults)) == defaults)
+    for source in [
+      current.replacingOccurrences(of: "kind = \"llm-answer\"", with: "kind = \"llm-answer\"\nmodel_role = \"gpt-6-astra\""),
+      current.replacingOccurrences(of: "kind = \"normalize-whitespace\"", with: "kind = \"normalize-whitespace\"\nmodel_role = \"fast\""),
+      current + "\n[options]\n\"recognizer.local.model\" = \"old-model\"",
+      current + "\n[options]\n\"text.polishing-gate\" = \"jev\"",
+      current.replacingOccurrences(of: "kind = \"text\"", with: "kind = \"audio\"\n[setup.speech]\nrecognizer = \"local-speech\""),
+    ] { #expect(throws: (any Error).self) { try codec.decode(source) } }
+    let explicit = try codec.decode(current.replacingOccurrences(of: "kind = \"llm-answer\"", with: "kind = \"llm-answer\"\nmodel_role = \"fast\""))
+    #expect(explicit.workflow.languageModelRoles == [.fast])
+  }
+
   @Test func timingSelectionRoundTripsAndDefaultsToSpeechAndLanguageModelCalls() throws {
     let codec = WorkflowDocumentCodec()
     let source = Self.source
@@ -93,7 +133,7 @@ struct WorkflowDocumentCodecTests {
       "unexpected = true\n" + Self.source,
       Self.source.replacingOccurrences(
         of: "kind = \"manual\"", with: "kind = \"manual\"\ntypo = true"),
-      Self.source.replacingOccurrences(of: "schema_version = 2", with: "schema_version = 3"),
+      Self.source.replacingOccurrences(of: "schema_version = 2", with: "schema_version = 4"),
       Self.source.replacingOccurrences(of: "id = \"store\"", with: "id = \"clean\""),
       Self.source.replacingOccurrences(
         of: "kind = \"normalize-whitespace\"",

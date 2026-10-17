@@ -7,7 +7,8 @@ import RillKnowledge
 
 @MainActor @Observable
 public final class WorkflowLibraryModel {
-  public var workflowEditorError: String?
+  var workflowEditorErrorPresentation: ((AppLanguage) -> String?)?
+  public var workflowEditorError: String? { workflowEditorErrorPresentation?(settings.language) }
   public internal(set) var workflowExplanationState: WorkflowExplanationLoadState = .idle
   let workflowExplanationTaskOwner = ReplacingTaskOwner()
   var workflowExplanationGeneration = 0
@@ -30,7 +31,8 @@ public final class WorkflowLibraryModel {
   public internal(set) var workflowFileLoadGeneration: Int = 0
   public internal(set) var usesWorkflowFilesAsSource: Bool = false
   public internal(set) var hasModifiedWorkflowLibrary: Bool = false
-  public internal(set) var workflowLibraryError: String?
+  var workflowLibraryErrorPresentation: ((AppLanguage) -> String?)?
+  public var workflowLibraryError: String? { workflowLibraryErrorPresentation?(settings.language) }
   let settings: SettingsPersistenceModel
   let explainResolvedWorkflowAction: @Sendable (WorkflowResolvedExecutionPlan) async throws -> WorkflowExplanationReceipt
   init(

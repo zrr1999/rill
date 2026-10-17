@@ -169,7 +169,7 @@ final class QueuedAudioAuthorizationLeaseTests: XCTestCase {
     let optionsBarrier = LeaseValidationBarrier()
     let gate = PrivacyRunGate(
       settingsProvider: { await settings.read() },
-      cloudConfirmationProvider: { _, _, _ in false }
+      cloudConfirmationProvider: { _, _, _, _ in false }
     )
     let workflow = makeLeaseWorkflow()
     let context = makeLeaseContext()
@@ -218,7 +218,7 @@ final class QueuedAudioAuthorizationLeaseTests: XCTestCase {
     let confirmation = LeaseConfirmationProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { await settings.read() },
-      cloudConfirmationProvider: { _, _, _ in await confirmation.confirm() }
+      cloudConfirmationProvider: { _, _, _, _ in await confirmation.confirm() }
     )
     let lease = try await issueLease(
       gate: gate,
@@ -253,7 +253,7 @@ final class QueuedAudioAuthorizationLeaseTests: XCTestCase {
           cloudConfirmationRequired: true
         )
       },
-      cloudConfirmationProvider: { _, _, _ in await confirmation.confirm() }
+      cloudConfirmationProvider: { _, _, _, _ in await confirmation.confirm() }
     )
     let lease = try await issueLease(
       gate: gate,
@@ -277,7 +277,7 @@ private func makeLeaseGate() -> PrivacyRunGate {
         cloudConfirmationRequired: false
       )
     },
-    cloudConfirmationProvider: { _, _, _ in
+    cloudConfirmationProvider: { _, _, _, _ in
       XCTFail("The local lease must not request cloud confirmation.")
       return false
     }
