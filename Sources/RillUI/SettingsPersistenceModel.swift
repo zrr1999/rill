@@ -26,7 +26,6 @@ public final class SettingsPersistenceModel {
   public internal(set) var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
   public internal(set) var bufferOutputHotkeyBinding: HotkeyBindingDescriptor = .keyboardShortcut(.outputNext)
   public internal(set) var preferredSpeechEngine: PreferredSpeechEngine = .local
-  public internal(set) var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode = .pasteIntoApp
   public internal(set) var longRecordingModeEnabled: Bool = false
   public internal(set) var recordingDurationLimit: RecordingDurationLimit = .fiveMinutes
   public internal(set) var localSpeechModel: String = LocalSpeechSettings().model
@@ -37,10 +36,7 @@ public final class SettingsPersistenceModel {
   public internal(set) var openAIAPIKey: String = ""
   public internal(set) var openAIBaseURL: String = OpenAISettings().baseURL
   public internal(set) var openAIModel: String = OpenAISettings().model
-  public internal(set) var intelligentAPIKey = ""
-  public internal(set) var intelligentBaseURL = OpenAISettings.defaultBaseURL
-  public internal(set) var intelligentModel = OpenAISettings.defaultModel
-  public internal(set) var intelligentCredentialAvailability: OpenAICredentialAvailability = .loading
+
   public internal(set) var ttsModelIdentifier: String = ""
   public internal(set) var recordHistoryVisibility: RecordHistoryVisibility = .remainingOnly
 
@@ -57,11 +53,10 @@ public final class SettingsPersistenceModel {
   var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
   var localSpeechModelMutationGeneration = 0
   let settingsReadTaskOwner = AppModelSettingsReadTaskOwner()
-  var credentialLoadGenerations: [LanguageModelRole: Int] = [:]
-  public internal(set) var intelligentVerificationState: OpenAIConfigurationVerificationState = .idle
-  public internal(set) var intelligentVerificationFailure: OpenAIVerificationFailure?
-  var verificationGenerations: [LanguageModelRole: Int] = [:]
-  let intelligentVerificationTaskOwner = ReplacingTaskOwner()
+  var credentialLoadGeneration: Int = 0
+
+  var verificationGeneration: Int = 0
+
   let openAIVerificationTaskOwner = ReplacingTaskOwner()
 
   public internal(set) var isLoading = true
@@ -72,13 +67,13 @@ public final class SettingsPersistenceModel {
   private var retrying: Set<AppSettingKey> = []
   var hasUnsavedWrites: Bool { !failed.isEmpty }
 
-  let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void
+  let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings) async throws -> Void
   let configurationChanged: @MainActor () -> Void
   private(set) var hasBegunApplicationShutdown = false
 
   init(
     store: (any SettingsStore)?, language: AppLanguage,
-    verifyOpenAIConfiguration: @escaping @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void,
+    verifyOpenAIConfiguration: @escaping @Sendable (OpenAISettings) async throws -> Void,
     configurationChanged: @escaping @MainActor () -> Void
   ) {
     self.verifyOpenAIConfigurationAction = verifyOpenAIConfiguration
@@ -99,20 +94,20 @@ public final class SettingsPersistenceModel {
     !hasBegunApplicationShutdown && !hasUnavailableScalarSettings(in: domain)
   }
 
-  func invalidateOpenAIVerification(for role: LanguageModelRole = .fast) {
-    verificationTaskOwner(for: role).cancel()
-    verificationGenerations[role, default: 0] &+= 1
-    setVerification(.idle, failure: nil, for: role)
+  func invalidateOpenAIVerification() {
+    verificationTaskOwner().cancel()
+    verificationGeneration &+= 1
+    setVerification(.idle, failure: nil)
   }
 
   func waitForOpenAIVerificationTasks() async {
     await openAIVerificationTaskOwner.waitUntilIdle()
-    await intelligentVerificationTaskOwner.waitUntilIdle()
+
   }
 
   func beginShutdown() {
     hasBegunApplicationShutdown = true
-    for role in LanguageModelRole.allCases { invalidateOpenAIVerification(for: role) }
+    do { invalidateOpenAIVerification() }
   }
 
   func submit(

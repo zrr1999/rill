@@ -42,18 +42,18 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     let speechRecognition = WorkflowDefinition(
       name: "Speech Recognition",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: AppModel.localSpeechRecognizerID,
-        outputActions: [OutputActionReference(id: "focused-application.insert")]
-      ),
+      plan: {
+        var plan = WorkflowPlan(
+          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: AppModel.localSpeechRecognizerID)),
+          process: WorkflowProcessPhase(steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate)))
+        plan.setup.speechRoute?.selection = .automatic
+        return plan
+      }(),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
-      metadata: [
-        WorkflowMetadataKey.catalog: BuiltinWorkflowRoutingValue.catalog,
-        WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkKindValue,
-        WorkflowMetadataKey.triggerGesture: BuiltinWorkflowRoutingValue.pushToTalkGesture,
-        WorkflowMetadataKey.recognizerSelectionMode: "auto",
-      ]
-    )
+      properties: .init(gesture: "fn-hold", isBuiltin: true))
     let harness = makeHarness(workflows: [unrelated, speechRecognition])
 
     let testWorkflow = try XCTUnwrap(harness.model.localSpeechTestWorkflow)
@@ -68,7 +68,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     XCTAssertEqual(testWorkflow.plan.output.actions.map(\.id), ["record.store"])
     XCTAssertEqual(testWorkflow.targetRecordCollectionIDs, [RecordCollection.voiceInputID])
     XCTAssertTrue(speechRecognition.targetRecordCollectionIDs.isEmpty)
-    XCTAssertNil(testWorkflow.metadata[WorkflowMetadataKey.catalog])
+    XCTAssertFalse(testWorkflow.properties.isBuiltin)
   }
 
   func testTrustedCatalogIsTheOnlySelectableSurfaceAndPreparationClearsAmbientSourceState() async {

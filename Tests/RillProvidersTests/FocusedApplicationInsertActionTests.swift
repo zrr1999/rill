@@ -47,12 +47,16 @@ final class FocusedApplicationInsertActionTests: XCTestCase {
       runID: UUID(),
       workflow: WorkflowDefinition(
         name: "Insert",
-        pipeline: PipelineDeclaration(
-          recognizerID: "test.recognizer",
-          outputActions: [
-            OutputActionReference(id: RecordActionID.focusedApplicationInsert)
-          ]
-        ),
+        plan: WorkflowPlan(
+          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test.recognizer")),
+          process: WorkflowProcessPhase(steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]),
+          output: WorkflowOutputPhase(
+            actions: [
+              OutputActionReference(id: RecordActionID.focusedApplicationInsert)
+            ], deliveryPolicy: .init(strategy: .immediate))),
         ui: WorkflowUIConfig(symbolName: "text.insert", accentColorName: "blue")
       ),
       contextSnapshot: ContextSnapshot(

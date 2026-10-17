@@ -9,15 +9,13 @@ public struct SpeechRequestConfiguration: Sendable, Equatable {
   public var streamingProfile: String?
   public var livePreviewEnabled: Bool
   public var previewPlacement: LivePreviewPlacement
-  public var isWakeCandidate: Bool
 
   public init(workflow: WorkflowDefinition) {
     presentation = workflow.presentation
     recognizerID = workflow.plan.setup.speechRoute?.recognizerID
-    languageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride]
-    streamingProfile = workflow.metadata[WorkflowMetadataKey.streamingProfile]
+    languageOverride = workflow.plan.setup.speechRoute?.language
+    streamingProfile = workflow.plan.setup.speechRoute?.streamingProfile
     livePreviewEnabled = workflow.livePreviewIsEnabled
     previewPlacement = workflow.resolvedLivePreviewPlacement
-    isWakeCandidate = workflow.metadata["speech.task-priority"] == "wake-candidate"
   }
 }

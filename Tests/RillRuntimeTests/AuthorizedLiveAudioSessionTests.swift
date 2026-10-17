@@ -318,13 +318,16 @@ private func makeLiveWorkflow() -> WorkflowDefinition {
   WorkflowDefinition(
     name: "Live Cloud Text Test",
     trigger: .manual,
-    pipeline: PipelineDeclaration(
-      recognizerID: "sherpa-onnx.local",
-      postProcessSteps: [
-        PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
-      ],
-      outputActions: []
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+      process: WorkflowProcessPhase(
+        steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]
+          + ([
+            PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))
+          ]).map(WorkflowProcessStep.init)), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

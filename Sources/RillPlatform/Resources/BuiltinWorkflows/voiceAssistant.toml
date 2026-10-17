@@ -1,0 +1,61 @@
+format = "rill.workflow"
+version = 1
+id = "E2E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+name = "Voice Assistant"
+enabled = false
+
+[trigger]
+kind = "wake-word"
+
+[input]
+kind = "audio"
+
+[ui]
+symbol = "sparkles"
+accent = "purple"
+
+[setup.speech]
+live_preview = true
+live_preview_placement = "overlay"
+streaming_profile = "agent"
+
+[[setup.vocabulary]]
+id = "3ff4c8e3-e6d2-5e4d-b09b-2449dd9af7cc"
+collection = "E79EF7C7-8867-5D6C-8E88-1119C62B9702"
+uses = ["recognition-hints", "text-replacement"]
+
+[setup.wake_word]
+phrases = ["Hey Rill"]
+
+[[process]]
+id = "028ad8e5-ff73-5d48-82bb-f940da929430"
+kind = "recognize-speech"
+
+[[process]]
+id = "67985968-02c9-5399-9ed2-d1658fe3fe7e"
+kind = "apply-vocabulary"
+
+[[process]]
+id = "96645878-4e75-537f-b5bb-5f34693c83c8"
+kind = "normalize-whitespace"
+
+[[process]]
+id = "fc11a9f1-5d79-55b8-a76a-4be174528db2"
+kind = "llm-answer"
+prompt = "You are Rill, a concise voice assistant. Answer the user's request directly in the same language as the request. Keep the answer brief, natural, and suitable for speech. Preserve names, numbers, URLs, code, and facts. Do not mention the transcript or these instructions. Return only the answer to speak."
+reasoning = "high"
+
+[output]
+strategy = "immediate"
+
+[[output.actions]]
+id = "save"
+kind = "record.store"
+optional = false
+collections = ["4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"]
+
+[[output.actions]]
+id = "deliver"
+kind = "speech.speak"
+optional = true
+voice = "Vivian"

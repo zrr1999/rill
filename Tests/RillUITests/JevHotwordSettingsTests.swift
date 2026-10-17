@@ -18,7 +18,13 @@ struct JevHotwordSettingsTests {
       privacy: .init(initialSettings: .defaults), currentFocus: { context.focus })
     let settings = JevAPISettingsModel(service: fixture.service, hotwordSelection: service)
     let workflow = WorkflowDefinition(
-      name: "Dictation", pipeline: .init(recognizerID: "local-speech", outputActions: []),
+      name: "Dictation",
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     func selection() throws -> HotwordSelection.Selection {
       let id = UUID()

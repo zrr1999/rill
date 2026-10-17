@@ -1,3 +1,4 @@
+import RillPlatform
 @testable import RillWorkflows
 import RillRecords
 import RillDomainTestSupport
@@ -38,7 +39,7 @@ struct UITestAction: OutputAction {
   let id: String
   let log: ProbeActionLog
 
-  init(id: String = "ui.test.action", log: ProbeActionLog) {
+  init(id: String = "system-clipboard.copy", log: ProbeActionLog) {
     self.id = id
     self.log = log
   }
@@ -514,13 +515,36 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
       workflow: workflow,
       isEnabled: isEnabled,
       fileURL: destination,
-      source: String(decoding: try JSONEncoder().encode(workflow), as: UTF8.self)
+      source: try WorkflowDocumentCodec().encode(.init(workflow: workflow, isEnabled: isEnabled))
     )
     guard !rejectsSaves else {
       // Simulate an atomic write that succeeded before a later metadata step failed.
       throw UITestWorkflowFileStoreError.rejectedSave
     }
     return destination
+  }
+
+  nonisolated func encodeDocument(_ document: WorkflowDocument) throws -> String { try WorkflowDocumentCodec().encode(document) }
+  nonisolated func decodeDocument(_ source: String) throws -> WorkflowDocument { try WorkflowDocumentCodec().decode(source) }
+  func readSource(at url: URL) async throws -> String {
+    guard let source = recordsByID.values.first(where: { $0.fileURL == url })?.source else { throw WorkflowFileConflict.changed }
+    return source
+  }
+  func saveOutputState(_ state: WorkflowOutputState, for url: URL, expected: WorkflowFileExpectation, expectedDocument: String) async throws
+    -> WorkflowFileRecord
+  {
+    guard var record = recordsByID.values.first(where: { $0.fileURL == url }) else { throw WorkflowFileConflict.changed }
+    guard record.source == expectedDocument else { throw WorkflowFileConflict.changed }
+    try state.validate(for: record.workflow)
+    switch expected {
+    case .missing: guard record.outputStateSource == nil else { throw WorkflowFileConflict.changed }
+    case .source(let source): guard record.outputStateSource == source else { throw WorkflowFileConflict.changed }
+    case .overwrite: break
+    }
+    record.outputState = state
+    record.outputStateSource = String(decoding: try JSONEncoder().encode(state), as: UTF8.self)
+    recordsByID[record.workflow.id] = record
+    return record
   }
 
   func saveDocument(_ document: WorkflowDocument, replacing fileURL: URL?, expected: WorkflowFileExpectation) async throws -> WorkflowFileRecord {
@@ -531,8 +555,10 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
     case .overwrite: break
     }
     let url = try await save(workflow: document.workflow, isEnabled: document.isEnabled, replacing: fileURL)
-    let source = String(decoding: try JSONEncoder().encode(document.workflow), as: UTF8.self)
-    let record = WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: url, source: source)
+    let source = try WorkflowDocumentCodec().encode(document)
+    var record = WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: url, source: source)
+    record.outputState = previous?.outputState ?? WorkflowOutputState(workflowID: document.workflow.id)
+    record.outputStateSource = try previous?.outputStateSource ?? String(decoding: JSONEncoder().encode(record.outputState), as: UTF8.self)
     recordsByID[document.workflow.id] = record
     return record
   }
@@ -609,7 +635,7 @@ func makeHarness(
     @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void = { _, _, _ in },
   finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void = {},
   verifyOpenAIConfigurationAction:
-    @escaping @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void = { _, _ in },
+    @escaping @Sendable (OpenAISettings) async throws -> Void = { _ in },
   retryFailedAudioRecoveryAction:
     @escaping @Sendable (
       UUID,
@@ -657,7 +683,6 @@ func makeHarness(
     actions: [
       UITestAction(log: actionLog),
       UITestAction(id: "focused-application.insert", log: actionLog),
-      UITestAction(id: "system-clipboard.copy", log: actionLog),
       UITestAction(id: "record.store", log: actionLog),
       UITestAction(id: SpeechOutputActionID.speak, log: actionLog),
       UITestAction(id: ExternalOutputActionID.shortcutsRun, log: actionLog),
@@ -703,7 +728,7 @@ func makeHarness(
     localHistoryMaintenance: localHistoryMaintenance,
     diagnosticRepository: diagnosticRepository,
     settingsStore: resolvedSettingsStore,
-    workflowFileStore: workflowFileStore,
+    workflowFileStore: workflowFileStore ?? UITestWorkflowFileStore(),
     credentialStore: resolvedCredentialStore,
     localPersistenceStatus: localPersistenceStatus,
     vocabularyRuleSource: vocabularyRuleSource,
@@ -771,10 +796,12 @@ func makeDefaultWorkflow() -> WorkflowDefinition {
   WorkflowDefinition(
     name: "UI Test Workflow",
     titleKey: .directDemoClipboard,
-    pipeline: PipelineDeclaration(
-      recognizerID: "ui.test.recognizer",
-      outputActions: [OutputActionReference(id: "ui.test.action")]
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }
@@ -785,20 +812,20 @@ func makeBuiltinPushToTalkWorkflow() -> WorkflowDefinition {
     name: "Speech to Text",
     titleKey: .pushToTalkCapture,
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(
-      recognizerID: AppModel.localSpeechRecognizerID,
-      postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-      outputActions: [OutputActionReference(id: "focused-application.insert")]
-    ),
+    plan: {
+      var plan = WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: AppModel.localSpeechRecognizerID)),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .normalizeWhitespace)]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate)))
+      plan.setup.speechRoute?.selection = .automatic
+      return plan
+    }(),
     ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
-    metadata: [
-      AppModel.workflowCatalogMetadataKey: AppModel.builtinWorkflowCatalogValue,
-      AppModel.triggerGestureMetadataKey: AppModel.fnHoldGestureValue,
-      WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkKindValue,
-      WorkflowMetadataKey.recognizerSelectionMode: "auto",
-      WorkflowMetadataKey.settingsExposeOutputMode: "true",
-    ]
-  )
+    properties: .init(gesture: "fn-hold"))
 }
 
 func makeBuiltinPushToTalkPolishWorkflow() -> WorkflowDefinition {
@@ -807,28 +834,22 @@ func makeBuiltinPushToTalkPolishWorkflow() -> WorkflowDefinition {
     name: "Polish",
     titleKey: .pushToTalkPolish,
     trigger: .manual,
-    pipeline: PipelineDeclaration(
-      recognizerID: AppModel.localSpeechRecognizerID,
-      postProcessSteps: [
-        PostProcessStep(kind: .normalizeWhitespace),
-        PostProcessStep(
-          kind: .llmRewrite,
-          prompt: "Polish into a concise final message while preserving meaning and language."),
-      ],
-      outputActions: [OutputActionReference(id: "record.store")],
-      deliveryPolicy: .init(strategy: .collectionFirst)
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: AppModel.localSpeechRecognizerID)),
+      process: WorkflowProcessPhase(
+        steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]
+          + ([
+            PostProcessStep(kind: .normalizeWhitespace),
+            PostProcessStep(
+              kind: .llmRewrite,
+              prompt: "Polish into a concise final message while preserving meaning and language.", reasoning: .some(.none)),
+          ]).map(WorkflowProcessStep.init)),
+      output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: .init(strategy: .collectionFirst))),
     ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple"),
-    metadata: [
-      AppModel.workflowCatalogMetadataKey: AppModel.builtinWorkflowCatalogValue,
-      WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkPolishKindValue,
-      "eventType": WorkflowEditorDraft.EventType.groupItemCreated.rawValue,
-      "sourceGroupID": RecordCollection.voiceInputID.rawValue.uuidString,
-      "excludePolishTag": "true",
-      "groupActionKind": RecordCollectionActionKind.editRecord.rawValue,
-      "actionPrompt": "Polish into a concise final message while preserving meaning and language.",
-    ]
-  )
+    properties: .init())
 }
 
 func waitForListenerSetup(_ harness: AppModelTestHarness) async {

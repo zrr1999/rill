@@ -475,10 +475,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Immediate recording preview",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -498,7 +500,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     }
     XCTAssertEqual(preview.phase, .preparing)
     XCTAssertEqual(preview.workflow, workflow.presentation)
-    XCTAssertEqual(preview.providerID, workflow.pipeline.recognizerID)
+    XCTAssertEqual(preview.providerID, workflow.plan.setup.speechRoute?.recognizerID)
     XCTAssertEqual(preview.networkUsage, .offline)
     let captureBeforePreflight = await audioCaptureService.snapshot()
     XCTAssertNil(captureBeforePreflight.request)
@@ -546,10 +548,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Stopped failing preview",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -622,10 +626,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Automatically ending recording",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -696,10 +702,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Run-scoped stop",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -770,10 +778,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Silent recording",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -881,10 +891,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Diagnostic-independent recording",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
     let startCompletion = WorkflowShutdownCompletionProbe()
@@ -956,10 +968,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Revoked-at-readiness recording",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -1013,11 +1027,14 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Live Cloud Text Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -1081,11 +1098,14 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Run-scoped Cloud Text Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -1140,11 +1160,14 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Finishing Cloud Text Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -1207,13 +1230,23 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let firstWorkflow = WorkflowDefinition(
       name: "Transferred Run",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "test", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
     let secondWorkflow = WorkflowDefinition(
       name: "New Run",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "test", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
     )
 
@@ -1290,11 +1323,14 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Shutdown Cleanup Cloud Text Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -1369,10 +1405,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Suspended Preflight Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
     let startTask = Task {
@@ -1429,10 +1467,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Local Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
@@ -1489,20 +1529,24 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow1 = WorkflowDefinition(
       name: "First Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "test",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 
     let workflow2 = WorkflowDefinition(
       name: "Second Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "test",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
     )
 
@@ -1608,11 +1652,14 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Cloud Text Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
     )
 
@@ -1664,7 +1711,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Unavailable Cloud Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "remote.speech", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
     )
 
@@ -1723,21 +1775,22 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       privacyRunGate: gate
     )
     let workflow = WorkflowDefinition(
-      name: "Legacy Clipboard Automation",
+      name: "Unavailable workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "remote.speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-      metadata: ["eventType": "groupItemCreated"]
-    )
+      properties: .init(availability: .planned))
 
     do {
       try await controller.startRun(workflow: workflow, binding: .manual)
       XCTFail("Expected legacy clipboard automation to be rejected.")
     } catch let error as SessionCoordinator.SessionError {
-      guard case .unsupportedWorkflow(.legacyClipboardAutomationUnsupported) = error else {
+      guard case .unsupportedWorkflow(.plannedCapabilityUnavailable) = error else {
         return XCTFail("Unexpected session error: \(error)")
       }
     } catch {
@@ -1806,7 +1859,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Local Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "sherpa-onnx.local", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
 

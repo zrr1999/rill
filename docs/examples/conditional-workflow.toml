@@ -1,4 +1,5 @@
-schema_version = 3
+format = "rill.workflow"
+version = 1
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "Prepare a reply"
 description = "Normalize a draft; rewrite messages that include a question."
@@ -22,7 +23,9 @@ condition = { field = "text", op = "contains", value = "?" }
 [[process.then]]
 id = "rewrite"
 kind = "llm-rewrite"
-model_role = "fast"
+reasoning = "none"
+decision = { optional = true }
+preserve_content = true
 prompt = "Rewrite as a concise question. Keep the original language and meaning."
 
 [output]
@@ -31,10 +34,9 @@ strategy = "immediate"
 [[output.actions]]
 id = "save"
 kind = "record.store"
+collections = ["4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"]
 
 [[output.actions]]
 id = "copy"
 kind = "system-clipboard.copy"
-
-[metadata]
-"user.category" = "writing"
+optional = true

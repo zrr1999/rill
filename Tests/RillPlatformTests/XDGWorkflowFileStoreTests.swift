@@ -32,7 +32,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
       isEnabled: false
     )
     let source = try XCTUnwrap(String(data: data, encoding: .utf8))
-    XCTAssertTrue(source.contains("schema_version = 3"))
+    XCTAssertTrue(source.contains("format = \"rill.workflow\""))
     XCTAssertTrue(source.contains("enabled = false"))
     XCTAssertTrue(source.contains("[setup.speech]"))
     XCTAssertTrue(source.contains("[[process]]"))
@@ -53,78 +53,38 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
         ), as: UTF8.self)
     )
     XCTAssertEqual(
-      legacy.workflow.metadata[WorkflowMetadataKey.livePreviewPlacement]
-        .flatMap(LivePreviewPlacement.init(rawValue:)) ?? .overlay,
+      legacy.workflow.plan.setup.speechRoute?.livePreviewPlacement ?? .overlay,
       .overlay
     )
 
     var cursorWorkflow = makeWorkflow()
-    cursorWorkflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = "cursor"
+    cursorWorkflow.plan.setup.speechRoute?.livePreviewPlacement = .cursor
     let encoded = try XDGWorkflowFileStore.encode(workflow: cursorWorkflow, isEnabled: true)
     let roundTrip = try XDGWorkflowFileStore.decode(
       try XCTUnwrap(String(data: encoded, encoding: .utf8))
     )
     XCTAssertEqual(
-      roundTrip.workflow.metadata[WorkflowMetadataKey.livePreviewPlacement],
+      roundTrip.workflow.plan.setup.speechRoute?.livePreviewPlacement.rawValue,
       "cursor"
     )
   }
 
-  func testLegacyRecordActionsStrategyAndMetadataNormalizeWithoutRewritingSource() async throws {
-    let collectionID = UUID(uuidString: "12345678-1234-1234-1234-123456789ABC")!
-    let legacy = """
-      schema_version = 1
-      id = "11111111-2222-3333-4444-555555555555"
-      name = "Legacy workflow"
-      trigger = "manual"
-      process = []
-      [ui]
-      symbol = "sparkles"
-      accent = "blue"
-      [setup]
-      [output]
-      strategy = "stack-first"
-      [[output.actions]]
-      id = "stack.push"
-      [metadata]
-      "\(WorkflowMetadataKey.legacyTargetRecordCollectionID)" = "\(collectionID.uuidString)"
-      "\(WorkflowMetadataKey.excludeOutputFromWorkflowCapture)" = "true"
-      """
+  func testLegacyFilesAreReportedAndNeverRewritten() async throws {
+    let source = "schema_version = 1\nid = \"11111111-2222-3333-4444-555555555555\"\nname = \"Legacy\"\n"
     let directory = temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let fileURL = directory.appendingPathComponent("legacy.toml")
-    try Data(legacy.utf8).write(to: fileURL)
-
-    let store = XDGWorkflowFileStore(configurationDirectoryURL: directory)
-    let result = await store.load()
-    let loaded = try XCTUnwrap(result.records.first?.workflow)
-
-    XCTAssertEqual(loaded.plan.output.actions.map(\.id), ["record.store"])
-    XCTAssertEqual(loaded.plan.output.deliveryPolicy.strategy, .collectionFirst)
-    XCTAssertEqual(loaded.targetRecordCollectionIDs, [RecordCollectionID(collectionID)])
-    XCTAssertTrue(loaded.excludesOutputFromRecordCapture)
-    XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), legacy)
-
-    let saved = String(
-      decoding: try XDGWorkflowFileStore.encode(workflow: loaded, isEnabled: true),
-      as: UTF8.self
-    )
-    XCTAssertTrue(saved.contains("record.store"))
-    XCTAssertTrue(saved.contains("collection-first"))
-    XCTAssertFalse(saved.contains("stack.push"))
-    XCTAssertFalse(saved.contains("stack-first"))
-    XCTAssertFalse(saved.contains(WorkflowMetadataKey.legacyTargetRecordCollectionID))
-    _ = try await store.saveDocument(WorkflowDocument(workflow: loaded, isEnabled: true), replacing: fileURL, expected: .source(legacy))
-    let history = try await store.versions(for: loaded.id)
-    XCTAssertEqual(history.first?.source, legacy)
-    XCTAssertTrue(try String(contentsOf: fileURL, encoding: .utf8).contains("schema_version = 3"))
-
+    try source.write(to: fileURL, atomically: true, encoding: .utf8)
+    let result = await XDGWorkflowFileStore(configurationDirectoryURL: directory).load()
+    XCTAssertTrue(result.records.isEmpty)
+    XCTAssertEqual(result.issues.count, 1)
+    XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), source)
   }
 
   func testInvalidLivePreviewPlacementIsRejected() throws {
     var workflow = makeWorkflow()
-    workflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = "cursor"
+    workflow.plan.setup.speechRoute?.livePreviewPlacement = .cursor
     let data = try XDGWorkflowFileStore.encode(workflow: workflow, isEnabled: true)
     let source = String(decoding: data, as: UTF8.self).replacingOccurrences(
       of: "live_preview_placement = \"cursor\"",
@@ -295,7 +255,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
           WorkflowProcessStep(
             id: UUID(uuidString: "AAAAAAAA-2222-3333-4444-555555555555")!,
             kind: .llmAnswer,
-            prompt: "Answer directly.", modelRole: .intelligent
+            prompt: "Answer directly.", reasoning: .high
           ),
         ]),
         output: WorkflowOutputPhase(
@@ -304,11 +264,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
         )
       ),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "blue"),
-      metadata: [
-        "workflow.origin": "user",
-        "trigger.gesture": "control-option-shift-space",
-      ]
-    )
+      properties: .init(gesture: "control-option-shift-space"))
     workflow.declaredInputKind = .audio
     for index in workflow.plan.process.steps.indices {
       workflow.plan.process.steps[index].documentID = workflow.plan.process.steps[index].id.uuidString

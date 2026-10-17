@@ -372,18 +372,14 @@ final class AppModelRunReceiptTests: XCTestCase {
   func testLegacyGroupMetadataCannotClassifyClipboardBodyAsVoiceWithoutReceipt() async {
     let workflow = WorkflowDefinition(
       name: "Legacy Group Rewrite",
-      pipeline: PipelineDeclaration(
-        recognizerID: "context.selection",
-        outputActions: [OutputActionReference(id: "record.store")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.selection")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-      metadata: [
-        WorkflowMetadataKey.legacyEventType: "groupItemCreated",
-        WorkflowMetadataKey.legacySourceCollectionID: RecordCollection.voiceInputID.rawValue.uuidString,
-        WorkflowMetadataKey.legacyExcludePolishTag: "true",
-        WorkflowMetadataKey.legacyGroupActionKind: RecordCollectionActionKind.editRecord.rawValue,
-      ]
-    )
+      properties: .init())
     let runID = UUID()
     let record = WorkflowResultRecord(
       runID: runID,

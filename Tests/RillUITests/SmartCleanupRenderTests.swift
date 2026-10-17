@@ -1,3 +1,4 @@
+import RillPlatform
 import AppKit
 import RillCore
 import SwiftUI
@@ -49,7 +50,8 @@ final class SmartCleanupRenderTests: XCTestCase {
         let view = NSHostingView(
           rootView:
             surface
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .clipped()
             .environment(\.colorScheme, dark ? .dark : .light)
             .background(Color(nsColor: .windowBackgroundColor)))
         let window = NSWindow(
@@ -77,18 +79,24 @@ final class SmartCleanupRenderTests: XCTestCase {
     }
     let output = URL(fileURLWithPath: directory, isDirectory: true)
     try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-    let manifestURL = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("Sources/RillApp/Resources/BuiltinWorkflowManifest.json")
-    let workflows = try JSONDecoder().decode(WorkflowManifest.self, from: Data(contentsOf: manifestURL)).workflows
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
+    let dictation = try XCTUnwrap(workflows.first { $0.titleKey == .speechRecognition })
     for language in AppLanguage.allCases {
       for dark in [false, true] {
+        let decision = JevPanelFixture()
+        let ttsOptions = [
+          TTSModelOption(id: "tts-4bit", precision: "INT4", approximateDownloadByteCount: 1_694_000_000, isDefault: false),
+          TTSModelOption(id: "tts-8bit", precision: "INT8", approximateDownloadByteCount: 1_974_000_000, isDefault: true),
+          TTSModelOption(id: "tts-bf16", precision: "BF16", approximateDownloadByteCount: 2_500_000_000, isDefault: false),
+        ]
         let model = makeHarness(
           workflows: workflows,
           settingsStore: UITestSettingsStore(storage: [
             .openAIBaseURL: LLMTextProcessing.deepSeekBaseURL,
             .openAIModel: LLMTextProcessing.deepSeekModel,
-          ])
+          ]),
+          ttsModelOptions: ttsOptions, defaultTTSModelIdentifier: "tts-8bit",
+          recordWorkspace: RecordWorkspaceModel(store: decision.store, cloudRanking: decision.service)
         ).model
         await model.waitForInitialVoiceConfiguration()
         model.setInterfaceLanguage(language)
@@ -99,14 +107,29 @@ final class SmartCleanupRenderTests: XCTestCase {
             "vocabulary-manager", AnyView(VocabularyCollectionCard(model: model, collection: model.vocabulary.vocabularyCollections[0]).padding(24)),
             NSSize(width: 560, height: 360)
           ),
-          ("llm-provider", AnyView(SettingsView(model: model).llmProviderSettingsSection.padding(24)), NSSize(width: 720, height: 760)),
+          ("llm-provider", AnyView(SettingsView(model: model, pane: .voice).llmProviderSettingsSection.padding(24)), NSSize(width: 720, height: 760)),
+          ("llm-provider-compact", AnyView(SettingsView(model: model, pane: .voice).llmProviderSettingsSection.padding(20)), NSSize(width: 480, height: 880)),
+          (
+            "decision-provider-compact", AnyView(SettingsView(model: model, pane: .voice).decisionProviderSettingsSection.padding(20)),
+            NSSize(width: 480, height: 680)
+          ),
+          ("tts-provider-compact", AnyView(SettingsView(model: model, pane: .voice).ttsServiceSettingsSection.padding(20)), NSSize(width: 480, height: 680)),
+          ("asr-provider-compact", AnyView(SettingsView(model: model, pane: .voice).speechEngineSection.padding(20)), NSSize(width: 480, height: 880)),
+          (
+            "workflow-outputs-compact",
+            AnyView(
+              VStack(alignment: .leading) {
+                WorkflowOutputChoices(model: model, workflow: dictation)
+              }.padding(20)), NSSize(width: 360, height: 220)
+          ),
           ("workflow-files", AnyView(WorkflowsView(model: model)), NSSize(width: 960, height: 540)),
         ]
         for (name, surface, size) in surfaces {
           let view = NSHostingView(
             rootView:
               surface
-              .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+              .frame(width: size.width, height: size.height, alignment: .topLeading)
+              .clipped()
               .environment(\.colorScheme, dark ? .dark : .light)
               .background(Color(nsColor: .windowBackgroundColor)))
           let window = NSWindow(
@@ -125,6 +148,7 @@ final class SmartCleanupRenderTests: XCTestCase {
           try png.write(to: output.appendingPathComponent("\(name)-\(language.rawValue)-\(dark ? "dark" : "light").png"))
           window.close()
         }
+        await model.recordWorkspace.shutdown()
         await model.stopSettingsReadTasksForApplicationShutdown()
         await model.flushPendingPersistenceWrites()
       }

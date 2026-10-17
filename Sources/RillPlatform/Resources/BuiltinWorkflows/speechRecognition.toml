@@ -1,0 +1,60 @@
+format = "rill.workflow"
+version = 1
+id = "B9E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+name = "Speech Recognition"
+enabled = true
+
+[trigger]
+kind = "hotkey"
+gesture = "fn-hold"
+exclusive_group = "builtin.push-to-talk"
+
+[input]
+kind = "audio"
+
+[ui]
+symbol = "mic.fill"
+accent = "red"
+
+[setup.speech]
+live_preview = true
+live_preview_placement = "overlay"
+streaming_profile = "realtime"
+
+[[setup.vocabulary]]
+id = "30c39adf-9077-541e-be69-5e00585ee0ee"
+collection = "E79EF7C7-8867-5D6C-8E88-1119C62B9702"
+uses = ["recognition-hints", "text-replacement"]
+
+[[process]]
+id = "58921d1a-1ffe-5dac-bd6c-306fbbb6afcc"
+kind = "recognize-speech"
+
+[[process]]
+id = "39906432-64ab-5a6c-9e85-a405b1863469"
+kind = "apply-vocabulary"
+
+[[process]]
+id = "3e1b7747-b5d3-5ed4-8e32-465c404ebacb"
+kind = "normalize-whitespace"
+
+[output]
+strategy = "immediate"
+
+[[output.actions]]
+id = "save"
+kind = "record.store"
+optional = false
+collections = ["4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"]
+
+[[output.actions]]
+id = "deliver"
+kind = "focused-application.insert"
+optional = true
+
+[[output.actions]]
+id = "enqueue"
+kind = "record.store"
+optional = true
+buffer = "speech"
+collections = ["4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"]

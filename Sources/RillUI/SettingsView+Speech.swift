@@ -3,6 +3,20 @@ import SwiftUI
 import RillCore
 
 extension SettingsView {
+  var ttsServiceSettingsSection: some View {
+    VStack(alignment: .leading, spacing: RillSpacing.row) {
+      Picker(
+        L10n.resource("models.service.tts").string(for: model.settings.language),
+        selection: Binding(
+          get: { model.settings.ttsModelIdentifier }, set: { _ = model.setPreferredTTSModel($0) }
+        )
+      ) {
+        ForEach(model.ttsModelOptions) { option in Text(option.precision).tag(option.id) }
+      }
+      speechModelPoolSettings(for: .textToSpeech)
+    }
+  }
+
   var speechEngineSection: some View {
     settingsDisclosure(.speech) {
       ForEach(
@@ -45,7 +59,7 @@ extension SettingsView {
 
       VStack(alignment: .leading, spacing: RillSpacing.row) {
         if model.localSpeechTrustMaterialAvailable {
-          speechModelPoolSettings
+          speechModelPoolSettings(for: .speechToText)
 
           if model.speechModelResourceCatalog.isEmpty {
             if !model.trustedLocalSpeechModels.isEmpty {
@@ -240,7 +254,7 @@ extension SettingsView {
   }
 
   var selectedLanguageModelSettings: OpenAISettings {
-    model.settings.languageModelSettings(for: selectedLanguageModelRole)
+    model.settings.languageModelSettings()
   }
 
   var llmModelOptions: [LLMModelSelection] {
@@ -256,9 +270,9 @@ extension SettingsView {
       get: { LLMModelSelection(modelIdentifier: selectedLanguageModelSettings.model) },
       set: { selection in
         if let modelIdentifier = selection.modelIdentifier {
-          model.setLanguageModelIdentifier(modelIdentifier, for: selectedLanguageModelRole)
+          model.setLanguageModelIdentifier(modelIdentifier)
         } else if LLMModelSelection(modelIdentifier: selectedLanguageModelSettings.model) != .custom {
-          model.setLanguageModelIdentifier("", for: selectedLanguageModelRole)
+          model.setLanguageModelIdentifier("")
         }
       }
     )
@@ -281,7 +295,7 @@ extension SettingsView {
 
   var openAIVerificationFailureMessage: String {
     L10n.openAIVerificationFailureMessage(
-      model.settings.verificationFailure(for: selectedLanguageModelRole),
+      model.settings.verificationFailure(),
       language: model.settings.language
     )
   }
@@ -322,7 +336,7 @@ extension SettingsView {
   }
 
   @ViewBuilder
-  var speechModelPoolSettings: some View {
+  func speechModelPoolSettings(for capability: SpeechModelCapability) -> some View {
     if !model.speechModelResourceCatalog.isEmpty {
       VStack(alignment: .leading, spacing: RillSpacing.dense) {
         Text(L10n.settingsText(.settingsModelPoolTitle, language: model.settings.language))
@@ -338,7 +352,7 @@ extension SettingsView {
           .accessibilityIdentifier("settings.speech-model-pool.degraded")
         }
 
-        ForEach(model.speechModelResourceCatalog) { descriptor in
+        ForEach(model.speechModelResourceCatalog.filter { $0.capability == capability }) { descriptor in
           VStack(alignment: .leading, spacing: 5) {
             Toggle(
               isOn: Binding(

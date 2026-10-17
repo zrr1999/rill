@@ -1,5 +1,6 @@
 import Foundation
 import RillPlatform
+@testable import RillWorkflows
 import Testing
 @testable import RillCore
 @testable import RillUI
@@ -8,10 +9,7 @@ import Testing
 struct WorkflowTextFileTests {
   @Test(arguments: [false, true])
   func workflowSelectionSurvivesRestart(fileBackedCleanup: Bool) async throws {
-    let manifestURL = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("Sources/RillApp/Resources/BuiltinWorkflowManifest.json")
-    let workflows = try JSONDecoder().decode(WorkflowManifest.self, from: Data(contentsOf: manifestURL)).workflows
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
     let cleanup = try #require(workflows.first { $0.titleKey == .smartCleanup })
     let dictation = try #require(workflows.first { $0.titleKey == .speechRecognition })
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -57,10 +55,7 @@ struct WorkflowTextFileTests {
   }
 
   @Test func fileBackedCleanupAndBuiltinDictationRemainMutuallyExclusive() async throws {
-    let manifestURL = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("Sources/RillApp/Resources/BuiltinWorkflowManifest.json")
-    let workflows = try JSONDecoder().decode(WorkflowManifest.self, from: Data(contentsOf: manifestURL)).workflows
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
     let cleanup = try #require(workflows.first { $0.titleKey == .smartCleanup })
     let dictation = try #require(workflows.first { $0.titleKey == .speechRecognition })
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -102,23 +97,58 @@ struct WorkflowTextFileTests {
     await model.flushPendingPersistenceWrites()
   }
 
-  @Test func openingCannotDiscardAnUnmigratedLegacyLibrary() async throws {
+  @Test func outputChoicesReloadAndDoNotChangeAnExistingExecutionSnapshot() async throws {
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
+    let builtin = try #require(workflows.first { $0.titleKey == .speechRecognition })
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let store = XDGWorkflowFileStore(configurationDirectoryURL: directory.appendingPathComponent("workflows"))
-    let model = makeHarness(settingsStore: UITestSettingsStore(), workflowFileStore: store).model
+    let model = makeHarness(workflows: workflows, workflowFileStore: store).model
     await model.waitForInitialVoiceConfiguration()
-    let legacy = [makeDefaultWorkflow(), makeDefaultWorkflow()]
-    model.workflowLibrary.customWorkflows = legacy
-    model.workflowLibrary.usesWorkflowFilesAsSource = false
-    let opened = await model.workflowFileForEditing(legacy[0])
-    #expect(opened == nil)
-    #expect(model.workflowLibrary.customWorkflows == legacy)
-    #expect(!model.workflowLibrary.usesWorkflowFilesAsSource)
-    #expect(await store.load().records.isEmpty)
-    #expect(model.workflowLibrary.workflowLibraryError != nil)
+    let frozen = try #require(model.executionWorkflows(for: .hotkey).first)
+    #expect(frozen.plan.output.actions.count == 3)
+    for (index, action) in builtin.plan.output.actions.enumerated() where action.optional {
+      model.setWorkflowOutputEnabled(false, action: action, index: index, workflow: builtin)
+      await model.flushPendingPersistenceWrites()
+    }
+    #expect(model.workflowLibrary.workflowLibraryErrorPresentation?(.english) == nil)
+    let declaration = try #require(model.enabledWorkflows(for: .hotkey).first)
+    #expect(declaration.plan.output.actions.count == 3)
+    let selected = try #require(model.executionWorkflows(for: .hotkey).first)
+    #expect(selected.plan.output.actions.map(\.documentID) == ["save"])
+    #expect(frozen.plan.output.actions.count == 3)
+    #expect(model.requiresCapturedAudioForInteractiveRun(declaration))
+
+    let url = try #require(model.workflowLibrary.workflowFileURLsByID[builtin.id])
+    let stateURL = url.deletingPathExtension().appendingPathExtension("state.json")
+    let state = WorkflowOutputState(workflowID: builtin.id, outputs: ["deliver": true, "enqueue": false])
+    try JSONEncoder().encode(state).write(to: stateURL, options: .atomic)
+    await model.reloadWorkflowFiles()
+    #expect(model.executionWorkflows(for: .hotkey).first?.plan.output.actions.map(\.documentID) == ["save", "deliver"])
+    try Data("{}".utf8).write(to: stateURL, options: .atomic)
+    await model.reloadWorkflowFiles()
+    #expect(model.executionWorkflows(for: .hotkey).isEmpty)
     await model.stopSettingsReadTasksForApplicationShutdown()
     await model.flushPendingPersistenceWrites()
+  }
+
+  @Test func manualTextRunUsesTheAuthorizedClipboardInput() async throws {
+    let workflow = WorkflowDefinition(
+      name: "Clipboard", plan: .init(setup: .init(), process: .init(), output: .init(actions: [.init(id: RecordActionID.systemClipboardCopy)])),
+      ui: .init(symbolName: "doc", accentColorName: "blue"))
+    let harness = makeHarness(
+      workflow: workflow,
+      authorizeWorkflowRunAction: { value in
+        .init(
+          workflow: value, contextSnapshot: .init(focus: ContextSnapshot.empty.focus, clipboard: .init(plainText: "authorized input", changeCount: 1)),
+          recognitionOptions: .empty)
+      })
+    await harness.model.waitForInitialVoiceConfiguration()
+    harness.model.runWorkflow(workflow)
+    await harness.model.waitForInteractiveWorkflowRun()
+    #expect(await harness.actionLog.snapshot() == 1)
+    #expect(harness.model.lastFailure == nil)
+    await harness.model.stopSettingsReadTasksForApplicationShutdown()
   }
 
   @Test func openingAnExistingFilePreservesCommentsAndSource() async throws {
@@ -132,7 +162,7 @@ struct WorkflowTextFileTests {
     try source.write(to: url, atomically: true, encoding: .utf8)
     await model.reloadWorkflowFiles()
     let workflow = try #require(model.workflowLibrary.customWorkflows.first)
-    #expect(workflow.metadata["text.provider"] == nil)
+
     #expect(!model.isWorkflowEnabled(workflow))
     let reopened = await model.workflowFileForEditing(workflow)
     #expect(reopened?.resolvingSymlinksInPath().path == url.resolvingSymlinksInPath().path)
@@ -154,7 +184,7 @@ struct WorkflowTextFileTests {
     #expect(copyURL != originalURL)
     #expect(copy.workflow.id != original.workflow.id)
     #expect(copy.workflow.plan == original.workflow.plan)
-    #expect(copy.workflow.metadata["text.provider"] == nil)
+
     #expect(!copy.isEnabled)
     await model.stopSettingsReadTasksForApplicationShutdown()
     await model.flushPendingPersistenceWrites()

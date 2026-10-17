@@ -80,7 +80,12 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Rejected Queue Cleanup",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "missing")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
 
@@ -117,7 +122,12 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Manual Audio Cleanup",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "missing")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
 
@@ -157,7 +167,12 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Cancelled Audio Cleanup",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "missing")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
 

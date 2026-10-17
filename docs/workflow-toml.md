@@ -1,52 +1,47 @@
 # Rill workflow TOML specification
 
-For setup and everyday use, start with the [workflow guide](workflows.md).
-This reference describes the supported file format and behavior for workflow authors.
+A workflow declares a deterministic input, sequential processing and ordered
+outputs. Rill owns service configuration, capability checks and authorization.
+Workflows never select a provider, model, credential or native reasoning parameter.
 
-User workflows are plain TOML files edited in an external text editor. Rill has
-no built-in workflow editor. The Workflows page manages files, templates and activation.
-A workflow runs sequentially, with structured `if` branches and ordered outputs.
+## Format and lifecycle
 
-## Location and lifecycle
-
-- Configuration: `$XDG_CONFIG_HOME/rill/workflows/*.toml`, defaulting to
-  `$HOME/.config/rill/workflows` when the variable is absent, empty or relative.
-- Configuration backups: `$XDG_STATE_HOME/rill/workflows`,
-  defaulting to `$HOME/.local/state/rill/workflows` using the same rule.
-- Reading does not create directories or change their permissions. Rill creates
-  new directories with `0700` and writes files with `0600`. Existing directory
-  permissions remain unchanged. Runtime databases keep their existing locations.
-- Discovery considers direct, non-hidden, regular TOML files, up to 256 files of
-  at most 1 MiB each. Symlinks and oversized files produce diagnostics.
-- Save writes a temporary file, synchronizes it and atomically renames it over
-  the destination. A comparison against the source originally loaded detects
-  external edits. A conflict requires comparing the disk version before replacing
-  it; a second intervening edit produces another conflict.
-- Rill retains the previous file before replacing it, with up to 20 backups under
-  the state directory. Restore a backup using your external editor.
-- Directory and file watches handle new files, atomic replacement, deletion and
-  in-place writes. Valid changes apply to the next run; an active run retains its
-  frozen definition. Invalid files are isolated. Identified invalid overrides
-  block new runs instead of reactivating the built-in definition underneath.
-- New and imported files are disabled until explicitly enabled. Opening an existing
-  file preserves its source, comments and formatting. Rill no longer writes editor
-  recovery drafts or owns unsaved edits; old drafts remain untouched on disk.
-- Audio workflows run from their configured trigger or the Run button. For text
-  workflows, Run clipboard text explicitly supplies the current clipboard text;
-  normal privacy checks and cloud confirmation still apply.
-
-The XDG layout follows the [Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/).
-Files use [TOML 1.0](https://toml.io/en/v1.0.0).
-
-## Document v3
-
-See the complete [conditional example](examples/conditional-workflow.toml) and
-[JSON Schema](schemas/workflow-v3.schema.json). The schema describes the parsed
-TOML data model; the application also checks identity, nesting, step ordering,
-installed components and credential policy.
+Each executable definition is one TOML file with this header:
 
 ```toml
-schema_version = 3
+format = "rill.workflow"
+version = 1
+```
+
+This is a new format. Files using `schema_version`, previous TOML versions, JSON
+manifests or the retired settings library cannot execute. Reading never upgrades
+or rewrites them. Invalid files report a diagnostic; an invalid override blocks
+its workflow instead of reactivating a packaged definition.
+
+User files live in `$XDG_CONFIG_HOME/rill/workflows`, defaulting to
+`~/.config/rill/workflows`. Backups live in `$XDG_STATE_HOME/rill/workflows`,
+defaulting to `~/.local/state/rill/workflows`. Relative or empty XDG values use
+these defaults. Reading does not create directories. New directories use `0700`
+and files use `0600`; existing directory permissions remain unchanged.
+
+Discovery accepts up to 256 direct, non-hidden regular TOML files of at most
+1 MiB each. Symlinks and oversized files produce diagnostics. Saves retain up to
+20 previous versions, synchronize a temporary file and atomically replace the
+destination. Saving checks the originally loaded source; a second intervening
+edit remains a conflict. External editors own unsaved buffers. New/imported
+workflows start disabled, duplication creates a new UUID, and ordinary edits
+preserve workflow and step identity.
+
+Packaged workflows use the same decoder and validator. Their index contains only
+resource locations and localized title keys. Missing or invalid packaged resources
+activate no fallback definitions. First configuring a packaged workflow creates a
+writable TOML override in the user directory.
+
+## Declaration
+
+```toml
+format = "rill.workflow"
+version = 1
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "Prepare a reply"
 enabled = false
@@ -58,19 +53,11 @@ kind = "manual"
 kind = "text"
 
 [[process]]
-id = "clean"
-kind = "normalize-whitespace"
-
-[[process]]
-id = "question"
-kind = "if"
-condition = { field = "text", op = "contains", value = "?" }
-
-[[process.then]]
 id = "rewrite"
 kind = "llm-rewrite"
-model_role = "fast"
-prompt = "Rewrite as a concise question. Keep the original language and meaning."
+reasoning = "none"
+prompt = "Rewrite concisely, preserving the original language and meaning."
+decision = { optional = true }
 
 [output]
 strategy = "immediate"
@@ -82,308 +69,144 @@ kind = "record.store"
 [[output.actions]]
 id = "copy"
 kind = "system-clipboard.copy"
+optional = true
 ```
 
-| Field | Contract |
-| --- | --- |
-| `schema_version` | Required integer, currently `3`. Future versions fail validation and are not rewritten. |
-| `id` | Required workflow UUID. Renaming a document preserves it; duplicating or importing creates a new UUID. |
-| `name` | Required non-blank display name, up to 160 Unicode scalars. |
-| `description` | Optional descriptive text. |
-| `enabled` | Boolean, defaults to `false`. Saving activates this preference; provider readiness and trigger conflicts are separate execution checks. |
-| `trigger.kind` | `manual`, `hotkey`, `menu-bar`, `wake-word`. |
-| `trigger.gesture` | Optional existing Rill gesture identifier. |
-| `input.kind` | `audio`, `text`, `record`. Text can be supplied explicitly with Run clipboard text. |
-| `ui` | Optional `{ symbol, accent }`; defaults to `sparkles` and `blue`. |
-| `setup` | Optional speech route, vocabulary bindings and wake phrases. |
-| `process` | Ordered array of steps; defaults to empty. |
-| `output.actions` | Non-empty ordered output array. |
-| `output.strategy` | Existing Rill delivery policy: `immediate`, `collection-first`, `system-clipboard-only`; defaults to `immediate`. It does not change array order or enable parallel execution. |
-| `options` | String dictionary for existing runtime options, for example `record.target-collection-ids`. Component-owned keys are preserved. |
-| `metadata` | Descriptive string dictionary. Keys start with `user.`; `workflow.origin` is retained for migration. |
+Root fields are `format`, `version`, `id`, `name`, optional `description`,
+`enabled` (default false), `trigger`, `input`, optional `ui` and `setup`,
+`process` and `output`. Names contain 1–160 Unicode scalars. Unknown fields fail
+with a path diagnostic at every structural level. There are no open `options`,
+`metadata` or action `config` dictionaries.
 
-Unknown structural fields fail with a path diagnostic. Open `options`, `metadata`
-and action `config` dictionaries preserve their entries. Rill does not silently
-remove unfamiliar dictionary keys. They do not register new executable components.
+`trigger.kind` is `manual`, `hotkey`, `menu-bar` or `wake-word`. A hotkey may
+provide `gesture` and `exclusive_group`. Wake-word phrases remain in
+`setup.wake_word.phrases`, with one to four distinct short phrases. Trigger
+conflicts and permissions remain Rill admission checks.
 
-Saved output is deterministic: table keys are sorted while step and output array
-order remains semantic. Canonical formatting may remove comments and alter quote
-styles. Merely opening a hand-written file does not reformat it.
+`input.kind` is `audio`, `text` or `record`. Audio requires `setup.speech` and one
+root `recognize-speech` step, first in the processing sequence. Text/Record input
+omits recognition. Explicit clipboard-text runs and Record replay reuse the
+text projection of the same processing plan. A run does not choose between
+alternative content sources or automatically merge unrelated inputs.
 
-## Setup
+`ui` accepts `symbol` and `accent`. Speech setup accepts `language`,
+`live_preview`, `live_preview_placement` (`overlay` or `cursor`) and
+`streaming_profile`. ASR model selection, download, enablement and residency
+belong to the ASR service.
 
-Audio input requires `setup.speech` and exactly one root `recognize-speech` step,
-placed first. Text and Record input omit both speech setup and recognition or
-resolution steps. All audio workflows use the one ASR model selected globally.
+Vocabulary bindings use `id`, `collection`, `uses` (`recognition-hints`,
+`text-replacement`), `optional` (default false), and optional `when` (`app_bundle_id`, `record_collection`,
+`locale`). The file's bindings are authoritative.
 
-`setup.speech` accepts `language`, `live_preview` (boolean),
-`live_preview_placement` (`overlay` or `cursor`) and `streaming_profile`.
-It cannot select a recognizer, provider or model. The selected ASR model must be
-enabled; a disabled model produces a readiness error instead of choosing another model.
+A missing optional vocabulary collection is skipped; a missing required collection
+blocks compilation. These flags belong to input dependencies, independently of
+output switches.
 
-Each `[[setup.vocabulary]]` binding has its own UUID `id`, a `collection` UUID and
-non-empty `uses` (`recognition-hints`, `text-replacement`, or both). Optional `when`
-contains `app_bundle_id`, `locale` and the migration-compatible `clipboard_group`
-UUID (a Record collection). The TOML bindings remain authoritative; global
-vocabulary defaults do not replace bindings in a file-backed workflow.
+Record collection event automation is unavailable in this format. Record reuse
+is an explicit manual invocation of the declared processing and outputs.
+A workflow may declare at most one output targeting the speech pending buffer.
+The pending and draft editor dictation commands each select their own built-in v1
+declaration with a single Record destination. They do not alter the Fn definition.
 
-Live audio freezes its compiled vocabulary, language and local model at capture
-admission. Later vocabulary edits apply to later recordings; final recognition
-does not reload the library. Model enablement and run privacy are still checked
-at their effect boundaries.
-
-The separate **Use vocabulary for Smart Cleanup** setting is off by default.
-After provider consent, new recordings in the builtin cleanup workflow can share
-all applicable bound hotwords with the LLM, using an independent 12,000-byte JSON
-budget. This projection is frozen at admission and is not limited to ASR's final
-hints. It does not change mapping rules or enable reference uploads for custom
-workflows, text input or imported audio. See [vocabulary and memory](vocabulary-memory.md).
-
-The experimental **Classification hotword selection** switch in Voice & Models is separate
-from workflow TOML and from the polishing gate. It defaults off and retains its
-shared classification key and independent consent only for the app session. Enabling it permits sending up to 50
-applicable hotword candidates, the application and workflow names, and the
-already-authorized text selection to the globally selected TypeSafe or Cloudflare endpoint. A selection above 1,800
-UTF-8 bytes is omitted entirely. Audio, clipboard, screen and history are not
-included, and this feature does not capture additional context.
-
-Recording never waits for classification. A cache miss uses the existing rule order for the
-entire run and starts one background request only after capture begins. A later
-matching run can use the result. The memory-only cache holds at most 32 entries
-for five minutes and includes workflow, vocabulary, context, language, model,
-rubric, privacy and authorization identity. Manual priorities remain authoritative;
-within one priority, only candidates with both confidence and probability of
-clear relevance at least 0.9 are promoted. These thresholds are experimental,
-not measured accuracy. The existing Qwen limit of 16 terms and 48 total UTF-8
-bytes still applies.
-
-Requests have a two-second deadline, one concurrency slot and no automatic retry.
-Revocation cancels pending work and clears cached results. Uncertain results,
-unavailable services and restricted contexts preserve local selection. Imported
-audio and failed-audio retries do not start ranking requests. Live captions remain
-unchanged; streaming hotword support requires a separate upstream change.
-Compare hotword quality on fixed recordings before making quality claims.
-
-Wake-word triggers use `setup.wake_word.phrases`, with one to four distinct short
-phrases. The existing wake-word provider, permissions and readiness rules apply.
-
-## Steps and conditions
-
-Every process step and output has a document `id` of 1–128 ASCII letters, digits,
-underscores or hyphens. IDs are unique across all branches and outputs. Process
-UUIDs used internally are deterministically derived from workflow and document
-identity. File order is execution order; display coordinates have no semantics.
+## Processing and service dependencies
 
 Process kinds are `recognize-speech`, `resolve-uncertainty`, `apply-vocabulary`,
-`normalize-whitespace`, `llm-rewrite`, `llm-answer`, `snippet-replacement`, and `if`.
-A recognized kind still needs its installed production provider. Recognition and
-resolution belong at the root. `prompt` belongs to generation/snippet steps;
-`uncertainty` belongs to resolution and includes `mode`, `confidence_threshold`
-and `timeout_seconds`. Optional step `description` is for the author.
+`normalize-whitespace`, `llm-rewrite`, `llm-answer`, `snippet-replacement` and `if`.
+Steps have stable `id` values of 1–128 ASCII letters, digits, underscores or
+hyphens; IDs are unique across processing branches and outputs. Runtime UUIDs
+are deterministically derived from workflow and document identity.
 
-Optional `record_duration` selects measured milliseconds for that process step.
-It defaults to `true` for `recognize-speech`, `llm-rewrite` and `llm-answer`, and
-`false` for other kinds. The setting also works in `then` and `else` steps. It
-controls both content-free receipts and text history; execution, text retention
-and privacy authorization are unchanged. Unexecuted branches have no measurement.
-Failed, cancelled and fallback calls retain elapsed time when timing is enabled.
+Every LLM step must explicitly provide `reasoning`: `none`, `low` or `high`.
+Task kind and reasoning are independent. Missing levels, native levels such as
+`medium`, and model-binding fields fail validation. Rill's service adapter maps
+the intent to verified native capabilities. Unsupported levels produce an error;
+Rill does not silently change the level or provider. Task budgets are independent
+of reasoning and model selection. Capability admission currently covers only
+the documented OpenAI and DeepSeek model/official-endpoint pairs; an arbitrary
+compatible URL cannot acquire capabilities merely by using the same model name.
 
-```toml
-[[process]]
-id = "polish"
-kind = "llm-rewrite"
-model_role = "fast"
-prompt = "Correct transcription errors while preserving meaning."
-record_duration = true
-```
+A processing dependency is required unless `optional = true`. Rill checks the
+configured service. An unavailable optional LLM task is recorded as skipped and
+passes its input text onward. A required missing service blocks admission with
+configuration guidance. Optionality does not turn an actual request failure into
+an unconditional success. Rewrite tasks default to `on_failure = "fail"`. Explicit
+`on_failure = "preserve-input"` allows eligible provider failures to preserve the
+input, record a skipped step and continue; cancellation and authorization failures
+still stop the run. This policy does not depend on speech mode.
 
-Recognition timing covers the final recognition executor; LLM timing covers the
-transformer call, including request preparation and response parsing. Neither
-includes recording, queueing or delivery. Candidate resolution, when opted in,
-measures its own wait. The run card separately shows captured audio length and
-output-action timing; older records without measurements show “Not recorded”.
-These are input diagnostics, not a workflow profiling requirement for ordinary
-speech use.
+A rewrite may declare `decision = { optional = true }`. Without a configured
+Decision service, Rill skips classification and continues rewriting. With
+`optional = false`, the Decision service must be configured before admission.
+The transcript-only polishing prediction retains its session consent, conservative
+confidence threshold, bounded deadline and normal rewrite path on uncertainty or
+prediction failure. Authorized correction references bypass this prediction.
 
-### Optional classification polishing prediction
+`preserve_content = true` explicitly enables transcript cleanup protection.
+This behavior belongs to the step and is independent of packaged identity, name,
+speech mode or prompt equality. Prompts describe the requested transformation;
+answer and rewrite tasks retain their distinct request contracts.
 
-In Settings → Voice & Models → API Providers, select Jev or Cloudflare Clef, enter its credential and enable classification polishing
-prediction for the current app session. Smart Cleanup can then skip its
-`llm-rewrite` request when the classification model considers the complete text ready to use unchanged.
-The normal ordered outputs still save and deliver that text. History records a
-skipped rewrite with no LLM request trace, token count or LLM duration; prediction
-latency is not reported as LLM execution time.
+Optional `record_duration` controls measured process duration, defaulting on for
+recognition and LLM tasks. Unexecuted branches have no measurement; skipped LLM
+requests have no LLM trace or token usage. Timing does not change privacy retention.
 
-Custom cleanup workflows opt in through the existing options dictionary:
+An `if` has `condition` and optional ordered `then`/`else` arrays. Conditions
+compare `text`, `context.app_bundle_id`, `context.selected_text` or
+`context.clipboard_text` using `equals`, `contains` or `exists`, or combine
+conditions with `all`, `any` and a single-element `not` array. Conditions use
+already authorized context and never capture new context or request permission.
+Missing/redacted values fail comparisons; guard them with `exists`. Groups
+short-circuit in declaration order. Limits remain 256 process steps, 256 outputs
+and 16 nesting levels.
 
-```toml
-[options]
-"text.polishing-gate" = "classification"
-```
+## Outputs and companion state
 
-The switch defaults off, and neither the key nor the switch is persisted.
-Enabling it authorizes sending the current transcript and that step's rewrite
-instructions to the globally selected TypeSafe or Cloudflare endpoint. Audio, clipboard/selection context, screen
-images, memory and polishing-vocabulary references are excluded. Runs using correction references
-continue directly to the configured LLM; answer steps and voice assistants never
-use this gate. Current and source-app privacy rules are checked before and after
-prediction; cancellation or a privacy restriction stops the run.
+Outputs run in declaration order. Each action has `id`, `kind`, optional
+`description`, `condition` and `optional`:
 
-Only a validated score matching the globally selected model with both confidence and the probability of
-“already usable unchanged” at least 0.9 skips rewriting. These are conservative
-decision thresholds, not a measured accuracy claim. Uncertainty, service errors,
-malformed responses, missing credentials or the two-second prediction deadline
-keep the original rewrite path. Text over 1,800 UTF-8 bytes or instructions over
-4,000 bytes also use that path without truncation. No automatic retries occur.
+- `optional = false` (default): automatically enabled; the user cannot disable it.
+- `optional = true`: initially enabled; the user may turn it off independently.
 
-An `if` requires `condition` and may contain `then` and `else` step arrays. The
-selected branch receives the current text and returns the text used by the next
-step. The other branch is not executed. There are at most 256 process steps,
-256 outputs, and 16 nesting levels. There are no general graph cycles, loops,
-parallel nodes or sub-workflows in v2.
+All optional outputs may be off. Processing still completes and produces its
+normal privacy-bounded run receipt. Rill does not add an undeclared save, copy or
+insertion. Packaged dictation saves before insertion and exposes pending
+collection as a declared output.
 
-Conditions use exactly one form:
+Action parameters belong to their kind:
 
-```toml
-# Comparison; case-sensitive literal strings, without expression evaluation.
-condition = { field = "text", op = "contains", value = "?" }
-# Guard availability before comparing authorized context.
-condition = { all = [{ field = "context.app_bundle_id", op = "exists" }, { field = "context.app_bundle_id", op = "equals", value = "com.apple.mail" }] }
-# not is a single-element array so the recursive structure remains ordinary TOML.
-condition = { not = [{ field = "text", op = "equals", value = "" }] }
-```
-
-Fields are `text`, `context.app_bundle_id`, `context.selected_text` and
-`context.clipboard_text`. Context is the snapshot already permitted by the normal
-privacy gate. Conditions never request additional permissions or capture context.
-Missing/redacted context causes comparisons to fail the run; `exists` returns
-false. Empty selection or clipboard text counts as unavailable. `all` and `any`
-short-circuit in order, accept 1–64 children, and can nest with `not`.
-
-## Outputs, tests and receipts
-
-An empty recognition result ends without a failure, output, history entry or run
-receipt. Audio duration alone does not discard a run, so short utterances with
-recognized content still follow the normal workflow. These attempts still
-release capture state and remove managed temporary audio. Explicit retries from
-failed-audio recovery retain their retry and failure receipts.
-
-Outputs have `id`, executable `kind`, optional `description`, optional `condition`
-and an optional string `config` dictionary. Shipped choices include:
-
-| Kind | Relevant config |
+| Kind | Parameters |
 | --- | --- |
-| `record.store` | Existing Record routing options in `options`. |
-| `system-clipboard.copy` | No required config. |
-| `focused-application.insert` | Normal focus and input authorization. |
-| `speech.speak` | `speech.voice`, `speech.language`. The synthesis model comes from global settings. |
-| `external.shortcuts.run` | `shortcuts.name`. |
-| `external.markdown.append` | `markdown.append.path`. |
+| `record.store` | `collections` UUID array; optional `buffer = "speech"`; `exclude_from_capture` |
+| `system-clipboard.copy` | No destination parameters |
+| `focused-application.insert` | No destination parameters |
+| `speech.speak` | `voice`, optional `language`; TTS service owns the model |
+| `external.shortcuts.run` | `shortcut` |
+| `external.markdown.append` | Absolute Markdown `path` |
+| `external.webhook.post` | `webhook_reference`; plaintext URL/headers are not workflow fields |
 
-Outputs execute once in array order. A false condition records a skipped output.
-A failed output stops the remaining outputs; earlier effects remain committed and
-produce a partial terminal receipt. Cancellation is checked between steps and
-outputs. There is no automatic replay of side effects. Plaintext webhook files
-remain rejected; credential-backed webhook editing is not exposed by this version.
+`output.strategy` accepts `immediate`, `collection-first` and
+`system-clipboard-only`. It never changes action order or adds outputs.
 
-A built-in speech recognition or cleanup workflow stores its final text in Voice
-Input records, then inserts that same text into the active app. The voice assistant
-stores its answer before speaking it. The speech templates also save before
-delivery, so a later delivery failure does not discard the saved text. The explicit
-"Save Voice Record Only" output mode omits insertion.
+For `cleanup.toml`, user output choices live in `cleanup.state.json`:
 
-History shows the steps and results from that run. Missing timing measurements remain absent; editing a workflow does not rewrite its earlier runs.
+```json
+{
+  "format": "rill.workflow-state",
+  "version": 1,
+  "workflow_id": "54B31E01-96AC-4A0F-BB82-0A8CB12DD629",
+  "outputs": { "copy": false }
+}
+```
 
-## Migration and built-ins
+Missing state uses the declaration defaults. Unknown output IDs, disabling an
+automatic output, malformed data or mismatched identity block the workflow with
+a diagnostic. The companion contains no executable steps, bodies or credentials.
+It uses the same atomic-save, backup, source-conflict and observation rules.
 
-Document v1 remains readable. Its string trigger, speech setup, UUID process IDs,
-legacy action aliases and metadata are converted in memory. Loading does not
-rewrite a v1 or v2 file. Model and provider overrides are discarded in memory;
-rewrite steps default to `fast`, and answer steps to `intelligent`. Its next
-successful save creates a v3 file and retains the original source in history. Unknown v1 structural fields also fail validation.
+A run freezes its definition, output selection and service bindings. Changes
+apply to later runs; current privacy authorization and credential revocation are
+still checked at effect boundaries. Earlier committed outputs survive later
+failure or cancellation and are reflected in a partial receipt. Rill never
+implicitly repeats an external effect.
 
-A customization keeps the built-in workflow UUID and overrides that definition.
-Restoring the default removes its override. Duplicating a workflow, importing a
-file, or creating from a template creates a disabled document with a new UUID.
-The bundled multi-workflow catalog is a separate internal format and is not a
-user workflow file.
-
-## LLM Provider and smart cleanup
-
-Settings → Voice & Models → API Providers owns two independent text roles:
-**Fast** always sends `reasoning.effort = "none"`; **Intelligent** sends `"high"`.
-Each role has its own provider, endpoint, model and Keychain credential.
-OpenAI and DeepSeek presets share the Responses API transport; compatible
-endpoints remain configurable. Changing the provider clears that role's key.
-Verification uses the selected role's reasoning policy. Models that require
-reasoning cannot be assigned to Fast.
-
-An LLM step may declare `model_role = "fast"` or `"intelligent"`.
-Omitting it defaults rewrites to Fast and answers to Intelligent. Other step
-kinds cannot declare a language model role. Concrete model IDs, endpoints and
-credentials never belong in workflow files. Existing text settings are copied
-to both global roles once; subsequent edits are independent.
-
-A run freezes the roles it uses before privacy authorization. Changing settings
-applies to later runs. Revoking credentials still blocks later requests in an
-active run. These snapshots are ephemeral and never encoded in a workflow or receipt.
-
-The global **Classification model** selects TypeSafe Jev, Cloudflare Clef or
-Clef Flash for candidate scoring, hotword ranking and polishing prediction.
-Cloudflare requires a 32-character account ID and API token with Workers AI access.
-The selection, credential and separate automatic-use consents remain session-only.
-Changing provider/account clears the credential and revokes existing authorizations.
-
-Enable **Smart Cleanup** from the Workflows page; this switches off the other
-built-in Fn mode. Recognition stays local. After recognition and vocabulary
-replacement, `llm-rewrite` sends only the current text and instruction to the
-configured LLM Provider. Use the supplied `speech_to_text_polish.toml` template
-for a custom workflow; no `text.provider` option is needed.
-
-Cleanup treats questions, commands and short phrases with missing context as
-transcript text. For example, “总结一下这些内容。” must remain that sentence;
-cleanup must not answer it or ask for the material to summarize. The same rule
-applies to contextual correction. `llm-answer` and voice-assistant workflows
-still answer requests. User-authored TOML prompts are not overwritten by updates.
-
-Canonical Smart Cleanup with its default instruction also applies a local content
-guard, shared with contextual correction. It preserves literal numbers and
-common attached units, HTTP(S) URLs, existing explicit code, and normalized
-negative sentences. List numbering and added sentence punctuation are allowed.
-The check is intentionally conservative: spelling fixes within a negative
-sentence and number-format changes can skip cleanup and preserve the prior text.
-Custom rewrite instructions are not filtered by this builtin policy.
-
-The provider request contract and cleanup examples are covered by offline checks.
-An opt-in model evaluation sends only fixed synthetic samples in
-`Evals/TextRewrite/cases.json`, in both ordinary and contextual correction
-modes. Run it with `just eval-quality text-rewrite`, `OPENAI_API_KEY`,
-`OPENAI_BASE_URL` and `OPENAI_MODEL` set.
-Results are saved locally in `.artifacts/evals/text-rewrite/<run-id>/observations.json`.
-Offline request checks do not establish model compliance; live results apply
-only to the tested provider, model and corpus.
-Comparisons ignore punctuation and whitespace but retain words, case and numbers.
-The emphasis sample retains a repetition whose intent is ambiguous without audio.
-
-Fast DeepSeek rewrite requests use `reasoning.effort = "none"`, temperature 0.1 and a
-4096-token output limit. Fast DeepSeek inputs above 12,000 UTF-8 bytes skip cleanup
-whole; the limit applies to the actual request transcript, without truncation.
-Intelligent requests enable reasoning and use a 16,384-token output budget.
-These model parameters remain separate from the workflow budget.
-
-Default builtin Smart Cleanup and contextual correction have a 5-second transport
-timeout and local deadline with every compatible model. Fast DeepSeek non-assistant
-rewrite steps use that same budget with custom instructions. Other custom rewrites
-and assistant steps retain 60 seconds. At the deadline, the owner requests transport
-cancellation and reports timeout without waiting for late work. It retains that
-work until completion; late results cannot replace delivered text. Thinking policy
-follows the selected global role. These limits need real usage and latency evaluation.
-
-For captured speech or explicitly supplied text, temporary network, rate-limit,
-timeout, incomplete or invalid-result errors can retain the text before rewriting.
-Activity reports the skipped cleanup and the receipt marks that step as skipped.
-Cancellation, privacy restrictions, missing credentials, authentication failure and
-refusal stop delivery. Each run selects one final text and delivers it once.
-
-API contract references: [DeepSeek Responses API](https://api-docs.deepseek.com/guides/responses_api/)
-and [thinking controls](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/).
+The [output state schema](schemas/workflow-state-v1.schema.json) describes the companion envelope. Runtime validation additionally checks output IDs and automatic-output constraints against the adjacent TOML.

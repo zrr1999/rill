@@ -669,13 +669,17 @@ private func queuedWorkflow(name: String, recognizerID: String) -> WorkflowDefin
   var workflow = WorkflowDefinition(
     name: name,
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(
-      recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID,
-      postProcessSteps: usesCloudTextFixture
-        ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")]
-        : [],
-      outputActions: [OutputActionReference(id: "record.store")]
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID)),
+      process: WorkflowProcessPhase(
+        steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]
+          + (usesCloudTextFixture
+          ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]
+          : []).map(WorkflowProcessStep.init)),
+      output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
   workflow.plan.setup.vocabularyBindings = [

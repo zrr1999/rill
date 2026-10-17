@@ -128,10 +128,12 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Toggle Long Recording Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "toggle.recognizer",
-        outputActions: [OutputActionReference(id: "toggle.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "toggle.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "toggle.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "record.circle", accentColorName: "red")
     )
     let audio = try CapturedAudio(

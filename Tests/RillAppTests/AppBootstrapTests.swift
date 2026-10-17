@@ -481,19 +481,21 @@ final class AppBootstrapTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Cloud text preview",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-        outputActions: [OutputActionReference(id: "focused-application.insert")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let plan: WorkflowResolvedExecutionPlan
     switch WorkflowExecutionPlanResolver.resolve(
       workflow,
       initiatedBy: .manual,
-      recognizer: .declared,
-      output: .declared
+      recognizer: .declared
     ) {
     case .resolved(let resolved):
       plan = resolved
@@ -542,20 +544,21 @@ final class AppBootstrapTests: XCTestCase {
   func testRecognitionRunPreflightBlocksLegacyClipboardAutomation() async {
     let preflight = AppBootstrap.makeRecognitionRunPreflight()
     let workflow = WorkflowDefinition(
-      name: "Legacy Clipboard Automation",
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      name: "Unavailable workflow",
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-      metadata: ["eventType": "groupItemCreated"]
-    )
+      properties: .init(availability: .planned))
 
     do {
       try await preflight(workflow)
       XCTFail("Expected legacy clipboard automation to fail preflight.")
     } catch let error as SessionCoordinator.SessionError {
-      guard case .unsupportedWorkflow(.legacyClipboardAutomationUnsupported) = error else {
+      guard case .unsupportedWorkflow(.plannedCapabilityUnavailable) = error else {
         return XCTFail("Unexpected preflight error: \(error)")
       }
     } catch {
@@ -563,20 +566,21 @@ final class AppBootstrapTests: XCTestCase {
     }
   }
 
-  func testRecognitionRunPreflightIgnoresRetiredWorkflowModelOverride() async {
+  func testRecognitionRunPreflightUsesTheGlobalASRService() async {
     let trustedModels = LocalSpeechModelCatalog.distributableModelIdentifiers
     let preflight = AppBootstrap.makeRecognitionRunPreflight(
       trustedLocalModelIdentifiers: trustedModels
     )
     let workflow = WorkflowDefinition(
       name: "Unknown Local Model",
-      pipeline: PipelineDeclaration(
-        recognizerID: "local-speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
-      metadata: [WorkflowMetadataKey.localSpeechModelOverride: "unreviewed-model"]
-    )
+      properties: .init())
 
     do {
       try await preflight(workflow)
@@ -656,16 +660,14 @@ final class AppBootstrapTests: XCTestCase {
 
     let workflow = WorkflowDefinition(
       name: "Preview Override",
-      pipeline: PipelineDeclaration(
-        recognizerID: "local-speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
-      metadata: [
-        WorkflowMetadataKey.localSpeechModelOverride:
-          "retired-sense-voice-model"
-      ]
-    )
+      properties: .init())
     let preflight = AppBootstrap.makeRecognitionRunPreflight()
 
     do {
@@ -674,9 +676,9 @@ final class AppBootstrapTests: XCTestCase {
   }
 
   func testBuiltinCatalogContainsSpeechRecognitionVoiceAssistantAndCleanup() throws {
-    let workflows = BuiltinWorkflowCatalog().manifest().workflows
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
 
-    XCTAssertEqual(workflows.map(\.titleKey), [.speechRecognition, .voiceAssistant, .smartCleanup])
+    XCTAssertEqual(workflows.map(\.titleKey), [.speechRecognition, .voiceAssistant, .smartCleanup, .bufferDictation, .bufferDraftDictation])
 
     let speechRecognition = try XCTUnwrap(
       workflows.first { $0.titleKey == .speechRecognition }
@@ -692,21 +694,21 @@ final class AppBootstrapTests: XCTestCase {
       speechRecognition.plan.setup.vocabularyBindings.first?.uses,
       Set(VocabularyBindingUse.allCases)
     )
-    XCTAssertEqual(speechRecognition.plan.output.actions.map(\.id), ["record.store", "focused-application.insert"])
+    XCTAssertEqual(speechRecognition.plan.output.actions.map(\.id), ["record.store", "focused-application.insert", "record.store"])
     XCTAssertTrue(speechRecognition.isEnabledByDefault)
 
     let cleanup = try XCTUnwrap(workflows.first { $0.titleKey == .smartCleanup })
     XCTAssertFalse(cleanup.isEnabledByDefault)
     XCTAssertEqual(cleanup.trigger, .hotkey)
     XCTAssertEqual(cleanup.exclusiveGroupIdentifier, speechRecognition.exclusiveGroupIdentifier)
-    XCTAssertNil(cleanup.metadata["text.provider"])
+
     XCTAssertEqual(cleanup.plan.setup.speechRoute?.recognizerID, "local-speech")
     XCTAssertEqual(
       cleanup.plan.process.steps.map(\.kind),
       [.recognizeSpeech, .applyVocabulary, .normalizeWhitespace, .llmRewrite]
     )
     XCTAssertEqual(cleanup.plan.process.steps.last?.prompt, LLMTextProcessing.cleanupPrompt)
-    XCTAssertEqual(cleanup.plan.output.actions.map(\.id), ["record.store", "focused-application.insert"])
+    XCTAssertEqual(cleanup.plan.output.actions.map(\.id), ["record.store", "focused-application.insert", "record.store"])
     for workflow in workflows {
       XCTAssertEqual(workflow.targetRecordCollectionIDs, [RecordCollection.voiceInputID])
       XCTAssertEqual(workflow.plan.output.deliveryPolicy.strategy, .immediate)
@@ -729,9 +731,8 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(voiceAssistant.plan.output.actions.map(\.id), ["record.store", SpeechOutputActionID.speak])
     let speak = try XCTUnwrap(voiceAssistant.plan.output.actions.last)
     XCTAssertEqual(speak.id, SpeechOutputActionID.speak)
-    XCTAssertNil(speak.configuration[SpeechOutputActionConfigurationKey.provider])
     XCTAssertEqual(
-      speak.configuration[SpeechOutputActionConfigurationKey.voice],
+      speak.configuration.voice,
       Qwen3TTSVoice.vivian.rawValue
     )
     let assistantDraft = try XCTUnwrap(WorkflowEditorDraft(workflow: voiceAssistant))
@@ -752,10 +753,12 @@ final class AppBootstrapTests: XCTestCase {
     )
     let workflow = WorkflowDefinition(
       name: "Local",
-      pipeline: PipelineDeclaration(
-        recognizerID: "local-speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
 
@@ -783,10 +786,12 @@ final class AppBootstrapTests: XCTestCase {
   func testRecognitionRunPreflightRejectsConfiguredModelOutsideTrustedCatalog() async {
     let workflow = WorkflowDefinition(
       name: "Local",
-      pipeline: PipelineDeclaration(
-        recognizerID: "local-speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
 
@@ -813,7 +818,13 @@ final class AppBootstrapTests: XCTestCase {
       LocalSpeechSettings(model: selected, enabledModelIDs: [])
     })
     let workflow = WorkflowDefinition(
-      name: "Local", pipeline: PipelineDeclaration(recognizerID: "local-speech", outputActions: []),
+      name: "Local",
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"))
     do {
       try await preflight(workflow)
@@ -1022,13 +1033,8 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(retainedModel, localModel)
   }
 
-  func testLocalHistoryMaintenanceUsesProtectedSettingsAndSeparateResiduePurger() async throws {
+  func testLocalHistoryMaintenanceUsesSettingsAndResiduePurger() async throws {
     let rawStore = AppBootstrapSettingsStore(storage: [:])
-    let secureWebhookStore = AppBootstrapSecureWebhookStore()
-    let protectedSettings = WebhookProtectingSettingsStore(
-      settingsStore: rawStore,
-      secureStore: secureWebhookStore
-    )
     let eventRecorder = AppBootstrapMaintenanceEventRecorder()
     let maintenance = try XCTUnwrap(
       AppBootstrap.makeLocalHistoryMaintenance(
@@ -1041,7 +1047,7 @@ final class AppBootstrapTests: XCTestCase {
         historyRepository: AppBootstrapHistoryRepository(),
         runReceiptRepository: InMemoryWorkflowRunReceiptRepository(),
         diagnosticRepository: AppBootstrapDiagnosticRepository(),
-        settingsStore: protectedSettings,
+        settingsStore: rawStore,
         residuePurger: rawStore,
         eventReporter: { event in
           await eventRecorder.record(event)
@@ -1053,7 +1059,6 @@ final class AppBootstrapTests: XCTestCase {
     let stateWriteCount = await rawStore.writeCount(for: .localHistoryMaintenanceState)
     let stateRemovalCount = await rawStore.removalCount(for: .localHistoryMaintenanceState)
     let rawPurgeCount = await rawStore.purgeCount()
-    let secureWebhookCalls = await secureWebhookStore.calls()
     let events = await eventRecorder.recordedEvents()
 
     XCTAssertEqual(
@@ -1068,7 +1073,6 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(stateWriteCount, 2)
     XCTAssertEqual(stateRemovalCount, 1)
     XCTAssertEqual(rawPurgeCount, 1)
-    XCTAssertEqual(secureWebhookCalls, 0)
     XCTAssertEqual(events.map(\.outcome), [.completed])
   }
 
@@ -1213,24 +1217,13 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertNil(AppBootstrap.localSpeechPreparationFailure(for: URLError(.cancelled)))
   }
 
-  func testWorkflowManifestResourceReturnsFixedMissingDiagnostic() {
+  func testInvalidBuiltinResourcesActivateNoWorkflows() {
     let result = WorkflowManifestResource.load(
-      manifestURL: nil,
-      recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
-      transformerRegistry: TextTransformerRegistry(transformers: []),
-      actionRegistry: OutputActionRegistry(actions: [])
-    )
-
-    XCTAssertEqual(result.manifest, BuiltinWorkflowCatalog().manifest())
-    XCTAssertEqual(result.diagnostic.event, "workflow-manifest.bundle.missing")
-    XCTAssertEqual(result.diagnostic.level, .warning)
-    XCTAssertEqual(
-      result.diagnostic.metadata,
-      [
-        "reason": "resource-unavailable",
-        "source": "packaged-resource",
-      ]
-    )
+      manifestURL: URL(fileURLWithPath: "/missing-workflow-resource"),
+      recognizerRegistry: .init(recognizers: []), transformerRegistry: .init(transformers: []), actionRegistry: .init(actions: []))
+    XCTAssertTrue(result.manifest.workflows.isEmpty)
+    XCTAssertEqual(result.diagnostic.level, .error)
+    XCTAssertTrue(result.diagnostic.metadata.isEmpty)
   }
 
   func testMLXModelUsesNativeSwiftBackendWithoutPythonRuntimeInstructions() throws {
@@ -1247,7 +1240,7 @@ final class AppBootstrapTests: XCTestCase {
     #endif
   }
 
-  func testWorkflowManifestResourceFallbackDiagnosticOmitsLoaderFailurePayload() throws {
+  func testInvalidBuiltinDiagnosticOmitsLoaderFailurePayload() throws {
     let directory = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let manifestURL = directory.appendingPathComponent("BuiltinWorkflowManifest.json")
@@ -1261,16 +1254,9 @@ final class AppBootstrapTests: XCTestCase {
       actionRegistry: OutputActionRegistry(actions: [])
     )
 
-    XCTAssertEqual(result.manifest, BuiltinWorkflowCatalog().manifest())
-    XCTAssertEqual(result.diagnostic.event, "workflow-manifest.fallback")
-    XCTAssertEqual(result.diagnostic.level, .warning)
-    XCTAssertEqual(
-      result.diagnostic.metadata,
-      [
-        "reason": "load-or-validation-failed",
-        "source": "packaged-resource",
-      ]
-    )
+    XCTAssertTrue(result.manifest.workflows.isEmpty)
+    XCTAssertEqual(result.diagnostic.level, .error)
+    XCTAssertTrue(result.diagnostic.metadata.isEmpty)
     let serializedDiagnostic =
       ([result.diagnostic.message]
       + result.diagnostic.metadata.flatMap { [$0.key, $0.value] }).joined(separator: " ")

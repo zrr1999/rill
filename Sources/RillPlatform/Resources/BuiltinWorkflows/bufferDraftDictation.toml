@@ -1,0 +1,36 @@
+format = "rill.workflow"
+version = 1
+id = "0E66CFD3-81A0-44BE-9C19-C7CD66D16095"
+name = "Dictate to Draft"
+enabled = true
+
+[trigger]
+kind = "manual"
+
+[input]
+kind = "audio"
+
+[ui]
+symbol = "mic.fill"
+accent = "blue"
+
+[setup.speech]
+live_preview = true
+live_preview_placement = "overlay"
+streaming_profile = "realtime"
+
+[[process]]
+id = "recognize"
+kind = "recognize-speech"
+
+[[process]]
+id = "normalize"
+kind = "normalize-whitespace"
+
+[output]
+strategy = "immediate"
+
+[[output.actions]]
+id = "save"
+kind = "record.store"
+collections = ["4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"]

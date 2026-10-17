@@ -2,7 +2,7 @@ import RillCore
 import SwiftUI
 
 extension SettingsView {
-  var apiProviderSettingsSection: some View {
+  var decisionProviderSettingsSection: some View {
     settingsDisclosure(.providers) {
       if let settings = model.recordWorkspace.jevSettings {
         JevAPISettingsView(
@@ -16,7 +16,6 @@ extension SettingsView {
         }
         Divider()
       }
-      llmProviderSettingsSection
     }
   }
 
@@ -28,22 +27,14 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      Picker(L10n.resource("models.role").string(for: model.settings.language), selection: $selectedLanguageModelRole) {
-        Text(L10n.resource("models.fast").string(for: model.settings.language)).tag(LanguageModelRole.fast)
-        Text(L10n.resource("models.intelligent").string(for: model.settings.language)).tag(LanguageModelRole.intelligent)
-      }
-      .pickerStyle(.segmented)
-      .accessibilityIdentifier("settings.models.role")
-      Text(L10n.resource("models.roles.description").string(for: model.settings.language))
-        .font(.caption).foregroundStyle(.secondary)
       Picker(
         L10n.resource("models.provider").string(for: model.settings.language),
         selection: Binding(
           get: { LanguageModelProvider.infer(from: selectedLanguageModelSettings.baseURL) },
           set: { provider in
-            model.setLanguageModelAPIKey("", for: selectedLanguageModelRole)
-            model.setLanguageModelBaseURL(provider == .compatible ? "" : provider.defaultBaseURL, for: selectedLanguageModelRole)
-            model.setLanguageModelIdentifier(provider.defaultModel, for: selectedLanguageModelRole)
+            model.setLanguageModelAPIKey("")
+            model.setLanguageModelBaseURL(provider == .compatible ? "" : provider.defaultBaseURL)
+            model.setLanguageModelIdentifier(provider.defaultModel)
           }
         )
       ) {
@@ -53,10 +44,10 @@ extension SettingsView {
       }
       .accessibilityIdentifier("settings.models.provider")
       .disabled(
-        model.settings.isLoading || model.settings.credentialAvailability(for: selectedLanguageModelRole) == .inaccessible
-          || model.settings.hasUnavailableScalarSettings(in: selectedLanguageModelRole.settingsDomain))
+        model.settings.isLoading || model.settings.credentialAvailability() == .inaccessible
+          || model.settings.hasUnavailableScalarSettings(in: .openAI))
 
-      switch model.settings.credentialAvailability(for: selectedLanguageModelRole) {
+      switch model.settings.credentialAvailability() {
       case .loading:
         ProgressView(L10n.text(.voiceSetupLoading, language: model.settings.language))
           .controlSize(.small)
@@ -87,7 +78,7 @@ extension SettingsView {
           .foregroundStyle(.red)
           Spacer()
           Button(L10n.text(.retryCredentialLoad, language: model.settings.language)) {
-            model.retryOpenAICredentialLoad(for: selectedLanguageModelRole)
+            model.retryOpenAICredentialLoad()
           }
         }
       }
@@ -96,10 +87,10 @@ extension SettingsView {
       providerInputRow(openAIAPIKeyTitle) {
         SecureField(
           openAIAPIKeyTitle,
-          text: Binding(get: { selectedLanguageModelSettings.apiKey }, set: { model.setLanguageModelAPIKey($0, for: selectedLanguageModelRole) })
+          text: Binding(get: { selectedLanguageModelSettings.apiKey }, set: { model.setLanguageModelAPIKey($0) })
         )
         .textFieldStyle(.roundedBorder)
-        .disabled(model.settings.credentialAvailability(for: selectedLanguageModelRole) == .inaccessible)
+        .disabled(model.settings.credentialAvailability() == .inaccessible)
         .accessibilityIdentifier("settings.openai.api-key")
       }
 
@@ -107,10 +98,10 @@ extension SettingsView {
       providerInputRow(openAIBaseURLTitle) {
         TextField(
           openAIBaseURLTitle,
-          text: Binding(get: { selectedLanguageModelSettings.baseURL }, set: { model.setLanguageModelBaseURL($0, for: selectedLanguageModelRole) })
+          text: Binding(get: { selectedLanguageModelSettings.baseURL }, set: { model.setLanguageModelBaseURL($0) })
         )
         .textFieldStyle(.roundedBorder)
-        .disabled(model.settings.hasUnavailableScalarSettings(in: selectedLanguageModelRole.settingsDomain))
+        .disabled(model.settings.hasUnavailableScalarSettings(in: .openAI))
         .accessibilityIdentifier("settings.openai.base-url")
       }
 
@@ -127,7 +118,7 @@ extension SettingsView {
         }
       }
       .pickerStyle(.menu)
-      .disabled(model.settings.hasUnavailableScalarSettings(in: selectedLanguageModelRole.settingsDomain))
+      .disabled(model.settings.hasUnavailableScalarSettings(in: .openAI))
       .accessibilityIdentifier("settings.openai.model")
 
       Text(L10n.settingsOpenAIModelID(selectedLanguageModelSettings.model, language: model.settings.language))
@@ -143,26 +134,26 @@ extension SettingsView {
         providerInputRow(openAICustomModelTitle) {
           TextField(
             openAICustomModelTitle,
-            text: Binding(get: { selectedLanguageModelSettings.model }, set: { model.setLanguageModelIdentifier($0, for: selectedLanguageModelRole) })
+            text: Binding(get: { selectedLanguageModelSettings.model }, set: { model.setLanguageModelIdentifier($0) })
           )
           .textFieldStyle(.roundedBorder)
           .accessibilityIdentifier("settings.openai.custom-model")
         }
       }
 
-      if case .reasoningRequired = languageModelConfigurationError {
-        Text(L10n.resource("models.reasoning.required").string(for: model.settings.language))
+      if LanguageModelConfiguration(migrating: selectedLanguageModelSettings).supportedReasoningLevels.isEmpty {
+        Text(L10n.resource("models.capabilities.unverified").string(for: model.settings.language))
           .font(.caption).foregroundStyle(.orange)
       }
 
       HStack(spacing: RillSpacing.dense) {
         Button(L10n.string(.settingsOpenAIVerify, language: model.settings.language)) {
-          model.settings.verifyOpenAIConfiguration(for: selectedLanguageModelRole)
+          model.settings.verifyOpenAIConfiguration()
         }
-        .disabled(!model.settings.canVerifyLanguageModel(selectedLanguageModelRole))
+        .disabled(!model.settings.canVerifyLanguageModel())
         .accessibilityIdentifier("settings.openai.verify")
 
-        switch model.settings.verificationState(for: selectedLanguageModelRole) {
+        switch model.settings.verificationState() {
         case .idle:
           EmptyView()
         case .verifying:
@@ -195,14 +186,7 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
-    .disabled(model.settings.isLoading || model.settings.verificationState(for: selectedLanguageModelRole) == .verifying)
-  }
-
-  private var languageModelConfigurationError: LanguageModelConfigurationError? {
-    do {
-      try LanguageModelConfiguration(migrating: selectedLanguageModelSettings).validate(for: selectedLanguageModelRole)
-      return nil
-    } catch { return error as? LanguageModelConfigurationError }
+    .disabled(model.settings.isLoading || model.settings.verificationState() == .verifying)
   }
 
   private func jevPolishingSettingsSection(_ settings: JevAPISettingsModel) -> some View {

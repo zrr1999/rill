@@ -777,10 +777,12 @@ final class RunHistoryBrowsingUITests: XCTestCase {
     WorkflowDefinition(
       name: name,
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

@@ -119,7 +119,9 @@ final class VoiceSetupReadinessTests: XCTestCase {
       globalInputCapability: .permissionRequired
     )
     harness.model.applyPreferredSpeechEngine(.local)
-    harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
+    for index in harness.model.workflowLibrary.workflows.indices {
+      harness.model.workflowLibrary.workflows[index].plan.output.actions = []
+    }
     harness.model.voice.localSpeechPreparationState = .ready
     harness.model.voice.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
@@ -132,11 +134,11 @@ final class VoiceSetupReadinessTests: XCTestCase {
 
   func testDirectInsertionRequiresBothGlobalInputAndAccessibility() {
     let harness = makeHarness(
+      workflow: makeBuiltinPushToTalkWorkflow(),
       permissionSnapshot: PermissionSnapshot(accessibility: .denied, microphone: .granted),
       globalInputCapability: .available
     )
     harness.model.applyPreferredSpeechEngine(.local)
-    harness.model.applyBuiltinPushToTalkOutputMode(.pasteIntoApp)
     harness.model.voice.localSpeechPreparationState = .ready
     harness.model.voice.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
@@ -154,21 +156,26 @@ final class VoiceSetupReadinessTests: XCTestCase {
       permissionSnapshot: PermissionSnapshot(accessibility: .denied, microphone: .granted),
       globalInputCapability: .available
     )
-    harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
+    for index in harness.model.workflowLibrary.workflows.indices {
+      harness.model.workflowLibrary.workflows[index].plan.output.actions = []
+    }
     harness.model.workflowLibrary.workflows.append(
       WorkflowDefinition(
         name: "Cursor preview",
         trigger: .manual,
-        pipeline: PipelineDeclaration(
-          recognizerID: "local-speech",
-          outputActions: [OutputActionReference(id: "record.store")]
-        ),
+        plan: {
+          var plan = WorkflowPlan(
+            setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+            process: WorkflowProcessPhase(steps: [
+              WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+              WorkflowProcessStep(kind: .applyVocabulary),
+            ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: .init(strategy: .immediate)))
+          plan.setup.speechRoute?.livePreviewEnabled = "true" != "false"
+          plan.setup.speechRoute?.livePreviewPlacement = LivePreviewPlacement(rawValue: "cursor") ?? .overlay
+          return plan
+        }(),
         ui: WorkflowUIConfig(symbolName: "cursorarrow.rays", accentColorName: "blue"),
-        metadata: [
-          WorkflowMetadataKey.livePreviewEnabled: "true",
-          WorkflowMetadataKey.livePreviewPlacement: "cursor",
-        ]
-      )
+        properties: .init())
     )
 
     XCTAssertTrue(harness.model.voiceSetupReadiness.accessibilityRequired)

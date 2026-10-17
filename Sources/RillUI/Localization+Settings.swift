@@ -198,7 +198,7 @@ extension L10n {
   static func llmModelLabel(_ selection: LLMModelSelection, language: AppLanguage) -> String {
     switch selection {
     case .deepSeek:
-      "DeepSeek V4.1 Flash"
+      "DeepSeek Flash"
     case .luna:
       settingsText(.settingsOpenAIModelLuna, language: language)
     case .terra:

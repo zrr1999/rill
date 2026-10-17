@@ -168,10 +168,12 @@ private func makeRegressionWorkflow(
 ) -> WorkflowDefinition {
   WorkflowDefinition(
     name: name,
-    pipeline: PipelineDeclaration(
-      recognizerID: recognizerID,
-      outputActions: [OutputActionReference(id: actionID)]
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizerID)),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: actionID)], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

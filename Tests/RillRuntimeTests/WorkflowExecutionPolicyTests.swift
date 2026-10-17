@@ -59,8 +59,8 @@ private struct WorkflowPolicyAction: OutputAction {
 
 final class WorkflowExecutionPolicyTests: XCTestCase {
   func testPlannedPresetFailsClosedBeforeRuntimeComponents() {
-    var workflow = makeWorkflow(eventType: "manual")
-    workflow.metadata[WorkflowMetadataKey.availability] = WorkflowAvailability.planned.rawValue
+    var workflow = makeWorkflow()
+    workflow.properties.availability = .planned
 
     XCTAssertEqual(
       WorkflowExecutionPolicy.issue(for: workflow),
@@ -73,31 +73,11 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
     )
   }
 
-  func testPolicyClassifiesEveryLegacyClipboardEventType() {
-    for eventType in ["groupItemCreated", "groupItemEdited", "groupItemRemoved"] {
-      let workflow = makeWorkflow(eventType: eventType)
-
-      XCTAssertEqual(
-        WorkflowExecutionPolicy.issue(for: workflow),
-        .legacyClipboardAutomationUnsupported
-      )
-      XCTAssertFalse(WorkflowExecutionPolicy.supports(workflow))
-    }
-
-    XCTAssertTrue(WorkflowExecutionPolicy.supports(makeWorkflow(eventType: "manual")))
-    XCTAssertEqual(
-      WorkflowExecutionPolicy.issue(for: makeWorkflow(eventType: "groupItemCopied")),
-      .invalidEventType
-    )
-    XCTAssertFalse(
-      WorkflowExecutionPolicy.supports(makeWorkflow(eventType: "groupItemCopied"))
-    )
-  }
-
   func testPolicyKeepsInteractiveAndGroupExecutionSurfacesDisjoint() {
-    let interactive = makeWorkflow(eventType: "manual")
+    let interactive = makeWorkflow()
     let group = makeStrictGroupWorkflow()
-    let malformedGroup = makeWorkflow(eventType: "groupItemCreated")
+    var malformedGroup = makeWorkflow()
+    malformedGroup.properties.availability = .planned
 
     XCTAssertEqual(
       WorkflowExecutionPolicy.decision(for: interactive, on: .interactiveCapture),
@@ -132,53 +112,6 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
     )
   }
 
-  func testSessionCoordinatorBlocksUnsupportedEventsBeforeRunningComponents() async {
-    let cases = [
-      (
-        eventType: "groupItemCreated",
-        failureMessage: "Legacy clipboard automation must fail before execution."
-      ),
-      (
-        eventType: "groupItemCopied",
-        failureMessage: "An unknown event type must fail before execution."
-      ),
-    ]
-
-    for testCase in cases {
-      let probe = WorkflowPolicyProbe()
-      let eventBus = EventBus()
-      let coordinator = makeTestSessionCoordinator(
-
-        recognizerRegistry: SpeechRecognizerRegistry(
-          recognizers: [WorkflowPolicyRecognizer(probe: probe)]
-        ),
-        transformerRegistry: TextTransformerRegistry(transformers: []),
-        actionRegistry: OutputActionRegistry(
-          actions: [WorkflowPolicyAction(probe: probe)]
-        ),
-        candidateResolver: CandidateResolver(eventBus: eventBus),
-        eventBus: eventBus
-      )
-
-      let result = await coordinator.runReportingOutcome(
-        workflow: makeWorkflow(eventType: testCase.eventType)
-      )
-      let counts = await probe.snapshot()
-
-      guard case .failed(let failure) = result else {
-        XCTFail(testCase.failureMessage)
-        continue
-      }
-      XCTAssertEqual(failure.stage, .preparing, testCase.failureMessage)
-      XCTAssertEqual(failure.code, .configuration, testCase.failureMessage)
-      XCTAssertEqual(counts.context, 0, testCase.failureMessage)
-      XCTAssertEqual(counts.recognition, 0, testCase.failureMessage)
-      XCTAssertEqual(counts.action, 0, testCase.failureMessage)
-      let state = await coordinator.currentState()
-      XCTAssertEqual(state, .idle, testCase.failureMessage)
-    }
-  }
-
   func testSessionCoordinatorRequiresExplicitAuthorizedContextBeforeComponents() async {
     let probe = WorkflowPolicyProbe()
     let optionsProbe = WorkflowPolicyOptionsProbe()
@@ -198,7 +131,7 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
     )
 
     let result = await coordinator.runReportingOutcome(
-      workflow: makeWorkflow(eventType: "manual")
+      workflow: makeWorkflow()
     )
     let counts = await probe.snapshot()
     let optionsCount = await optionsProbe.snapshot()
@@ -217,26 +150,25 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
     XCTAssertEqual(state, .idle)
   }
 
-  private func makeWorkflow(eventType: String) -> WorkflowDefinition {
+  private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Legacy Clipboard Automation",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "policy.recognizer",
-        outputActions: [OutputActionReference(id: "policy.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "policy.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "policy.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-      metadata: ["eventType": eventType]
-    )
+      properties: .init())
   }
 
   private func makeStrictGroupWorkflow() -> WorkflowDefinition {
-    var workflow = makeWorkflow(eventType: "groupItemCreated")
-    workflow.metadata[WorkflowMetadataKey.legacySourceCollectionID] =
-      RecordCollection.voiceInputID.rawValue.uuidString
-    workflow.metadata[WorkflowMetadataKey.legacyExcludePolishTag] = "true"
-    workflow.metadata[WorkflowMetadataKey.legacyGroupActionKind] =
-      RecordCollectionActionKind.editRecord.rawValue
+    var workflow = makeWorkflow()
+    workflow.properties.automation = .init(
+      rule: .init(eventKind: .recordCreated, sourceCollectionID: RecordCollection.voiceInputID, conditions: [.excludingTag(.polishGenerated)]),
+      actionKind: .editRecord)
     return workflow
   }
 }

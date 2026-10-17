@@ -240,10 +240,12 @@ final class AppModelLiveAudioStopTests: XCTestCase {
   private func makeCapturedAudioWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Local Dictation",
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
   }

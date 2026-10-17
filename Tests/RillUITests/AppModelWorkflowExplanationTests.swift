@@ -105,7 +105,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
       }
     )
     await waitForListenerSetup(harness)
-    harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
+    harness.model.rebuildWorkflowLibrary()
 
     harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
     await harness.model.workflowLibrary.waitForWorkflowExplanationTasks()
@@ -113,8 +113,8 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
     let calls = await probe.snapshot()
     let captured = try XCTUnwrap(calls.first)
     XCTAssertEqual(calls.count, 1)
-    XCTAssertEqual(captured.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
-    XCTAssertEqual(captured.pipeline.outputActions.map(\.id), ["focused-application.insert"])
+    XCTAssertEqual(captured.plan.setup.speechRoute?.recognizerID, AppModel.localSpeechRecognizerID)
+    XCTAssertEqual(captured.plan.output.actions.map(\.id), ["focused-application.insert"])
     guard case .loaded(let receipt) = harness.model.workflowLibrary.workflowExplanationState else {
       return XCTFail("Expected a loaded workflow explanation")
     }
@@ -176,7 +176,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
     XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
   }
 
-  func testRoutingSettingChangeCancelsPendingPreview() async {
+  func testDefinitionReloadCancelsPendingPreview() async {
     let workflow = makeExplanationWorkflow(name: "Pending")
     let gate = WorkflowExplanationProviderGate(cooperativeWorkflowIDs: [workflow.id])
     let harness = makeHarness(
@@ -184,11 +184,10 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
       explainResolvedWorkflowAction: { try await gate.explain($0) }
     )
     await waitForListenerSetup(harness)
-    harness.model.applyBuiltinPushToTalkOutputMode(.pasteIntoApp)
 
     harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
     await gate.waitUntilRequested(workflow.id)
-    harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
+    harness.model.rebuildWorkflowLibrary()
     await gate.waitUntilCancelled(workflow.id)
     await harness.model.workflowLibrary.waitForWorkflowExplanationTasks()
 
@@ -197,7 +196,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
 
   func testLegacyWorkflowIsBlockedWithoutCallingProvider() async {
     var legacy = makeExplanationWorkflow(name: "Legacy")
-    legacy.metadata["eventType"] = "groupItemCreated"
+    legacy.properties.automation = .init(rule: .init(eventKind: .recordCreated), actionKind: .editRecord)
     let probe = WorkflowExplanationProviderProbe()
     let harness = makeHarness(
       workflows: [legacy],
@@ -451,10 +450,12 @@ private func makeExplanationWorkflow(name: String) -> WorkflowDefinition {
   WorkflowDefinition(
     name: name,
     trigger: .manual,
-    pipeline: PipelineDeclaration(
-      recognizerID: "ui.test.recognizer",
-      outputActions: [OutputActionReference(id: "ui.test.action")]
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

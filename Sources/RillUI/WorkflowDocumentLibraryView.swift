@@ -97,7 +97,7 @@ struct WorkflowDocumentLibraryView: View {
           Image(systemName: RillSystemSymbol.resolvedName(workflow.ui.symbolName)).frame(width: 24)
           VStack(alignment: .leading, spacing: RillSpacing.compact) {
             Text(model.localizedWorkflowName(for: workflow)).font(.headline)
-            Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.settings.language))
+            Text(L10n.workflowTrigger(workflow.trigger, gesture: workflow.properties.gesture, language: model.settings.language))
               .font(.caption).foregroundStyle(.secondary)
           }
           Spacer(minLength: 0)
@@ -136,13 +136,11 @@ struct WorkflowDocumentLibraryView: View {
             Label(readiness, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue).foregroundStyle(.orange)
           }
           LabeledContent(L10n.workflowExplanationCopy(.trigger, language: model.settings.language)) {
-            Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.settings.language))
+            Text(L10n.workflowTrigger(workflow.trigger, gesture: workflow.properties.gesture, language: model.settings.language))
           }
           VStack(alignment: .leading, spacing: RillSpacing.row) {
             Text(L10n.workflowExplanationCopy(.outputs, language: model.settings.language)).font(.headline)
-            ForEach(Array(workflow.plan.output.actions.enumerated()), id: \.offset) { index, action in
-              Text("\(index + 1). " + L10n.actionName(action.id, language: model.settings.language))
-            }
+            WorkflowOutputChoices(model: model, workflow: workflow)
           }
           Toggle(
             L10n.workflowDocument(.labelEnabled, language: model.settings.language),
@@ -161,6 +159,10 @@ struct WorkflowDocumentLibraryView: View {
               }
             }.frame(maxWidth: .infinity, alignment: .leading)
           }.id(workflow.id)
+          if workflow.inputKind == .record {
+            Text(L10n.resource("workflow.record-input.required").string(for: model.settings.language))
+              .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+          }
           Text(L10n.workflowDocument(.labelEditExternally, language: model.settings.language)).font(.caption).foregroundStyle(.secondary)
         }.padding(RillSpacing.page).frame(maxWidth: .infinity, alignment: .topLeading)
       }
@@ -181,11 +183,14 @@ struct WorkflowDocumentLibraryView: View {
       Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.settings.language)) {
         if workflow.inputKind == .audio {
           model.runWorkflow(workflow)
-        } else if let text = NSPasteboard.general.string(forType: .string) {
+        } else if workflow.inputKind == .text, let text = NSPasteboard.general.string(forType: .string) {
           model.runWorkflowText(text, workflow: workflow)
         }
-      }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
-        .buttonStyle(.glassProminent)
+      }.disabled(
+        workflow.inputKind == .record || !model.isWorkflowEnabled(workflow) || model.voice.isRunning
+          || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id)
+      )
+      .buttonStyle(.glassProminent)
       Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
         .buttonStyle(.glass)
         .accessibilityIdentifier("workflow.document.open.\(workflow.id)")

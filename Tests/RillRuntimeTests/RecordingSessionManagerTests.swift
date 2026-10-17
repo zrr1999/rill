@@ -713,7 +713,12 @@ private func makeRecordingFocusTargetFixture(
   let workflow = WorkflowDefinition(
     name: "Focus-bound recording",
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(recognizerID: "recording.recognizer", outputActions: []),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
   )
   let audio = try CapturedAudio(
@@ -771,7 +776,12 @@ private func makeStreamHotkeyFinishingFixture(
   let workflow = WorkflowDefinition(
     name: "Stream Hotkey Finishing",
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(recognizerID: "recording.recognizer", outputActions: []),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
   )
   let audio = try CapturedAudio(
@@ -828,7 +838,12 @@ private func makeStreamHotkeyPreparationFixture(
   let workflow = WorkflowDefinition(
     name: "Stream Hotkey Preparation",
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(recognizerID: "recording.recognizer", outputActions: []),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
   )
   let audio = try CapturedAudio(
@@ -883,10 +898,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Warm Fn Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
     let audioCaptureService = MockAudioCaptureService(
@@ -991,10 +1008,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Shutdown Recording",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
     let workflowProvider = RecordingWorkflowProviderGate(workflow: workflow)
@@ -1463,10 +1482,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Interrupted Preparing Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
     let audio = try CapturedAudio(
@@ -1754,7 +1775,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Revoked Ready Capture",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "recording.recognizer", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
     )
     let coordinator = makeTestSessionCoordinator(
@@ -1914,10 +1940,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Queue Transfer Recording",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "blue")
     )
     let audio = try CapturedAudio(
@@ -2036,13 +2064,14 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Legacy Clipboard Automation",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "remote.speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-      metadata: ["eventType": "groupItemCreated"]
-    )
+      properties: .init(availability: .planned))
     let audio = try CapturedAudio(
       durationSeconds: 1,
       format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
@@ -2108,7 +2137,7 @@ final class RecordingSessionManagerTests: XCTestCase {
       XCTAssertEqual(
         message,
         SessionCoordinator.SessionError.unsupportedWorkflow(
-          .legacyClipboardAutomationUnsupported
+          .plannedCapabilityUnavailable
         ).localizedDescription
       )
     } else {
@@ -2121,7 +2150,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Unavailable Cloud Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "remote.speech", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
     )
     let audio = try CapturedAudio(
@@ -2337,7 +2371,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Blocked Cloud Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "remote.speech", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "lock", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -2427,10 +2466,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Queued Push to Talk Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.blocking-recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.blocking-recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -2504,10 +2545,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     var workflow = WorkflowDefinition(
       name: "Push to Talk Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
@@ -2597,10 +2640,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Manual Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -2642,19 +2687,23 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflowA = WorkflowDefinition(
       name: "Hotkey A",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let workflowB = WorkflowDefinition(
       name: "Hotkey B",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange")
     )
     let audio = try CapturedAudio(
@@ -2718,10 +2767,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Legacy Push to Talk Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -2789,10 +2840,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Preparing Push to Talk Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -2871,10 +2924,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Preparing Hotkey Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -2949,10 +3004,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Deferred Release Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -3023,7 +3080,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Interrupted Preparing Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "recording.recognizer", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -3109,10 +3171,12 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Fn Jitter Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "recording.recognizer",
-        outputActions: [OutputActionReference(id: "recording.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "recording.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recording.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -3199,13 +3263,16 @@ final class RecordingSessionManagerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Revocable Cloud Text Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [
-          PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
-        ],
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]
+            + ([
+              PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))
+            ]).map(WorkflowProcessStep.init)), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
     )
     let audio = try CapturedAudio(

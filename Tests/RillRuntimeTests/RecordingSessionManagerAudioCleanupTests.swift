@@ -158,7 +158,12 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Recording Cleanup",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "unused", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "unused")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let eventBus = EventBus()
@@ -224,7 +229,12 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Transferred Recording Cleanup",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "unused", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "unused")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let eventBus = EventBus()

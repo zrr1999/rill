@@ -50,7 +50,7 @@
 
 - [工作流 TOML 参考](workflow-toml.md)
 - [可下载的条件工作流](examples/conditional-workflow.toml)
-- [JSON Schema](schemas/workflow-v3.schema.json)
+- [JSON Schema](schemas/workflow-v1.schema.json)
 - [完整隐私与数据流说明](../PRIVACY.md)
 - [第三方依赖许可](../THIRD_PARTY_NOTICES.md)与[本地模型许可](../LOCAL_MODEL_NOTICES.md)
 

@@ -749,13 +749,14 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Legacy Clipboard Automation",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "remote.recovery-boundary",
-        outputActions: [OutputActionReference(id: "recovery-controller.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.recovery-boundary")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recovery-controller.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-      metadata: ["eventType": "groupItemCreated"]
-    )
+      properties: .init(availability: .planned))
     let receipt = makeReceipt(workflowID: workflow.id)
     let store = RecoveryControllerStoreProbe(receipt: receipt)
     let eventBus = EventBus()
@@ -796,7 +797,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
       _ = try await controller.retry(id: receipt.id, workflow: workflow)
       XCTFail("Expected legacy clipboard automation to be rejected.")
     } catch let error as SessionCoordinator.SessionError {
-      guard case .unsupportedWorkflow(.legacyClipboardAutomationUnsupported) = error else {
+      guard case .unsupportedWorkflow(.plannedCapabilityUnavailable) = error else {
         return XCTFail("Unexpected session error: \(error)")
       }
     } catch {
@@ -1163,10 +1164,12 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Cloud recovery final authorization",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "remote.recovery-boundary",
-        outputActions: [OutputActionReference(id: "recovery-controller.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "remote.recovery-boundary")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recovery-controller.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let receipt = makeReceipt(workflowID: workflow.id)
@@ -1710,10 +1713,12 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
   private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Recovery Workflow",
-      pipeline: PipelineDeclaration(
-        recognizerID: "context.selection",
-        outputActions: [OutputActionReference(id: "recovery-controller.action")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.selection")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "recovery-controller.action")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }
