@@ -10,7 +10,6 @@ final class ModelServiceNavigationTests: NativeAccessibilityTestCase {
   func testDesktopServiceDeepLinksExposeOnlyTheSelectedPage() async throws {
     _ = NSApplication.shared
     if !NSApp.isRunning {
-      NSApp.setActivationPolicy(.accessory)
       NSApp.finishLaunching()
     }
     guard try await requireInteractiveDesktop() else { return }

@@ -58,3 +58,10 @@
 - 新实拍位于 `.github/pr-screenshots/workflow-v1/`：`settings-asr-zh.png`、`settings-decision-zh.png`、`settings-llm-zh.png`、`settings-tts-zh.png`、`settings-tts-en.png`、`settings-output-choices-zh.png` 和 `workflow-detail-zh.png`。七张均包含完整窗口、侧栏、标题和用户当前可见内容，未裁切、未拼接。另有中英文、明暗与紧凑的受控渲染证据；其性质与真实 App 实拍分开记录。
 - 测试副本和 worker 已退出，原安装版已重新启动并恢复到原模型设置位置。没有安装新产物、变更凭据或系统授权，也没有执行云端验证请求。物理 Fn、IME、跨应用投递、实际 VoiceOver 和可听 TTS 的未验证边界保持不变。
 - 当前代码的完整 `RILL_RECORD_STRESS=1 just ci` 及托管门禁按后续提交的实际结果记录于 PR；此前 head 的绿色检查不作为本次修正的验收。
+
+## 桌面测试宿主隔离修复
+
+- `e617323` 的完整门禁通过仓库、领域、原生和压力阶段，桌面组 8 个通过，输出开关用例的普通面板先决检查失败；该轮不记为完整通过。
+- 桌面仍可由电脑控制工具正常读取。按“词库窗口 → 输出开关”稳定复现，诊断发现测试主动切换 XCTest 宿主的 activation policy 后，前一窗口关闭使宿主从 active 变为 inactive；后一普通面板可见且可成为 key，却未取得焦点。
+- 删除测试对宿主 activation policy 的修改，保留外部 AX 所需的 `finishLaunching()`，并让输出开关用例独立初始化 AppKit。四类服务、词库窗口和输出开关三个用例按原顺序通过。临时诊断输出已移除；未修改先决探针、超时或任何焦点/AX 断言。
+- `just test-desktop` 完整 9 个用例通过，包含四类服务隔离、词库确认、输出开关与真实面板焦点。完整预检继续在修复后的提交验证，以 PR 最终 head 的实际结果为准。此修复仅影响测试宿主，服务页面与实拍中的产品代码不变。

@@ -10,6 +10,10 @@ import XCTest
 @MainActor
 final class WorkflowOutputAccessibilityTests: NativeAccessibilityTestCase {
   func testDesktopOutputSwitchesExposeIdentityValueAndAutomaticState() async throws {
+    _ = NSApplication.shared
+    if !NSApp.isRunning {
+      NSApp.finishLaunching()
+    }
     guard try await requireInteractiveDesktop() else { return }
     let workflows = try BuiltinWorkflowCatalog().manifest().workflows
     let workflow = try XCTUnwrap(workflows.first { $0.titleKey == .speechRecognition })

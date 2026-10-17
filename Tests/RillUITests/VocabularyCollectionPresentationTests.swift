@@ -96,7 +96,6 @@ final class VocabularyCollectionPresentationTests: NativeAccessibilityTestCase {
   private func makeWindow(_ model: AppModel) -> NSWindow {
     _ = NSApplication.shared
     if !NSApp.isRunning {
-      NSApp.setActivationPolicy(.accessory)
       NSApp.finishLaunching()
     }
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 520), styleMask: [.titled], backing: .buffered, defer: false)
