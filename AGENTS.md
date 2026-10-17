@@ -9,6 +9,11 @@ indexed by `.agents/notes/README.md`; read them on demand and never treat them a
 current truth. Formal docs (`docs/`, README, CONTRIBUTING, site pages) must not
 reference notes; only AGENTS.md, skills, and the notes index may point to them.
 
+## Delivery and reporting
+
+- Wait until every check for the current head commit has finished before
+  reporting CI as passing; never reuse a green result from an older commit.
+
 ## Repository skills
 
 Load the skill that matches the task. Combine skills only when the work crosses
