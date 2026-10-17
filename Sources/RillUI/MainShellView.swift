@@ -175,6 +175,7 @@ public struct MainShellView: View {
   @Bindable private var model: AppModel
   @AccessibilityFocusState private var accessibilityFocusedSidebarDestination: SidebarDestination?
   @State private var search = GlobalSearchModel()
+  @State private var recordCorrection: RecordCorrectionRequest?
   @State private var isGlobalSearchPresented = false
   @State private var globalHistorySearchRetryGeneration = 0
   @State private var globalSearchFocusRequest = 0
@@ -348,6 +349,9 @@ public struct MainShellView: View {
       .padding(20).frame(width: 540)
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityIdentifier("voice-setup.initial")
+    }
+    .sheet(item: $recordCorrection) { request in
+      VocabularyCorrectionSheet(model: model, source: request.source, recordID: request.id)
     }
     .onChange(of: model.isShowingSettings) { _, isShowing in
       if isShowing {
@@ -535,7 +539,9 @@ extension MainShellView {
       case .records:
         RecordWorkspaceView(
           workspace: model.recordWorkspace, language: model.settings.language,
-          copySelection: model.copyRecord)
+          copySelection: model.copyRecord,
+          correctSelection: model.settings.privacyPolicySettings.historyPreviewMode == .disabled
+            ? nil : { recordCorrection = $0 })
       case .diagnostics:
         DiagnosticsView(model: model)
       }

@@ -4,6 +4,31 @@ import XCTest
 
 @MainActor
 final class VocabularyCorrectionSaveTests: XCTestCase {
+  func testRecordCorrectionCanBeRememberedAndUsedWithoutAnOriginalCollectionContext() async throws {
+    let settings = UITestSettingsStore()
+    let harness = makeHarness(settingsStore: settings, settingsWriteDebounceDuration: .zero)
+    await harness.model.waitForInitialVoiceConfiguration()
+    let record = Record(
+      payload: .text("open aaa now"),
+      provenance: .init(source: .init(kind: .voiceInput), sourceBundleIdentifier: "com.example.editor"))
+    let request = try XCTUnwrap(RecordCorrectionRequest(record: record))
+    var draft = VocabularyCorrectionDraft(source: request.source)
+    draft.updateCorrectedText("open BBB now")
+    draft.selectOption(id: .mapping)
+    for field in draft.unknownScopeFields { draft.setAnyScopeConfirmed(true, for: field) }
+    let rule = try XCTUnwrap(draft.proposedRule)
+    XCTAssertEqual(harness.model.vocabulary.saveVocabularyCorrectionRule(rule), .created(ruleID: rule.id))
+    await harness.model.flushPendingPersistenceWrites()
+    let reloaded = makeHarness(settingsStore: settings, settingsWriteDebounceDuration: .zero)
+    await reloaded.model.waitForInitialVoiceConfiguration()
+    let resolved = VocabularyCollectionResolver.resolve(
+      bindings: reloaded.model.vocabulary.vocabularyCollectionBindings,
+      collections: reloaded.model.vocabulary.vocabularyCollections,
+      context: .init(bundleIdentifier: "com.example.editor", locale: "zh-CN"))
+    XCTAssertEqual(resolved.replacementRules.map(\.id), [rule.id])
+    XCTAssertEqual(resolved.replacementRules.first?.replacement, "BBB")
+  }
+
   func testRejectedAndUnchangedCorrectionsDoNotWriteSettings() async throws {
     let store = UITestSettingsStore()
     let harness = makeHarness(settingsStore: store, settingsWriteDebounceDuration: .zero)

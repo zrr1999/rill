@@ -18,17 +18,32 @@ public final class RecordBufferModel {
   public var shutdownAction: () async -> Void = {}
   private let store: RecordStore
   private var observation: Task<Void, Never>?
+  private var maintenance: Task<Void, Never>?
+  private let maintenanceSleep: @Sendable (Duration) async throws -> Void
   private var mutation: Task<Void, Never>?
   private var isClosed = false
 
-  public init(store: RecordStore) {
+  public init(
+    store: RecordStore,
+    maintenanceSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+  ) {
     self.store = store
+    self.maintenanceSleep = maintenanceSleep
     editor = RecordBufferDraftModel(store: store)
   }
-  isolated deinit { observation?.cancel() }
+  isolated deinit {
+    observation?.cancel()
+    maintenance?.cancel()
+  }
 
   public func start() {
     guard observation == nil, !isClosed else { return }
+    maintenance = Task { [weak self, store, maintenanceSleep] in
+      while !Task.isCancelled {
+        do { try await store.expireBufferEntries() } catch { self?.message = error.localizedDescription }
+        do { try await maintenanceSleep(.seconds(60)) } catch { return }
+      }
+    }
     observation = Task { [weak self, store] in
       do {
         for await value in try await store.bufferStream() {
@@ -62,6 +77,8 @@ public final class RecordBufferModel {
   public func shutdown() async {
     isClosed = true
     observation?.cancel()
+    maintenance?.cancel()
+    await maintenance?.value
     await shutdownAction()
     await editor.shutdown()
     await mutation?.value
