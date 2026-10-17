@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 public enum PrivacyPolicySettingsSourceError: Error, LocalizedError, Sendable, Equatable {
   case notReady
@@ -19,24 +20,32 @@ public enum PrivacyPolicySettingsSourceError: Error, LocalizedError, Sendable, E
 /// Reads and updates are synchronous so a validated UI change is visible to the
 /// next runtime decision before persistence begins. An uninitialized or failed
 /// source throws, allowing callers to fail closed.
-public final class PrivacyPolicySettingsSource: @unchecked Sendable {
+public final class PrivacyPolicySettingsSource: Sendable {
   public struct Snapshot: Sendable, Equatable {
     public let settings: PrivacyPolicySettings
     public let revision: UInt64
   }
 
-  private enum State {
+  private enum Value: Sendable {
     case loading
     case available(PrivacyPolicySettings)
     case unavailable(String)
   }
 
-  private let lock = NSLock()
-  private var state: State
-  private var revision: UInt64 = 0
+  private struct State: Sendable {
+    var value: Value
+    var revision: UInt64
+  }
+
+  private let state: Mutex<State>
 
   public init(initialSettings: PrivacyPolicySettings? = nil) {
-    state = initialSettings.map(State.available) ?? .loading
+    state = Mutex(
+      State(
+        value: initialSettings.map(Value.available) ?? .loading,
+        revision: 0
+      )
+    )
   }
 
   public func currentSettings() throws -> PrivacyPolicySettings {
@@ -44,38 +53,36 @@ public final class PrivacyPolicySettingsSource: @unchecked Sendable {
   }
 
   public func currentSnapshot() throws -> Snapshot {
-    lock.lock()
-    defer { lock.unlock() }
-    switch state {
-    case .loading:
-      throw PrivacyPolicySettingsSourceError.notReady
-    case .available(let settings):
-      return Snapshot(settings: settings, revision: revision)
-    case .unavailable(let reason):
-      throw PrivacyPolicySettingsSourceError.unavailable(reason)
+    try state.withLock { state in
+      switch state.value {
+      case .loading:
+        throw PrivacyPolicySettingsSourceError.notReady
+      case .available(let settings):
+        return Snapshot(settings: settings, revision: state.revision)
+      case .unavailable(let reason):
+        throw PrivacyPolicySettingsSourceError.unavailable(reason)
+      }
     }
   }
 
   public var hasAvailableSettings: Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    if case .available = state {
-      return true
+    state.withLock { state in
+      if case .available = state.value { return true }
+      return false
     }
-    return false
   }
 
   public func update(_ settings: PrivacyPolicySettings) {
-    lock.lock()
-    state = .available(settings)
-    revision &+= 1
-    lock.unlock()
+    state.withLock { state in
+      state.value = .available(settings)
+      state.revision &+= 1
+    }
   }
 
   public func markUnavailable(reason: String) {
-    lock.lock()
-    state = .unavailable(reason)
-    revision &+= 1
-    lock.unlock()
+    state.withLock { state in
+      state.value = .unavailable(reason)
+      state.revision &+= 1
+    }
   }
 }

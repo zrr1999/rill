@@ -392,11 +392,10 @@ enum GlobalSearchIndex {
   }
 
   private static func formattedDate(_ date: Date, language: AppLanguage) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: language == .english ? "en_US" : "zh_CN")
-    formatter.dateStyle = .medium
-    formatter.timeStyle = .short
-    return formatter.string(from: date)
+    date.formatted(
+      Date.FormatStyle(date: .abbreviated, time: .shortened)
+        .locale(Locale(identifier: language == .english ? "en_US" : "zh_CN"))
+    )
   }
 
 }

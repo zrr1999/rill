@@ -2,6 +2,26 @@ import Foundation
 import GRDB
 import RillCore
 
+private struct DiagnosticEventRecord: Decodable, FetchableRecord, Sendable {
+  var timestamp: Double
+  var runID: String?
+  var subsystem: String
+  var level: String
+  var event: String
+  var message: String
+  var metadataJSON: String
+
+  enum CodingKeys: String, CodingKey {
+    case timestamp
+    case runID = "run_id"
+    case subsystem
+    case level
+    case event
+    case message
+    case metadataJSON = "metadata_json"
+  }
+}
+
 extension SQLitePersistenceSession {
   func save(_ event: DiagnosticEvent) throws {
     let generation = try currentRunHistoryWriteGeneration()
@@ -155,32 +175,28 @@ extension SQLitePersistenceSession {
   }
 
   private func decodeDiagnosticEvent(from row: Row) throws -> DiagnosticEvent {
+    let record = try DiagnosticEventRecord(row: row)
     guard
-      let subsystemText = try row.decode(String?.self, atIndex: 2),
-      let subsystem = SubsystemTag(rawValue: subsystemText),
-      let levelText = try row.decode(String?.self, atIndex: 3),
-      let level = DiagnosticLevel(rawValue: levelText),
-      let event = try row.decode(String?.self, atIndex: 4),
-      let message = try row.decode(String?.self, atIndex: 5),
-      let metadataText = try row.decode(String?.self, atIndex: 6)
+      let subsystem = SubsystemTag(rawValue: record.subsystem),
+      let level = DiagnosticLevel(rawValue: record.level)
     else {
       throw SQLitePersistenceError.decodingRow("Diagnostic row was missing required values.")
     }
 
     let metadata: [String: String]
     do {
-      metadata = try decoder.decode([String: String].self, from: Data(metadataText.utf8))
+      metadata = try decoder.decode([String: String].self, from: Data(record.metadataJSON.utf8))
     } catch {
       throw SQLitePersistenceError.decodingRow(error.localizedDescription)
     }
 
     return DiagnosticEvent(
-      timestamp: Date(timeIntervalSince1970: try row.decode(Double.self, atIndex: 0)),
-      runID: try row.decode(String?.self, atIndex: 1).flatMap(UUID.init(uuidString:)),
+      timestamp: Date(timeIntervalSince1970: record.timestamp),
+      runID: record.runID.flatMap(UUID.init(uuidString:)),
       subsystem: subsystem,
       level: level,
-      untrustedEvent: event,
-      message: message,
+      untrustedEvent: record.event,
+      message: record.message,
       metadata: metadata
     )
   }
