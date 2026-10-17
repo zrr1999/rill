@@ -23,7 +23,7 @@ public struct WorkflowFileRecord: Sendable, Equatable {
   }
 }
 
-/// A bounded, display-safe parse or validation failure for one TOML file.
+/// A bounded, display-safe file or configuration-directory diagnostic.
 public struct WorkflowFileIssue: Sendable, Equatable {
   public enum Reason: Sendable, Equatable {
     case directoryUnreadable
@@ -31,6 +31,12 @@ public struct WorkflowFileIssue: Sendable, Equatable {
     case duplicateID
     case file(WorkflowFileStoreError)
     case invalidDocument
+    case legacyMigrationIncomplete
+  }
+
+  public enum Target: Sendable, Equatable {
+    case file
+    case configurationDirectory
   }
 
   public var reason: Reason
@@ -38,11 +44,27 @@ public struct WorkflowFileIssue: Sendable, Equatable {
   public var message: String
   public var workflowID: UUID?
 
+  public var target: Target {
+    switch reason {
+    case .directoryUnreadable, .fileLimit, .file(.configurationPathIsNotDirectory), .legacyMigrationIncomplete:
+      .configurationDirectory
+    case .duplicateID, .file, .invalidDocument:
+      .file
+    }
+  }
+
   public init(filename: String, message: String, reason: Reason = .invalidDocument, workflowID: UUID? = nil) {
     self.reason = reason
     self.filename = filename
     self.message = message
     self.workflowID = workflowID
+  }
+
+  public func resolvedURL(in configurationDirectory: URL) -> URL {
+    switch target {
+    case .file: configurationDirectory.appendingPathComponent(filename)
+    case .configurationDirectory: configurationDirectory
+    }
   }
 }
 

@@ -612,11 +612,22 @@ extension AppModelTests {
     )
     await harness.model.waitForInitialVoiceConfiguration()
 
-    XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [legacyWorkflow.id])
-    await harness.model.reloadWorkflowFiles()
-    XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [legacyWorkflow.id])
+    for isReload in [false, true] {
+      if isReload { await harness.model.reloadWorkflowFiles() }
+      XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [legacyWorkflow.id])
+      XCTAssertFalse(harness.model.workflowLibrary.usesWorkflowFilesAsSource)
+      XCTAssertTrue(harness.model.workflowLibrary.invalidWorkflowFileIDs.isEmpty)
+      XCTAssertTrue(harness.model.isWorkflowEnabled(legacyWorkflow))
+      let issue = try XCTUnwrap(harness.model.workflowLibrary.workflowFileIssues.first)
+      XCTAssertEqual(issue.target, .configurationDirectory)
+      XCTAssertNil(issue.workflowID)
+      XCTAssertEqual(issue.resolvedURL(in: workflowFileStore.configurationDirectoryURL), workflowFileStore.configurationDirectoryURL)
+      XCTAssertTrue(harness.model.workflowLibrary.workflowLibraryError?.contains(issue.message) == true)
+    }
     let partialRecords = await workflowFileStore.records()
     XCTAssertEqual(partialRecords.count, 1)
+    await harness.model.stopSettingsReadTasksForApplicationShutdown()
+    await harness.model.flushPendingPersistenceWrites()
   }
 
   func testDeletingPartiallyMigratedWorkflowDoesNotResurrectOnReload() async throws {

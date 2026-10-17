@@ -475,7 +475,7 @@ private func makeExplanationReceipt(
   )
 }
 
-private func makeContentFreeExplainService() -> WorkflowExplainService {
+func makeContentFreeExplainService() -> WorkflowExplainService {
   WorkflowExplainService(
     recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
     transformerRegistry: TextTransformerRegistry(transformers: []),

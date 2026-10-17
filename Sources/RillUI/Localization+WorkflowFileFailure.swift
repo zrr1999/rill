@@ -24,11 +24,12 @@ extension L10n {
     case .file(let error): summary = workflowFileFailure(error).string(for: language)
     case .invalidDocument: summary = catalogString("workflowFile.error.invalidDocument", language: language)
     case .directoryUnreadable: summary = catalogString("workflowFile.error.directoryUnreadable", language: language)
+    case .legacyMigrationIncomplete: summary = catalogString("workflowFile.error.legacyMigrationIncomplete", language: language)
     case .duplicateID: summary = catalogString("workflowFile.error.duplicateID", language: language)
     case .fileLimit(let count):
       summary = resource("workflowFile.error.fileLimit", defaultValue: "Only the first \(String(count)) TOML files were loaded.").string(for: language)
     }
-    return "\(summary)\n\(issue.message)"
+    return summary == issue.message ? summary : "\(summary)\n\(issue.message)"
   }
 
   static func workflowFileFailureDetail(_ error: Error, language: AppLanguage) -> String {

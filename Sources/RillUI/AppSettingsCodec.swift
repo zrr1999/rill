@@ -107,12 +107,16 @@ enum AppSettingsCodec {
       // A save may have committed before reporting a later failure.
       initial = await workflowFileStore.load()
       initial.issues.append(
-        WorkflowFileIssue(
-          filename: workflowFileStore.configurationDirectoryURL.lastPathComponent,
-          message:
-            "Existing workflows could not be migrated to TOML; the legacy library remains active."))
+        incompleteWorkflowMigrationIssue(in: workflowFileStore.configurationDirectoryURL))
       return InitialWorkflowFileLoad(result: initial, didMigrateLegacyWorkflows: false)
     }
+  }
+
+  static func incompleteWorkflowMigrationIssue(in directory: URL) -> WorkflowFileIssue {
+    WorkflowFileIssue(
+      filename: directory.lastPathComponent,
+      message: "Existing workflows could not be migrated to TOML; the legacy library remains active.",
+      reason: .legacyMigrationIncomplete)
   }
 
   static func resolveLegacyLocalSpeechSetting(
