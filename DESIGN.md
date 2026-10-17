@@ -24,7 +24,7 @@ typography:
     fontWeight: 500
   draft-editor:
     fontFamily: "system-ui"
-    fontSize: "14pt"
+    fontSize: "body"
 rounded:
   chip: "6pt"
   badge: "8pt"
@@ -158,10 +158,13 @@ the recording waveform.
 ## Typography
 
 Use the macOS system font and platform Chinese fallback. There is no separate
-display face. The floating workspace is a local exception to default control
-metrics: its approved B preview uses 17pt document headings, 14pt body text with
-7pt added line spacing, 12pt actions and list titles, and 11pt supporting text.
-These values belong to this compact surface, not an application-wide type scale.
+display face. Floating workspace text uses semantic styles: `.title3` for
+document headings, `.body` for previews and the native editor, `.callout` for
+actions and list titles, and `.caption` for supporting text. Panel, recorder,
+mode, and sidebar frames use `RillDynamicLength` so they follow the body text
+size between a control minimum and a screen-safe maximum. The 668×468 page and
+194pt sidebar are preferred sizes; available screen space can still shrink the
+page.
 
 | Token role | Source role | Use |
 | --- | --- | --- |
@@ -172,7 +175,7 @@ These values belong to this compact surface, not an application-wide type scale.
 | `subtitle` | `.callout.weight(.medium)` | Live recognition text |
 | `timer` | `.caption.monospacedDigit().weight(.semibold)` | Stable recording time and countdown |
 | `key-hint` | `.caption2.monospaced().weight(.medium)` | Recorder Esc key hint |
-| `draft-editor` | `NSFont.systemFont(ofSize:)` | Native `NSTextView`; explicit size is in frontmatter |
+| `draft-editor` | `NSFont.preferredFont(forTextStyle: .body)` | Native `NSTextView` |
 
 The editor's exact font and text insets come from
 [BufferDraftTextEditor](Sources/RillUI/BufferDraftTextEditor.swift). SwiftUI
@@ -199,7 +202,7 @@ insets and the native editor's padding, remain local to their owners.
 | Unified panel | Default and compact verification sizes in frontmatter; geometry is selected before opening and stays fixed during interaction | [RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Collections preview | Fixed 194pt list column beside an opaque content preview | [RecordQuickPanelView](Sources/RillUI/RecordQuickPanelView.swift) |
 | Drafts | Fixed 194pt native list with single-line titles and metadata beside the native editor | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
-| Pending strip | Fixed capsule, separate from the page; drag, hover, accessible open, and close | [RecordPanelCapsuleView](Sources/RillUI/RecordPanelCapsuleView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
+| Unified panel | Centered on the pointer screen; preferred size scales with body text and shrinks to the visible frame | [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
 The six Settings panes are General, Input, Voice & Models, Vocabulary & Memory,
