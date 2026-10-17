@@ -5,9 +5,9 @@
     {
       "id": "RillApp",
       "label": "RillApp",
-      "group": "App composition",
-      "role": "Composition root, lifecycle and macOS application entry. Injects production adapters into feature owners.",
-      "impact": "Changes affect startup, service wiring and shutdown across features.",
+      "group": "应用组装",
+      "role": "负责组装根、生命周期和 macOS 应用入口，将生产适配器注入各功能模块。",
+      "impact": "改动会影响跨功能的启动、服务组装和退出。",
       "files": [
         "Sources/RillApp/AppBootstrap.swift",
         "Sources/RillApp/ApplicationStartupTaskCoordinator.swift",
@@ -154,14 +154,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillUI",
       "label": "RillUI",
-      "group": "App composition",
-      "role": "SwiftUI/AppKit views, feature state, navigation, settings and record panels.",
-      "impact": "Changes affect focus, accessibility, editing, visible progress and recovery.",
+      "group": "应用组装",
+      "role": "负责 SwiftUI/AppKit 视图、功能状态、导航、设置和记录面板。",
+      "impact": "改动会影响焦点、无障碍、编辑、可见进度和恢复。",
       "files": [
         "Sources/RillUI/AppModel+Events.swift",
         "Sources/RillUI/AppModel+FailedAudioRecovery.swift",
@@ -951,14 +951,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillCore",
       "label": "RillCore",
-      "group": "Domain",
-      "role": "Shared value types, privacy contracts, persistence and effect ports.",
-      "impact": "Contract changes propagate to most modules; Core owns no UI or concrete storage.",
+      "group": "领域逻辑",
+      "role": "定义共享值类型、隐私契约、持久化端口和副作用端口。",
+      "impact": "契约改动会传播到多数模块；Core 不负责 UI 或具体存储。",
       "files": [
         "Sources/RillCore/AudioCaptureEndpointing.swift",
         "Sources/RillCore/AudioCaptureLifetime.swift",
@@ -2559,14 +2559,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillRecords",
       "label": "RillRecords",
-      "group": "Domain",
-      "role": "RecordStore owns graph, memberships, draft buffers, search, leases and delivery interactions.",
-      "impact": "Mutations affect all memberships and persistence revisions; preserve commit-before-publish.",
+      "group": "领域逻辑",
+      "role": "RecordStore 负责记录图、成员关系、草稿缓冲、搜索、租约和投递交互。",
+      "impact": "状态变更会影响所有成员关系和持久化修订；必须保持先提交、后发布。",
       "files": [
         "Sources/RillRecords/BufferIndex.swift",
         "Sources/RillRecords/LegacyClipboardMigration.swift",
@@ -2910,14 +2910,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillKnowledge",
       "label": "RillKnowledge",
-      "group": "Domain",
-      "role": "Vocabulary, hint preparation and context memory policy.",
-      "impact": "Changes affect recognition hints and separately authorized contextual material.",
+      "group": "领域逻辑",
+      "role": "负责词汇、识别提示准备和上下文记忆策略。",
+      "impact": "改动会影响识别提示和单独授权的上下文材料。",
       "files": [
         "Sources/RillKnowledge/MemoryMaintenanceRunner.swift",
         "Sources/RillKnowledge/RunContextPreparation.swift",
@@ -3091,14 +3091,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillWorkflows",
       "label": "RillWorkflows",
-      "group": "Domain",
-      "role": "Recording sessions, authorized workflow execution, cancellation, output order and run receipts.",
-      "impact": "Changes affect capture lifetime, cancellation, save-before-output and terminal history.",
+      "group": "领域逻辑",
+      "role": "负责录音会话、已授权工作流执行、取消、输出顺序和运行回执。",
+      "impact": "改动会影响采集生命周期、取消、先保存后输出，以及终态历史。",
       "files": [
         "Sources/RillWorkflows/AuthorizedAudioProcessingLease.swift",
         "Sources/RillWorkflows/AuthorizedLiveAudioSession.swift",
@@ -3636,14 +3636,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillClipboard",
       "label": "RillClipboard",
-      "group": "Adapters",
-      "role": "Passive system clipboard observation and authorized Record ingestion.",
-      "impact": "Capture must remain asynchronous and must not replace native copy/paste.",
+      "group": "适配器",
+      "role": "被动观察系统剪贴板，并将已授权内容摄入为 Record。",
+      "impact": "采集必须保持异步，且不能替代系统原生复制与粘贴。",
       "files": [
         "Sources/RillClipboard/SystemClipboardCaptureController.swift"
       ],
@@ -3659,14 +3659,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillPlatform",
       "label": "RillPlatform",
-      "group": "Adapters",
-      "role": "macOS microphone, hotkeys, output, Keychain, file stores and input-method installation adapters.",
-      "impact": "Physical permissions, focus and system effects require native acceptance.",
+      "group": "适配器",
+      "role": "提供 macOS 麦克风、快捷键、输出、钥匙串、文件存储和输入法安装适配器。",
+      "impact": "真实权限、焦点和系统效果需要原生环境验收。",
       "files": [
         "Sources/RillPlatform/AVAudioCaptureService.swift",
         "Sources/RillPlatform/AppleVoiceProcessingAudioProcessor.swift",
@@ -4044,14 +4044,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillProviders",
       "label": "RillProviders",
-      "group": "Adapters",
-      "role": "Concrete text rewriting, decision-model scoring and registered output/provider adapters.",
-      "impact": "Optional remote calls depend on service configuration and explicit privacy authorization.",
+      "group": "适配器",
+      "role": "提供具体的文本改写、决策模型评分，以及已注册的输出和提供者适配器。",
+      "impact": "可选的远程调用取决于服务配置和明确的隐私授权。",
       "files": [
         "Sources/RillProviders/BuiltinActions.swift",
         "Sources/RillProviders/BuiltinTransformers.swift",
@@ -4258,14 +4258,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillPersistence",
       "label": "RillPersistence",
-      "group": "Adapters",
-      "role": "GRDB-backed serialized SQLite access with encrypted payloads, settings, history and Record catalog transactions.",
-      "impact": "Atomic storage and protection failures affect durable state; do not split transaction ownership.",
+      "group": "适配器",
+      "role": "基于 GRDB 串行访问 SQLite，负责加密载荷、设置、历史和 Record 目录事务。",
+      "impact": "原子存储与保护失败会影响持久状态；不可拆散事务所有权。",
       "files": [
         "Sources/RillPersistence/SQLiteAuthenticatedSchemaFloor.swift",
         "Sources/RillPersistence/SQLiteContextMemory.swift",
@@ -4377,14 +4377,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillSpeech",
       "label": "RillSpeech",
-      "group": "Speech process",
-      "role": "Host-side recognizers, TTS and speech worker supervision/streaming clients.",
-      "impact": "Worker failures and model availability affect ASR/TTS without moving model execution into UI.",
+      "group": "语音进程",
+      "role": "负责宿主侧识别器、TTS、语音工作进程监管和流式客户端。",
+      "impact": "工作进程失败与模型可用性会影响 ASR/TTS；模型执行仍位于 UI 之外。",
       "files": [
         "Sources/RillSpeech/MLXAudioSwiftWorkerRecognizer.swift",
         "Sources/RillSpeech/Qwen3TTSSpeechSynthesizer.swift",
@@ -4496,14 +4496,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillSpeechContracts",
       "label": "RillSpeechContracts",
-      "group": "Speech process",
-      "role": "Worker request/response types, model identifiers and speech contracts.",
-      "impact": "Protocol changes must remain compatible with both host and helper.",
+      "group": "语音进程",
+      "role": "定义工作进程请求与响应类型、模型标识和语音契约。",
+      "impact": "协议改动必须同时兼容宿主和辅助进程。",
       "files": [
         "Sources/RillSpeechContracts/LocalSpeechModelCatalog.swift",
         "Sources/RillSpeechContracts/RecordEmbeddingModelCatalog.swift",
@@ -4585,14 +4585,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillSpeechWorker",
       "label": "RillSpeechWorker",
-      "group": "Speech process",
-      "role": "Separate executable dispatching speech and embedding requests to runtime services.",
-      "impact": "Process lifetime and request handling affect isolation and cancellation.",
+      "group": "语音进程",
+      "role": "独立可执行程序，将语音和嵌入请求分派给运行时服务。",
+      "impact": "进程生命周期和请求处理会影响隔离与取消。",
       "files": [
         "Sources/RillSpeechWorker/Main.swift"
       ],
@@ -4601,14 +4601,14 @@
         "Sources/RillSpeechWorker/Main.swift"
       ],
       "tests": [],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillMLXRuntime",
       "label": "RillMLXRuntime",
-      "group": "Speech process",
-      "role": "MLX-backed local inference, embeddings, VAD and model download/publication.",
-      "impact": "Model loading, cache policy and memory use affect worker latency and availability.",
+      "group": "语音进程",
+      "role": "基于 MLX 提供本地推理、嵌入、VAD，以及模型下载与发布。",
+      "impact": "模型加载、缓存策略和内存占用会影响工作进程的延迟与可用性。",
       "files": [
         "Sources/RillMLXRuntime/MLXAudioSwiftModelStore.swift",
         "Sources/RillMLXRuntime/MLXAudioSwiftSpeechWorkerService.swift",
@@ -4658,14 +4658,14 @@
           "framework": "XCTest"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillInputMethod",
       "label": "RillInputMethod",
-      "group": "Input method process",
-      "role": "Independent macOS input-source executable.",
-      "impact": "Can run without Rill App; installation and native input-source acceptance are separate.",
+      "group": "输入法进程",
+      "role": "独立的 macOS 输入源可执行程序。",
+      "impact": "可在 Rill 主应用未运行时使用；安装与原生输入源验收需单独完成。",
       "files": [
         "Sources/RillInputMethod/RillInputMethodMain.swift"
       ],
@@ -4674,14 +4674,14 @@
         "Sources/RillInputMethod/RillInputMethodMain.swift"
       ],
       "tests": [],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillInputMethodKit",
       "label": "RillInputMethodKit",
-      "group": "Input method process",
-      "role": "InputMethodKit controller, Rime sessions, marked text and candidate presentation.",
-      "impact": "Changes affect composition, committed text and candidate keyboard behavior.",
+      "group": "输入法进程",
+      "role": "负责 InputMethodKit 控制器、Rime 会话、预编辑文本和候选项展示。",
+      "impact": "改动会影响文字组合、文本提交和候选项键盘操作。",
       "files": [
         "Sources/RillInputMethodKit/CandidateWindow.swift",
         "Sources/RillInputMethodKit/InputMethodComposition.swift",
@@ -4701,14 +4701,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillInputMethodContracts",
       "label": "RillInputMethodContracts",
-      "group": "Input method process",
-      "role": "Versioned messages and installation/location contracts shared across processes.",
-      "impact": "Changes affect installation and app/input-source interoperability.",
+      "group": "输入法进程",
+      "role": "定义跨进程共享的版本化消息，以及安装与位置契约。",
+      "impact": "改动会影响安装和应用与输入源之间的互操作。",
       "files": [
         "Sources/RillInputMethodContracts/InputMethodInstallationError.swift",
         "Sources/RillInputMethodContracts/InputMethodInstallationState.swift",
@@ -4756,14 +4756,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "RillInputMethodIPC",
       "label": "RillInputMethodIPC",
-      "group": "Input method process",
-      "role": "Local stream framing and peer identity checks.",
-      "impact": "Changes affect nonblocking transport and process trust boundaries.",
+      "group": "输入法进程",
+      "role": "负责本地流式帧格式与对端身份检查。",
+      "impact": "改动会影响非阻塞传输和进程信任边界。",
       "files": [
         "Sources/RillInputMethodIPC/LocalInputMethodChannel.swift",
         "Sources/RillInputMethodIPC/LocalInputMethodPeerIdentity.swift"
@@ -4786,14 +4786,14 @@
           "framework": "Swift Testing"
         }
       ],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "CRime",
       "label": "CRime",
-      "group": "Input method process",
-      "role": "C shim and headers for dynamically loaded pinned librime.",
-      "impact": "ABI or library loading changes affect all Rime sessions.",
+      "group": "输入法进程",
+      "role": "为动态加载的固定版本 librime 提供 C 适配层和头文件。",
+      "impact": "ABI 或库加载改动会影响所有 Rime 会话。",
       "files": [
         "Sources/CRime/RillRime.c",
         "Sources/CRime/include/RillRime.h",
@@ -4805,14 +4805,14 @@
         "Sources/CRime/RillRime.c"
       ],
       "tests": [],
-      "testNote": "One real declaration per test file directly importing this module (XCTest or Swift Testing); not exhaustive coverage or executed results. No direct declarations are recorded for executable/C shim modules; native integration acceptance remains required."
+      "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
     },
     {
       "id": "external",
-      "label": "External libraries / system services",
-      "group": "Dependencies",
-      "role": "Pinned GRDB, Swift TOML, OpenAI SDK, MLX audio/MLX/MLX LM, Hugging Face and Transformers; system SQLite3, Security, InputMethodKit and dynamically loaded librime. Runtime network providers use configured endpoints.",
-      "impact": "Library changes require lockfile/security/license checks. Service availability is not proven by local source inspection.",
+      "label": "外部库与系统服务",
+      "group": "依赖",
+      "role": "固定版本的 GRDB、Swift TOML、OpenAI SDK、MLX audio/MLX/MLX LM、Hugging Face 和 Transformers；系统 SQLite3、Security、InputMethodKit，以及动态加载的 librime。运行时网络提供者使用配置的端点。",
+      "impact": "库变更需要检查锁文件、安全和许可证。仅检查本地源码无法证明服务可用。",
       "files": [
         "Package.swift",
         "Package.resolved",
@@ -4826,7 +4826,7 @@
         "Sources/CRime/RillRime.c"
       ],
       "tests": [],
-      "testNote": "Integration evidence belongs to consuming modules; no test results inferred."
+      "testNote": "集成证据归使用这些依赖的模块；不据此推断测试结果。"
     }
   ],
   "edges": [
@@ -4834,7 +4834,7 @@
       "id": "dependency-CRime-external",
       "source": "CRime",
       "target": "external",
-      "label": "Linked product/system library",
+      "label": "链接的产品或系统库",
       "evidence": [
         "Package.swift"
       ],
@@ -4844,7 +4844,7 @@
       "id": "dependency-RillInputMethodIPC-RillInputMethodContracts",
       "source": "RillInputMethodIPC",
       "target": "RillInputMethodContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4854,7 +4854,7 @@
       "id": "dependency-RillInputMethodIPC-external",
       "source": "RillInputMethodIPC",
       "target": "external",
-      "label": "Linked product/system library",
+      "label": "链接的产品或系统库",
       "evidence": [
         "Package.swift"
       ],
@@ -4864,7 +4864,7 @@
       "id": "dependency-RillInputMethodKit-CRime",
       "source": "RillInputMethodKit",
       "target": "CRime",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4874,7 +4874,7 @@
       "id": "dependency-RillInputMethodKit-RillInputMethodContracts",
       "source": "RillInputMethodKit",
       "target": "RillInputMethodContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4884,7 +4884,7 @@
       "id": "dependency-RillInputMethodKit-RillInputMethodIPC",
       "source": "RillInputMethodKit",
       "target": "RillInputMethodIPC",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4894,7 +4894,7 @@
       "id": "dependency-RillInputMethodKit-external",
       "source": "RillInputMethodKit",
       "target": "external",
-      "label": "Linked product/system library",
+      "label": "链接的产品或系统库",
       "evidence": [
         "Package.swift"
       ],
@@ -4904,7 +4904,7 @@
       "id": "dependency-RillInputMethod-RillInputMethodKit",
       "source": "RillInputMethod",
       "target": "RillInputMethodKit",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4914,7 +4914,7 @@
       "id": "dependency-RillInputMethod-RillInputMethodContracts",
       "source": "RillInputMethod",
       "target": "RillInputMethodContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4924,7 +4924,7 @@
       "id": "dependency-RillSpeechContracts-RillCore",
       "source": "RillSpeechContracts",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4934,7 +4934,7 @@
       "id": "dependency-RillPlatform-RillInputMethodContracts",
       "source": "RillPlatform",
       "target": "RillInputMethodContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4944,7 +4944,7 @@
       "id": "dependency-RillPlatform-RillCore",
       "source": "RillPlatform",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4954,7 +4954,7 @@
       "id": "dependency-RillPlatform-external",
       "source": "RillPlatform",
       "target": "external",
-      "label": "Linked product/system library",
+      "label": "链接的产品或系统库",
       "evidence": [
         "Package.swift"
       ],
@@ -4964,7 +4964,7 @@
       "id": "dependency-RillProviders-RillSpeech",
       "source": "RillProviders",
       "target": "RillSpeech",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4974,7 +4974,7 @@
       "id": "dependency-RillProviders-RillSpeechContracts",
       "source": "RillProviders",
       "target": "RillSpeechContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4984,7 +4984,7 @@
       "id": "dependency-RillProviders-RillCore",
       "source": "RillProviders",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -4994,7 +4994,7 @@
       "id": "dependency-RillProviders-external",
       "source": "RillProviders",
       "target": "external",
-      "label": "Linked product/system library",
+      "label": "链接的产品或系统库",
       "evidence": [
         "Package.swift"
       ],
@@ -5004,7 +5004,7 @@
       "id": "dependency-RillMLXRuntime-RillSpeechContracts",
       "source": "RillMLXRuntime",
       "target": "RillSpeechContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5014,7 +5014,7 @@
       "id": "dependency-RillMLXRuntime-RillCore",
       "source": "RillMLXRuntime",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5024,7 +5024,7 @@
       "id": "dependency-RillMLXRuntime-external",
       "source": "RillMLXRuntime",
       "target": "external",
-      "label": "Linked product/system library",
+      "label": "链接的产品或系统库",
       "evidence": [
         "Package.swift"
       ],
@@ -5034,7 +5034,7 @@
       "id": "dependency-RillRecords-RillCore",
       "source": "RillRecords",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5044,7 +5044,7 @@
       "id": "dependency-RillKnowledge-RillCore",
       "source": "RillKnowledge",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5054,7 +5054,7 @@
       "id": "dependency-RillSpeech-RillCore",
       "source": "RillSpeech",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5064,7 +5064,7 @@
       "id": "dependency-RillSpeech-RillPlatform",
       "source": "RillSpeech",
       "target": "RillPlatform",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5074,7 +5074,7 @@
       "id": "dependency-RillSpeech-RillSpeechContracts",
       "source": "RillSpeech",
       "target": "RillSpeechContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5084,7 +5084,7 @@
       "id": "dependency-RillClipboard-RillCore",
       "source": "RillClipboard",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5094,7 +5094,7 @@
       "id": "dependency-RillClipboard-RillPlatform",
       "source": "RillClipboard",
       "target": "RillPlatform",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5104,7 +5104,7 @@
       "id": "dependency-RillClipboard-RillRecords",
       "source": "RillClipboard",
       "target": "RillRecords",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5114,7 +5114,7 @@
       "id": "dependency-RillWorkflows-RillSpeechContracts",
       "source": "RillWorkflows",
       "target": "RillSpeechContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5124,7 +5124,7 @@
       "id": "dependency-RillWorkflows-RillCore",
       "source": "RillWorkflows",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5134,7 +5134,7 @@
       "id": "dependency-RillWorkflows-RillSpeech",
       "source": "RillWorkflows",
       "target": "RillSpeech",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5144,7 +5144,7 @@
       "id": "dependency-RillWorkflows-RillRecords",
       "source": "RillWorkflows",
       "target": "RillRecords",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5154,7 +5154,7 @@
       "id": "dependency-RillWorkflows-RillKnowledge",
       "source": "RillWorkflows",
       "target": "RillKnowledge",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5164,7 +5164,7 @@
       "id": "dependency-RillPersistence-RillCore",
       "source": "RillPersistence",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5174,7 +5174,7 @@
       "id": "dependency-RillPersistence-external",
       "source": "RillPersistence",
       "target": "external",
-      "label": "Linked product/system library",
+      "label": "链接的产品或系统库",
       "evidence": [
         "Package.swift"
       ],
@@ -5184,7 +5184,7 @@
       "id": "dependency-RillUI-RillInputMethodContracts",
       "source": "RillUI",
       "target": "RillInputMethodContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5194,7 +5194,7 @@
       "id": "dependency-RillUI-RillInputMethodIPC",
       "source": "RillUI",
       "target": "RillInputMethodIPC",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5204,7 +5204,7 @@
       "id": "dependency-RillUI-RillCore",
       "source": "RillUI",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5214,7 +5214,7 @@
       "id": "dependency-RillUI-RillWorkflows",
       "source": "RillUI",
       "target": "RillWorkflows",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5224,7 +5224,7 @@
       "id": "dependency-RillUI-RillRecords",
       "source": "RillUI",
       "target": "RillRecords",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5234,7 +5234,7 @@
       "id": "dependency-RillUI-RillKnowledge",
       "source": "RillUI",
       "target": "RillKnowledge",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5244,7 +5244,7 @@
       "id": "dependency-RillUI-RillSpeech",
       "source": "RillUI",
       "target": "RillSpeech",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5254,7 +5254,7 @@
       "id": "dependency-RillApp-RillClipboard",
       "source": "RillApp",
       "target": "RillClipboard",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5264,7 +5264,7 @@
       "id": "dependency-RillApp-RillSpeechContracts",
       "source": "RillApp",
       "target": "RillSpeechContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5274,7 +5274,7 @@
       "id": "dependency-RillApp-RillCore",
       "source": "RillApp",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5284,7 +5284,7 @@
       "id": "dependency-RillApp-RillPlatform",
       "source": "RillApp",
       "target": "RillPlatform",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5294,7 +5294,7 @@
       "id": "dependency-RillApp-RillProviders",
       "source": "RillApp",
       "target": "RillProviders",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5304,7 +5304,7 @@
       "id": "dependency-RillApp-RillWorkflows",
       "source": "RillApp",
       "target": "RillWorkflows",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5314,7 +5314,7 @@
       "id": "dependency-RillApp-RillRecords",
       "source": "RillApp",
       "target": "RillRecords",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5324,7 +5324,7 @@
       "id": "dependency-RillApp-RillKnowledge",
       "source": "RillApp",
       "target": "RillKnowledge",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5334,7 +5334,7 @@
       "id": "dependency-RillApp-RillSpeech",
       "source": "RillApp",
       "target": "RillSpeech",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5344,7 +5344,7 @@
       "id": "dependency-RillApp-RillPersistence",
       "source": "RillApp",
       "target": "RillPersistence",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5354,7 +5354,7 @@
       "id": "dependency-RillApp-RillUI",
       "source": "RillApp",
       "target": "RillUI",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5364,7 +5364,7 @@
       "id": "dependency-RillSpeechWorker-RillSpeechContracts",
       "source": "RillSpeechWorker",
       "target": "RillSpeechContracts",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5374,7 +5374,7 @@
       "id": "dependency-RillSpeechWorker-RillCore",
       "source": "RillSpeechWorker",
       "target": "RillCore",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5384,7 +5384,7 @@
       "id": "dependency-RillSpeechWorker-RillMLXRuntime",
       "source": "RillSpeechWorker",
       "target": "RillMLXRuntime",
-      "label": "Declared Swift target dependency",
+      "label": "声明的 Swift target 依赖",
       "evidence": [
         "Package.swift"
       ],
@@ -5394,7 +5394,7 @@
       "id": "dataflow-RillApp-RillUI",
       "source": "RillApp",
       "target": "RillUI",
-      "label": "Construct and inject feature services",
+      "label": "构造并注入功能服务",
       "evidence": [
         "Sources/RillApp/AppBootstrap.swift"
       ],
@@ -5404,7 +5404,7 @@
       "id": "dataflow-RillUI-RillWorkflows",
       "source": "RillUI",
       "target": "RillWorkflows",
-      "label": "Start authorized workflow and consume run progress",
+      "label": "启动已授权工作流并接收运行进度",
       "evidence": [
         "Sources/RillUI/AppModel+WorkflowActions.swift",
         "Sources/RillWorkflows/SessionCoordinator.swift"
@@ -5415,7 +5415,7 @@
       "id": "dataflow-RillPlatform-RillWorkflows",
       "source": "RillPlatform",
       "target": "RillWorkflows",
-      "label": "Captured audio admitted into authorized recording session",
+      "label": "将采集的音频接纳到已授权录音会话",
       "evidence": [
         "Sources/RillWorkflows/AuthorizedLiveAudioSession.swift"
       ],
@@ -5425,7 +5425,7 @@
       "id": "dataflow-RillWorkflows-RillSpeech",
       "source": "RillWorkflows",
       "target": "RillSpeech",
-      "label": "Resolve recognizer and execute final recognition",
+      "label": "解析识别器并执行最终识别",
       "evidence": [
         "Sources/RillWorkflows/SessionCoordinator.swift",
         "Sources/RillSpeech/MLXAudioSwiftWorkerRecognizer.swift"
@@ -5436,7 +5436,7 @@
       "id": "dataflow-RillSpeech-RillSpeechWorker",
       "source": "RillSpeech",
       "target": "RillSpeechWorker",
-      "label": "Request/response across supervised helper process",
+      "label": "通过受监管的辅助进程传递请求与响应",
       "evidence": [
         "Sources/RillSpeech/SpeechWorkerSupervisor.swift",
         "Sources/RillSpeechWorker/Main.swift"
@@ -5447,7 +5447,7 @@
       "id": "dataflow-RillSpeechWorker-RillMLXRuntime",
       "source": "RillSpeechWorker",
       "target": "RillMLXRuntime",
-      "label": "Dispatch local inference requests",
+      "label": "分派本地推理请求",
       "evidence": [
         "Sources/RillSpeechWorker/Main.swift"
       ],
@@ -5457,7 +5457,7 @@
       "id": "dataflow-RillWorkflows-RillProviders",
       "source": "RillWorkflows",
       "target": "RillProviders",
-      "label": "Execute registered text/output providers",
+      "label": "执行已注册的文本和输出提供者",
       "evidence": [
         "Sources/RillApp/AppBootstrap.swift",
         "Sources/RillWorkflows/WorkflowTextExecutor.swift"
@@ -5468,7 +5468,7 @@
       "id": "dataflow-RillWorkflows-RillRecords",
       "source": "RillWorkflows",
       "target": "RillRecords",
-      "label": "Save final text through registered ingestion action",
+      "label": "通过已注册的摄入动作保存最终文本",
       "evidence": [
         "Sources/RillApp/AppBootstrap.swift",
         "Sources/RillWorkflows/WorkflowOutputExecutor.swift",
@@ -5480,7 +5480,7 @@
       "id": "dataflow-RillRecords-RillPersistence",
       "source": "RillRecords",
       "target": "RillPersistence",
-      "label": "Persist graph/catalog via injected Core ports",
+      "label": "通过注入的 Core 端口持久化记录图与目录",
       "evidence": [
         "Sources/RillApp/AppBootstrap.swift",
         "Sources/RillRecords/RecordStore.swift",
@@ -5492,7 +5492,7 @@
       "id": "dataflow-RillClipboard-RillRecords",
       "source": "RillClipboard",
       "target": "RillRecords",
-      "label": "Ingest allowed stable clipboard change",
+      "label": "摄入已允许且稳定的剪贴板变更",
       "evidence": [
         "Sources/RillClipboard/SystemClipboardCaptureController.swift"
       ],
@@ -5502,7 +5502,7 @@
       "id": "dataflow-RillRecords-RillPlatform",
       "source": "RillRecords",
       "target": "RillPlatform",
-      "label": "Explicit delivery through injected output ports",
+      "label": "通过注入的输出端口显式投递",
       "evidence": [
         "Sources/RillApp/AppBootstrap.swift",
         "Sources/RillRecords/RecordInteractionController.swift"
@@ -5513,7 +5513,7 @@
       "id": "dataflow-RillKnowledge-RillWorkflows",
       "source": "RillKnowledge",
       "target": "RillWorkflows",
-      "label": "Vocabulary collections and hotword context supplied through App composition",
+      "label": "通过 App 组装提供词汇集合和热词上下文",
       "evidence": [
         "Sources/RillWorkflows/PreparedRecognitionContext.swift",
         "Sources/RillApp/AppBootstrap.swift"
@@ -5524,7 +5524,7 @@
       "id": "dataflow-RillInputMethod-RillInputMethodKit",
       "source": "RillInputMethod",
       "target": "RillInputMethodKit",
-      "label": "Run independent input source",
+      "label": "运行独立输入源",
       "evidence": [
         "Sources/RillInputMethod/RillInputMethodMain.swift"
       ],
@@ -5534,7 +5534,7 @@
       "id": "dataflow-RillInputMethodKit-CRime",
       "source": "RillInputMethodKit",
       "target": "CRime",
-      "label": "Process keystrokes and commit composition",
+      "label": "处理按键并提交组合文本",
       "evidence": [
         "Sources/RillInputMethodKit/RillInputController.swift"
       ],
@@ -5544,7 +5544,7 @@
       "id": "dataflow-RillUI-RillInputMethodIPC",
       "source": "RillUI",
       "target": "RillInputMethodIPC",
-      "label": "Settings/control channel",
+      "label": "设置与控制通道",
       "evidence": [
         "Sources/RillUI/AppModel+InputMethod.swift",
         "Sources/RillUI/InputMethodFeatureModel.swift"
@@ -5555,7 +5555,7 @@
       "id": "dataflow-RillInputMethodIPC-RillInputMethodKit",
       "source": "RillInputMethodIPC",
       "target": "RillInputMethodKit",
-      "label": "Deliver local control messages",
+      "label": "投递本地控制消息",
       "evidence": [
         "Sources/RillInputMethodIPC/LocalInputMethodChannel.swift",
         "Sources/RillInputMethodKit/RillInputController.swift"
@@ -5566,47 +5566,47 @@
   "flows": [
     {
       "id": "dictation",
-      "title": "Local dictation → saved record → target",
-      "command": "Native acceptance: select and prepare a local recognition model, hold Fn, speak harmless text, release, verify saved record and intended target text.",
+      "title": "本地听写 → 保存记录 → 目标应用",
+      "command": "原生验收：选择并准备本地识别模型，按住 Fn，说一段无敏感信息的文本后松开，检查已保存记录和目标应用中的文本。",
       "steps": [
         {
           "node": "RillPlatform",
-          "description": "Microphone/hotkey capture is admitted after authorization.",
+          "description": "授权后接纳麦克风与快捷键采集。",
           "evidence": [
             "Sources/RillWorkflows/AuthorizedLiveAudioSession.swift"
           ]
         },
         {
           "node": "RillWorkflows",
-          "description": "Freeze run context and resolve recognition/output sequence.",
+          "description": "冻结运行上下文，解析识别和输出顺序。",
           "evidence": [
             "Sources/RillWorkflows/SessionCoordinator.swift"
           ]
         },
         {
           "node": "RillSpeech",
-          "description": "Send audio to supervised helper.",
+          "description": "向受监管的辅助进程发送音频。",
           "evidence": [
             "Sources/RillSpeech/MLXAudioSwiftWorkerRecognizer.swift"
           ]
         },
         {
           "node": "RillSpeechWorker",
-          "description": "Dispatch into MLX runtime.",
+          "description": "分派到 MLX 运行时。",
           "evidence": [
             "Sources/RillSpeechWorker/Main.swift"
           ]
         },
         {
           "node": "RillMLXRuntime",
-          "description": "Local recognition produces final text.",
+          "description": "本地识别生成最终文本。",
           "evidence": [
             "Sources/RillMLXRuntime/MLXAudioSwiftSpeechWorkerService.swift"
           ]
         },
         {
           "node": "RillWorkflows",
-          "description": "Run output actions in configured order; built-in saves before delivery.",
+          "description": "按配置顺序执行输出动作；内置流程先保存再投递。",
           "evidence": [
             "Sources/RillWorkflows/WorkflowOutputExecutor.swift",
             "Sources/RillApp/Resources/BuiltinWorkflows.toml"
@@ -5614,14 +5614,14 @@
         },
         {
           "node": "RillRecords",
-          "description": "Commit Record through persistence before publication.",
+          "description": "通过持久化提交 Record，再发布变更。",
           "evidence": [
             "Sources/RillRecords/RecordStore.swift"
           ]
         },
         {
           "node": "RillPlatform",
-          "description": "Attempt authorized target insertion; failure retains saved record.",
+          "description": "尝试向已授权目标插入文本；失败时保留已保存记录。",
           "evidence": [
             "Sources/RillApp/AppBootstrap.swift"
           ]
@@ -5630,47 +5630,47 @@
     },
     {
       "id": "clipboard",
-      "title": "Native copy → retained Record → reuse",
-      "command": "Native acceptance: explicitly enable capture, copy harmless text, find it in All Records, explicitly deliver into a test field.",
+      "title": "系统复制 → 保留 Record → 复用",
+      "command": "原生验收：明确开启采集，复制无敏感信息的文本，在“全部记录”中找到它，再显式投递到测试输入框。",
       "steps": [
         {
           "node": "RillClipboard",
-          "description": "Observe change count and stable authorized clipboard snapshot.",
+          "description": "观察变更计数和稳定、已授权的剪贴板快照。",
           "evidence": [
             "Sources/RillClipboard/SystemClipboardCaptureController.swift"
           ]
         },
         {
           "node": "RillRecords",
-          "description": "Ingest, deduplicate and update membership.",
+          "description": "摄入、去重并更新成员关系。",
           "evidence": [
             "Sources/RillRecords/RecordStore.swift"
           ]
         },
         {
           "node": "RillPersistence",
-          "description": "Commit graph/catalog and protected payloads.",
+          "description": "提交记录图、目录和受保护的载荷。",
           "evidence": [
             "Sources/RillPersistence/SQLitePersistenceStore.swift"
           ]
         },
         {
           "node": "RillUI",
-          "description": "Show records and explicit interaction actions.",
+          "description": "显示记录和显式交互操作。",
           "evidence": [
             "Sources/RillUI/RecordInteractionServices.swift"
           ]
         },
         {
           "node": "RillRecords",
-          "description": "Serialize selected-record delivery.",
+          "description": "串行执行所选记录的投递。",
           "evidence": [
             "Sources/RillRecords/RecordInteractionController.swift"
           ]
         },
         {
           "node": "RillPlatform",
-          "description": "Insert only into validated destination.",
+          "description": "仅向已验证的目标插入文本。",
           "evidence": [
             "Sources/RillApp/AppBootstrap.swift"
           ]
@@ -5679,40 +5679,40 @@
     },
     {
       "id": "rewrite",
-      "title": "Opt-in intelligent cleanup → receipts",
-      "command": "Native acceptance with configured authorized service: enable intelligent cleanup, dictate test text, inspect saved result and run receipt.",
+      "title": "主动启用智能整理 → 运行回执",
+      "command": "使用已配置且获授权的服务进行原生验收：开启智能整理，听写测试文本，检查保存结果和运行回执。",
       "steps": [
         {
           "node": "RillUI",
-          "description": "Configure workflow and service preferences.",
+          "description": "配置工作流和服务偏好。",
           "evidence": [
             "Sources/RillUI/AppModel+WorkflowActions.swift"
           ]
         },
         {
           "node": "RillWorkflows",
-          "description": "Authorize and execute text transformation.",
+          "description": "授权并执行文本转换。",
           "evidence": [
             "Sources/RillWorkflows/WorkflowTextExecutor.swift"
           ]
         },
         {
           "node": "RillProviders",
-          "description": "Call configured LLM adapter.",
+          "description": "调用配置的 LLM 适配器。",
           "evidence": [
             "Sources/RillProviders/OpenAITextRewriteTransformer.swift"
           ]
         },
         {
           "node": "RillWorkflows",
-          "description": "Store terminal run body and receipt under one generation.",
+          "description": "在同一代次下保存终态运行正文和回执。",
           "evidence": [
             "Sources/RillWorkflows/WorkflowRunReceiptRecorder.swift"
           ]
         },
         {
           "node": "RillPersistence",
-          "description": "Durable history implementation supplied by composition root.",
+          "description": "由组装根提供持久历史实现。",
           "evidence": [
             "Sources/RillApp/AppBootstrap.swift",
             "Sources/RillPersistence/SQLitePersistenceStore.swift"
@@ -5722,33 +5722,33 @@
     },
     {
       "id": "ime",
-      "title": "Independent input source → committed text",
-      "command": "Native acceptance: select installed Rill input source, type pinyin, select candidate, verify committed text with main App closed.",
+      "title": "独立输入源 → 提交文本",
+      "command": "原生验收：选择已安装的 Rill 输入源，输入拼音并选择候选项，在主应用关闭时检查已提交文本。",
       "steps": [
         {
           "node": "RillInputMethod",
-          "description": "Start input-source process.",
+          "description": "启动输入源进程。",
           "evidence": [
             "Sources/RillInputMethod/RillInputMethodMain.swift"
           ]
         },
         {
           "node": "RillInputMethodKit",
-          "description": "Receive keyboard event and maintain composition.",
+          "description": "接收键盘事件并维护文字组合。",
           "evidence": [
             "Sources/RillInputMethodKit/RillInputController.swift"
           ]
         },
         {
           "node": "CRime",
-          "description": "Process key through librime shim.",
+          "description": "通过 librime 适配层处理按键。",
           "evidence": [
             "Sources/CRime/RillRime.c"
           ]
         },
         {
           "node": "RillInputMethodKit",
-          "description": "Read commit and insert into InputMethodKit client.",
+          "description": "读取提交结果并插入 InputMethodKit 客户端。",
           "evidence": [
             "Sources/RillInputMethodKit/RillInputController.swift"
           ]
@@ -5757,10 +5757,10 @@
     }
   ],
   "limitations": [
-    "Static source-backed architecture, not runtime traces or passed tests.",
-    "Native microphone, Fn, focus, VoiceOver, input method and final package acceptance require an unlocked macOS session.",
-    "Build dependencies and runtime data flow use distinct lenses; injected ports do not imply forbidden direct imports.",
-    "Tests index one verified XCTest or Swift Testing declaration per directly importing test file, not coverage percentages; helper executables and C shim need separate integration acceptance.",
-    "Source links are relative to repository layout; when hosted, use the commit-pinned GitHub source link."
+    "这是有源码依据的静态架构，不代表运行时轨迹或测试通过结果。",
+    "原生麦克风、Fn、焦点、VoiceOver、输入法和最终安装包验收需要已解锁的 macOS 会话。",
+    "构建依赖和运行时数据流分开显示；通过端口注入不代表存在被禁止的直接 import。",
+    "测试索引为每个直接导入模块的测试文件记录一条已核实的 XCTest 或 Swift Testing 声明，不表示覆盖率；辅助可执行程序和 C 适配层仍需单独进行集成验收。",
+    "本地源码链接基于仓库目录布局；托管页面使用固定到提交版本的 GitHub 源码链接。"
   ]
 }
