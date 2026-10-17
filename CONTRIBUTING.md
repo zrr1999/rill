@@ -47,7 +47,7 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 
 `just check` 只运行 prek 内建检查、上游提供的 TOML、Actionlint 和 Typos
 检查、内部工具包的 Ruff / ty，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
-完整历史扫描或项目策略测试。格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
+完整历史扫描或项目策略测试。Swift 格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
 记录整仓格式化提交，本地可用 `git config blame.ignoreRevsFile .git-blame-ignore-revs`
 让 `git blame` 跳过它。
 这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
@@ -62,6 +62,7 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 `just bench-performance asr`、`just accept-asr`、`just replay-asr` 和
 `just replay-product` 调用该包的命令入口。开发环境使用 Python 3.11，保留原有最低版本兼容性；
 `uv run --locked --project tools` 会安装当前 checkout 的可编辑包和锁定依赖。
+工具包的 uv 配置禁止构建第三方源码分发包；当前 checkout 的可编辑安装仍可执行。
 
 `just test-tools` 使用 pytest 收集 `tools/tests/` 中的离线测试，包含原有 unittest 用例；
 完整脚本检查和 Linux CI 也运行这组测试。测试使用合成数据与假 worker，不读取私有录音或调用模型。
