@@ -324,7 +324,8 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 `README.md` 随 App 分发，因此仍走应用预检。
 
 `Policy - PR` 独立响应 `pull_request` 事件，只有读取权限，通过 API 获取当前
-标题、正文和事件中 base commit 的 PR 模板。它不依赖 Automation，也不豁免机器人。
+标题、正文和事件中 base commit 的 PR 模板，再交给 ZenDev 官方的
+`validate-title`、`validate-body` Actions 校验。它不依赖 Automation，也不豁免机器人。
 
 `Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
 仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
@@ -366,7 +367,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
 使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
 当前统一版本是 0.4.0；prek 的上游 revision 和 CI Actions 均固定到 commit，
-ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本。
+本地 hook 使用固定版本的已发布组件，CI 由官方 Actions 安装对应提交的源码。
 
 - `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
   `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描

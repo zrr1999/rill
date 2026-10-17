@@ -17,10 +17,6 @@ jobs:
     name: PR message
     runs-on: ubuntu-latest
     steps:
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        with:
-          version: "0.12.17"
-
       - name: Read the PR body template
         env:
           GH_TOKEN: ${{ github.token }}
@@ -32,18 +28,25 @@ jobs:
             "repos/${GH_REPO}/contents/.github/pull_request_template.md?ref=${BASE_SHA}" \
             > "$RUNNER_TEMP/pr-body-template.md"
 
-      - name: Check PR title and body
+      - name: Read current PR metadata
+        id: pr
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           current_pr="$(gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}")"
-          pr_title="$(jq --raw-output '.title' <<< "$current_pr")"
-          pr_body="$(jq --raw-output '.body // ""' <<< "$current_pr")"
-          uvx --no-build --from zendev==0.4.0 \
-            --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
-            zendev message check --title --profile zendev --text "$pr_title"
-          uvx --no-build --from zendev==0.4.0 \
-            --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
-            zendev message check --body --template "$RUNNER_TEMP/pr-body-template.md" --text "$pr_body"
+          metadata="$(jq --compact-output '{title, body: (.body // "")}' <<< "$current_pr")"
+          echo "metadata=$metadata" >> "$GITHUB_OUTPUT"
+
+      - name: Check PR title
+        uses: zendev-lab/zendev/actions/validate-title@91087d4d4e9841aaf8cead8b7c6d294a3db63b10 # v0.4.0
+        with:
+          text: ${{ fromJSON(steps.pr.outputs.metadata).title }}
+          profile: zendev
+
+      - name: Check PR body
+        uses: zendev-lab/zendev/actions/validate-body@91087d4d4e9841aaf8cead8b7c6d294a3db63b10 # v0.4.0
+        with:
+          body: ${{ fromJSON(steps.pr.outputs.metadata).body }}
+          template: ${{ runner.temp }}/pr-body-template.md
