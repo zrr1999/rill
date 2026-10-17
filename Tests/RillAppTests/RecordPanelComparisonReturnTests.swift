@@ -52,8 +52,7 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
       requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {})
     let controller = RecordPanelController(
       pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false },
-      reduceMotionProvider: { true },
-      pointerLocationProvider: { NSPoint(x: -100_000, y: -100_000) })
+      reduceMotionProvider: { true })
     addTeardownBlock {
       await controller.shutdown()
       await workspace.shutdown()

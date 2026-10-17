@@ -69,7 +69,6 @@ final class UIRenderEvidenceTests: XCTestCase {
                 : [Color(red: 0.77, green: 0.85, blue: 0.91), Color(red: 0.89, green: 0.83, blue: 0.83)],
               startPoint: .topTrailing, endPoint: .bottomLeading)
             VStack(spacing: 14) {
-              RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {})
               view.frame(width: 668, height: 468)
                 .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
             }
@@ -79,10 +78,6 @@ final class UIRenderEvidenceTests: XCTestCase {
             focusWindow: true, floating: true,
             to: output.appendingPathComponent("floating-scene-\(mode.rawValue)-\(variant).png"))
         }
-        try await render(
-          RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {}),
-          size: NSSize(width: 260, height: 48), dark: dark, floating: true,
-          to: output.appendingPathComponent("pending-capsule-\(variant).png"))
         try await render(
           VoiceSetupView(model: model), size: NSSize(width: 500, height: 360), dark: dark,
           to: output.appendingPathComponent("setup-\(variant).png"))
