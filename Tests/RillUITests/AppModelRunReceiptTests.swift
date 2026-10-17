@@ -475,11 +475,7 @@ final class AppModelRunReceiptTests: XCTestCase {
     await repository.failFutureQueries()
 
     harness.model.clearRunHistory()
-    let maintenanceFinished = await waitUntil {
-      !harness.model.history.isLocalHistoryMaintenanceRunning
-    }
-
-    XCTAssertTrue(maintenanceFinished)
+    await waitForMaintenance(in: harness.model)
     XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
   }
 
@@ -502,10 +498,7 @@ final class AppModelRunReceiptTests: XCTestCase {
     await repository.failFutureQueries()
 
     harness.model.clearRunHistory()
-    let maintenanceFinished = await waitUntil {
-      !harness.model.history.isLocalHistoryMaintenanceRunning
-    }
-    XCTAssertTrue(maintenanceFinished)
+    await waitForMaintenance(in: harness.model)
     let queryCountBeforeLateEvent = await repository.observedQueryCount()
 
     await harness.eventBus.publish(repositoryChangeEvent(for: receipt))
@@ -627,11 +620,8 @@ final class AppModelRunReceiptTests: XCTestCase {
       preservingLegacyRowsAfter: nil
     )
     harness.model.clearRunHistory()
-    let maintenanceFinished = await waitUntil {
-      !harness.model.history.isLocalHistoryMaintenanceRunning
-        && harness.model.workflowRunReceipt(for: receipt.runID) == nil
-    }
-    XCTAssertTrue(maintenanceFinished)
+    await waitForMaintenance(in: harness.model)
+    XCTAssertNil(harness.model.workflowRunReceipt(for: receipt.runID))
 
     await harness.eventBus.publish(
       .runCompleted(
@@ -685,6 +675,13 @@ final class AppModelRunReceiptTests: XCTestCase {
         writeGeneration: writeGeneration
       )
     )
+  }
+
+  private func waitForMaintenance(in model: AppModel) async {
+    let tasks = Array(model.history.localHistoryMaintenanceTasks.values)
+    XCTAssertFalse(tasks.isEmpty, "The clear command must admit a maintenance task")
+    for task in tasks { await task.value }
+    XCTAssertFalse(model.history.isLocalHistoryMaintenanceRunning)
   }
 
   private func waitUntil(

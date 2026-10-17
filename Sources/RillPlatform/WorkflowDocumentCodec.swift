@@ -16,34 +16,40 @@ public struct WorkflowDocumentCodec: Sendable {
     guard let version = shape.table?["schema_version"]?.integer else {
       throw WorkflowDocumentError("schema_version", "An integer schema version is required.")
     }
-    let document: WorkflowDocument
+    var document: WorkflowDocument
     switch version {
     case 1:
       try shape.validateDocument(legacy: true)
       let legacy = try decoder.decode(WorkflowTOMLDocument.self, from: source)
       document = try WorkflowDocument(workflow: legacy.workflow(), isEnabled: legacy.enabled)
-    case 2:
-      try shape.validateDocument()
-      document = try decoder.decode(DocumentV2.self, from: source).document()
+    case 2, 3:
+      try shape.validateDocument(globalModels: version == 3)
+      document = try decoder.decode(WorkflowFileDocument.self, from: source).document()
     default:
       throw WorkflowDocumentError(
         "schema_version",
         "Unsupported workflow version \(version). This file has not been changed.")
     }
+    if version < 3 { document.workflow = document.workflow.followingGlobalModels() }
     try validate(document)
     return document
   }
 
   public func encode(_ document: WorkflowDocument, validating: Bool = true) throws -> String {
+    var document = document
+    document.workflow = document.workflow.followingGlobalModels()
     if validating { try validate(document) }
     let encoder = TOMLEncoder()
     encoder.outputFormatting = .sortedKeys
-    return try encoder.encodeToString(DocumentV2(document))
+    return try encoder.encodeToString(WorkflowFileDocument(document))
   }
 
   public func validate(_ document: WorkflowDocument) throws {
     try XDGWorkflowFileStore.validate(document.workflow)
     let workflow = document.workflow
+    if let gate = workflow.metadata["text.polishing-gate"], gate != "classification" {
+      throw WorkflowDocumentError("options.text.polishing-gate", "Use classification; the decision model is selected in Settings.")
+    }
     guard (workflow.inputKind == .audio) == (workflow.plan.setup.speechRoute != nil) else {
       throw WorkflowDocumentError(
         "input.kind",
@@ -77,8 +83,8 @@ public struct WorkflowDocumentCodec: Sendable {
   }
 }
 
-private struct DocumentV2: Codable {
-  var schema_version = 2
+private struct WorkflowFileDocument: Codable {
+  var schema_version = 3
   var id: UUID
   var name: String
   var description: String?
@@ -168,6 +174,7 @@ private struct DocumentStep: Codable {
   var description: String?
   var prompt: String?
   var record_duration: Bool?
+  var model_role: LanguageModelRole?
   var uncertainty: WorkflowTOMLUncertainty?
   var condition: DocumentCondition?
   var then: [DocumentStep]?
@@ -179,6 +186,7 @@ private struct DocumentStep: Codable {
     description = step.nodeDescription
     prompt = step.prompt
     record_duration = step.recordDuration
+    model_role = step.postProcessStep?.resolvedModelRole
     uncertainty = step.uncertaintyPolicy.map(WorkflowTOMLUncertainty.init)
     condition = step.condition.map(DocumentCondition.init)
     then = step.thenSteps.map { $0.map(DocumentStep.init) }
@@ -192,8 +200,10 @@ private struct DocumentStep: Codable {
     var step = try WorkflowProcessStep(
       id: Self.runtimeID(id, workflowID: workflowID), kind: stepKind,
       prompt: prompt, uncertaintyPolicy: uncertainty?.policy(),
-      recordDuration: record_duration
+      recordDuration: record_duration,
+      modelRole: model_role
     )
+    step.modelRole = step.postProcessStep?.resolvedModelRole ?? step.modelRole
     step.documentID = id
     step.nodeDescription = description
     step.condition = try condition?.resolve()
@@ -344,7 +354,7 @@ private indirect enum DocumentShape: Decodable {
     }
   }
 
-  func validateDocument(legacy: Bool = false) throws {
+  func validateDocument(legacy: Bool = false, globalModels: Bool = false) throws {
     try check(
       legacy
         ? [
@@ -361,10 +371,17 @@ private indirect enum DocumentShape: Decodable {
     let setup = table?["setup"]
     try setup?.check(["speech", "vocabulary", "wake_word"], path: "setup")
     try setup?.table?["speech"]?.check(
-      [
-        "selection", "recognizer", "language", "local_model", "provider_model",
-        "live_preview", "live_preview_placement", "streaming_profile",
-      ], path: "setup.speech")
+      globalModels
+        ? ["language", "live_preview", "live_preview_placement", "streaming_profile"]
+        : [
+          "selection", "recognizer", "language", "local_model", "provider_model",
+          "live_preview", "live_preview_placement", "streaming_profile",
+        ], path: "setup.speech")
+    if globalModels {
+      for key in WorkflowDefinition.retiredModelOptionKeys where table?["options"]?.table?[key] != nil {
+        throw WorkflowDocumentError("options.\(key)", "Models are configured globally in Settings.")
+      }
+    }
     try setup?.table?["wake_word"]?.check(["phrases"], path: "setup.wake_word")
     if case .array(let bindings) = setup?.table?["vocabulary"] {
       for binding in bindings {
@@ -383,6 +400,12 @@ private indirect enum DocumentShape: Decodable {
             ? ["id", "config"] : ["id", "kind", "description", "config", "condition"],
           path: path)
         try action.table?["condition"]?.validateCondition(path: "\(path).condition")
+        if globalModels {
+          for key in [SpeechOutputActionConfigurationKey.provider, SpeechOutputActionConfigurationKey.model]
+          where action.table?["config"]?.table?[key] != nil {
+            throw WorkflowDocumentError("\(path).config.\(key)", "Models are configured globally in Settings.")
+          }
+        }
       }
     }
   }
@@ -396,7 +419,7 @@ private indirect enum DocumentShape: Decodable {
           ? ["id", "kind", "prompt", "uncertainty"]
           : [
             "id", "kind", "description", "prompt", "uncertainty", "condition", "then",
-            "else", "record_duration",
+            "else", "record_duration", "model_role",
           ], path: path)
       try step.table?["uncertainty"]?.check(
         ["mode", "confidence_threshold", "timeout_seconds"], path: "\(path).uncertainty")

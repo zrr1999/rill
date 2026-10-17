@@ -575,7 +575,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
           cloudConfirmationRequired: false
         )
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("Local preview must not request confirmation.")
         return false
       }

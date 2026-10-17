@@ -126,6 +126,10 @@ candidate before recording a failure.
       background plate, excessive inset, or material that obscures the glyph.
 - [ ] Finder Get Info reports `Rill.icns`, and the installed ICNS SHA-256
       matches the release artifact recorded above.
+- [ ] The installed Rill input source uses the monochrome routed voice cursor
+      in the input menu and source switcher, including the highlighted menu row,
+      in light and dark appearances at 1x and 2x display scales. No generic icon,
+      background tile, clipping, or records indicator appears.
 
 ## Clean-account first run
 
@@ -495,34 +499,26 @@ is established per app and content type; see [continuous output](continuous-outp
 
 ### Editable pending drafts
 
-- [ ] Hover the freely placed capsule for 120ms: the separate page opens without
-      moving or resizing the capsule, stealing focus, or capturing an output target.
-      Drag from the capsule before the delay: it moves without opening the page.
-- [ ] Cross the gap to the page and return during the 220ms exit delay. The page
-      stays open. Keep a button pressed or edit with the pointer outside: it must
-      not collapse. Verify Keep open, attached sheets, and physical IME candidates.
-      Small movements within 6pt of the page edge must not start dismissal; a quick
-      pass over the capsule must not open it after the pointer has already left.
+- [ ] Press Cmd+Cmd in an external App. The unified panel opens centered on the
+      pointer's display, initially in Collections. Switch to Drafts, close, and
+      invoke again: the last mode returns. Repeat the shortcut in either mode to
+      close it, leaving no resident capsule or other idle Record window.
+- [ ] Check Escape, the header Close button, Done Editing, and focus loss to
+      another window. Each dismisses the panel without losing saved text or
+      selection. An attached sheet closes before the panel; physical IME candidates
+      take precedence. Returning focus during the dismissal delay keeps it open.
 - [ ] Change modes, counts, selections and output status while preparing to click
       Copy or Send. Window geometry and the bottom action positions stay fixed.
-- [ ] Drag the open pair near every screen edge and across displays. The capsule
-      reaches the 12pt screen margin independently of the wider page. Near the top,
-      the page moves below the capsule; near the bottom, it moves above. Keep the
-      current side while the full page fits, and keep a 14pt gap without overlap.
-      When neither side fits, limit the page height to available space and switch
-      only when the other side has more than 24pt extra space; small movements
-      near the midpoint must not repeatedly flip it. Restore normal height when
-      space returns. Reopen after a display change. Physical IME composition and
-      attached sheets must prevent dragging.
-- [ ] Check capsule drag/close and keyboard or VoiceOver expansion. No separate
-      collapse button is present; Escape and pointer exit retain their own behavior.
+- [ ] Invoke on each display, including after disconnecting a display. Keep the
+      page inside the visible screen with a 12pt margin; smaller screens reduce
+      its size. Verify Close and both mode controls with keyboard and VoiceOver.
 - [ ] Enable voice collection and clipboard collection separately, both in Settings
-      and in Drafts. Each enables the same saved preference and opens the resident
-      panel without stealing key focus. Relaunch with either enabled and check restoration.
-- [ ] Send a pending item and switch applications: Drafts stays visible. Close it
-      explicitly, then enable the other source to reopen it without losing edits or selection.
-- [ ] Focus an external text field, enter the already-visible Drafts window, and
-      send. Each new editing visit captures that target; arrivals and Send never recapture it.
+      and in Drafts. Each enables the same saved preference without opening the
+      panel. Relaunch with either enabled and receive new items: it stays hidden.
+- [ ] Send a pending item: the Record panel closes before output. Required output
+      confirmation and file/image dragging remain available in their temporary
+      window. Reopen explicitly to continue editing; arrivals and Send never
+      recapture the target from the original editing visit.
 - [ ] Open Drafts from both the menu bar and Record toolbar in Chinese/English,
       light/dark appearance and a narrow window; inspect selection contrast and VoiceOver labels.
 - [ ] With the physical Chinese IME, compose, choose candidates, replace a selection,

@@ -142,7 +142,8 @@ public struct StreamView: View {
         } else if model.voiceSetupReadiness.accessibilityRequired && model.permissionSnapshot.accessibility == .denied {
           model.openAccessibilitySettings()
         } else if let entry = model.history.displayedRunHistoryEntries.first(where: {
-          $0.status == .failed && $0.record?.failureMessage == message
+          guard $0.status == .failed, let record = $0.record else { return false }
+          return RunFailurePresentation.text(for: record.failureMessage, language: model.settings.language) == message
         }) {
           model.showHistoryEntry(entry.id)
         } else {

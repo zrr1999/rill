@@ -7,12 +7,6 @@ extension LocalSpeechModelCatalog {
     settings: LocalSpeechSettings,
     workflow: WorkflowDefinition?
   ) -> String {
-    return effectiveModelIdentifier(
-      settings: settings,
-      modelOverride: workflow.flatMap {
-        $0.metadata[WorkflowMetadataKey.localSpeechModelOverride]
-          ?? $0.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
-      })
+    effectiveModelIdentifier(settings: settings)
   }
-
 }

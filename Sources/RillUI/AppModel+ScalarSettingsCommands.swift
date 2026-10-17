@@ -83,20 +83,63 @@ extension AppModel {
 }
 
 extension AppModel {
-  public func setOpenAIAPIKey(_ value: String) {
-    guard !hasBegunApplicationShutdown,
-      settings.openAICredentialAvailability != .inaccessible
-    else { return }
-    applyOpenAIAPIKey(value)
+  public func setOpenAIAPIKey(_ value: String) { setLanguageModelAPIKey(value, for: .fast) }
+  public func setOpenAIBaseURL(_ value: String) { setLanguageModelBaseURL(value, for: .fast) }
+  public func setOpenAIModel(_ value: String) { setLanguageModelIdentifier(value, for: .fast) }
+
+  public func setLanguageModelAPIKey(_ value: String, for role: LanguageModelRole) {
+    guard !hasBegunApplicationShutdown, settings.credentialAvailability(for: role) != .inaccessible else { return }
+    applyLanguageModelAPIKey(value, for: role)
   }
 
-  public func setOpenAIBaseURL(_ value: String) {
-    guard settings.canMutateScalarSettings(in: .openAI) else { return }
-    applyOpenAIBaseURL(value)
+  public func setLanguageModelBaseURL(_ value: String, for role: LanguageModelRole) {
+    guard settings.canMutateScalarSettings(in: role.settingsDomain) else { return }
+    applyLanguageModelBaseURL(value, for: role)
   }
 
-  public func setOpenAIModel(_ value: String) {
-    guard settings.canMutateScalarSettings(in: .openAI) else { return }
-    applyOpenAIModel(value)
+  public func setLanguageModelIdentifier(_ value: String, for role: LanguageModelRole) {
+    guard settings.canMutateScalarSettings(in: role.settingsDomain) else { return }
+    applyLanguageModelIdentifier(value, for: role)
+  }
+
+  func applyLanguageModelAPIKey(_ value: String, for role: LanguageModelRole) {
+    guard settings.languageModelSettings(for: role).apiKey != value else { return }
+    if role == .fast { settings.openAIAPIKey = value } else { settings.intelligentAPIKey = value }
+    if !settings.isRestoringSettings {
+      settings.credentialLoadGenerations[role, default: 0] &+= 1
+      settings.setCredentialAvailability(credentialStore == nil ? .inaccessible : .saving, for: role)
+    }
+    languageModelConfigurationChanged(for: role)
+    persistSecureCredential(value, for: role.credentialKey, taskKey: role.credentialKey.legacySettingKey)
+  }
+
+  func applyLanguageModelBaseURL(_ value: String, for role: LanguageModelRole) {
+    guard settings.languageModelSettings(for: role).baseURL != value else { return }
+    if role == .fast { settings.openAIBaseURL = value } else { settings.intelligentBaseURL = value }
+    languageModelConfigurationChanged(for: role)
+    persistStringSetting(value, for: role.baseURLKey)
+  }
+
+  func applyLanguageModelIdentifier(_ value: String, for role: LanguageModelRole) {
+    guard settings.languageModelSettings(for: role).model != value else { return }
+    if role == .fast { settings.openAIModel = value } else { settings.intelligentModel = value }
+    languageModelConfigurationChanged(for: role)
+    persistStringSetting(value, for: role.modelKey)
+  }
+
+  private func languageModelConfigurationChanged(for role: LanguageModelRole) {
+    settings.invalidateOpenAIVerification(for: role)
+    if !settings.isLoading { contextMemory?.invalidateAuthorization() }
+    publishLanguageModelSettings(for: role)
+    workflowLibraryChangedAction()
+  }
+
+  func publishLanguageModelSettings(for role: LanguageModelRole) {
+    let availability = settings.credentialAvailability(for: role)
+    let isAvailable = availability == .available || availability == .saving || availability == .missing
+    languageModelSettingsSource.update(
+      !hasBegunApplicationShutdown && isAvailable && !settings.hasUnavailableScalarSettings(in: role.settingsDomain)
+        ? settings.languageModelSettings(for: role) : nil,
+      for: role)
   }
 }

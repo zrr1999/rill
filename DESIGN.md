@@ -215,7 +215,7 @@ exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
 
-Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, pending capsule, navigation
+Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, navigation
 sidebar, mode track, selected mode, and action buttons. Reading surfaces, record
 previews, and draft editing stay opaque. Reduce Transparency or Increase
 Contrast selects an opaque control background through `RillGlass`. Each mounted

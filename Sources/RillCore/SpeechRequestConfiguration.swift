@@ -5,7 +5,6 @@ import Foundation
 public struct SpeechRequestConfiguration: Sendable, Equatable {
   public var presentation: WorkflowPresentation
   public var recognizerID: String?
-  public var modelOverride: String?
   public var languageOverride: String?
   public var streamingProfile: String?
   public var livePreviewEnabled: Bool
@@ -15,9 +14,6 @@ public struct SpeechRequestConfiguration: Sendable, Equatable {
   public init(workflow: WorkflowDefinition) {
     presentation = workflow.presentation
     recognizerID = workflow.plan.setup.speechRoute?.recognizerID
-    modelOverride =
-      workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride]
-      ?? workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
     languageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride]
     streamingProfile = workflow.metadata[WorkflowMetadataKey.streamingProfile]
     livePreviewEnabled = workflow.livePreviewIsEnabled

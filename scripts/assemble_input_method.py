@@ -22,10 +22,13 @@ def assemble(executable: Path, output: Path) -> None:
     executable = executable.resolve(strict=True)
     output = output.resolve()
     runtime = prepare()
+    project_dir = Path(__file__).resolve().parent.parent
     contents = output / "Contents"
     for name in ("MacOS", "Frameworks", "Helpers", "Resources"):
         (contents / name).mkdir(parents=True, exist_ok=True)
     prepare_data(contents / "Resources")
+    icon = project_dir / "Sources/RillApp/Resources/RillMenuBarTemplate.pdf"
+    shutil.copy2(icon, contents / "Resources" / icon.name)
     shutil.copy2(executable, contents / "MacOS/RillInputMethod")
     subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks",
                     str(contents / "MacOS/RillInputMethod")], check=True)
@@ -46,9 +49,13 @@ def assemble(executable: Path, output: Path) -> None:
         "InputMethodConnectionName": "RillInputMethodConnection",
         "InputMethodServerControllerClass": "RillInputController",
         "TISInputSourceID": identifier,
+        "TISIconIsTemplate": True, "tsInputMethodIconFileKey": icon.name,
         "ComponentInputModeDict": {
             "tsInputModeListKey": {input_source_id: {
                 "TISInputSourceID": input_source_id, "TISIntendedLanguage": "zh-Hans",
+                "tsInputModeMenuIconFileKey": icon.name,
+                "tsInputModeAlternateMenuIconFileKey": icon.name,
+                "tsInputModePaletteIconFileKey": icon.name,
                 "tsInputModeCharacterRepertoireKey": ["Hans", "Hant", "Latn"],
                 "tsInputModeDefaultStateKey": True, "tsInputModeIsVisibleKey": True,
                 "tsInputModePrimaryInScriptKey": True, "tsInputModeScriptKey": "smUnicodeScript",
@@ -63,7 +70,7 @@ def assemble(executable: Path, output: Path) -> None:
             "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",
             identifier: "Rill", input_source_id: "Rill",
         }))
-    notices = Path(__file__).resolve().parent.parent / "docs/input-method-dependencies.md"
+    notices = project_dir / "docs/input-method-dependencies.md"
     shutil.copy2(notices, contents / "Resources/THIRD_PARTY_NOTICES.md")
     shutil.copytree(notices.parent.parent / "Resources/InputMethodLicenses",
                     contents / "Resources/Licenses", dirs_exist_ok=True)

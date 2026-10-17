@@ -13,6 +13,15 @@ public struct AuthorizedPrivacyContext: Sendable, Equatable {
 }
 
 public struct PrivacyRunGate: Sendable {
+  public var modelSnapshotProvider: @Sendable (WorkflowDefinition) throws -> WorkflowModelSnapshot = { _ in .init() }
+  private var modelSnapshot: WorkflowModelSnapshot?
+
+  private func bindingModels(for workflow: WorkflowDefinition) throws -> Self {
+    var gate = self
+    gate.modelSnapshot = try modelSnapshotProvider(workflow)
+    return gate
+  }
+
   public var prepareLiveRecognition:
     @Sendable (
       UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, AudioCaptureLifetime
@@ -20,8 +29,8 @@ public struct PrivacyRunGate: Sendable {
 
   public var prepareCorrectionContext:
     @Sendable (
-      UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, [HotwordCandidate], AudioCaptureLifetime
-    ) async throws -> RunContextPreparation? = { _, _, _, _, _, _ in nil }
+      UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, [HotwordCandidate], AudioCaptureLifetime, WorkflowModelSnapshot?
+    ) async throws -> RunContextPreparation? = { _, _, _, _, _, _, _ in nil }
 
   public enum GateError: Error, LocalizedError, Equatable {
     case settingsUnavailable
@@ -113,7 +122,8 @@ public struct PrivacyRunGate: Sendable {
     @Sendable (
       WorkflowDefinition,
       PrivacyPolicyDecision,
-      [PrivacyProcessingDestination]
+      [PrivacyProcessingDestination],
+      WorkflowModelSnapshot?
     ) async -> Bool
   private let destinationClassifier:
     @Sendable (
@@ -127,7 +137,8 @@ public struct PrivacyRunGate: Sendable {
       @escaping @Sendable (
         WorkflowDefinition,
         PrivacyPolicyDecision,
-        [PrivacyProcessingDestination]
+        [PrivacyProcessingDestination],
+        WorkflowModelSnapshot?
       ) async -> Bool
   ) {
     self.settingsProvider = settingsProvider
@@ -146,7 +157,8 @@ public struct PrivacyRunGate: Sendable {
       @escaping @Sendable (
         WorkflowDefinition,
         PrivacyPolicyDecision,
-        [PrivacyProcessingDestination]
+        [PrivacyProcessingDestination],
+        WorkflowModelSnapshot?
       ) async -> Bool,
     destinationClassifier:
       @escaping @Sendable (
@@ -166,7 +178,8 @@ public struct PrivacyRunGate: Sendable {
       @escaping @Sendable (
         WorkflowDefinition,
         PrivacyPolicyDecision,
-        [PrivacyProcessingDestination]
+        [PrivacyProcessingDestination],
+        WorkflowModelSnapshot?
       ) async -> Bool,
     invocationDestinationClassifier:
       @escaping @Sendable (
@@ -225,7 +238,8 @@ public struct PrivacyRunGate: Sendable {
       let confirmed = await cloudConfirmationProvider(
         workflow,
         decision,
-        evaluatedPolicy.processingDestinations
+        evaluatedPolicy.processingDestinations,
+        modelSnapshot
       )
       guard confirmed else {
         throw GateError.cloudConfirmationDeclined
@@ -369,7 +383,8 @@ public struct PrivacyRunGate: Sendable {
       ) async throws -> SpeechRecognitionRequestOptions,
     workflow: WorkflowDefinition
   ) async throws -> AuthorizedWorkflowRunContext {
-    let authorization = try await captureAuthorizedContext(
+    let gate = try bindingModels(for: workflow)
+    let authorization = try await gate.captureAuthorizedContext(
       privacyContextProvider: privacyContextProvider,
       contextProvider: contextProvider,
       workflow: workflow
@@ -381,7 +396,8 @@ public struct PrivacyRunGate: Sendable {
         workflow,
         authorization.context
       ),
-      invocation: .capture
+      invocation: .capture,
+      modelSnapshot: gate.modelSnapshot
     )
   }
 
@@ -405,7 +421,8 @@ public struct PrivacyRunGate: Sendable {
       subject: subject,
       operation: operation
     )
-    let capture = try await captureAuthorizedPolicyContext(
+    let gate = try bindingModels(for: workflow)
+    let capture = try await gate.captureAuthorizedPolicyContext(
       privacyContextProvider: privacyContextProvider,
       contextProvider: contextProvider,
       workflow: workflow,
@@ -415,7 +432,8 @@ public struct PrivacyRunGate: Sendable {
       workflow: workflow,
       contextSnapshot: capture.authorizedContext,
       recognitionOptions: .empty,
-      invocation: invocation
+      invocation: invocation,
+      modelSnapshot: gate.modelSnapshot
     )
   }
 
@@ -511,7 +529,8 @@ public struct PrivacyRunGate: Sendable {
     if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
       throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
     }
-    let capture = try await captureAuthorizedPolicyContext(
+    let gate = try bindingModels(for: workflow)
+    let capture = try await gate.captureAuthorizedPolicyContext(
       privacyContextProvider: privacyContextProvider,
       contextProvider: contextProvider,
       workflow: workflow
@@ -543,7 +562,7 @@ public struct PrivacyRunGate: Sendable {
     let contextPreparation: RunContextPreparation?
     if let audioLifetime {
       contextPreparation = try await prepareCorrectionContext(
-        runID, workflow, capture.authorizedContext, recognitionOptions, preparedRecognition?.plan.vocabularyCandidates ?? [], audioLifetime)
+        runID, workflow, capture.authorizedContext, recognitionOptions, preparedRecognition?.plan.vocabularyCandidates ?? [], audioLifetime, gate.modelSnapshot)
       try Task.checkCancellation()
     } else {
       contextPreparation = nil
@@ -562,16 +581,17 @@ public struct PrivacyRunGate: Sendable {
         liveAuthorizationState: liveAuthorizationState,
         audioLifetime: audioLifetime,
         contextPreparation: contextPreparation,
-        preparedRecognition: preparedRecognition
+        preparedRecognition: preparedRecognition,
+        modelSnapshot: gate.modelSnapshot
       ),
-      claimValidator: { [self] payload, triggerEvent in
-        try await self.claimAudioProcessingPayload(
+      claimValidator: { [gate] payload, triggerEvent in
+        try await gate.claimAudioProcessingPayload(
           payload,
           triggerEvent: triggerEvent
         )
       },
-      finalValidator: { [self] payload, policyState in
-        try await self.finalizeAudioProcessingPayload(
+      finalValidator: { [gate] payload, policyState in
+        try await gate.finalizeAudioProcessingPayload(
           payload,
           policyState: policyState
         )
@@ -773,7 +793,8 @@ public struct PrivacyRunGate: Sendable {
     let confirmed = await cloudConfirmationProvider(
       payload.workflow,
       currentPolicy.decision,
-      currentPolicy.processingDestinations
+      currentPolicy.processingDestinations,
+      payload.modelSnapshot
     )
     guard confirmed else { throw GateError.cloudConfirmationDeclined }
 
@@ -829,7 +850,8 @@ public struct PrivacyRunGate: Sendable {
       recognitionOptions: payload.recognitionOptions,
       invocation: .capture,
       contextPreparation: payload.contextPreparation,
-      preparedRecognition: payload.preparedRecognition
+      preparedRecognition: payload.preparedRecognition,
+      modelSnapshot: payload.modelSnapshot
     )
   }
 

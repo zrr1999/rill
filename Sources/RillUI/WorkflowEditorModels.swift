@@ -151,24 +151,28 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public var id: UUID
     public var kind: PostProcessStepKind
     public var prompt: String
+    public var modelRole: LanguageModelRole?
 
-    public init(id: UUID = UUID(), kind: PostProcessStepKind, prompt: String = "") {
+    public init(id: UUID = UUID(), kind: PostProcessStepKind, prompt: String = "", modelRole: LanguageModelRole? = nil) {
       self.id = id
       self.kind = kind
       self.prompt = prompt
+      self.modelRole = modelRole
     }
 
     init(step: PostProcessStep) {
       self.id = step.id
       self.kind = step.kind
       self.prompt = step.prompt ?? ""
+      self.modelRole = step.resolvedModelRole
     }
 
     func toStep() -> PostProcessStep {
       PostProcessStep(
         id: id,
         kind: kind,
-        prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : prompt
+        prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : prompt,
+        modelRole: modelRole
       )
     }
   }
@@ -188,7 +192,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
   // Action – voice pipeline
   public var recognizer: RecognizerChoice
   public var speechLanguageOverride: String
-  public var localSpeechModelOverride: String
   public var livePreviewEnabled: Bool
   public var livePreviewPlacement: LivePreviewPlacement
   public var streamingProfile: String
@@ -203,7 +206,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
   public var excludeFromWorkflowCapture: Bool
   public var speaksResult: Bool
   public var speechVoice: Qwen3TTSVoice
-  public var speechModelID: String
 
   // Action – record collection event
   public var groupActionKind: RecordCollectionActionKind
@@ -219,7 +221,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     excludePolishTag: Bool = true,
     recognizer: RecognizerChoice = .localSpeech,
     speechLanguageOverride: String = "",
-    localSpeechModelOverride: String = "",
     livePreviewEnabled: Bool = true,
     livePreviewPlacement: LivePreviewPlacement = .overlay,
     streamingProfile: String = "realtime",
@@ -236,7 +237,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     excludeFromWorkflowCapture: Bool = true,
     speaksResult: Bool = false,
     speechVoice: Qwen3TTSVoice = .vivian,
-    speechModelID: String = "",
     groupActionKind: RecordCollectionActionKind = .editRecord,
     actionPrompt: String = ""
   ) {
@@ -247,7 +247,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     self.excludePolishTag = excludePolishTag
     self.recognizer = recognizer
     self.speechLanguageOverride = speechLanguageOverride
-    self.localSpeechModelOverride = localSpeechModelOverride
     self.livePreviewEnabled = livePreviewEnabled
     self.livePreviewPlacement = livePreviewPlacement
     self.streamingProfile = streamingProfile
@@ -262,7 +261,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     self.excludeFromWorkflowCapture = excludeFromWorkflowCapture
     self.speaksResult = speaksResult
     self.speechVoice = speechVoice
-    self.speechModelID = speechModelID
     self.groupActionKind = groupActionKind
     self.actionPrompt = actionPrompt
   }
@@ -332,15 +330,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
       .configuration[SpeechOutputActionConfigurationKey.voice]
       .flatMap(Qwen3TTSVoice.init(rawValue:))
       ?? .vivian
-    self.speechModelID =
-      workflow.plan.output.actions
-      .first(where: { $0.id == SpeechOutputActionID.speak })?
-      .configuration[SpeechOutputActionConfigurationKey.model]
-      ?? ""
-    self.localSpeechModelOverride =
-      workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride]
-      ?? workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
-      ?? ""
     self.livePreviewEnabled =
       workflow.metadata[WorkflowMetadataKey.livePreviewEnabled] != "false"
     self.livePreviewPlacement =
@@ -380,7 +369,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     metadata[AppModel.workflowOriginMetadataKey] = AppModel.userWorkflowOriginMetadataValue
     metadata["provider"] = RecognizerChoice.localSpeech.providerMetadataValue
     let trimmedLanguageOverride = speechLanguageOverride.trimmingCharacters(in: .whitespacesAndNewlines)
-    let trimmedModelOverride = localSpeechModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
     let outputActionConfiguration = destination.outputConfiguration(from: self)
 
     // Event metadata
@@ -422,13 +410,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     } else {
       metadata.removeValue(forKey: WorkflowMetadataKey.languageOverride)
     }
-    if !trimmedModelOverride.isEmpty {
-      metadata[WorkflowMetadataKey.localSpeechModelOverride] = trimmedModelOverride
-      metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
-    } else {
-      metadata.removeValue(forKey: WorkflowMetadataKey.localSpeechModelOverride)
-      metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
-    }
+    for key in WorkflowDefinition.retiredModelOptionKeys { metadata.removeValue(forKey: key) }
     if destination == .saveToQueue, let targetGroupID {
       metadata[WorkflowMetadataKey.targetRecordCollectionIDs] = targetGroupID.uuidString
     } else {
@@ -437,13 +419,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
 
     let route = WorkflowSpeechRoute(
-      selection: .fixed,
-      recognizerID: RecognizerChoice.localSpeech.recognizerID,
-      language: trimmedLanguageOverride.isEmpty ? nil : trimmedLanguageOverride,
-      localModel:
-        !trimmedModelOverride.isEmpty
-        ? trimmedModelOverride
-        : nil
+      selection: .automatic, recognizerID: "local-speech",
+      language: trimmedLanguageOverride.isEmpty ? nil : trimmedLanguageOverride
     )
     let processSteps =
       [
@@ -462,12 +439,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         OutputActionReference(
           id: SpeechOutputActionID.speak,
           configuration: [
-            SpeechOutputActionConfigurationKey.provider:
-              SpeechSynthesisProvider.automatic.rawValue,
             SpeechOutputActionConfigurationKey.voice:
-              speechVoice.rawValue,
-            SpeechOutputActionConfigurationKey.model:
-              speechModelID,
+              speechVoice.rawValue
           ]
         )
       )
@@ -632,12 +605,8 @@ private extension WorkflowEditorDraft.DestinationChoice {
       return [:]
     case .speakOnly:
       return [
-        SpeechOutputActionConfigurationKey.provider:
-          SpeechSynthesisProvider.automatic.rawValue,
         SpeechOutputActionConfigurationKey.voice:
-          draft.speechVoice.rawValue,
-        SpeechOutputActionConfigurationKey.model:
-          draft.speechModelID,
+          draft.speechVoice.rawValue
       ]
     case .sendToWebhook:
       var configuration: [String: String] = [:]

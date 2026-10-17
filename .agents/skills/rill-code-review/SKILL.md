@@ -24,6 +24,9 @@ Follow the affected domain contract only as needed:
 - Workflow definitions and effects: [workflow TOML](../../../docs/workflow-toml.md).
 - Record state, routes, and persistence: [Record architecture](../../../docs/record-architecture.md).
 - Native interaction claims: [macOS acceptance](../../../docs/release-qa-checklist.md).
+- Visual or material changes: [DESIGN.md](../../../DESIGN.md) and
+  [UI direction](../../../docs/ui-direction.md). A documented glass surface or
+  AppKit bridge is not a defect.
 
 ## Trace behavior and ownership
 

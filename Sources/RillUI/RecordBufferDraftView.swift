@@ -383,9 +383,7 @@ public struct RecordBufferDraftView: View {
   }
 
   private func bufferName(_ buffer: RecordBuffer) -> String {
-    if buffer.id == RecordBuffer.speechID { return text(.speech) }
-    if buffer.id == RecordBuffer.clipboardID { return text(.clipboard) }
-    return buffer.name
+    L10n.bufferName(buffer, language: language)
   }
   private func preview(_ item: BufferItemSummary) -> String {
     let preview =

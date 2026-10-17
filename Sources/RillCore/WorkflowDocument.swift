@@ -2,7 +2,7 @@ import Foundation
 
 /// The complete editable configuration. File and visual editors share this value.
 public struct WorkflowDocument: Sendable, Equatable {
-  public static let schemaVersion = 2
+  public static let schemaVersion = 3
   public var workflow: WorkflowDefinition
   public var isEnabled: Bool
 

@@ -104,9 +104,8 @@ Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/rele
 CI 同时启用原生渲染导出和 10,000 条记录压力验收，并保存渲染产物；
 真实输入、VoiceOver 和多显示器交互仍按 macOS QA 清单单独验收。
 面板重开复用原生宿主视图，同时创建新的搜索会话并替换投递回调；
-原生回归覆盖跨工作区重开后的输入和投递，压力测试保留 150 ms 门槛并报告呈现、布局耗时。
-窗口压力检查失败后，预检额外重放一次并用系统 `sample` 采集该测试进程的调用栈，
-随原生渲染产物保存。诊断重放不改变原检查的失败结果，也不参与通过判定。
+原生回归覆盖跨工作区重开后的输入和投递，万条记录验证保留结果、焦点与有界完成检查。
+呈现和布局耗时使用显式 Release 基准，测量方式与原始样本格式见 [性能基准](Benchmarks/README.md)。
 `test-domain` 从同一份 Package.swift 排除 App、UI、MLX 和原生验收测试目标，
 保留领域测试所需的依赖，并使用独立的 `.artifacts/build/domain-tests`。锁文件校验不变；
 完整 CI 仍使用未裁剪的生产图。该模式不替代 `just ci` 或 Release 模型验收。
@@ -250,7 +249,7 @@ git diff --cached --check
 
 1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
 2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
-3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储和面板压力测试分别放在独立串行进程中，与 `just test` 相同。
+3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储压力测试和一万条记录的面板功能验证分别放在独立串行进程中，与 `just test` 相同。面板验证保留结果、焦点与有界完成检查，不以共享 runner 的实际耗时判定性能退化。
 4. `desktop-tests` 验证真实桌面交互；环境不可用时本次完整门禁失败，后续阶段不运行。
 5. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
 6. 工作区 diff 检查。
@@ -297,6 +296,9 @@ GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可�
 `just validate-performance-workloads` 验证工作负载结果。macOS 共享 runner 的耗时日志不提供性能结论；
 `CI - Tests` 中的 `Record workload validation` 按相关源码范围运行。CPU simulation 比较由 `CI - Performance` 负责。
 
+`just bench-performance panel` 显式测量 Release 构建的原生面板展示，保存预热后的原始样本、源码指纹与工具链信息。
+`testBenchmark…` 用例不进入普通预检；性能结论需要同一固定机器上的 base/head 对照和噪声评估，见 [性能基准](Benchmarks/README.md)。
+
 ## GitHub Actions 命名
 
 参考 ZenDev 和 Volvox，workflow 文件使用小写 kebab-case，按职责使用 `ci-`、
@@ -321,8 +323,10 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 跳过整个 macOS job。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
 `README.md` 随 App 分发，因此仍走应用预检。
 
-`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限，通过 API 获取当前
-标题、正文和事件中 base commit 的 PR 模板。它不依赖 Automation，也不豁免机器人。
+`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限。它用 `actions/checkout`
+只检出事件中 base commit 的 PR 模板，再由 `octokit/request-action` 读取当前标题和
+正文，交给 ZenDev 官方的 `validate-title`、`validate-body` Actions 校验。
+它不依赖 Automation，也不豁免机器人。
 
 `Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
 仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
@@ -332,8 +336,8 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 [`GITHUB_TOKEN` 改名不会触发 `edited` 工作流](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。
 已经规范化的标题不会再次触发改名或重跑；正文不合规仍会检查失败。
 `pull-requests: write` 和重跑所需的 `actions: write` 只授予 Automation。
-两个工作流都不检出仓库代码，也不读取上游运行的 artifacts；Automation 进入默认
-分支后生效。提交信息由本地 prek
+Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两个工作流都不读取
+上游运行的 artifacts。Automation 进入默认分支后生效。提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
 ## 生成文件
@@ -364,7 +368,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
 使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
 当前统一版本是 0.4.0；prek 的上游 revision 和 CI Actions 均固定到 commit，
-ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本。
+本地 hook 使用固定版本的已发布组件，CI 由官方 Actions 安装对应提交的源码。
 
 - `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
   `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
@@ -407,3 +411,7 @@ scripts/preflight.sh commit-messages origin/main HEAD
 - 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
 
 发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。项目许可见 [LICENSE](LICENSE)，安全报告渠道状态与披露规则见 [SECURITY.md](SECURITY.md)。
+
+## 项目演进
+
+[EVOLUTION.md](EVOLUTION.md) 保存项目起源和真实的方向变化。后续方向变化按真实日期追加，包含“触发”“变化”“理由”，同日变更合并；维护后运行 `zendev evolution check`。文中历史状态不替代当前实现和验收证据。

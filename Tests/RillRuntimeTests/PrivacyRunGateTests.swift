@@ -105,6 +105,31 @@ private actor PrivacyContextSequence {
 }
 
 final class PrivacyRunGateTests: XCTestCase {
+  func testAdmissionAndCloudConfirmationShareTheFrozenModelBinding() async throws {
+    let models = LanguageModelSettingsSource()
+    let original = OpenAISettings(apiKey: "test-key", model: "original-model")
+    models.update(original, for: .fast)
+    let context = makeRunContext(bundleIdentifier: "com.example.editor")
+    let probe = ConfirmationProbe()
+    var gate = PrivacyRunGate(
+      settingsProvider: { .defaults },
+      cloudConfirmationProvider: { _, _, _, snapshot in
+        XCTAssertEqual(snapshot?.languageModels[.fast], original)
+        models.update(OpenAISettings(apiKey: "test-key", model: "next-model"), for: .fast)
+        await probe.record()
+        return true
+      }
+    )
+    gate.modelSnapshotProvider = { try models.snapshot(for: $0.languageModelRoles) }
+    let admitted = try await gate.captureAuthorizedWorkflowRunContext(
+      privacyContextProvider: { context }, contextProvider: { _ in context },
+      recognitionOptionsProvider: { _, _ in .empty }, workflow: makeRunWorkflow(recognizerID: "remote.speech"))
+    XCTAssertEqual(admitted.modelSnapshot?.languageModels[.fast], original)
+    XCTAssertEqual(try models.currentSettings(for: .fast).model, "next-model")
+    let confirmations = await probe.snapshot()
+    XCTAssertEqual(confirmations, 1)
+  }
+
   func testSensitiveCloudBlockDoesNotReadFullContext() async {
     let fullContextProbe = FullContextProbe()
     let minimalContext = makeRunContext(bundleIdentifier: "com.example.vault")
@@ -116,7 +141,7 @@ final class PrivacyRunGateTests: XCTestCase {
           ]
         )
       },
-      cloudConfirmationProvider: { _, _, _ in true }
+      cloudConfirmationProvider: { _, _, _, _ in true }
     )
 
     do {
@@ -148,7 +173,7 @@ final class PrivacyRunGateTests: XCTestCase {
           ]
         )
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -187,7 +212,7 @@ final class PrivacyRunGateTests: XCTestCase {
       settingsProvider: {
         PrivacyPolicySettings(sensitiveAppRules: [], cloudConfirmationRequired: true)
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -231,7 +256,7 @@ final class PrivacyRunGateTests: XCTestCase {
           cloudConfirmationRequired: true
         )
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -260,7 +285,7 @@ final class PrivacyRunGateTests: XCTestCase {
           cloudConfirmationRequired: true
         )
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -299,7 +324,7 @@ final class PrivacyRunGateTests: XCTestCase {
     ])
     let gate = PrivacyRunGate(
       settingsProvider: { try await settings.next() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -327,7 +352,7 @@ final class PrivacyRunGateTests: XCTestCase {
       settingsProvider: {
         PrivacyPolicySettings(sensitiveAppRules: [], cloudConfirmationRequired: true)
       },
-      cloudConfirmationProvider: { _, _, _ in false }
+      cloudConfirmationProvider: { _, _, _, _ in false }
     )
 
     do {
@@ -349,7 +374,7 @@ final class PrivacyRunGateTests: XCTestCase {
       settingsProvider: {
         PrivacyPolicySettings(sensitiveAppRules: [], cloudConfirmationRequired: true)
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return false
       }
@@ -377,7 +402,7 @@ final class PrivacyRunGateTests: XCTestCase {
     struct SettingsFailure: Error {}
     let gate = PrivacyRunGate(
       settingsProvider: { throw SettingsFailure() },
-      cloudConfirmationProvider: { _, _, _ in true }
+      cloudConfirmationProvider: { _, _, _, _ in true }
     )
 
     let preview = await gate.evaluate(
@@ -413,7 +438,7 @@ final class PrivacyRunGateTests: XCTestCase {
           cloudConfirmationRequired: false
         )
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("Local privacy evaluation must not request confirmation.")
         return false
       }
@@ -443,7 +468,7 @@ final class PrivacyRunGateTests: XCTestCase {
       settingsProvider: {
         PrivacyPolicySettings(sensitiveAppRules: [], cloudConfirmationRequired: true)
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -476,7 +501,7 @@ final class PrivacyRunGateTests: XCTestCase {
       settingsProvider: {
         PrivacyPolicySettings(sensitiveAppRules: [], cloudConfirmationRequired: true)
       },
-      cloudConfirmationProvider: { _, _, destinations in
+      cloudConfirmationProvider: { _, _, destinations, _ in
         await confirmation.record(destinations)
         return true
       }
@@ -500,7 +525,7 @@ final class PrivacyRunGateTests: XCTestCase {
     let confirmation = ConfirmationProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { PrivacyPolicySettings(sensitiveAppRules: []) },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -536,7 +561,7 @@ final class PrivacyRunGateTests: XCTestCase {
     }
     let gate = PrivacyRunGate(
       settingsProvider: { throw CanarySettingsFailure() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("Preview must not request confirmation.")
         return true
       }
@@ -576,7 +601,7 @@ final class PrivacyRunGateTests: XCTestCase {
     ])
     let gate = PrivacyRunGate(
       settingsProvider: { try await sequence.next() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("Local authorization must not request confirmation.")
         return true
       }
@@ -615,7 +640,7 @@ final class PrivacyRunGateTests: XCTestCase {
     ])
     let gate = PrivacyRunGate(
       settingsProvider: { try await sequence.next() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmation.record()
         return true
       }
@@ -649,7 +674,7 @@ final class PrivacyRunGateTests: XCTestCase {
     ])
     let gate = PrivacyRunGate(
       settingsProvider: { try await sequence.next() },
-      cloudConfirmationProvider: { _, _, _ in true }
+      cloudConfirmationProvider: { _, _, _, _ in true }
     )
 
     do {
@@ -677,7 +702,7 @@ final class PrivacyRunGateTests: XCTestCase {
     )
     let gate = PrivacyRunGate(
       settingsProvider: { await store.read() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("Local authorization must not request confirmation.")
         return true
       }

@@ -302,7 +302,8 @@ public extension SessionCoordinator {
       contextSnapshot: authorizedContext.contextSnapshot,
       recognitionOptions: authorizedContext.recognitionOptions,
       contextPreparation: authorizedContext.contextPreparation,
-      preparedRecognition: authorizedContext.preparedRecognition
+      preparedRecognition: authorizedContext.preparedRecognition,
+      modelSnapshot: authorizedContext.modelSnapshot
     )
   }
 
@@ -343,7 +344,8 @@ public extension SessionCoordinator {
       contextSnapshot: authorizedContext.contextSnapshot,
       recognitionOptions: authorizedContext.recognitionOptions,
       preRecognizedText: text,
-      waitsForAvailability: true
+      waitsForAvailability: true,
+      modelSnapshot: authorizedContext.modelSnapshot
     )
   }
 
@@ -355,7 +357,8 @@ public extension SessionCoordinator {
     contextSnapshot: ContextSnapshot? = nil,
     recognitionOptions: SpeechRecognitionRequestOptions? = nil,
     contextPreparation: RunContextPreparation? = nil,
-    preparedRecognition: PreparedRecognitionContext? = nil
+    preparedRecognition: PreparedRecognitionContext? = nil,
+    modelSnapshot: WorkflowModelSnapshot? = nil
   ) async {
     _ = await runReportingOutcome(
       workflow: workflow,
@@ -365,7 +368,8 @@ public extension SessionCoordinator {
       contextSnapshot: contextSnapshot,
       recognitionOptions: recognitionOptions,
       contextPreparation: contextPreparation,
-      preparedRecognition: preparedRecognition
+      preparedRecognition: preparedRecognition,
+      modelSnapshot: modelSnapshot
     )
   }
 
@@ -381,7 +385,8 @@ public extension SessionCoordinator {
     preRecognizedText: String? = nil,
     waitsForAvailability: Bool = false,
     contextPreparation: RunContextPreparation? = nil,
-    preparedRecognition: PreparedRecognitionContext? = nil
+    preparedRecognition: PreparedRecognitionContext? = nil,
+    modelSnapshot: WorkflowModelSnapshot? = nil
   ) async -> WorkflowRunExecutionResult {
     let runID = providedRunID ?? UUID()
     var completed = false
@@ -510,6 +515,7 @@ public extension SessionCoordinator {
         contextSnapshot: contextSnapshot,
         recognitionOptions: recognitionOptions,
         preparedRecognition: preparedRecognition,
+        modelSnapshot: modelSnapshot,
         compilationInput: preRecognizedText == nil ? nil : .text,
         receiptIsActive: receiptIsActive
       )
@@ -1363,6 +1369,7 @@ private extension SessionCoordinator {
     contextSnapshot: ContextSnapshot,
     recognitionOptions providedRecognitionOptions: SpeechRecognitionRequestOptions? = nil,
     preparedRecognition: PreparedRecognitionContext? = nil,
+    modelSnapshot: WorkflowModelSnapshot? = nil,
     compilationInput: WorkflowInputKind? = nil,
     receiptIsActive: Bool
   ) async throws -> RunSession {
@@ -1402,7 +1409,8 @@ private extension SessionCoordinator {
       return RunSession(
         runID: runID, workflow: workflow, trigger: trigger,
         contextSnapshot: contextSnapshot, recognitionOptions: preparedRecognition.options,
-        resolvedPlan: preparedRecognition.plan, startedAt: startedAt, receiptIsActive: receiptIsActive
+        resolvedPlan: preparedRecognition.plan, startedAt: startedAt, receiptIsActive: receiptIsActive,
+        modelSnapshot: modelSnapshot
       )
     }
     let vocabularyContext = VocabularyRuleContext(
@@ -1448,7 +1456,8 @@ private extension SessionCoordinator {
       recognitionOptions: recognitionOptions,
       resolvedPlan: resolvedPlan,
       startedAt: startedAt,
-      receiptIsActive: receiptIsActive
+      receiptIsActive: receiptIsActive,
+      modelSnapshot: modelSnapshot
     )
   }
 

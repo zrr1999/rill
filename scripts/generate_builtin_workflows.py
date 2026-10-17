@@ -28,7 +28,7 @@ SWIFT_OUTPUT = ROOT / "Sources" / "RillProviders" / "BuiltinWorkflowCatalog.swif
 VOICE_GROUP_ID = "4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"
 PERSONAL_VOCABULARY_ID = "E79EF7C7-8867-5D6C-8E88-1119C62B9702"
 DOCUMENT_KEYS = {"schema_version", "metadata", "workflows"}
-POST_PROCESS_KEYS = {"id", "kind", "prompt"}
+POST_PROCESS_KEYS = {"id", "kind", "prompt", "model_role"}
 SUPPORTED_DELIVERY_STRATEGIES = {"immediate", "stackFirst", "clipboardOnly"}
 SUPPORTED_POST_PROCESS_KINDS = {"llmAnswer", "llmRewrite", "normalizeWhitespace"}
 SUPPORTED_AVAILABILITY = {"active", "planned"}
@@ -83,7 +83,6 @@ WORKFLOW_KEYS = {
     "interaction_mode",
     "live_preview",
     "live_preview_placement",
-    "local_model",
     "mode",
     "name",
     "outputs",
@@ -255,9 +254,6 @@ def build_workflow(
     else:
         recognizer_id = recognizer
 
-    local_model = optional_string(entry, "local_model", location)
-    if local_model is not None:
-        metadata["recognizer.local.model"] = local_model
     live_preview = optional_bool(entry, "live_preview", location)
     if live_preview is not None:
         metadata["recognizer.live_preview"] = "true" if live_preview else "false"
@@ -368,8 +364,6 @@ def build_workflow(
             }
         ],
     }
-    if local_model is not None:
-        setup["speechRoute"]["localModel"] = local_model
     if trigger == "wakeWord":
         setup["wakeWord"] = {"phrases": wake_phrases}
 
@@ -441,10 +435,17 @@ def build_post_process(
             raise SourceError(f"{location}.prompt is required for {kind}")
     elif prompt is not None:
         raise SourceError(f"{location}.prompt is unsupported for built-in {kind} steps")
+    role = optional_string(step, "model_role", location)
+    if kind in {"llmAnswer", "llmRewrite"}:
+        if role not in {"fast", "intelligent"}:
+            raise SourceError(f"{location}.model_role must be fast or intelligent")
+    elif role is not None:
+        raise SourceError(f"{location}.model_role requires an LLM step")
     return {
         "id": str(step_id),
         "kind": kind,
         "prompt": prompt,
+        **({"modelRole": role} if role is not None else {}),
     }
 
 
@@ -516,8 +517,7 @@ def render_swift_workflow(workflow: Mapping[str, Any], indent: int) -> list[str]
         f"{prefix}        setup: WorkflowSetupPhase(",
         f"{prefix}            speechRoute: WorkflowSpeechRoute(",
         f"{prefix}                selection: .{route['selection']},",
-        f"{prefix}                recognizerID: {swift_string(route['recognizerID'])},",
-        f"{prefix}                localModel: {swift_string(route['localModel']) if route.get('localModel') is not None else 'nil'}",
+        f"{prefix}                recognizerID: {swift_string(route['recognizerID'])}",
         f"{prefix}            ),",
         f"{prefix}            vocabularyBindings: [",
         f"{prefix}                VocabularyCollectionBinding(",
@@ -554,7 +554,9 @@ def render_swift_workflow(workflow: Mapping[str, Any], indent: int) -> list[str]
             ]
         )
         if prompt is not None:
-            lines.append(f"{prefix}                prompt: {swift_string(prompt)}")
+            lines.append(f"{prefix}                prompt: {swift_string(prompt)}" + ("," if step.get("modelRole") else ""))
+        if role := step.get("modelRole"):
+            lines.append(f"{prefix}                modelRole: .{role}")
         lines.append(f"{prefix}            ),")
     lines.extend(
         [
