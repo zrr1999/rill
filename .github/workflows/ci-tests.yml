@@ -59,7 +59,7 @@ jobs:
           prek -c prek.toml run --all-files
 
       - name: Test evaluation tools without model or provider access
-        run: uv run --locked --project tools pytest tools/tests
+        run: uv run --no-build --locked --project tools pytest tools/tests
 
       - name: Select the application verification lane
         id: scope
