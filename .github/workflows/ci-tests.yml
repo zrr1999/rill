@@ -62,7 +62,7 @@ jobs:
         run: uv run --no-build --locked --project tools pytest tools/tests
 
       - name: Test CI aggregation and cache policy
-        run: uv run --quiet --no-build --no-project --python '>=3.11' python scripts/tests/ci_workflow_test.py
+        run: python3 scripts/tests/ci_workflow_test.py
 
       - name: Select the application verification lane
         id: scope
