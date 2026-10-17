@@ -218,11 +218,14 @@ render_brand_assets() {
     --stylesheet "$temporary_directory/records.css" \
     "$source_dir/RillMenuBar.svg" \
     --output "$output_dir/RillMenuBarRecordsTemplate.pdf"
+  swift "$PROJECT_DIR/scripts/render_input_method_icon.swift" \
+    "$output_dir/RillMenuBarTemplate.pdf" "$source_dir/RillInputMethodTemplate.tiff"
   shasum -a 256 "$source_dir/Rill.svg" \
     "$source_dir/AppIcon-1024-routed-voice-cursor.png" \
     "$source_dir/RillMenuBar.svg" \
     "$output_dir/RillMenuBarTemplate.pdf" \
-    "$output_dir/RillMenuBarRecordsTemplate.pdf"
+    "$output_dir/RillMenuBarRecordsTemplate.pdf" \
+    "$source_dir/RillInputMethodTemplate.tiff"
   rm -rf "$temporary_directory"
 }
 
