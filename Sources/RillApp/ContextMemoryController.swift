@@ -103,8 +103,7 @@ final class ContextMemoryController {
     guard let token = authorization, token.isValid,
       settings.authorizedWorkflowIDs.contains(workflow.id),
       workflow.supportsContextualCorrection,
-      let role = workflow.plan.process.allSteps.first(where: { $0.kind == .llmRewrite })?.postProcessStep?.resolvedModelRole,
-      let provider = modelSnapshot?.languageModels[role],
+      let provider = modelSnapshot?.languageModel,
       token.providerFingerprint == ContextProviderIdentity.fingerprint(provider)
     else { return nil }
     let vocabulary: CorrectionVocabularyReference?
@@ -170,7 +169,7 @@ final class ContextMemoryController {
     try Task.checkCancellation()
     let scope = ContextMemoryScope(
       workflowID: workflow.id, applicationBundleID: context.focus.bundleIdentifier,
-      language: recognitionOptions.language ?? workflow.metadata[WorkflowMetadataKey.languageOverride])
+      language: recognitionOptions.language ?? workflow.plan.setup.speechRoute?.language)
     let summarizer = ContextCorrectionProvider(settingsProvider: { provider }, authorization: token, operations: referenceRequests) { [repository] in
       try await repository.recordForegroundContextRequest(authorization: token, now: Date())
     }

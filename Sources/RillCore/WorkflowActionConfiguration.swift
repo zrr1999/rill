@@ -1,5 +1,34 @@
 import Foundation
 
+public struct WorkflowOutputParameters: Codable, Sendable, Equatable {
+  public var collections: [UUID]
+  public var buffer: String?
+  public var excludeFromCapture: Bool
+  public var voice: String?
+  public var language: String?
+  public var shortcutName: String?
+  public var markdownPath: String?
+  public var webhookReference: String?
+  public var webhookURL: String?
+  public var webhookHeadersJSON: String?
+  public init(
+    collections: [UUID] = [], buffer: String? = nil, excludeFromCapture: Bool = true,
+    voice: String? = nil, language: String? = nil, shortcutName: String? = nil, markdownPath: String? = nil,
+    webhookReference: String? = nil, webhookURL: String? = nil, webhookHeadersJSON: String? = nil
+  ) {
+    self.collections = collections
+    self.buffer = buffer
+    self.excludeFromCapture = excludeFromCapture
+    self.voice = voice
+    self.language = language
+    self.shortcutName = shortcutName
+    self.markdownPath = markdownPath
+    self.webhookReference = webhookReference
+    self.webhookURL = webhookURL
+    self.webhookHeadersJSON = webhookHeadersJSON
+  }
+}
+
 public struct SpeechActionConfiguration: Sendable, Equatable {
   public let voice: String
   public let language: String?
@@ -11,19 +40,18 @@ public enum WorkflowActionConfiguration: Sendable, Equatable {
   case shortcut(name: String)
   case markdown(file: URL)
   case speech(SpeechActionConfiguration)
-  case custom([String: String])
+  case record(collections: [RecordCollectionID], buffer: Bool)
 
   public init(_ reference: OutputActionReference) throws {
     let values = reference.configuration
-    func text(_ key: String) -> String {
-      values[key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
     switch reference.id {
-    case RecordActionID.store, RecordActionID.systemClipboardCopy,
+    case RecordActionID.store:
+      self = .record(collections: values.collections.map { RecordCollectionID($0) }, buffer: values.buffer == "speech")
+    case RecordActionID.systemClipboardCopy,
       RecordActionID.focusedApplicationInsert:
       self = .none
     case ExternalOutputActionID.webhookPost:
-      let raw = text(ExternalOutputActionConfigurationKey.webhookURL)
+      let raw = (values.webhookURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       guard !raw.isEmpty else { throw WorkflowActionConfigurationError("Webhook URL is required.", isMissing: true) }
       guard let url = URL(string: raw), SecureTransportPolicy.allowsSensitiveHTTPURL(url) else {
         throw WorkflowActionConfigurationError(
@@ -32,15 +60,15 @@ public enum WorkflowActionConfiguration: Sendable, Equatable {
       self = .webhook(
         url: url,
         headers: try Self.webhookHeaders(
-          values[ExternalOutputActionConfigurationKey.webhookHeadersJSON] ?? ""))
+          values.webhookHeadersJSON ?? ""))
     case ExternalOutputActionID.shortcutsRun:
-      let name = text(ExternalOutputActionConfigurationKey.shortcutName)
+      let name = (values.shortcutName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       guard !name.isEmpty else {
         throw WorkflowActionConfigurationError("Shortcut name is required.", isMissing: true)
       }
       self = .shortcut(name: name)
     case ExternalOutputActionID.markdownAppend:
-      let path = text(ExternalOutputActionConfigurationKey.markdownAppendPath)
+      let path = (values.markdownPath ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       guard !path.isEmpty else {
         throw WorkflowActionConfigurationError("Markdown append path is required.", isMissing: true)
       }
@@ -55,9 +83,9 @@ public enum WorkflowActionConfiguration: Sendable, Equatable {
     case SpeechOutputActionID.speak:
       self = .speech(
         .init(
-          voice: values[SpeechOutputActionConfigurationKey.voice] ?? Qwen3TTSVoice.vivian.rawValue,
-          language: values[SpeechOutputActionConfigurationKey.language]))
-    default: self = .custom(values)
+          voice: values.voice ?? Qwen3TTSVoice.vivian.rawValue,
+          language: values.language))
+    default: self = .none
     }
   }
 
@@ -91,14 +119,14 @@ public enum WorkflowOutputConfigurationRequirement: Sendable {
   }
 
   public func state(
-    of configuration: [String: String], stage: Stage
+    of configuration: WorkflowOutputParameters, stage: Stage
   ) -> WorkflowExplanationConfigurationState {
     let actionID: String
     switch self {
     case .none: return .notRequired
     case .webhook:
       if stage == .declaration,
-        let reference = configuration[ExternalOutputActionConfigurationKey.webhookSecureReference]?
+        let reference = configuration.webhookReference?
           .trimmingCharacters(in: .whitespacesAndNewlines), !reference.isEmpty
       {
         return WebhookConfigurationReference(rawValue: reference) == nil ? .invalid : .configured

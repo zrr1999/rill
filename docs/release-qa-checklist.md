@@ -220,8 +220,10 @@ cannot be confused with deleting stored content.
 
 Complete the pass in both App languages.
 
-- [ ] All Records, collections, Activity, Workflows, and all six settings panes in the
-      main window have a coherent VoiceOver reading and focus order. Back (⌘[) returns
+- [ ] All Records, collections, Activity, Workflows, and all nine settings pages in the
+      main window have a coherent VoiceOver reading and focus order. ASR, Decision,
+      LLM, and TTS are peer pages under Model services; only the selected page exposes
+      its controls. Wake listening belongs to Input. Back (⌘[) returns
       to the page that was open before Settings. Settings → Data → Diagnostics remains
       accessible without changing that saved route.
 - [ ] Restricted history previews expose only the same truncated text shown

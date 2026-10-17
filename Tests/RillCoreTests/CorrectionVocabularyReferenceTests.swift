@@ -51,20 +51,16 @@ struct CorrectionVocabularyReferenceTests {
     #expect(!ContextualCorrectionRequest(transcript: "正文", vocabularyReference: try .init(terms: [])).hasCorrectionReferences)
   }
 
-  @Test func onlyTheUnmodifiedBuiltinCleanupContractIsEligible() throws {
+  @Test func cleanupContractIsIndependentOfBuiltinIdentity() {
+    var step = WorkflowProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt, reasoning: .some(.none))
+    step.preservesContent = true
     var workflow = WorkflowDefinition(
-      id: try #require(UUID(uuidString: "D3E19A88-F9FB-4AB3-8444-CDBF7E215A88")), name: "Renamed Cleanup",
-      pipeline: .init(recognizerID: "test", postProcessSteps: [.init(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)], outputActions: []),
-      ui: .init(symbolName: "waveform", accentColorName: "blue"),
-      metadata: [WorkflowMetadataKey.catalog: "builtin", WorkflowMetadataKey.builtinKind: "push-to-talk.polish"])
+      name: "User Cleanup", plan: .init(setup: .init(), process: .init(steps: [step]), output: .init(actions: [])),
+      ui: .init(symbolName: "sparkles", accentColorName: "blue"))
     #expect(workflow.supportsVocabularyCorrection)
-    #expect(workflow.isCanonicalSmartCleanup)
-    workflow.metadata[WorkflowMetadataKey.catalog] = "custom"
+    workflow.properties.isBuiltin = true
+    #expect(workflow.supportsVocabularyCorrection)
+    workflow.plan.process.steps[0].preservesContent = false
     #expect(!workflow.supportsVocabularyCorrection)
-    #expect(!workflow.isCanonicalSmartCleanup)
-    workflow.metadata[WorkflowMetadataKey.catalog] = "builtin"
-    workflow.plan.process.steps = [.init(kind: .recognizeSpeech), .init(kind: .llmRewrite, prompt: "Translate to English")]
-    #expect(!workflow.supportsVocabularyCorrection)
-    #expect(!workflow.isCanonicalSmartCleanup)
   }
 }

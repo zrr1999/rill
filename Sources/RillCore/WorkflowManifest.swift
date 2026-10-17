@@ -1,22 +1,7 @@
 import Foundation
 
-public struct WorkflowManifest: Codable, Sendable, Equatable {
-  public static let currentSchemaVersion = 2
-
-  public var schemaVersion: Int
-  public var voiceProfiles: [VoiceProfile]
+/// An in-memory collection of definitions validated from workflow v1 TOML resources.
+public struct WorkflowManifest: Sendable, Equatable {
   public var workflows: [WorkflowDefinition]
-  public var metadata: [String: String]
-
-  public init(
-    schemaVersion: Int = currentSchemaVersion,
-    voiceProfiles: [VoiceProfile] = [],
-    workflows: [WorkflowDefinition],
-    metadata: [String: String] = [:]
-  ) {
-    self.schemaVersion = schemaVersion
-    self.voiceProfiles = voiceProfiles
-    self.workflows = workflows
-    self.metadata = metadata
-  }
+  public init(workflows: [WorkflowDefinition]) { self.workflows = workflows }
 }

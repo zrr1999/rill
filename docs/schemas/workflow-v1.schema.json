@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Rill workflow document v3",
-  "description": "Structural schema for the TOML data model. The application additionally validates IDs, nesting, speech ordering, component readiness and credential policy.",
+  "title": "Rill workflow v1",
   "type": "object",
   "properties": {
     "schema_version": {
-      "const": 3
+      "type": "integer",
+      "const": 1
     },
     "id": {
       "type": "string",
-      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      "format": "uuid"
     },
     "name": {
       "type": "string",
@@ -20,8 +20,7 @@
       "type": "string"
     },
     "enabled": {
-      "type": "boolean",
-      "default": false
+      "type": "boolean"
     },
     "trigger": {
       "type": "object",
@@ -35,6 +34,9 @@
           ]
         },
         "gesture": {
+          "type": "string"
+        },
+        "exclusive_group": {
           "type": "string"
         }
       },
@@ -69,10 +71,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "symbol",
-        "accent"
-      ],
+      "required": [],
       "additionalProperties": false
     },
     "setup": {
@@ -97,59 +96,8 @@
               "type": "string"
             }
           },
+          "required": [],
           "additionalProperties": false
-        },
-        "vocabulary": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-              },
-              "collection": {
-                "type": "string",
-                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-              },
-              "uses": {
-                "type": "array",
-                "items": {
-                  "enum": [
-                    "recognition-hints",
-                    "text-replacement"
-                  ]
-                },
-                "minItems": 1,
-                "maxItems": 2
-              },
-              "when": {
-                "type": "object",
-                "properties": {
-                  "app_bundle_id": {
-                    "type": "string"
-                  },
-                  "clipboard_group": {
-                    "type": "string",
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                  },
-                  "locale": {
-                    "type": "string"
-                  }
-                },
-                "required": [],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "id",
-              "collection",
-              "uses"
-            ],
-            "additionalProperties": false
-          },
-          "minItems": 0,
-          "maxItems": 256
         },
         "wake_word": {
           "type": "object",
@@ -167,6 +115,59 @@
             "phrases"
           ],
           "additionalProperties": false
+        },
+        "vocabulary": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "collection": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "uses": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "recognition-hints",
+                    "text-replacement"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "when": {
+                "type": "object",
+                "properties": {
+                  "app_bundle_id": {
+                    "type": "string"
+                  },
+                  "record_collection": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "locale": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "optional": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "collection",
+              "uses"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [],
@@ -177,7 +178,6 @@
       "items": {
         "$ref": "#/$defs/step"
       },
-      "minItems": 0,
       "maxItems": 256
     },
     "output": {
@@ -193,87 +193,12 @@
         "actions": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9_-]{1,128}$"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "description": {
-                "type": "string"
-              },
-              "config": {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "propertyNames": {
-                  "not": {
-                    "enum": [
-                      "speech.provider",
-                      "speech.model"
-                    ]
-                  }
-                }
-              },
-              "condition": {
-                "$ref": "#/$defs/condition"
-              }
-            },
-            "required": [
-              "id",
-              "kind"
-            ],
-            "additionalProperties": false
+            "$ref": "#/$defs/action"
           },
-          "minItems": 1,
           "maxItems": 256
         }
       },
-      "required": [
-        "actions"
-      ],
-      "additionalProperties": false
-    },
-    "options": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "propertyNames": {
-        "not": {
-          "enum": [
-            "recognizer.selection",
-            "recognizer.local.model",
-            "recognizer.whisperkit.model",
-            "provider",
-            "deepgram.model",
-            "openai.model",
-            "openai.base-url",
-            "speech.provider",
-            "speech.model"
-          ]
-        }
-      },
-      "properties": {
-        "text.polishing-gate": {
-          "const": "classification"
-        }
-      }
-    },
-    "metadata": {
-      "type": "object",
-      "patternProperties": {
-        "^user\\.": {
-          "type": "string"
-        },
-        "^workflow\\.origin$": {
-          "type": "string"
-        }
-      },
+      "required": [],
       "additionalProperties": false
     }
   },
@@ -400,14 +325,14 @@
         },
         "kind": {
           "enum": [
-            "if",
             "recognize-speech",
             "resolve-uncertainty",
             "apply-vocabulary",
-            "snippet-replacement",
+            "normalize-whitespace",
             "llm-rewrite",
             "llm-answer",
-            "normalize-whitespace"
+            "snippet-replacement",
+            "if"
           ]
         },
         "description": {
@@ -416,9 +341,33 @@
         "prompt": {
           "type": "string"
         },
+        "reasoning": {
+          "enum": [
+            "none",
+            "low",
+            "high"
+          ]
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "decision": {
+          "type": "object",
+          "properties": {
+            "optional": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "optional"
+          ],
+          "additionalProperties": false
+        },
+        "preserve_content": {
+          "type": "boolean"
+        },
         "record_duration": {
-          "type": "boolean",
-          "description": "Record measured time for this step. Defaults to true for speech recognition and LLM calls."
+          "type": "boolean"
         },
         "uncertainty": {
           "type": "object",
@@ -431,20 +380,13 @@
               ]
             },
             "confidence_threshold": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
+              "type": "number"
             },
             "timeout_seconds": {
-              "type": "number",
-              "minimum": 0
+              "type": "number"
             }
           },
-          "required": [
-            "mode",
-            "confidence_threshold",
-            "timeout_seconds"
-          ],
+          "required": [],
           "additionalProperties": false
         },
         "condition": {
@@ -454,24 +396,19 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/step"
-          },
-          "minItems": 0,
-          "maxItems": 256
+          }
         },
         "else": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/step"
-          },
-          "minItems": 0,
-          "maxItems": 256
+          }
         },
-        "model_role": {
+        "on_failure": {
           "enum": [
-            "fast",
-            "intelligent"
-          ],
-          "description": "LLM steps only; defaults to fast for rewrite and intelligent for answer."
+            "fail",
+            "preserve-input"
+          ]
         }
       },
       "required": [
@@ -484,45 +421,29 @@
           "if": {
             "properties": {
               "kind": {
-                "const": "if"
+                "enum": [
+                  "llm-rewrite",
+                  "llm-answer"
+                ]
               }
             }
           },
           "then": {
             "required": [
-              "condition"
-            ],
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "prompt"
-                  ]
-                },
-                {
-                  "required": [
-                    "uncertainty"
-                  ]
-                }
-              ]
-            }
+              "reasoning"
+            ]
           },
           "else": {
             "not": {
               "anyOf": [
                 {
                   "required": [
-                    "condition"
+                    "reasoning"
                   ]
                 },
                 {
                   "required": [
-                    "then"
-                  ]
-                },
-                {
-                  "required": [
-                    "else"
+                    "optional"
                   ]
                 }
               ]
@@ -533,18 +454,192 @@
           "if": {
             "properties": {
               "kind": {
-                "enum": [
-                  "llm-rewrite",
-                  "llm-answer"
-                ]
+                "const": "llm-rewrite"
               }
             }
           },
           "else": {
             "not": {
-              "required": [
-                "model_role"
+              "anyOf": [
+                {
+                  "required": [
+                    "decision"
+                  ]
+                },
+                {
+                  "required": [
+                    "preserve_content"
+                  ]
+                },
+                {
+                  "required": [
+                    "on_failure"
+                  ]
+                }
               ]
+            }
+          }
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "kind": {
+          "enum": [
+            "record.store",
+            "system-clipboard.copy",
+            "focused-application.insert",
+            "speech.speak",
+            "external.shortcuts.run",
+            "external.markdown.append",
+            "external.webhook.post"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
+        },
+        "buffer": {
+          "const": "speech"
+        },
+        "exclude_from_capture": {
+          "type": "boolean"
+        },
+        "voice": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "shortcut": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "webhook_reference": {
+          "type": "string"
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "collections"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "record.store"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "buffer"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "record.store"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "voice"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "speech.speak"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "language"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "speech.speak"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "shortcut"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "external.shortcuts.run"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "external.markdown.append"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "webhook_reference"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "external.webhook.post"
+              }
             }
           }
         }

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
+import RillTestSupport
 @testable import RillCore
 @testable import RillUI
 
@@ -19,7 +20,8 @@ private struct VocabularyPresentationHost: View {
 
 @MainActor
 final class VocabularyCollectionPresentationTests: NativeAccessibilityTestCase {
-  func testCollectionDeletionRequiresConfirmationAndRemovesItsBindings() async throws {
+  func testDesktopCollectionDeletionRequiresConfirmationAndRemovesItsBindings() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     for language in AppLanguage.allCases {
       let store = UITestSettingsStore()
       let harness = makeHarness(settingsStore: store)
@@ -68,7 +70,7 @@ final class VocabularyCollectionPresentationTests: NativeAccessibilityTestCase {
       await wait(window) { !model.vocabulary.vocabularyCollections.contains { $0.id == collection.id } }
       XCTAssertNil(element(deleteID, in: window))
       XCTAssertFalse(model.vocabulary.vocabularyCollectionBindings.contains { $0.collectionID == collection.id })
-      XCTAssertFalse(model.workflowLibrary.workflowCustomizations.contains { $0.vocabularyBindings?.contains { $0.collectionID == collection.id } == true })
+      XCTAssertFalse(model.workflowLibrary.customWorkflows.contains { $0.plan.setup.vocabularyBindings.contains { $0.collectionID == collection.id } })
       XCTAssertTrue(model.vocabulary.vocabularyCollections.contains { $0.id == VocabularyCollection.personalID })
       await model.flushPendingPersistenceWrites()
       let reloaded = makeHarness(settingsStore: store).model
@@ -94,7 +96,6 @@ final class VocabularyCollectionPresentationTests: NativeAccessibilityTestCase {
   private func makeWindow(_ model: AppModel) -> NSWindow {
     _ = NSApplication.shared
     if !NSApp.isRunning {
-      NSApp.setActivationPolicy(.accessory)
       NSApp.finishLaunching()
     }
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 520), styleMask: [.titled], backing: .buffered, defer: false)

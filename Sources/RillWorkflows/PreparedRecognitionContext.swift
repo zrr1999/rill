@@ -45,9 +45,8 @@ public struct LiveRecognitionContextResolver: Sendable {
       ?? (workflow.plan.setup.vocabularyBindings.isEmpty ? [] : collections())
     let scope = VocabularyRuleContext(
       contextSnapshot: context,
-      recordCollectionID: workflow.legacyTargetRecordCollectionID,
-      locale: options.language ?? workflow.plan.setup.speechRoute?.language
-        ?? workflow.metadata[WorkflowMetadataKey.languageOverride])
+      recordCollectionID: workflow.targetRecordCollectionIDs.first?.rawValue,
+      locale: options.language ?? workflow.plan.setup.speechRoute?.language)
     var plan = try compiler.compile(workflow: workflow, collections: vocabulary, context: scope)
     let candidates = plan.recognitionCandidates
     var frozenOptions = options

@@ -52,6 +52,7 @@ public final class VocabularyLibraryModel {
   }
 
   func commit() {
+    guard availability == .available else { return }
     source.updateCollections(vocabularyCollections)
     didChange(vocabularyCollectionBindings)
     guard !settings.isRestoringSettings, !settings.hasBegunApplicationShutdown,

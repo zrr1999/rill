@@ -14,15 +14,11 @@ extension AppModel {
     else { return }
     self.vocabulary.vocabularyCollections.removeAll { $0.id == collectionID }
     self.vocabulary.vocabularyCollectionBindings.removeAll { $0.collectionID == collectionID }
-    self.workflowLibrary.workflowCustomizations = self.workflowLibrary.workflowCustomizations.map {
-      customization in
-      var customization = customization
-      customization.vocabularyBindings?.removeAll {
-        $0.collectionID == collectionID
-      }
-      return customization
+    for index in workflowLibrary.customWorkflows.indices {
+      workflowLibrary.customWorkflows[index].plan.setup.vocabularyBindings.removeAll { $0.collectionID == collectionID }
     }
     vocabulary.commit()
+    rebuildWorkflowLibrary()
     persistWorkflowLibrary()
   }
 
@@ -30,17 +26,15 @@ extension AppModel {
     _ bindings: [VocabularyCollectionBinding],
     for workflowID: UUID
   ) {
-    if let index = self.workflowLibrary.workflowCustomizations.firstIndex(where: {
-      $0.workflowID == workflowID
-    }) {
-      self.workflowLibrary.workflowCustomizations[index].vocabularyBindings = bindings
+    guard !hasBegunApplicationShutdown, let workflow = workflowLibrary.workflows.first(where: { $0.id == workflowID }) else { return }
+    var edited = workflow
+    edited.titleKey = nil
+    edited.properties.isBuiltin = false
+    edited.plan.setup.vocabularyBindings = bindings
+    if let index = workflowLibrary.customWorkflows.firstIndex(where: { $0.id == workflowID }) {
+      workflowLibrary.customWorkflows[index] = edited
     } else {
-      self.workflowLibrary.workflowCustomizations.append(
-        WorkflowCustomization(
-          workflowID: workflowID,
-          vocabularyBindings: bindings
-        )
-      )
+      workflowLibrary.customWorkflows.append(edited)
     }
     rebuildWorkflowLibrary()
     persistWorkflowLibrary()

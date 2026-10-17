@@ -34,6 +34,7 @@ struct WorkflowOutputExecutor: Sendable {
         throw SessionCoordinator.SessionError.missingAction(reference.id)
       }
       actionContext.actionConfiguration = session.resolvedPlan.outputConfigurations[actionIndex]
+      actionContext.bufferEntryID = reference.configuration.buffer == "speech" ? bufferEntryID : nil
       let result: ActionResult
       do {
         try Task.checkCancellation()
@@ -53,6 +54,7 @@ struct WorkflowOutputExecutor: Sendable {
           actionIndex: actionIndex,
           text: finalText,
           context: actionContext,
+          excludeFromCapture: reference.configuration.excludeFromCapture,
           runID: session.runID,
           workflow: session.presentation,
           receiptIsActive: session.receiptIsActive
@@ -94,6 +96,7 @@ struct WorkflowOutputExecutor: Sendable {
     text: String,
     recordDraft: RecordDraft? = nil,
     context: ActionContext,
+    excludeFromCapture: Bool = true,
     runID: UUID,
     workflow: WorkflowPresentation,
     receiptIsActive: Bool
@@ -133,7 +136,7 @@ struct WorkflowOutputExecutor: Sendable {
             workflowID: context.workflow.id,
             workflowRunID: context.runID,
             workflow: context.workflow.presentation,
-            captureTags: context.workflow.excludesOutputFromRecordCapture
+            captureTags: excludeFromCapture
               ? [.excludeFromWorkflowCapture]
               : [],
             alternatives: context.recognitionResult.candidateSets.flatMap { set in

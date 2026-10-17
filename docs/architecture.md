@@ -339,22 +339,36 @@ Record 复制、剪贴板采集控制和快捷键录制通过必需的 `RecordIn
 隐私保存失败与其他设置共同保留在未保存队列，整组五键重试；退出关闭用户编辑后仍排空
 并重试已接受快照。只有被新写入取代的结果不发布；当前写入的取消错误仍保留可重试状态。
 
-## Global model bindings
+## Unified services and workflow admission
 
-`SettingsPersistenceModel` owns the two durable text selections and their separate
-Keychain credentials. It publishes accepted edits through `LanguageModelSettingsSource`;
-runtime requests do not reread persistence. `PrivacyRunGate` freezes only the roles
-used by a run into an ephemeral `WorkflowModelSnapshot`, which follows capture,
-queued processing, recognized text, transforms and speech output. Provider consent
-uses that same snapshot. Credential revocation is checked before each text request.
+Settings own four service categories: ASR, Decision, LLM and TTS. One LLM
+connection retains the previous fast endpoint, model and Keychain credential in
+place; the former intelligent connection is never read as a fallback. Inaccessible
+settings or credentials remain visible and block required dependencies.
+`LanguageModelSettingsSource` publishes accepted edits without rereading persistence
+for each request. Workflow LLM tasks explicitly declare `none`, `low` or `high`;
+verified service capabilities determine the native Responses parameter. Task kind
+owns instructions, timeout and output bounds independently of reasoning.
 
-Blank endpoint and model fields remain editable after settings reload or recovery.
-They represent incomplete configuration, retain their stored values, and cannot be
-verified or admitted to a workflow run until completed. Malformed nonblank values
-and unavailable storage still block the affected settings domain.
+`PrivacyRunGate` freezes the selected definition, enabled outputs and required
+service bindings into each authorized run. Capture, queued processing, transforms
+and speech output use that snapshot. Settings and companion edits affect later
+runs. Credential revocation, session consent and stricter privacy still take
+effect at request and effect boundaries. Missing optional processing services
+produce skipped receipts; missing required services stop admission with a settings
+prompt. Optional Decision prediction can be absent while the rewrite continues.
 
-Workflow v3 contains text roles and a single ASR category. Version 1/2 imports drop
-concrete ASR/TTS overrides and normalize text roles without rewriting source on read.
-The global ASR setting determines recognition options at admission. Classification
-uses `DecisionModelSettingsSource` and a shared typed score transport with separate
-TypeSafe and Cloudflare destinations. Provider changes revoke its session consents.
+All execution definitions use the new `schema_version = 1` TOML layout. Built-in resources,
+user files, templates and imports share `WorkflowDocumentCodec` and validation;
+packaging validates the actual resource bundle using the executable's validation
+entry point. Old TOML and JSON definitions are unsupported. Legacy settings data
+is retained and diagnosed without constructing executable workflows.
+
+Output switches live in the adjacent `<name>.state.json`. File writes compare
+both loaded sources, replace atomically and preserve backups. Corrupt, mismatched
+or stale state blocks new runs. `PersistenceWriteCoordinator` retains accepted
+state writes until shutdown drains them. Automatic outputs cannot be disabled;
+optional outputs can all be off. Executors run only the frozen enabled list, in
+order, preserving partial receipts after committed effects. Pending collection,
+collection targets, Decision gates and editor dictation are explicit declarations;
+no built-in identity or global output setting rewrites an execution plan.

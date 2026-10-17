@@ -2,6 +2,7 @@ import Foundation
 
 public enum SecureCredentialKey: String, CaseIterable, Sendable, Equatable {
   case openAIAPIKey = "provider.openai.api-key"
+  // Retired credential identity. It is never read as a unified-service fallback.
   case intelligentAPIKey = "provider.intelligent.api-key"
   case legacyWhisperKitModelToken = "provider.whisperkit.model-token"
   // Cleanup-only identity for credentials written before cloud ASR removal.

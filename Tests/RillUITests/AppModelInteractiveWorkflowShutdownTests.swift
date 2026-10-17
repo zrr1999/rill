@@ -8,7 +8,7 @@ final class AppModelInteractiveWorkflowShutdownTests: XCTestCase {
     let harness = makeHarness()
 
     XCTAssertTrue(harness.model.canTriggerWorkflow(harness.workflow))
-    harness.model.runWorkflow(harness.workflow)
+    harness.model.runWorkflowText("hello", workflow: harness.workflow)
     await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown()
 
     let actionCount = await harness.actionLog.snapshot()
@@ -19,31 +19,28 @@ final class AppModelInteractiveWorkflowShutdownTests: XCTestCase {
     XCTAssertNil(harness.model.voice.pendingInteractiveWorkflowTask)
   }
 
-  func testShutdownCancelsInteractiveRunBeforeCancellationIgnoringRecognizerCanAct() async {
-    let harness = makeHarness(delay: .seconds(30))
-    let eventStream = await harness.eventBus.stream()
-    let runStarted = Task {
-      for await event in eventStream {
-        if case .runStarted = event {
-          return
-        }
-      }
-    }
-
+  func testShutdownDrainsCancellationIgnoringCaptureStartBeforeItCanAct() async {
+    let gate = WorkflowAudioStartGate()
+    let log = ProbeActionLog()
+    let harness = makeHarness(startWorkflowAudioRunAction: { _, _, _ in
+      try await gate.suspendStart()
+      try Task.checkCancellation()
+      await log.increment()
+    })
+    await harness.model.waitForInitialVoiceConfiguration()
+    guard harness.model.canTriggerWorkflow(harness.workflow) else { return XCTFail("The capture fixture must be runnable.") }
     harness.model.runWorkflow(harness.workflow)
-    await runStarted.value
-
-    await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown()
-
-    let actionCount = await harness.actionLog.snapshot()
+    await gate.waitUntilStarted()
+    let shutdown = Task { await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown() }
+    while !harness.model.isApplicationShuttingDown { await Task.yield() }
+    await gate.succeed()
+    await shutdown.value
+    let actionCount = await log.snapshot()
     XCTAssertEqual(actionCount, 0)
     XCTAssertFalse(harness.model.voice.isRunning)
-    XCTAssertNil(harness.model.voice.pendingInteractiveWorkflowTask)
-
+    XCTAssertTrue(harness.model.voice.workflowAudioActionTasks.isEmpty)
     harness.model.runWorkflow(harness.workflow)
-    await Task.yield()
-    let actionCountAfterRejectedRun = await harness.actionLog.snapshot()
-    XCTAssertEqual(actionCountAfterRejectedRun, 0)
+    await harness.model.waitForWorkflowAudioActions()
     XCTAssertFalse(harness.model.voice.isRunning)
   }
 }

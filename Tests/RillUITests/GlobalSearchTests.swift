@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -12,7 +13,9 @@ final class GlobalSearchIndexTests: XCTestCase {
       [
         .permissions,
         .speech,
-        .providers,
+        .decision,
+        .llm,
+        .tts,
         .input,
         .voiceAssistant,
         .recordPanel,
@@ -26,16 +29,17 @@ final class GlobalSearchIndexTests: XCTestCase {
     )
   }
 
-  func testSharedModelsArePresentedAsProvidersInsteadOfAssistantPersonality() {
+  func testSpeechServiceUsesTheASRLabel() {
     XCTAssertEqual(
       SettingsSection.speech.title(language: .english),
-      "Providers & Models"
+      "Speech Recognition · ASR"
     )
     XCTAssertEqual(
       SettingsSection.speech.title(language: .simplifiedChinese),
-      "提供商与模型"
+      "语音识别 · ASR"
     )
-    XCTAssertTrue(SettingsSection.speech.searchKeywords.contains("tts"))
+    XCTAssertFalse(SettingsSection.speech.searchKeywords.contains("tts"))
+    XCTAssertTrue(SettingsSection.tts.searchKeywords.contains("tts"))
     XCTAssertFalse(SettingsSection.voiceAssistant.searchKeywords.contains("tts"))
   }
 
@@ -159,16 +163,16 @@ final class GlobalSearchIndexTests: XCTestCase {
     )
 
     let speechSettings = GlobalSearchIndex.filter(results, query: "openai key")
-    XCTAssertEqual(speechSettings.map(\.destination), [.settings(.providers)])
-    XCTAssertEqual(GlobalSearchIndex.filter(results, query: "DeepSeek").map(\.destination), [.settings(.providers)])
+    XCTAssertEqual(speechSettings.map(\.destination), [.settings(.llm)])
+    XCTAssertEqual(GlobalSearchIndex.filter(results, query: "DeepSeek").map(\.destination), [.settings(.llm)])
     for query in ["Jev", "TypeSafe"] {
       XCTAssertEqual(
         GlobalSearchIndex.filter(results, query: query).map(\.destination),
-        [.settings(.providers), .settingItem(.jevCredential), .settingItem(.jevPolishing)])
+        [.settings(.decision), .settingItem(.jevCredential), .settingItem(.jevPolishing)])
     }
     XCTAssertEqual(
-      GlobalSearchIndex.filter(results, query: "API 密钥").map(\.destination),
-      [.settings(.providers), .settingItem(.jevCredential)])
+      Set(GlobalSearchIndex.filter(results, query: "API 密钥").map(\.destination)),
+      Set([.settingItem(.jevCredential), .settings(.decision), .settings(.llm)]))
     XCTAssertTrue(
       GlobalSearchIndex.filter(results, query: "sensevoice").isEmpty,
       "Preview-only model names must not leak into the public search index."
@@ -204,7 +208,7 @@ final class GlobalSearchIndexTests: XCTestCase {
   func testPlannedWorkflowsStayOutOfProductSearch() {
     let active = makeWorkflow(name: "Ready Workflow")
     var planned = makeWorkflow(name: "Future Workflow")
-    planned.metadata[WorkflowMetadataKey.availability] = WorkflowAvailability.planned.rawValue
+    planned.properties.availability = .planned
 
     let results = GlobalSearchIndex.makeStaticResults(
       language: .english,
@@ -286,10 +290,7 @@ final class GlobalSearchIndexTests: XCTestCase {
     WorkflowDefinition(
       name: name,
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

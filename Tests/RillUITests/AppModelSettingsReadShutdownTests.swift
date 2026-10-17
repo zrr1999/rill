@@ -436,11 +436,11 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
 
   func testShutdownWaitsForStoredDomainRetryAndRejectsLateRecovery() async {
     let settingsStore = PlannedSettingsReadStore(
-      unavailableKeys: [.customWorkflows]
+      unavailableKeys: [.vocabularyRules]
     )
     let harness = makeHarness(settingsStore: settingsStore)
     await waitUntil { !harness.model.settings.isLoading }
-    XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
+    XCTAssertEqual(harness.model.vocabulary.availability, .unavailable)
 
     await settingsStore.setUnavailableKeys([])
     let gate = CancellationIgnoringSettingsReadGate()
@@ -464,7 +464,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
     await gate.release()
     await shutdownTask.value
 
-    XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
+    XCTAssertEqual(harness.model.vocabulary.availability, .unavailable)
     XCTAssertFalse(
       harness.model.history.eventFeed.contains {
         $0.english == "Protected settings were loaded again without overwriting stored data."

@@ -497,20 +497,30 @@ extension MainShellView {
         .accessibilityIdentifier("settings.back")
       }
       Section {
-        ForEach(SettingsPane.allCases) { pane in
-          Label {
-            Text(pane.title(language: model.settings.language))
-              .lineLimit(2)
-              .fixedSize(horizontal: false, vertical: true)
-          } icon: {
-            Image(systemName: pane.symbolName)
-          }
-          .tag(pane)
-          .accessibilityIdentifier("settings.pane.\(pane.rawValue)")
-        }
+        settingsPaneRows([.general, .input])
+      }
+      Section(L10n.workspace(.modelServices, language: model.settings.language)) {
+        settingsPaneRows([.asr, .decision, .llm, .tts])
+      }
+      Section {
+        settingsPaneRows([.vocabulary, .privacy, .data])
       }
     }
     .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
+  }
+
+  private func settingsPaneRows(_ panes: [SettingsPane]) -> some View {
+    ForEach(panes) { pane in
+      Label {
+        Text(pane.title(language: model.settings.language))
+          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
+      } icon: {
+        Image(systemName: pane.symbolName)
+      }
+      .tag(pane)
+      .accessibilityIdentifier("settings.pane.\(pane.rawValue)")
+    }
   }
 
   private var settingsPaneSelection: Binding<SettingsPane?> {

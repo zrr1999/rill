@@ -367,12 +367,11 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
 
 不要直接编辑生成产物。
 
-- 内建工作流以 `Sources/RillApp/Resources/BuiltinWorkflows.toml` 为事实源。修改后运行：
-
-  ```bash
-  uv run --script scripts/generate_builtin_workflows.py
-  uv run --script scripts/generate_builtin_workflows.py --check
-  ```
+- 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，每个文件
+  使用与用户工作流相同的新 v1 格式。`index.json` 只维护文件顺序与本地化标题。
+  `WorkflowDocumentCodecTests.packagedWorkflowsUseTheSameParser` 验证全部资源；
+  装配 App 时通过实际可执行文件的 `--validate-workflows` 入口再次校验打包资源。
+  不生成 JSON 或 Swift 执行定义。
 
 - `THIRD_PARTY_NOTICES.md` 由锁文件和脚本内受审证据生成。依赖变化后运行：
 

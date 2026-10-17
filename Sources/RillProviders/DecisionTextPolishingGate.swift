@@ -33,9 +33,7 @@ public struct DecisionTextPolishingGate: TextPolishingGate {
 
   public func shouldSkip(text: String, step: PostProcessStep, context: TransformContext) async throws -> Bool {
     try Task.checkCancellation()
-    guard step.kind == .llmRewrite, context.workflow.speechMode != .voiceAssistant,
-      context.workflow.metadata[WorkflowMetadataKey.builtinKind] == "push-to-talk.polish"
-        || context.workflow.metadata["text.polishing-gate"] == "classification",
+    guard step.kind == .llmRewrite, step.decision != nil,
       let authorization = context.modelSnapshot?.decisionAuthorization,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 1_800,
       let prompt = step.prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,

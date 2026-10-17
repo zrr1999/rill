@@ -151,29 +151,42 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public var id: UUID
     public var kind: PostProcessStepKind
     public var prompt: String
-    public var modelRole: LanguageModelRole?
+    public var optional = false
+    public var decision: WorkflowServiceRequirement?
+    public var failurePolicy: WorkflowTaskFailurePolicy = .fail
+    public var preservesContent = false
+    public var reasoning: ReasoningLevel?
 
-    public init(id: UUID = UUID(), kind: PostProcessStepKind, prompt: String = "", modelRole: LanguageModelRole? = nil) {
+    public init(id: UUID = UUID(), kind: PostProcessStepKind, prompt: String = "", reasoning: ReasoningLevel? = nil) {
       self.id = id
       self.kind = kind
       self.prompt = prompt
-      self.modelRole = modelRole
+      self.reasoning = reasoning
     }
 
     init(step: PostProcessStep) {
       self.id = step.id
       self.kind = step.kind
       self.prompt = step.prompt ?? ""
-      self.modelRole = step.resolvedModelRole
+      self.reasoning = step.reasoning
+      self.optional = step.optional
+      self.decision = step.decision
+      self.failurePolicy = step.failurePolicy
+      self.preservesContent = step.preservesContent
     }
 
     func toStep() -> PostProcessStep {
-      PostProcessStep(
+      var step = PostProcessStep(
         id: id,
         kind: kind,
         prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : prompt,
-        modelRole: modelRole
+        reasoning: reasoning
       )
+      step.optional = optional
+      step.decision = decision
+      step.failurePolicy = failurePolicy
+      step.preservesContent = preservesContent
+      return step
     }
   }
 
@@ -286,35 +299,20 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
 
     self.name = workflow.name
 
-    // Determine event type from trigger or metadata
-    if let eventTypeRaw = workflow.metadata["eventType"],
-      let et = EventType(rawValue: eventTypeRaw)
-    {
-      self.eventType = et
-    } else {
-      switch workflow.trigger {
-      case .hotkey: self.eventType = .hotkey
-      case .manual: self.eventType = .manual
-      case .menuBar: self.eventType = .menuBar
-      case .wakeWord: self.eventType = .wakeWord
-      }
+    switch workflow.trigger {
+    case .hotkey: self.eventType = .hotkey
+    case .manual: self.eventType = .manual
+    case .menuBar: self.eventType = .menuBar
+    case .wakeWord: self.eventType = .wakeWord
     }
     self.wakePhrasesText =
       workflow.plan.setup.wakeWord?.phrases.joined(separator: "\n")
       ?? WakeWordConfiguration.defaultPhrases.joined(separator: "\n")
 
-    if let sgid = workflow.metadata["sourceCollectionID"]
-      ?? workflow.metadata[WorkflowMetadataKey.legacySourceCollectionID],
-      let uuid = UUID(uuidString: sgid)
-    {
-      self.sourceCollectionID = uuid
-    } else {
-      self.sourceCollectionID = nil
-    }
-
-    self.excludePolishTag = workflow.metadata["excludePolishTag"] != "false"
+    self.sourceCollectionID = nil
+    self.excludePolishTag = true
     self.recognizer = recognizer
-    self.speechLanguageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride] ?? ""
+    self.speechLanguageOverride = workflow.plan.setup.speechRoute?.language ?? ""
     self.destination = destination
     self.vocabularyBindings = workflow.plan.setup.vocabularyBindings
     self.postProcessSteps = workflow.plan.process.steps
@@ -327,107 +325,54 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     self.speechVoice =
       workflow.plan.output.actions
       .first(where: { $0.id == SpeechOutputActionID.speak })?
-      .configuration[SpeechOutputActionConfigurationKey.voice]
+      .configuration.voice
       .flatMap(Qwen3TTSVoice.init(rawValue:))
       ?? .vivian
-    self.livePreviewEnabled =
-      workflow.metadata[WorkflowMetadataKey.livePreviewEnabled] != "false"
-    self.livePreviewPlacement =
-      workflow.metadata[WorkflowMetadataKey.livePreviewPlacement]
-      .flatMap(LivePreviewPlacement.init(rawValue:))
-      ?? .overlay
+    self.livePreviewEnabled = workflow.livePreviewIsEnabled
+    self.livePreviewPlacement = workflow.resolvedLivePreviewPlacement
     self.streamingProfile =
-      workflow.metadata[WorkflowMetadataKey.streamingProfile]
+      workflow.plan.setup.speechRoute?.streamingProfile
       ?? (workflow.trigger == .wakeWord ? "agent" : "realtime")
     self.targetGroupID = workflow.targetRecordCollectionIDs.first?.rawValue
     let outputConfiguration =
       workflow.plan.output.actions
-      .first { $0.id == destination.outputActionID }?.configuration ?? [:]
-    self.webhookURL = outputConfiguration[ExternalOutputActionConfigurationKey.webhookURL] ?? ""
-    self.webhookHeadersJSON = outputConfiguration[ExternalOutputActionConfigurationKey.webhookHeadersJSON] ?? ""
-    self.shortcutName = outputConfiguration[ExternalOutputActionConfigurationKey.shortcutName] ?? ""
-    self.markdownAppendPath = outputConfiguration[ExternalOutputActionConfigurationKey.markdownAppendPath] ?? ""
+      .first { $0.id == destination.outputActionID }?.configuration ?? WorkflowOutputParameters()
+    self.webhookURL = outputConfiguration.webhookURL ?? ""
+    self.webhookHeadersJSON = outputConfiguration.webhookHeadersJSON ?? ""
+    self.shortcutName = outputConfiguration.shortcutName ?? ""
+    self.markdownAppendPath = outputConfiguration.markdownPath ?? ""
 
-    if let gak = workflow.metadata["groupActionKind"],
-      let kind = RecordCollectionActionKind(rawValue: gak)
-    {
-      self.groupActionKind = kind
-    } else {
-      self.groupActionKind = .editRecord
-    }
-    self.actionPrompt = workflow.metadata["actionPrompt"] ?? ""
+    self.groupActionKind = workflow.properties.automation?.actionKind ?? .editRecord
+    self.actionPrompt = ""
   }
 
   // MARK: - Build WorkflowDefinition
 
   func makeWorkflow(
     id: UUID,
-    existingMetadata: [String: String] = [:],
+    existingProperties: WorkflowProperties = .init(),
     hotkeyGesture: String
   ) -> WorkflowDefinition {
-    var metadata = existingMetadata
-    metadata[AppModel.workflowOriginMetadataKey] = AppModel.userWorkflowOriginMetadataValue
-    metadata["provider"] = RecognizerChoice.localSpeech.providerMetadataValue
-    let trimmedLanguageOverride = speechLanguageOverride.trimmingCharacters(in: .whitespacesAndNewlines)
-    let outputActionConfiguration = destination.outputConfiguration(from: self)
-
-    // Event metadata
-    metadata["eventType"] = eventType.rawValue
-    if !eventType.isVoiceEvent {
-      if let sourceCollectionID {
-        metadata["sourceCollectionID"] = sourceCollectionID.uuidString
-      } else {
-        metadata.removeValue(forKey: "sourceCollectionID")
-      }
-      metadata["groupActionKind"] = groupActionKind.rawValue
-      let trimmedPrompt = actionPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !trimmedPrompt.isEmpty {
-        metadata["actionPrompt"] = trimmedPrompt
-      } else {
-        metadata.removeValue(forKey: "actionPrompt")
-      }
-    }
-
-    // Condition metadata
-    metadata["excludePolishTag"] = excludePolishTag ? "true" : "false"
-
     let trigger = eventType.triggerBinding ?? .manual
-    if trigger == .hotkey {
-      metadata["trigger.gesture"] = hotkeyGesture
-    } else {
-      metadata.removeValue(forKey: "trigger.gesture")
-    }
-    metadata[WorkflowMetadataKey.excludeOutputFromRecordCapture] = excludeFromWorkflowCapture ? "true" : "false"
-    metadata.removeValue(forKey: WorkflowMetadataKey.excludeOutputFromWorkflowCapture)
-    metadata[WorkflowMetadataKey.textStyle] = textStyle.rawValue
-    metadata[WorkflowMetadataKey.livePreviewEnabled] =
-      livePreviewEnabled ? "true" : "false"
-    metadata[WorkflowMetadataKey.livePreviewPlacement] = livePreviewPlacement.rawValue
-    metadata[WorkflowMetadataKey.streamingProfile] = streamingProfile
-    metadata.removeValue(forKey: WorkflowMetadataKey.recognizerSelectionMode)
-    if !trimmedLanguageOverride.isEmpty {
-      metadata[WorkflowMetadataKey.languageOverride] = trimmedLanguageOverride
-    } else {
-      metadata.removeValue(forKey: WorkflowMetadataKey.languageOverride)
-    }
-    for key in WorkflowDefinition.retiredModelOptionKeys { metadata.removeValue(forKey: key) }
-    if destination == .saveToQueue, let targetGroupID {
-      metadata[WorkflowMetadataKey.targetRecordCollectionIDs] = targetGroupID.uuidString
-    } else {
-      metadata.removeValue(forKey: WorkflowMetadataKey.targetRecordCollectionIDs)
-    }
-    metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
-
-    let route = WorkflowSpeechRoute(
+    var properties = existingProperties
+    properties.isBuiltin = false
+    properties.gesture = eventType == .hotkey ? hotkeyGesture : nil
+    properties.textStyle = textStyle.rawValue
+    let trimmedLanguageOverride = speechLanguageOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+    var route = WorkflowSpeechRoute(
       selection: .automatic, recognizerID: "local-speech",
       language: trimmedLanguageOverride.isEmpty ? nil : trimmedLanguageOverride
     )
+    route.livePreviewEnabled = livePreviewEnabled
+    route.livePreviewPlacement = livePreviewPlacement
+    route.streamingProfile = streamingProfile
     let processSteps =
       [
         WorkflowProcessStep(kind: .recognizeSpeech),
         WorkflowProcessStep(kind: .applyVocabulary),
       ]
       + postProcessSteps.map { WorkflowProcessStep($0.toStep()) }
+    let outputActionConfiguration = destination.outputConfiguration(from: self)
     var outputActions = [
       OutputActionReference(
         id: destination.outputActionID,
@@ -438,10 +383,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
       outputActions.append(
         OutputActionReference(
           id: SpeechOutputActionID.speak,
-          configuration: [
-            SpeechOutputActionConfigurationKey.voice:
-              speechVoice.rawValue
-          ]
+          configuration: .init(voice: speechVoice.rawValue)
         )
       )
     }
@@ -468,32 +410,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         symbolName: systemSymbol.rawValue,
         accentColorName: accentColorName
       ),
-      metadata: metadata
-    )
-  }
-
-  // MARK: - Build RecordCollectionTrigger (for record collection events)
-
-  func makeGroupTrigger(id: UUID) -> RecordCollectionTrigger? {
-    guard let eventKind = eventType.groupEventKind else { return nil }
-    var conditions: [RecordCollectionTriggerCondition] = []
-    if excludePolishTag {
-      conditions.append(.excludingTag(.polishGenerated))
-    }
-    var config: [String: String] = [:]
-    let trimmedPrompt = actionPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedPrompt.isEmpty {
-      config["prompt"] = trimmedPrompt
-      config["action"] = "llmRewrite"
-    }
-    return RecordCollectionTrigger(
-      id: id,
-      name: name,
-      eventKind: eventKind,
-      sourceCollectionID: sourceCollectionID.map { RecordCollectionID($0) },
-      conditions: conditions,
-      actionKind: groupActionKind,
-      actionConfiguration: config
+      properties: properties
     )
   }
 
@@ -599,34 +516,14 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
 }
 
 private extension WorkflowEditorDraft.DestinationChoice {
-  func outputConfiguration(from draft: WorkflowEditorDraft) -> [String: String] {
+  func outputConfiguration(from draft: WorkflowEditorDraft) -> WorkflowOutputParameters {
     switch self {
-    case .pasteIntoApp, .copyToClipboard, .saveToQueue:
-      return [:]
-    case .speakOnly:
-      return [
-        SpeechOutputActionConfigurationKey.voice:
-          draft.speechVoice.rawValue
-      ]
-    case .sendToWebhook:
-      var configuration: [String: String] = [:]
-      configuration[ExternalOutputActionConfigurationKey.webhookURL] = draft.webhookURL
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      let headers = draft.webhookHeadersJSON.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !headers.isEmpty {
-        configuration[ExternalOutputActionConfigurationKey.webhookHeadersJSON] = headers
-      }
-      return configuration
-    case .runShortcut:
-      return [
-        ExternalOutputActionConfigurationKey.shortcutName: draft.shortcutName
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-      ]
-    case .appendToMarkdown:
-      return [
-        ExternalOutputActionConfigurationKey.markdownAppendPath: draft.markdownAppendPath
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-      ]
+    case .pasteIntoApp, .copyToClipboard: .init(excludeFromCapture: draft.excludeFromWorkflowCapture)
+    case .saveToQueue: .init(collections: draft.targetGroupID.map { [$0] } ?? [], buffer: "speech", excludeFromCapture: draft.excludeFromWorkflowCapture)
+    case .speakOnly: .init(voice: draft.speechVoice.rawValue)
+    case .sendToWebhook: .init(webhookURL: draft.webhookURL, webhookHeadersJSON: draft.webhookHeadersJSON)
+    case .runShortcut: .init(shortcutName: draft.shortcutName.trimmingCharacters(in: .whitespacesAndNewlines))
+    case .appendToMarkdown: .init(markdownPath: draft.markdownAppendPath.trimmingCharacters(in: .whitespacesAndNewlines))
     }
   }
 }
