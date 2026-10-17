@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
+import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -152,6 +154,50 @@ class CachePolicyTests(unittest.TestCase):
         for step in ("Restore Swift build arena", "Save successful trusted lane build arena"):
             self.assertIn("path: ${{ matrix.cache-path }}", block(step))
         self.assertNotIn("worker-cache on", WORKFLOW)
+
+    def test_toolchain_key_ignores_remount_but_tracks_compiler_contents(self):
+        step = block("Identify the build toolchain")
+        self.assertIn("        shell: bash\n", step)
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, body in {
+                "xcodebuild": "echo Xcode-test",
+                "swift": "echo Swift-test",
+                "xcrun": '\n'.join([
+                    'case "$*" in',
+                    '  "--show-sdk-build-version") echo SDK-test;;',
+                    '  "metal -v") printf "Metal-test\\nInstalledDir: %s\\n" "$METAL_PATH";;',
+                    '  "-f metal") printf "%s\\n" "$METAL_PATH";;',
+                    '  *) exit 2;;',
+                    'esac',
+                ]),
+            }.items():
+                executable = root / name
+                executable.write_text("#!/bin/bash\n" + body + "\n")
+                executable.chmod(0o755)
+            first, second = root / "mount-one", root / "mount-two"
+            first.write_bytes(b"same compiler")
+            second.write_bytes(first.read_bytes())
+
+            def key(path):
+                output = root / "output"
+                output.write_text("")
+                env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
+                           METAL_PATH=str(path), GITHUB_OUTPUT=str(output))
+                subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+                               env=env, check=True, capture_output=True)
+                return output.read_text()
+
+            original = key(first)
+            self.assertEqual(original, key(second))
+            second.write_bytes(b"different compiler")
+            self.assertNotEqual(original, key(second))
+            with self.assertRaises(subprocess.CalledProcessError):
+                key(root / "missing-compiler")
+            (root / "xcodebuild").write_text("#!/bin/bash\nexit 7\n")
+            with self.assertRaises(subprocess.CalledProcessError):
+                key(first)
 
     def test_security_and_evidence_preserved(self):
         self.assertIn("permissions:\n  contents: read", WORKFLOW)
