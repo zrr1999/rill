@@ -61,6 +61,9 @@ jobs:
       - name: Test evaluation tools without model or provider access
         run: uv run --no-build --locked --project tools pytest tools/tests
 
+      - name: Test CI aggregation and cache policy
+        run: uv run --quiet --no-project --python '>=3.11' python scripts/tests/ci_workflow_test.py
+
       - name: Select the application verification lane
         id: scope
         env:
@@ -101,16 +104,21 @@ jobs:
         if: ${{ steps.scope.outputs.app == 'false' }}
         run: bash scripts/check_secrets.sh
 
-  preflight:
-    name: Release preflight
+  preflight-lanes:
+    name: Preflight (${{ matrix.lane }})
     needs: docs
     if: ${{ needs.docs.outputs.app == 'true' }}
     runs-on: macos-26
     timeout-minutes: 45
-    env:
-      SWIFT_BUILD_CACHE_PATHS: |
-        .build
-        .artifacts/build/release
+    strategy:
+      # Keep both lanes running so failures retain independent evidence.
+      fail-fast: false
+      matrix:
+        include:
+          - lane: tests
+            cache-path: .build
+          - lane: release
+            cache-path: .artifacts/build/release
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -133,17 +141,47 @@ jobs:
       - name: Identify the build toolchain
         id: toolchain
         run: |
-          identity="$(xcodebuild -version; swift --version; xcrun --show-sdk-build-version)"
+          identity="$(xcodebuild -version; swift --version; xcrun --show-sdk-build-version; xcrun metal -v 2>&1)"
+          printf '%s\n' "$identity"
           echo "key=$(printf '%s' "$identity" | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
-      - name: Restore Swift build arenas
+      - name: Compute lane cache key
+        id: cache-key
+        env:
+          CACHE_PREFIX: swift-v2-${{ matrix.lane }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py') }}-
+          CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          echo "prefix=$CACHE_PREFIX" >> "$GITHUB_OUTPUT"
+          echo "primary=${CACHE_PREFIX}${CHECKOUT_SHA}" >> "$GITHUB_OUTPUT"
+
+      # Main/manual runs clean their lane arena; restoring it would only waste time.
+      - name: Restore Swift build arena
+        if: ${{ github.event_name == 'pull_request' }}
         id: build-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ env.SWIFT_BUILD_CACHE_PATHS }}
-          key: swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py') }}-${{ github.sha }}
+          path: ${{ matrix.cache-path }}
+          key: ${{ steps.cache-key.outputs.primary }}
           restore-keys: |
-            swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py') }}-
+            ${{ steps.cache-key.outputs.prefix }}
+
+      - name: Report lane and cache diagnostics
+        if: ${{ always() }}
+        env:
+          LANE: ${{ matrix.lane }}
+          PRIMARY_KEY: ${{ steps.cache-key.outputs.primary }}
+          MATCHED_KEY: ${{ steps.build-cache.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.build-cache.outputs.cache-hit }}
+          RESTORE_OUTCOME: ${{ steps.build-cache.outcome }}
+        run: |
+          {
+            printf 'Lane: %s\n' "$LANE"
+            printf 'Checkout SHA: %s\n' "$(git rev-parse HEAD)"
+            printf 'Cache primary key: %s\n' "$PRIMARY_KEY"
+            printf 'Cache matched key: %s\n' "${MATCHED_KEY:-none}"
+            printf 'Cache hit: %s\n' "${CACHE_HIT:-not restored}"
+            printf 'Cache restore outcome: %s\n' "$RESTORE_OUTCOME"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Resolve locked SwiftPM dependencies
         run: |
@@ -164,44 +202,49 @@ jobs:
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
+        id: lane
         env:
+          LANE: ${{ matrix.lane }}
           EVENT_NAME: ${{ github.event_name }}
           RILL_UI_SNAPSHOT_DIR: ${{ github.workspace }}/.artifacts/ui-renders
           RILL_PREFLIGHT_APP_DIR: ${{ github.workspace }}/.artifacts/preflight-app
           RILL_RECORD_STRESS: "1"
-          RILL_PREFLIGHT_REPORT_DIR: ${{ runner.temp }}/rill-preflight
+          RILL_PREFLIGHT_REPORT_DIR: ${{ runner.temp }}/rill-preflight-${{ matrix.lane }}
           RILL_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           RILL_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [[ "$EVENT_NAME" == pull_request ]]; then
-            bash scripts/preflight.sh
+            bash scripts/preflight.sh --lane "$LANE"
           else
-            bash scripts/preflight.sh --clean
+            bash scripts/preflight.sh --clean --lane "$LANE"
           fi
 
       - name: Save native render evidence
-        if: ${{ always() }}
+        if: ${{ always() && matrix.lane == 'tests' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: native-renders-${{ github.sha }}
+          name: native-renders-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/ui-renders/
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
       - name: Save verified preflight app
+        if: ${{ success() && matrix.lane == 'release' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: native-preflight-app-${{ github.sha }}
+          name: native-preflight-app-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .artifacts/preflight-app/
           if-no-files-found: error
           retention-days: 14
 
       - name: Summarize preflight
         if: ${{ always() }}
+        env:
+          LANE: ${{ matrix.lane }}
         run: |
           shopt -s nullglob
-          reports=("$RUNNER_TEMP"/rill-preflight/run.*/summary.md)
+          reports=("$RUNNER_TEMP/rill-preflight-$LANE"/run.*/summary.md)
           if [[ "${#reports[@]}" -gt 0 ]]; then
             cat "${reports[@]}" >> "$GITHUB_STEP_SUMMARY"
           else
@@ -212,17 +255,19 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: preflight-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/rill-preflight
+          name: preflight-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rill-preflight-${{ matrix.lane }}
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Save Swift build arenas
-        if: ${{ github.ref == 'refs/heads/main' && !cancelled() && steps.build-cache.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
+      # Only a completed, trusted lane may seed subsequent PR builds. The key is
+      # computed independently because clean runs intentionally skip restore.
+      - name: Save successful trusted lane build arena
+        if: ${{ success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.lane.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ env.SWIFT_BUILD_CACHE_PATHS }}
-          key: ${{ steps.build-cache.outputs.cache-primary-key }}
+          path: ${{ matrix.cache-path }}
+          key: ${{ steps.cache-key.outputs.primary }}
 
   record-workloads:
     needs: docs
@@ -240,3 +285,24 @@ jobs:
           version: "0.12.17"
       - name: Validate performance workload correctness
         run: bash scripts/build_benchmarks.sh
+
+  # Preserve the existing required-check name while joining every selected job.
+  preflight:
+    name: Release preflight
+    needs: [docs, preflight-lanes, record-workloads]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require all selected verification jobs
+        env:
+          DOCS_RESULT: ${{ needs.docs.result }}
+          APP_SCOPE: ${{ needs.docs.outputs.app }}
+          PREFLIGHT_RESULT: ${{ needs.preflight-lanes.result }}
+          WORKLOAD_SCOPE: ${{ needs.docs.outputs.performance_workloads }}
+          WORKLOAD_RESULT: ${{ needs.record-workloads.result }}
+        run: bash scripts/check_ci_results.sh

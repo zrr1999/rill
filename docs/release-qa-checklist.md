@@ -24,15 +24,17 @@ hashes together. Local development runs and historical WhisperKit/sherpa-onnx
 results do not satisfy current MLX speech-worker candidate gates. The current
 source and locked model catalog determine which tests and models apply.
 
-Successful `CI - Tests` runs retain a `native-preflight-app-<source revision>`
+The Release lane of `CI - Tests` retains a `native-preflight-app-release-<run id>-<attempt>`
 artifact for 14 days. It contains the arm64 app assembled and signature-verified
 by that run, its ZIP SHA-256, and the source revision/dirty state. Verify the
 checksum before extraction and record the app's embedded build identity for
 interaction QA. The bundle keeps the existing ad-hoc signature and `preflight`
 version; distribution trust and notarization still need the release candidate.
 Local preflight can save the same evidence by setting `RILL_PREFLIGHT_APP_DIR`
-to an artifact directory. Export happens after all preflight tests pass, and an
-existing archive is preserved rather than overwritten.
+to an artifact directory. CI exports after the Release lane passes; the parallel
+Tests lane may still be running. Use the app for acceptance only when that run's
+`Release preflight` aggregate succeeds. Default local preflight still exports
+after all tests pass. An existing archive is preserved rather than overwritten.
 
 Automated checks do not prove Gatekeeper behavior after a real download,
 permission prompts, physical Fn or input-method behavior, acoustic quality,

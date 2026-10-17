@@ -99,6 +99,7 @@ cat >"$TEST_ROOT/fixture.sh" <<'SH'
 set -euo pipefail
 source "$1/scripts/preflight.sh"
 PROJECT_DIR="${FIXTURE_PROJECT_DIR:-$PROJECT_DIR}"
+parse_preflight_options --lane "${FIXTURE_LANE:-all}"
 
 mutate_source() {
   case "$MUTATION" in
@@ -150,57 +151,66 @@ check_working_diff() { fixture_stage; }
 run_preflight
 SH
 
-stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests release working-diff)
-for failed_stage in none "${stages[@]}"; do
-  fixture="$TEST_ROOT/$failed_stage"
-  mkdir -p "$fixture/reports with spaces"
-  status=0
-  env RILL_PREFLIGHT_REPORT_DIR="$fixture/reports with spaces" \
-    RILL_PR_BASE_SHA=base-fixture RILL_PR_HEAD_SHA=head-fixture \
-    GITHUB_ACTIONS=true FAIL_STAGE="$failed_stage" FIXTURE_TRACE="$fixture/trace" \
-    "$BASH" "$TEST_ROOT/fixture.sh" "$PROJECT_DIR" >"$fixture/output" 2>&1 || status=$?
-  reports=("$fixture/reports with spaces"/run.*)
-  [[ "${#reports[@]}" == 1 && -f "${reports[0]}/summary.md" ]]
-  report="${reports[0]}"
-  summary="$report/summary.md"
-  grep -Fq -- '- PR base: `base-fixture`' "$summary"
-  grep -Fq -- '- PR head: `head-fixture`' "$summary"
-  grep -Fq -- "$(git -C "$PROJECT_DIR" rev-parse HEAD)" "$summary"
+all_stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests release working-diff)
+for lane in all tests release; do
+  case "$lane" in
+    all) stages=("${all_stages[@]}") ;;
+    tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
+    release) stages=(toolchain repository release working-diff) ;;
+  esac
+  for failed_stage in none "${stages[@]}"; do
+    fixture="$TEST_ROOT/$lane-$failed_stage"
+    mkdir -p "$fixture/reports with spaces"
+    status=0
+    env RILL_PREFLIGHT_REPORT_DIR="$fixture/reports with spaces" \
+      RILL_PR_BASE_SHA=base-fixture RILL_PR_HEAD_SHA=head-fixture \
+      GITHUB_ACTIONS=true FIXTURE_LANE="$lane" FAIL_STAGE="$failed_stage" FIXTURE_TRACE="$fixture/trace" \
+      "$BASH" "$TEST_ROOT/fixture.sh" "$PROJECT_DIR" >"$fixture/output" 2>&1 || status=$?
+    reports=("$fixture/reports with spaces"/run.*)
+    [[ "${#reports[@]}" == 1 && -f "${reports[0]}/summary.md" ]]
+    report="${reports[0]}"
+    summary="$report/summary.md"
+    grep -Fq -- "- Lane: \`$lane\`" "$summary"
+    grep -Fq -- '- PR base: `base-fixture`' "$summary"
+    grep -Fq -- '- PR head: `head-fixture`' "$summary"
+    grep -Fq -- "$(git -C "$PROJECT_DIR" rev-parse HEAD)" "$summary"
 
-  : >"$fixture/expected-trace"
-  for stage in "${stages[@]}"; do
-    echo "$stage" >>"$fixture/expected-trace"
-    grep -Fq "stdout: $stage" "$report/$stage.log"
-    grep -Fq "stderr: $stage" "$report/$stage.log"
-    if [[ "$stage" == "$failed_stage" ]]; then
-      grep -Eq "^\| $stage \| failed \| [0-9]+ \| 47 \|$" "$summary"
-      break
+    : >"$fixture/expected-trace"
+    for stage in "${stages[@]}"; do
+      echo "$stage" >>"$fixture/expected-trace"
+      grep -Fq "stdout: $stage" "$report/$stage.log"
+      grep -Fq "stderr: $stage" "$report/$stage.log"
+      if [[ "$stage" == "$failed_stage" ]]; then
+        grep -Eq "^\| $stage \| failed \| [0-9]+ \| 47 \|$" "$summary"
+        break
+      fi
+      grep -Eq "^\| $stage \| passed \| [0-9]+ \| 0 \|$" "$summary"
+    done
+    cmp "$fixture/expected-trace" "$fixture/trace"
+    [[ "$(grep -c '^::group::' "$fixture/output")" == "$(grep -c '^::endgroup::$' "$fixture/output")" ]]
+    if [[ "$failed_stage" == none ]]; then
+      [[ "$status" == 0 ]]
+      grep -Fq 'Result: **passed** (exit 0)' "$summary"
+      tail -n 3 "$fixture/output" | grep -Fq 'Preflight evidence: class=working-source'
+      grep -Fq 'Preflight passed' "$fixture/output"
+    else
+      [[ "$status" == 47 ]]
+      grep -Fq 'Result: **failed** (exit 47)' "$summary"
+      if grep -Eq 'failure was swallowed|Preflight passed' "$fixture/output"; then
+        echo "FAIL: $failed_stage did not stop preflight" >&2
+        exit 1
+      fi
     fi
-    grep -Eq "^\| $stage \| passed \| [0-9]+ \| 0 \|$" "$summary"
+    echo "PASS: lane=$lane stage failure=$failed_stage preserves logs, status, and execution order"
   done
-  cmp "$fixture/expected-trace" "$fixture/trace"
-  [[ "$(grep -c '^::group::' "$fixture/output")" == "$(grep -c '^::endgroup::$' "$fixture/output")" ]]
-  if [[ "$failed_stage" == none ]]; then
-    [[ "$status" == 0 ]]
-    grep -Fq 'Result: **passed** (exit 0)' "$summary"
-    tail -n 3 "$fixture/output" | grep -Fq 'Preflight evidence: class=working-source'
-    grep -Fq 'Preflight passed' "$fixture/output"
-  else
-    [[ "$status" == 47 ]]
-    grep -Fq 'Result: **failed** (exit 47)' "$summary"
-    if grep -Eq 'failure was swallowed|Preflight passed' "$fixture/output"; then
-      echo "FAIL: $failed_stage did not stop preflight" >&2
-      exit 1
-    fi
-  fi
-  echo "PASS: preflight stage failure=$failed_stage preserves logs, status, and execution order"
 done
+stages=("${all_stages[@]}")
 
 # A reporting destination may be reused without overwriting an earlier run.
-env RILL_PREFLIGHT_REPORT_DIR="$TEST_ROOT/none/reports with spaces" \
+env RILL_PREFLIGHT_REPORT_DIR="$TEST_ROOT/all-none/reports with spaces" \
   FAIL_STAGE=none FIXTURE_TRACE="$TEST_ROOT/repeated-trace" \
   "$BASH" "$TEST_ROOT/fixture.sh" "$PROJECT_DIR" >"$TEST_ROOT/repeated-output" 2>&1
-reports=("$TEST_ROOT/none/reports with spaces"/run.*)
+reports=("$TEST_ROOT/all-none/reports with spaces"/run.*)
 [[ "${#reports[@]}" == 2 ]]
 echo 'PASS: repeated preflight runs keep separate reports'
 
@@ -313,3 +323,40 @@ env RILL_PREFLIGHT_REPORT_DIR="$repository/reports" FIXTURE_PROJECT_DIR="$reposi
 [[ "$status" == 1 && ! -e "$TEST_ROOT/report-path-trace" ]]
 grep -Fq 'Preflight reports must be outside the checkout or Git-ignored' "$TEST_ROOT/report-path-output"
 echo 'PASS: nonignored reports inside the source checkout fail before running stages'
+
+# A selected lane cleans only its own arena; all remains the local default.
+for lane in all tests release; do
+  trace="$TEST_ROOT/clean-$lane"
+  "$BASH" -c '
+    source "$1/scripts/preflight.sh"
+    parse_preflight_options --lane "$2" --clean
+    [[ "$WORKER_CACHE" == off ]]
+    locked_swift() { printf "%s\n" "$*"; }
+    clean_preflight_builds
+  ' _ "$PROJECT_DIR" "$lane" >"$trace"
+  case "$lane" in
+    all) printf 'clean\nclean --configuration release\n' ;;
+    tests) printf 'clean\n' ;;
+    release) printf 'clean --configuration release\n' ;;
+  esac >"$trace.expected"
+  cmp "$trace.expected" "$trace"
+done
+for args in '--lane' '--lane typo'; do
+  if "$BASH" "$PROJECT_DIR/scripts/preflight.sh" $args >"$TEST_ROOT/invalid-lane" 2>&1; then
+    echo "FAIL: invalid lane accepted: $args" >&2
+    exit 1
+  fi
+done
+echo 'PASS: lane arguments fail closed and clean builds preserve arena ownership'
+
+# Source integrity must hold in each independently successful CI lane too.
+for lane in tests release; do
+  case "$lane" in
+    tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
+    release) stages=(toolchain repository release working-diff) ;;
+  esac
+  export FIXTURE_LANE="$lane"
+  source_case "$lane-stable" none none clean after
+  source_case "$lane-edit" edit working-diff clean before
+  unset FIXTURE_LANE
+done
