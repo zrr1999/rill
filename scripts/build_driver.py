@@ -637,6 +637,10 @@ def main(arguments: list[str] | None = None) -> None:
     if subcommand == "preflight-source":
         preflight_source(arguments)
         return
+    if subcommand == "source-inputs":
+        argparse.ArgumentParser(description="Read the current source input digests.").parse_args(arguments)
+        print(json.dumps(source_inputs(PROJECT)))
+        return
     if subcommand == "test-domain":
         if option(arguments, ("--scratch-path", "--build-path"), None) is not None:
             raise BuildError("Domain tests own their isolated build directory")
@@ -673,13 +677,15 @@ def main(arguments: list[str] | None = None) -> None:
     if subcommand == "receipt":
         parser = argparse.ArgumentParser()
         parser.add_argument("path", type=Path)
-        parser.add_argument(
+        output = parser.add_mutually_exclusive_group(required=True)
+        output.add_argument(
             "--field",
-            required=True,
             choices=("productsDirectory", "checkoutsDirectory", "buildDirectory"),
         )
+        output.add_argument("--json", action="store_true", help="Print the complete verified receipt.")
         options = parser.parse_args(arguments)
-        print(receipt_products(options.path, PROJECT)[options.field])
+        receipt = receipt_products(options.path, PROJECT)
+        print(json.dumps(receipt) if options.json else receipt[options.field])
         return
     if subcommand not in ("build", "test", "clean"):
         raise BuildError(f"unsupported SwiftPM subcommand: {subcommand}")

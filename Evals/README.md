@@ -3,7 +3,12 @@
 Quality evaluations measure whether model output meets expectations. Performance
 benchmarks measure time and resources; their workloads live in
 [Benchmarks](../Benchmarks/README.md). Deterministic implementation tests stay in
-`Tests` and `scripts/tests`, including corpus validation and scorer regression tests.
+`Tests` and `tools/tests`, including corpus validation and scorer regression tests.
+
+The replay and analysis implementation is the internal `rill_dev.evaluation`
+package in `tools/`. `just test-tools` runs its offline tests using the locked
+Python environment; it neither loads models nor calls providers. The existing
+`just` commands below are the supported entry points.
 
 | Suite | Corpus | Quality rule | Execution |
 | --- | --- | --- | --- |
@@ -55,10 +60,12 @@ missing, and empty input that makes no request contributes no timing sample.
 
 ## Continuous Evaluation (CE)
 
-`CE - Quality` is a manual GitHub Actions workflow, with a single-suite or all-suite
-selector. It has no PR, push or scheduled trigger and is not a required merge check.
-It runs the three LLM suites on hosted macOS runners. Configure these repository
-settings before dispatch:
+`CE - Quality` runs all three LLM suites every Monday at 09:30 Asia/Shanghai
+(01:30 UTC) on hosted macOS runners. Scheduled runs use the latest commit on the
+default branch, so the schedule takes effect after the workflow is merged there.
+Manual dispatch still supports a single-suite or all-suite selector. It has no PR
+or push trigger and is not a required merge check. Configure these repository
+settings before the first run:
 
 - Secrets: `DEEPSEEK_API_KEY` for vocabulary/context; `OPENAI_API_KEY` for rewrite.
 - Actions variables: `OPENAI_BASE_URL` and `OPENAI_MODEL` for rewrite.

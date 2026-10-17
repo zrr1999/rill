@@ -185,8 +185,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
   private var panel: NSPanel?
   private var pageContent: FloatingRecordContent?
-  private var capsulePanel: NSPanel?
-  private weak var capsuleModel: AppModel?
   let presentation = RecordPanelPresentation()
   private weak var appModel: AppModel? {
     didSet {
@@ -198,19 +196,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   private var editingActivity: (Bool) -> Void = { _ in }
   private weak var draftsResponder: NSResponder?
   private var focusModeTask: Task<Void, Never>?
-  private var lastCollectionPreferences = (voice: false, clipboard: false)
-  private var presentCollectionPanel: (() -> Void)?
-  private let frameAutosaveName: String?
-  private lazy var hover = RecordPanelHoverController(
-    frames: { [weak self] in
-      guard let self, let capsule = self.capsulePanel, capsule.isVisible else { return nil }
-      return (capsule.frame, self.panel?.isVisible == true ? self.panel?.frame : nil)
-    },
-    canCollapse: { [weak self] in self?.canHoverCollapse == true },
-    expand: { [weak self] in self?.expand(activate: false) },
-    collapse: { [weak self] in self?.collapse() },
-    pointerLocation: { [weak self] in self?.pointerLocationProvider() ?? .zero }
-  )
 
   func configureDrafts(
     model: AppModel, output: BufferOutputController,
@@ -224,15 +209,10 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     model.recordWorkspace.buffers.editor.sendAction = { [weak self] id in
       guard let self else { return }
       let captured = self.draftTarget
-      self.collapse()
-      self.editingActivity(false)
-      output.output(id, capturedTarget: captured)
+      self.hidePanel(
+        restorePreviousApplication: false,
+        onHidden: { output.output(id, capturedTarget: captured) })
     }
-  }
-
-  func startCollectionObservation(present: @escaping () -> Void) {
-    presentCollectionPanel = present
-    observeCollectionPreferences()
   }
 
   private func observeLanguage() {
@@ -245,29 +225,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     panel?.title = L10n.quickRecord(.title, language: language)
   }
 
-  private func observeCollectionPreferences() {
-    guard !hasBegunShutdown, let model = appModel else { return }
-    let preferences = withObservationTracking {
-      let settings = model.settings
-      return (
-        loading: settings.isLoading,
-        voice: settings.builtinPushToTalkOutputMode == .saveToVoiceGroup,
-        clipboard: settings.systemClipboardCaptureEnabled
-      )
-    } onChange: { [weak self] in
-      Task { @MainActor [weak self] in self?.observeCollectionPreferences() }
-    }
-    guard !preferences.loading else { return }
-    let newlyEnabled =
-      (preferences.voice && !lastCollectionPreferences.voice)
-      || (preferences.clipboard && !lastCollectionPreferences.clipboard)
-    lastCollectionPreferences = (preferences.voice, preferences.clipboard)
-    if newlyEnabled, !isVisible {
-      presentCollectionPanel?()
-      collapse()
-    }
-  }
-
   private func beginEditingVisit() {
     guard let model = appModel else { return }
     rememberPreviousApplication()
@@ -278,7 +235,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     updatePasteTargetPresentation()
   }
 
-  func selectMode(_ mode: RecordPanelPresentation.Mode, activate: Bool = true) {
+  func selectMode(_ mode: RecordPanelPresentation.Mode) {
     guard let panel, !hasMarkedText else { return }
     if presentation.mode == .drafts { draftsResponder = panel.firstResponder }
     panel.makeFirstResponder(nil)
@@ -286,48 +243,16 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     if mode == .drafts, appModel?.recordWorkspace.buffers.editor.isVisible != true {
       appModel?.recordWorkspace.buffers.editor.open()
     }
-    if presentation.isCollapsed {
-      expand(activate: activate)
-    } else if activate {
-      panel.makeKey()
-      focusMode()
-    }
+    panel.makeKey()
+    focusMode()
     editingActivity(panel.isKeyWindow && mode == .drafts)
   }
 
-  func collapse() {
-    guard let panel, !presentation.isCollapsed, !hasMarkedText, panel.attachedSheet == nil else { return }
-    focusModeTask?.cancel()
-    if presentation.mode == .drafts { draftsResponder = panel.firstResponder }
-    panel.makeFirstResponder(nil)
-    presentation.isCollapsed = true
-    presentation.isPinned = false
-    (panel as? FloatingRecordPanel)?.permitsKey = false
-    panel.orderOut(nil)
-    capsulePanel?.orderFrontRegardless()
-    hover.suppressUntilExit()
-    editingActivity(false)
-  }
-
-  func expand(activate: Bool = true) {
-    guard let panel, presentation.isCollapsed, !hasBegunShutdown else { return }
-    present(panel, activate: activate)
-  }
-
-  private func finishEditing() {
-    guard !hasMarkedText else { return }
-    focusModeTask?.cancel()
-    panel?.makeFirstResponder(nil)
-    panel?.resignKey()
-    editingActivity(false)
-    hover.refresh()
-  }
-
-  private var canHoverCollapse: Bool {
+  private var canAutoHide: Bool {
     RecordPanelModalPolicy.shouldAutoHide(
       isVisible: panel?.isVisible == true,
       hasAttachedSheet: panel?.attachedSheet != nil,
-      isSuppressed: presentation.isPinned || panel?.isKeyWindow == true || hasMarkedText
+      isSuppressed: panel?.isKeyWindow == true || hasMarkedText
         || quickPanelModel?.cleanup.isWorking == true
         || panel?.childWindows?.contains(where: \.isVisible) == true
     )
@@ -344,7 +269,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       await withCheckedContinuation { continuation in
         RunLoop.main.perform(inModes: [.default]) { continuation.resume() }
       }
-      guard let self, !Task.isCancelled, !self.presentation.isCollapsed,
+      guard let self, !Task.isCancelled,
         let panel = self.panel, panel.isVisible
       else { return }
       let previous = self.presentation.mode == .drafts ? self.draftsResponder : nil
@@ -379,14 +304,11 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   private let pasteTargetProvider: (@MainActor () -> FocusedApplicationTargetIdentity?)?
   private let pasteTargetRestorer: (@MainActor (FocusedApplicationTargetIdentity) async -> Bool)?
   private let reduceMotionProvider: @MainActor () -> Bool
-  private let pointerLocationProvider: @MainActor () -> NSPoint
 
   override init() {
-    frameAutosaveName = "RillRecordCapsule"
     pasteTargetProvider = nil
     pasteTargetRestorer = nil
     reduceMotionProvider = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
-    pointerLocationProvider = { NSEvent.mouseLocation }
     super.init()
     NSWorkspace.shared.notificationCenter.addObserver(
       self,
@@ -406,14 +328,11 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     pasteTargetRestorer: @escaping @MainActor (FocusedApplicationTargetIdentity) async -> Bool,
     reduceMotionProvider: @escaping @MainActor () -> Bool = {
       NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    },
-    pointerLocationProvider: @escaping @MainActor () -> NSPoint = { NSEvent.mouseLocation }
+    }
   ) {
-    frameAutosaveName = nil
     self.pasteTargetProvider = pasteTargetProvider
     self.pasteTargetRestorer = pasteTargetRestorer
     self.reduceMotionProvider = reduceMotionProvider
-    self.pointerLocationProvider = pointerLocationProvider
     super.init()
   }
 
@@ -425,7 +344,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     NSWorkspace.shared.notificationCenter.removeObserver(self)
   }
 
-  var isVisible: Bool { panel?.isVisible == true || capsulePanel?.isVisible == true }
+  var isVisible: Bool { panel?.isVisible == true }
   var isKey: Bool { panel?.isKeyWindow == true }
   var isShutdown: Bool { hasBegunShutdown }
 
@@ -437,36 +356,27 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
   func show(
     model: AppModel,
-    mode: RecordPanelPresentation.Mode = .collections,
+    mode: RecordPanelPresentation.Mode? = nil,
     toggle: Bool = true,
-    activate: Bool = true,
     deliverSelection: @escaping @Sendable (RecordReuseSubject, FocusedApplicationTargetIdentity) async -> RecordReuseOutcome,
     copySelection: @escaping @Sendable (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked },
     onDeliveryAbort: @escaping @Sendable () async -> Void,
     restoring comparison: RecordComparisonReturn? = nil
   ) {
     guard !hasBegunShutdown else { return }
-    if activate { model.discardComparisonReturn() }
+    model.discardComparisonReturn()
+    let mode = mode ?? presentation.mode
     if isVisible {
-      // Output status is visible in either mode. Keep ongoing input in place.
-      if !activate { return }
       if let comparison { quickPanelModel?.restoreComparison(comparison) }
-      if toggle && presentation.mode == mode && !presentation.isCollapsed {
+      if toggle && presentation.mode == mode {
         handleEscape()
-      } else if presentation.isCollapsed {
-        selectMode(mode, activate: activate)
       } else {
-        selectMode(mode, activate: activate)
-        if activate {
-          panel?.makeKey()
-          focusMode()
-        }
+        selectMode(mode)
       }
       return
     }
     appModel = model
     presentation.mode = mode
-    presentation.isCollapsed = false
     rememberPreviousApplication()
     if mode == .drafts { model.recordWorkspace.buffers.editor.open() }
     if let previousSession = quickPanelModel {
@@ -492,7 +402,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       }
     }
     let digitSelection: (Int) -> Bool = { [weak self] index in
-      guard self?.presentation.mode == .collections, self?.presentation.isCollapsed == false,
+      guard self?.presentation.mode == .collections, self?.isVisible == true,
         let subject = session.subject(at: index)
       else { return false }
       useSelectedRecord(subject)
@@ -543,8 +453,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       let rootView = FloatingRecordView(
         content: content, presentation: presentation,
         onModeChange: { [weak self] in self?.selectMode($0) },
-        onFinishEditing: { [weak self] in self?.finishEditing() },
-        onInteractionChange: { [weak self] in self?.hover.refresh() },
+        onFinishEditing: { [weak self] in self?.dismiss() },
+        onInteractionChange: { [weak self] in self?.scheduleHideOnFocusLoss() },
         onShowRecord: { [weak self] in self?.hidePanel(restorePreviousApplication: false) },
         onClose: { [weak self] in self?.handleEscape() })
       if let existing = panel?.contentViewController as? FloatingRecordHostingController<FloatingRecordView> {
@@ -554,8 +464,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         hostingController = FloatingRecordHostingController(rootView: rootView)
       }
     }
-    prepareCapsule(model: model)
-
     if let panel {
       panel.title = L10n.quickRecord(.title, language: model.settings.language)
       (panel as? FloatingRecordPanel)?.onDigitPressed = digitSelection
@@ -564,7 +472,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         dismiss()
         return
       }
-      if activate { present(panel) } else { showCapsule() }
+      present(panel)
       return
     }
 
@@ -598,7 +506,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     panel.contentView?.layer?.cornerRadius = RecordPanelAppearance.cornerRadius
     panel.contentView?.layer?.masksToBounds = true
     self.panel = panel
-    if activate { present(panel) } else { showCapsule() }
+    present(panel)
   }
 
   func prepareForSettings(model: AppModel, resume: @escaping @MainActor (RecordComparisonReturn) -> Void) {
@@ -622,7 +530,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
   func dismiss() {
     guard !hasMarkedText else { return }
-    hidePanel(restorePreviousApplication: !presentation.isCollapsed)
+    hidePanel(restorePreviousApplication: true)
   }
 
   private func handleEscape() {
@@ -634,7 +542,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       guard let attachedSheet = panel.attachedSheet else { return }
       panel.endSheet(attachedSheet, returnCode: .cancel)
     case .panel:
-      if !presentation.isCollapsed { collapse() } else { dismiss() }
+      dismiss()
     }
   }
 
@@ -679,8 +587,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       return
     }
     hasBegunShutdown = true
-    hover.stop()
-    presentCollectionPanel = nil
     focusModeTask?.cancel()
     appModel?.recordWorkspace.buffers.editor.close()
     editingActivity(false)
@@ -695,7 +601,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     pendingFocusRestoreTask?.cancel()
     pendingFocusRestoreTask = nil
     panel?.orderOut(nil)
-    capsulePanel?.orderOut(nil)
     panel?.alphaValue = 1
     await pasteTaskOwner.shutdown()
   }
@@ -793,15 +698,12 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     return recentExternalApplication
   }
 
-  private func present(_ panel: NSPanel, activate: Bool = true) {
-    guard !hasBegunShutdown, let capsule = capsulePanel else { return }
+  private func present(_ panel: NSPanel) {
+    guard !hasBegunShutdown else { return }
     panelHideTask?.cancel()
     panelHideTask = nil
-    (panel as? FloatingRecordPanel)?.permitsKey = true
-    presentation.isCollapsed = false
-    capsule.orderFrontRegardless()
-    if let screen = screen(containing: capsule.frame) {
-      let frame = RecordPanelPlacement.pageFrame(beside: capsule.frame, in: screen.visibleFrame)
+    if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
+      let frame = RecordPanelPlacement.pageFrame(in: screen.visibleFrame)
       if panel.frame != frame { panel.setFrame(frame, display: true) }
     }
     pasteTaskOwner.abortReservations()
@@ -810,21 +712,17 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     pendingFocusRestoreTask?.cancel()
     pendingFocusRestoreTask = nil
     suppressAutoHide()
-    defer {
-      if activate { focusMode() }
-      hover.start()
-      hover.refresh()
-    }
+    defer { focusMode() }
     // Reduce Motion: skip the entrance fade and show the panel directly.
     if reduceMotionProvider() {
       panel.alphaValue = 1
       panel.orderFrontRegardless()
-      if activate { panel.makeKey() }
+      panel.makeKey()
       return
     }
     panel.alphaValue = 0
     panel.orderFrontRegardless()
-    if activate { panel.makeKey() }
+    panel.makeKey()
     NSAnimationContext.runAnimationGroup { context in
       context.duration = 0.10
       context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -832,86 +730,11 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     }
   }
 
-  private func prepareCapsule(model: AppModel) {
-    guard capsulePanel == nil || capsuleModel !== model else { return }
-    capsuleModel = model
-    let rootView = RecordPanelCapsuleView(
-      model: model,
-      onExpand: { [weak self] in
-        guard let self else { return }
-        self.selectMode(self.presentation.mode)
-      },
-      onClose: { [weak self] in self?.dismiss() },
-      onDrag: { [weak self] in self?.moveFloatingPanels(by: $0) },
-      onDragActivity: { [weak self] in self?.hover.setDragging($0) }
-    )
-    if let capsulePanel {
-      (capsulePanel.contentViewController as? FloatingRecordHostingController<RecordPanelCapsuleView>)?.replaceRootView(rootView)
-      return
-    }
-    let hosting = FloatingRecordHostingController(rootView: rootView)
-    let capsule = RecordCapsulePanel(
-      contentRect: NSRect(origin: .zero, size: RecordPanelPlacement.capsuleSize),
-      styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-    capsule.identifier = NSUserInterfaceItemIdentifier("record-panel.capsule")
-    capsule.delegate = self
-    capsule.contentViewController = hosting
-    capsule.isFloatingPanel = true
-    capsule.hidesOnDeactivate = false
-    capsule.isReleasedWhenClosed = false
-    capsule.level = .floating
-    capsule.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-    capsule.isOpaque = false
-    capsule.backgroundColor = .clear
-    capsule.hasShadow = true
-    capsule.acceptsMouseMovedEvents = true
-    if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
-      capsule.setFrameOrigin(
-        NSPoint(
-          x: screen.visibleFrame.midX - RecordPanelPlacement.capsuleSize.width / 2,
-          y: screen.visibleFrame.maxY - 120))
-    }
-    if let frameAutosaveName { capsule.setFrameUsingName(frameAutosaveName) }
-    capsule.setContentSize(RecordPanelPlacement.capsuleSize)
-    if let screen = screen(containing: capsule.frame) {
-      let placement = RecordPanelPlacement.movingFrames(.zero, capsule: capsule.frame, page: nil, in: screen.visibleFrame)
-      capsule.setFrameOrigin(placement.capsule.origin)
-    }
-    capsulePanel = capsule
-  }
-
-  private func showCapsule() {
-    presentation.isCollapsed = true
-    (panel as? FloatingRecordPanel)?.permitsKey = false
-    panel?.orderOut(nil)
-    capsulePanel?.orderFrontRegardless()
-    hover.start()
-  }
-
-  func moveFloatingPanels(by delta: NSPoint) {
-    guard let capsule = capsulePanel, !hasMarkedText, panel?.attachedSheet == nil,
-      let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
-        ?? screen(containing: capsule.frame)
-    else { return }
-    let pageFrame = panel?.isVisible == true ? panel?.frame : nil
-    let placement = RecordPanelPlacement.movingFrames(delta, capsule: capsule.frame, page: pageFrame, in: screen.visibleFrame)
-    capsule.setFrameOrigin(placement.capsule.origin)
-    if let pageFrame = placement.page {
-      panel?.setFrame(pageFrame, display: true)
-    }
-  }
-
-  private func screen(containing frame: NSRect) -> NSScreen? {
-    NSScreen.screens.first { $0.frame.contains(NSPoint(x: frame.midX, y: frame.midY)) }
-      ?? NSScreen.main ?? NSScreen.screens.first
-  }
-
   private func hidePanel(
     restorePreviousApplication: Bool,
     onHidden: (@MainActor () -> Void)? = nil,
     onInvalidated: (@MainActor () -> Void)? = nil
   ) {
-    hover.stop()
     focusModeTask?.cancel()
     panel?.makeFirstResponder(nil)
     appModel?.recordWorkspace.buffers.editor.close()
@@ -923,7 +746,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     pendingFocusHideTask?.cancel()
     pendingFocusHideTask = nil
     guard let panel, panel.isVisible else {
-      capsulePanel?.orderOut(nil)
       onHidden?()
       return
     }
@@ -978,7 +800,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     }
     panel?.orderOut(nil)
     panel?.alphaValue = 1
-    capsulePanel?.orderOut(nil)
     guard previousApp != nil else {
       onHidden?()
       return
@@ -1045,16 +866,10 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
   func windowDidBecomeKey(_ notification: Notification) {
     pendingFocusHideTask?.cancel()
-    editingActivity(presentation.mode == .drafts && !presentation.isCollapsed)
-    hover.refresh()
+    editingActivity(presentation.mode == .drafts)
   }
 
-  func windowDidMove(_ notification: Notification) {
-    guard notification.object as? NSWindow === capsulePanel, let frameAutosaveName else { return }
-    capsulePanel?.saveFrame(usingName: frameAutosaveName)
-  }
-
-  func windowDidEndSheet(_ notification: Notification) { hover.refresh() }
+  func windowDidEndSheet(_ notification: Notification) { scheduleHideOnFocusLoss() }
 
   func windowDidResignKey(_ notification: Notification) {
     editingActivity(false)
@@ -1066,6 +881,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   }
 
   private func scheduleHideOnFocusLoss() {
+    guard panelHideTask == nil else { return }
     pendingFocusHideTask?.cancel()
     // A focus loss during presentation still needs a decision when the
     // suppression ends; dropping it leaves a visible panel that cannot type.
@@ -1075,23 +891,19 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         return
       }
       guard let self, !self.hasBegunShutdown, self.panel?.isKeyWindow != true else { return }
-      self.hover.refresh()
+      if self.panelHideTask == nil, self.canAutoHide {
+        self.hidePanel(restorePreviousApplication: false)
+      }
     }
   }
 }
 
-private final class RecordCapsulePanel: NSPanel {
-  override var canBecomeKey: Bool { false }
-  override var canBecomeMain: Bool { false }
-}
-
 private final class FloatingRecordPanel: NSPanel {
-  var permitsKey = true
   var onWillBecomeKey: (() -> Void)?
   var onEscapePressed: (() -> Void)?
   var onDigitPressed: ((Int) -> Bool)?
 
-  override var canBecomeKey: Bool { permitsKey }
+  override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { false }
 
   override func becomeKey() {
@@ -1189,10 +1001,11 @@ private struct FloatingRecordView: View {
     UnifiedRecordPanelView(
       presentation: presentation, model: content.model,
       onModeChange: onModeChange, onFinishEditing: onFinishEditing,
-      onInteractionChange: onInteractionChange
+      onInteractionChange: onInteractionChange, onClose: onClose
     ) {
       FloatingRecordCollectionsView(content: content, onShowRecord: onShowRecord, onClose: onClose)
     }
+    .onChange(of: content.session.cleanup.isWorking) { _, _ in onInteractionChange() }
     .environment(\.locale, content.model.settings.language.formattingLocale)
     .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
   }

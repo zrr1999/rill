@@ -1,11 +1,6 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# dependencies = []
-# ///
 """Compare paired ASR performance using an explicit metric and a 5% regression budget."""
 
-import asr_run_data as runs
+from rill_dev.evaluation import run_data as runs
 
 
 def compare(cases, baseline, candidate, target, split="validation"):
@@ -22,9 +17,12 @@ def compare(cases, baseline, candidate, target, split="validation"):
         selected = [key for key in successful if key[1] == state]
         measurements[state] = {}
         for metric in runs.METRICS:
-            pairs = [(before[key]["metrics"][metric], after[key]["metrics"][metric])
-                     for key in selected if metric in before[key].get("metrics", {})
-                     and metric in after[key].get("metrics", {})]
+            pairs = [
+                (before[key]["metrics"][metric], after[key]["metrics"][metric])
+                for key in selected
+                if metric in before[key].get("metrics", {})
+                and metric in after[key].get("metrics", {})
+            ]
             a = runs.percentiles([pair[0] for pair in pairs])
             b = runs.percentiles([pair[1] for pair in pairs])
             measurements[state][metric] = {"baseline": a, "candidate": b}

@@ -97,7 +97,7 @@ private actor RecordPanelOperationGate {
 
 @MainActor
 final class RecordPanelControllerTests: XCTestCase {
-  func testUnifiedPanelPreservesEditorUndoSearchAndCompositionAcrossModesAndCollapse() async throws {
+  func testUnifiedPanelPreservesEditorUndoAndCompositionAcrossModesAndReopening() async throws {
     let workspace = RecordWorkspaceModel(store: RecordStore())
     let model = makeModel(recordWorkspace: workspace)
     let controller = RecordPanelController(pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
@@ -112,9 +112,6 @@ final class RecordPanelControllerTests: XCTestCase {
     editor.newItem()
     await editor.waitForPendingWrites()
     let window = try XCTUnwrap(NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existing.contains($0.windowNumber) })
-    let capsule = try XCTUnwrap(
-      NSApp.windows.first { $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existing.contains($0.windowNumber) })
-    let capsuleFrame = capsule.frame
     let pageFrame = window.frame
     func nativeEditor(in view: NSView) -> NSTextView? {
       if let text = view as? NSTextView, text.accessibilityIdentifier() == "record-buffer.editor" { return text }
@@ -126,9 +123,7 @@ final class RecordPanelControllerTests: XCTestCase {
     native.insertText("保留这段编辑", replacementRange: NSRange(location: 0, length: 0))
     native.breakUndoCoalescing()
     XCTAssertTrue(native.undoManager?.canUndo == true)
-    controller.show(
-      model: model, mode: .collections, toggle: false, activate: false,
-      deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    workspace.buffers.message = L10n.bufferOutputMessage(.rejected)
     XCTAssertEqual(controller.presentation.mode, .drafts)
     XCTAssertTrue(
       window.firstResponder === native,
@@ -137,41 +132,29 @@ final class RecordPanelControllerTests: XCTestCase {
     controller.selectMode(.collections)
     controller.quickPanelModel?.setSearchText("保留")
     controller.selectMode(.drafts)
-    controller.collapse()
+    XCTAssertEqual(controller.quickPanelModel?.searchText, "保留")
+    controller.dismiss()
     for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
-    XCTAssertTrue(controller.isVisible)
-    XCTAssertTrue(controller.presentation.isCollapsed)
+    XCTAssertFalse(controller.isVisible)
     XCTAssertEqual(window.frame, pageFrame)
-    XCTAssertEqual(capsule.frame, capsuleFrame)
-    XCTAssertEqual(capsule.frame.size, NSSize(width: 260, height: 48))
     XCTAssertFalse(window.isVisible)
-    XCTAssertTrue(capsule.isVisible)
-    XCTAssertFalse(capsule.canBecomeKey)
-    XCTAssertFalse(window.isKeyWindow)
-    XCTAssertFalse(window.canBecomeKey)
     XCTAssertFalse(controller.digitSelectionHandler?(0) ?? true)
-    controller.expand(activate: false)
-    XCTAssertFalse(controller.isKey, "Hovering must not capture focus from the external app")
-    XCTAssertEqual(capsule.frame, capsuleFrame)
-    XCTAssertEqual(window.frame, pageFrame)
-    controller.selectMode(.drafts)
+    controller.show(
+      model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
     for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
+    XCTAssertEqual(controller.presentation.mode, .drafts)
     XCTAssertTrue(nativeEditor(in: try XCTUnwrap(window.contentView)) === native)
     XCTAssertEqual(editor.session?.id, sessionID)
     XCTAssertEqual(native.string, "保留这段编辑")
-    XCTAssertEqual(controller.quickPanelModel?.searchText, "保留")
-    controller.moveFloatingPanels(by: NSPoint(x: -20, y: -20))
-    XCTAssertEqual(window.frame.size, pageFrame.size)
-    XCTAssertEqual(capsule.frame.size, capsuleFrame.size)
-    XCTAssertEqual(window.frame.minX - pageFrame.minX, capsule.frame.minX - capsuleFrame.minX)
-    XCTAssertEqual(window.frame.minY - pageFrame.minY, capsule.frame.minY - capsuleFrame.minY)
+    XCTAssertEqual(controller.quickPanelModel?.searchText, "")
+    XCTAssertEqual(window.frame, pageFrame)
     native.undoManager?.undo()
     XCTAssertEqual(native.string, "")
     native.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
     controller.selectMode(.collections)
-    controller.collapse()
+    controller.dismiss()
     XCTAssertEqual(controller.presentation.mode, .drafts)
-    XCTAssertFalse(controller.presentation.isCollapsed)
+    XCTAssertTrue(controller.isVisible)
     XCTAssertTrue(native.hasMarkedText())
     native.unmarkText()
     await controller.shutdown()
@@ -620,41 +603,6 @@ final class RecordPanelControllerTests: XCTestCase {
       await workspace.shutdown()
     }
     await controller.shutdown()
-  }
-
-  func testReopenedCapsuleObservesLanguageChangesAndReplacementModels() async throws {
-    let firstWorkspace = RecordWorkspaceModel(store: RecordStore())
-    let secondWorkspace = RecordWorkspaceModel(store: RecordStore())
-    let firstModel = makeModel(recordWorkspace: firstWorkspace)
-    let secondModel = makeModel(recordWorkspace: secondWorkspace)
-    let controller = RecordPanelController(
-      pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
-    let existing = Set(NSApp.windows.map(\.windowNumber))
-    func dragHandle(in view: NSView) -> NSView? {
-      if view.accessibilityIdentifier() == "record-panel.move-and-open" { return view }
-      return view.subviews.lazy.compactMap { dragHandle(in: $0) }.first
-    }
-    let visits: [(AppModel, AppLanguage)] = [
-      (firstModel, .english), (firstModel, .simplifiedChinese), (secondModel, .english),
-    ]
-    for (model, language) in visits {
-      model.applyLanguage(language)
-      controller.show(model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
-      let capsule = try XCTUnwrap(
-        NSApp.windows.first { $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existing.contains($0.windowNumber) })
-      for _ in 0..<4 { await waitForMainRunLoopDefaultMode() }
-      capsule.contentView?.layoutSubtreeIfNeeded()
-      let handle = try XCTUnwrap(dragHandle(in: XCTUnwrap(capsule.contentView)))
-      XCTAssertEqual(handle.accessibilityLabel(), L10n.recordPanel(.moveAndOpen, language: language))
-      controller.collapse()
-      XCTAssertTrue(controller.presentation.isCollapsed)
-      XCTAssertTrue(handle.accessibilityPerformPress())
-      XCTAssertFalse(controller.presentation.isCollapsed)
-      controller.dismiss()
-    }
-    await controller.shutdown()
-    await firstWorkspace.shutdown()
-    await secondWorkspace.shutdown()
   }
 
   func testWarmPanelReadyToSearchWithTenThousandRecords() async throws {

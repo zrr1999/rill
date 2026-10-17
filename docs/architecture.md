@@ -82,7 +82,7 @@ drain separately from the clipboard polling lifecycle.
 | --- | --- | --- |
 | Records, memberships, buffers, routes, leases, and persistence revision | `RecordStore` | Commands commit before publishing catalog updates or collection events. |
 | Pending draft text, revisions and speech suggestions | `RecordStore` | Drafts belong to exact buffer entries; sending derives an immutable Record and replaces that entry atomically. |
-| Unified panel mode, visibility, placement, target capture and focus | `RecordPanelController` | One controller owns a fixed non-key capsule and a separate page keeping Collections and Drafts mounted. Hover never captures a target or resizes the capsule; each explicit editing visit freezes its target, and draft sending keeps the capsule visible. |
+| Unified panel mode, visibility, placement, target capture and focus | `RecordPanelController` | One controller owns the on-demand page, keeping Collections and Drafts mounted. Cmd+Cmd restores the last mode; dismissal leaves no resident window. Each explicit editing visit freezes its target, and draft sending dismisses the page before output. |
 | Draft selection, native composition and unsaved edits | `RecordBufferDraftModel` | One editing session retains local text on failure and drains accepted saves at shutdown; panel visibility does not own persistence. |
 | SQLite connection and transactions | `SQLitePersistenceStore` | One GRDB `DatabaseQueue` serves settings, history, and catalog operations. Each synchronous `SQLitePersistenceSession` borrows that connection only for the queue access; a transaction never suspends between statements. |
 | Active workflow recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |
@@ -283,10 +283,13 @@ the migration adapter reads the file. Runtime test defaults live in
 
 ### 评测、诊断和功能命令
 
-质量评测位于 `Evals/`，真实模型由手动 CE 的 `RillQualityEvaluations` target 执行；
+质量评测位于 `Evals/`，真实模型由每周或手动 CE 的 `RillQualityEvaluations` target 执行；
 性能工作负载位于 `Benchmarks/`，CodSpeed 仅报告 CPU simulation。
-`asr_run_data` 拥有原始回放数据的读取与配对，质量评分、性能比较和显式综合验收分别消费该数据。
+`tools/` 内部包的 `rill_dev.evaluation.run_data` 拥有原始回放数据的读取与配对，
+质量评分、性能比较和显式综合验收分别消费该数据。
 回放不依赖任何评分器；正常 CI 只验证评测工具和确定性契约。入口与报告见 [质量评测](../Evals/README.md)。
+源码指纹与 Release 产物验证仍由构建驱动拥有；评测工具通过其只读 JSON 命令读取结果，
+不导入构建脚本或维护第二份回执校验。
 
 归档源码统一使用 Corpus 命名。现有 `BenchmarkRecordings` 目录、`audio.benchmark-archive-enabled`
 设置值、`benchmark_recordings` / `benchmark_recordings_key` 加密上下文、验证标记和

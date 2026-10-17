@@ -1,45 +1,54 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# dependencies = []
-# ///
 """Replay authorized PCM WAV fixtures through a verified Release speech worker."""
 
 import argparse
 import base64
-import struct
 import hashlib
 import json
-import os
-from pathlib import Path
-import selectors
 import math
+import os
+import selectors
+import struct
 import subprocess
 import tempfile
 import time
 import uuid
 import wave
+from pathlib import Path
+from typing import TypedDict
 
-import asr_run_data
-import build_driver
+from rill_dev import repository
+from rill_dev.evaluation import run_data
 
 
 class WorkerError(Exception):
     pass
 
 
+class ReplayResult(TypedDict):
+    status: str
+    texts: dict[str, str]
+    metrics: dict[str, float]
+
+
 class Worker:
     def __init__(self, executable, timeout):
-        self.process = subprocess.Popen([str(executable)], stdin=subprocess.PIPE,
-                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        self.process = subprocess.Popen(
+            [str(executable)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        assert self.process.stdin is not None and self.process.stdout is not None
+        self.stdin = self.process.stdin
+        self.stdout = self.process.stdout
         self.timeout = timeout
         self.pending = bytearray()
         self.selector = selectors.DefaultSelector()
-        self.selector.register(self.process.stdout, selectors.EVENT_READ)
+        self.selector.register(self.stdout, selectors.EVENT_READ)
 
     def close(self):
         self.selector.close()
-        self.process.stdin.close()
+        self.stdin.close()
         try:
             self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -49,16 +58,23 @@ class Worker:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
-        self.process.stdout.close()
+        self.stdout.close()
 
     def send(self, identifier, sequence, body):
-        frame = {"protocolVersion": 5, "requestID": identifier, "generation": 1,
-                 "sessionID": identifier, "sequence": sequence, "kind": "command", "body": body}
+        frame = {
+            "protocolVersion": 5,
+            "requestID": identifier,
+            "generation": 1,
+            "sessionID": identifier,
+            "sequence": sequence,
+            "kind": "command",
+            "body": body,
+        }
         encoded = json.dumps(frame, separators=(",", ":")).encode() + b"\n"
         if len(encoded) > 65536:
             raise WorkerError("request_too_large")
-        self.process.stdin.write(encoded)
-        self.process.stdin.flush()
+        self.stdin.write(encoded)
+        self.stdin.flush()
 
     def read_frame(self, timeout):
         deadline = time.monotonic() + timeout
@@ -66,7 +82,7 @@ class Worker:
             remaining = deadline - time.monotonic()
             if remaining <= 0 or not self.selector.select(remaining):
                 return None
-            chunk = os.read(self.process.stdout.fileno(), 65536)
+            chunk = os.read(self.stdout.fileno(), 65536)
             if not chunk:
                 raise WorkerError("worker_exited")
             self.pending.extend(chunk)
@@ -78,9 +94,14 @@ class Worker:
 
     @staticmethod
     def validate_frame(frame, identifier, sequence):
-        if (frame.get("protocolVersion") != 5 or frame.get("generation") != 1
-                or frame.get("requestID") != identifier or frame.get("sessionID") != identifier
-                or frame.get("kind") != "event" or frame.get("sequence") != sequence):
+        if (
+            frame.get("protocolVersion") != 5
+            or frame.get("generation") != 1
+            or frame.get("requestID") != identifier
+            or frame.get("sessionID") != identifier
+            or frame.get("kind") != "event"
+            or frame.get("sequence") != sequence
+        ):
             raise WorkerError("response_identity_mismatch")
 
     def request(self, operation, payload):
@@ -99,8 +120,11 @@ class Worker:
                 continue
             if "failure" in body:
                 raise WorkerError("recognition_failed")
-            expected = {"prepareModel": "modelPrepared", "releaseModel": "modelReleased",
-                        "recognizeOffline": "recognitionCompleted"}[operation]
+            expected = {
+                "prepareModel": "modelPrepared",
+                "releaseModel": "modelReleased",
+                "recognizeOffline": "recognitionCompleted",
+            }[operation]
             if set(body) != {expected}:
                 raise WorkerError("unexpected_response")
             return body[expected]["_0"], (time.monotonic() - started) * 1000
@@ -110,9 +134,15 @@ class Worker:
             pcm = audio.readframes(audio.getnframes())
         samples = [value[0] / 32768 for value in struct.iter_unpack("<h", pcm)]
         identifier = str(uuid.uuid4()).upper()
-        payload = {"modelID": model, "keyterms": [], "mode": "vad-and-transcription",
-                   "profile": profile, "priority": 30, "downloadIfNeeded": False,
-                   "audioFormat": {"sampleRateHz": 16000, "channelCount": 1, "encoding": "float32"}}
+        payload = {
+            "modelID": model,
+            "keyterms": [],
+            "mode": "vad-and-transcription",
+            "profile": profile,
+            "priority": 30,
+            "downloadIfNeeded": False,
+            "audioFormat": {"sampleRateHz": 16000, "channelCount": 1, "encoding": "float32"},
+        }
         if language is not None:
             payload["language"] = language
         started = time.monotonic()
@@ -126,16 +156,31 @@ class Worker:
                 raise WorkerError("preview_timeout")
             if audio_started is not None and finished is None:
                 if offset < len(samples) and now >= audio_started + offset / 16000:
-                    chunk = samples[offset:offset + 1600]
+                    chunk = samples[offset : offset + 1600]
                     data = struct.pack("<" + "f" * len(chunk), *chunk)
-                    self.send(identifier, sequence, {"command": {"_0": {"appendAudio": {
-                        "_0": {"pcmFloat32LittleEndian": base64.b64encode(data).decode()}}}}})
+                    self.send(
+                        identifier,
+                        sequence,
+                        {
+                            "command": {
+                                "_0": {
+                                    "appendAudio": {
+                                        "_0": {
+                                            "pcmFloat32LittleEndian": base64.b64encode(
+                                                data
+                                            ).decode()
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    )
                     sequence += 1
                     offset += len(chunk)
                 if offset == len(samples) and now >= audio_started + offset / 16000:
                     self.send(identifier, sequence, {"command": {"_0": {"finish": {}}}})
                     finished = time.monotonic()
-            frame = self.read_frame(.01)
+            frame = self.read_frame(0.01)
             if frame is None:
                 continue
             self.validate_frame(frame, identifier, expected)
@@ -152,9 +197,13 @@ class Worker:
             if "transcriptUpdate" in body and audio_started is not None:
                 update = body["transcriptUpdate"]["_0"]
                 if (update["confirmed"] + update["provisional"]).strip():
-                    metrics.setdefault("worker_first_hypothesis_ms", (observed - audio_started) * 1000)
+                    metrics.setdefault(
+                        "worker_first_hypothesis_ms", (observed - audio_started) * 1000
+                    )
                 if update["confirmed"].strip():
-                    metrics.setdefault("worker_first_confirmed_ms", (observed - audio_started) * 1000)
+                    metrics.setdefault(
+                        "worker_first_confirmed_ms", (observed - audio_started) * 1000
+                    )
             if "completed" in body:
                 if finished is None or offset != len(samples):
                     raise WorkerError("preview_ended_before_all_samples")
@@ -177,7 +226,9 @@ def audio_fixture(case, corpus_directory):
     return path, duration
 
 
-def replay_case(worker, case, path, duration, model, model_revision, keyterms, language):
+def replay_case(
+    worker, case, path, duration, model, model_revision, keyterms, language
+) -> ReplayResult:
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != case["audio_sha256"]:
         raise ValueError("Fixture changed after validation.")
@@ -185,15 +236,23 @@ def replay_case(worker, case, path, duration, model, model_revision, keyterms, l
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(data)
-        payload = {"runID": str(uuid.uuid4()), "modelID": model, "keyterms": keyterms,
-                   "threadCount": 1, "audioFilePath": temporary, "audioDurationSeconds": duration,
-                   "audioFormat": {"sampleRateHz": 16000, "channelCount": 1, "encoding": "pcm16"},
-                   "downloadIfNeeded": False}
+        payload = {
+            "runID": str(uuid.uuid4()),
+            "modelID": model,
+            "keyterms": keyterms,
+            "threadCount": 1,
+            "audioFilePath": temporary,
+            "audioDurationSeconds": duration,
+            "audioFormat": {"sampleRateHz": 16000, "channelCount": 1, "encoding": "pcm16"},
+            "downloadIfNeeded": False,
+        }
         if language is not None:
             payload["language"] = language
         result, elapsed = worker.request("recognizeOffline", payload)
-        if (result.get("metadata", {}).get("provider.model") != model
-                or result.get("metadata", {}).get("provider.model_revision") != model_revision):
+        if (
+            result.get("metadata", {}).get("provider.model") != model
+            or result.get("metadata", {}).get("provider.model_revision") != model_revision
+        ):
             raise WorkerError("model_identity_mismatch")
         metrics = {"worker_request_ms": elapsed}
         peak = result.get("metadata", {}).get("provider.worker_peak_rss_bytes")
@@ -212,7 +271,11 @@ def main():
     parser.add_argument("--build-receipt", type=Path, required=True)
     parser.add_argument("--configuration", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--cache-state", choices=("cold_process", "cold_model", "first_inference", "warm", "idle_recovery"), required=True)
+    parser.add_argument(
+        "--cache-state",
+        choices=("cold_process", "cold_model", "first_inference", "warm", "idle_recovery"),
+        required=True,
+    )
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--idle-seconds", type=float, default=30)
     parser.add_argument("--timeout", type=float, default=600)
@@ -221,10 +284,10 @@ def main():
         parser.error("Repetitions and timeout must be positive.")
     if not math.isfinite(args.idle_seconds) or args.idle_seconds < 0:
         parser.error("Idle duration must be finite and nonnegative.")
-    root = Path(__file__).resolve().parents[1]
-    receipt = build_driver.receipt_products(args.build_receipt, root)
+    root = repository.ROOT
+    receipt = repository.release_products(args.build_receipt, root)
     executable = Path(receipt["productsDirectory"]) / "RillSpeechWorker"
-    cases = asr_run_data.read_corpus(args.corpus, require_references=False)
+    cases = run_data.read_corpus(args.corpus, require_references=False)
     configuration_bytes = args.configuration.read_bytes()
     configuration = json.loads(configuration_bytes)
     model = configuration["model_id"]
@@ -238,24 +301,44 @@ def main():
     if evidence not in {"microphone", "synthetic", "public_fixture"}:
         raise ValueError("Unknown evidence kind.")
     # Validate the complete corpus before starting a model or creating a report.
-    fixtures = {key: audio_fixture(case, args.corpus.resolve().parent) for key, case in cases.items()}
+    fixtures = {
+        key: audio_fixture(case, args.corpus.resolve().parent) for key, case in cases.items()
+    }
     terms = configuration.get("keyterms", [])
-    if (len(terms) > 16 or any(not isinstance(t, str) or not t or len(t.encode()) > 48
-                              or "," in t or any(ord(c) < 32 for c in t) for t in terms)):
+    if len(terms) > 16 or any(
+        not isinstance(t, str)
+        or not t
+        or len(t.encode()) > 48
+        or "," in t
+        or any(ord(c) < 32 for c in t)
+        for t in terms
+    ):
         raise ValueError("Keyterms exceed the bounded worker protocol.")
-    header = {"schema_version": 1, "run_id": str(uuid.uuid4()),
-              "source_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
-              "source_digest": receipt["sourceFingerprint"], "model_id": model, "model_revision": model_revision,
-              "configuration_digest": hashlib.sha256(configuration_bytes).hexdigest(),
-              "device": subprocess.check_output(["sysctl", "-n", "hw.model", "hw.memsize", "machdep.cpu.brand_string"], text=True).strip(),
-              "os_version": subprocess.check_output(["sw_vers", "-productVersion"], text=True).strip() + "/" + subprocess.check_output(["sw_vers", "-buildVersion"], text=True).strip(), "evidence_kind": evidence,
-              "worker_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-              "measurement_scope": "worker_replay_only",
-              "memory_scope": "worker_process_lifetime_peak_resident_bytes",
-              "preview_time_origin": "first_replayed_pcm_after_stream_started",
-              "idle_seconds": args.idle_seconds if args.cache_state == "idle_recovery" else None,
-              "idle_release_model": configuration.get("idle_release_model", False),
-              "preview_keyterms": "unsupported" if profile else "not_requested"}
+    header = {
+        "schema_version": 1,
+        "run_id": str(uuid.uuid4()),
+        "source_revision": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=root, text=True
+        ).strip(),
+        "source_digest": receipt["sourceFingerprint"],
+        "model_id": model,
+        "model_revision": model_revision,
+        "configuration_digest": hashlib.sha256(configuration_bytes).hexdigest(),
+        "device": subprocess.check_output(
+            ["sysctl", "-n", "hw.model", "hw.memsize", "machdep.cpu.brand_string"], text=True
+        ).strip(),
+        "os_version": subprocess.check_output(["sw_vers", "-productVersion"], text=True).strip()
+        + "/"
+        + subprocess.check_output(["sw_vers", "-buildVersion"], text=True).strip(),
+        "evidence_kind": evidence,
+        "worker_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+        "measurement_scope": "worker_replay_only",
+        "memory_scope": "worker_process_lifetime_peak_resident_bytes",
+        "preview_time_origin": "first_replayed_pcm_after_stream_started",
+        "idle_seconds": args.idle_seconds if args.cache_state == "idle_recovery" else None,
+        "idle_release_model": configuration.get("idle_release_model", False),
+        "preview_keyterms": "unsupported" if profile else "not_requested",
+    }
     descriptor = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     worker = None
     warmed = False
@@ -267,8 +350,12 @@ def main():
             for repetition in range(1, args.repetitions + 1):
                 for identifier, case in cases.items():
                     path, duration = fixtures[identifier]
-                    row = {"case_id": identifier, "audio_sha256": case["audio_sha256"],
-                           "cache_state": args.cache_state, "repetition": repetition}
+                    row = {
+                        "case_id": identifier,
+                        "audio_sha256": case["audio_sha256"],
+                        "cache_state": args.cache_state,
+                        "repetition": repetition,
+                    }
                     try:
                         if worker is None:
                             worker = Worker(executable, args.timeout)
@@ -278,10 +365,21 @@ def main():
                         if args.cache_state in {"cold_model", "first_inference"}:
                             worker.request("releaseModel", preparation)
                         if args.cache_state in {"first_inference", "warm", "idle_recovery"}:
-                            _, measured["model_prepare_ms"] = worker.request("prepareModel", preparation)
+                            _, measured["model_prepare_ms"] = worker.request(
+                                "prepareModel", preparation
+                            )
                         if args.cache_state in {"warm", "idle_recovery"} and not warmed:
                             # One declared unscored inference per worker, on already authorized audio.
-                            replay_case(worker, case, path, duration, model, model_revision, terms, configuration.get("language"))
+                            replay_case(
+                                worker,
+                                case,
+                                path,
+                                duration,
+                                model,
+                                model_revision,
+                                terms,
+                                configuration.get("language"),
+                            )
                             warmed = True
                         if args.cache_state == "idle_recovery":
                             if configuration.get("idle_release_model", False):
@@ -289,12 +387,30 @@ def main():
                                 warmed = False
                             time.sleep(args.idle_seconds)
                         if profile is not None:
-                            measured.update(worker.preview(path, model, configuration.get("language"), profile))
-                        row.update(replay_case(worker, case, path, duration, model, model_revision, terms, configuration.get("language")))
-                        row["metrics"].update(measured)
+                            measured.update(
+                                worker.preview(path, model, configuration.get("language"), profile)
+                            )
+                        result = replay_case(
+                            worker,
+                            case,
+                            path,
+                            duration,
+                            model,
+                            model_revision,
+                            terms,
+                            configuration.get("language"),
+                        )
+                        result["metrics"].update(measured)
+                        row.update(result)
                     except (WorkerError, OSError, ValueError, KeyError) as error:
                         failures += 1
-                        row.update(status="failed", metrics={}, failure_code=str(error) if isinstance(error, WorkerError) else "invalid_result_or_io")
+                        row.update(
+                            status="failed",
+                            metrics={},
+                            failure_code=str(error)
+                            if isinstance(error, WorkerError)
+                            else "invalid_result_or_io",
+                        )
                         if worker is not None:
                             worker.close()
                             worker = None
@@ -306,7 +422,9 @@ def main():
     finally:
         if worker is not None:
             worker.close()
-    print("Replay finished. Private raw-ASR results written; product latency and quality acceptance remain separate.")
+    print(
+        "Replay finished. Private raw-ASR results written; product latency and quality acceptance remain separate."
+    )
     return 2 if failures else 0
 
 

@@ -20747,40 +20747,6 @@
         }
       }
     },
-    "recordPanel.keepOpen": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep open"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保持显示"
-          }
-        }
-      }
-    },
-    "recordPanel.keepOpenHelp": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep this page open when the pointer leaves or you switch apps"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "鼠标移出或切换应用时保持页面展开"
-          }
-        }
-      }
-    },
     "recordPanel.localContent": {
       "extractionState": "manual",
       "localizations": {
@@ -20794,40 +20760,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "内容保存在本机"
-          }
-        }
-      }
-    },
-    "recordPanel.moveAndOpen": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Drafts. Drag to move; hover to open."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "待发，拖动以移动，停留以展开"
-          }
-        }
-      }
-    },
-    "recordPanel.needsAttention": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Needs attention"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "有内容待处理"
           }
         }
       }
