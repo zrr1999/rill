@@ -2,11 +2,21 @@ import Foundation
 import GRDB
 import RillCore
 
+private struct AppSettingRecord: Decodable, FetchableRecord, Sendable {
+  var key: String
+  var value: String?
+}
+
 extension SQLitePersistenceSession {
   func string(forKey key: AppSettingKey) throws -> String? {
-    let rows = try Row.fetchCursor(database, sql: "SELECT value FROM app_settings WHERE key = ?;", arguments: [key.rawValue])
-    guard let row = try rows.next() else { return nil }
-    guard let protectedValue = try row.decode(String?.self, atIndex: 0) else {
+    guard
+      let record = try AppSettingRecord.fetchOne(
+        database,
+        sql: "SELECT key, value FROM app_settings WHERE key = ?;",
+        arguments: [key.rawValue]
+      )
+    else { return nil }
+    guard let protectedValue = record.value else {
       throw SQLitePersistenceError.decodingRow("A setting row was missing its value.")
     }
     return try openString(protectedValue, context: settingsProtectionContext(keyRawValue: key.rawValue))
@@ -16,15 +26,14 @@ extension SQLitePersistenceSession {
     let uniqueKeys = Array(Set(keys))
     guard !uniqueKeys.isEmpty else { return [:] }
     let placeholders = Array(repeating: "?", count: uniqueKeys.count).joined(separator: ", ")
-    let rows = try Row.fetchCursor(
-      database, sql: "SELECT key, value FROM app_settings WHERE key IN (\(placeholders));",
-      arguments: StatementArguments(uniqueKeys.map(\.rawValue)))
+    let records = try AppSettingRecord.fetchAll(
+      database,
+      sql: "SELECT key, value FROM app_settings WHERE key IN (\(placeholders));",
+      arguments: StatementArguments(uniqueKeys.map(\.rawValue))
+    )
     var values: [AppSettingKey: String] = [:]
-    while let row = try rows.next() {
-      guard let keyText = try row.decode(String?.self, atIndex: 0),
-        let key = AppSettingKey(rawValue: keyText),
-        let protectedValue = try row.decode(String?.self, atIndex: 1)
-      else { continue }
+    for record in records {
+      guard let key = AppSettingKey(rawValue: record.key), let protectedValue = record.value else { continue }
       values[key] = try openString(protectedValue, context: settingsProtectionContext(keyRawValue: key.rawValue))
     }
     return values
@@ -34,16 +43,16 @@ extension SQLitePersistenceSession {
     let uniqueKeys = Array(Set(keys)).sorted { $0.rawValue < $1.rawValue }
     guard !uniqueKeys.isEmpty else { return .empty }
     let placeholders = Array(repeating: "?", count: uniqueKeys.count).joined(separator: ", ")
-    let rows = try Row.fetchCursor(
-      database, sql: "SELECT key, value FROM app_settings WHERE key IN (\(placeholders));",
-      arguments: StatementArguments(uniqueKeys.map(\.rawValue)))
+    let records = try AppSettingRecord.fetchAll(
+      database,
+      sql: "SELECT key, value FROM app_settings WHERE key IN (\(placeholders));",
+      arguments: StatementArguments(uniqueKeys.map(\.rawValue))
+    )
     var values: [AppSettingKey: String] = [:]
     var unavailableKeys: Set<AppSettingKey> = []
-    while let row = try rows.next() {
-      guard let keyText = try row.decode(String?.self, atIndex: 0),
-        let key = AppSettingKey(rawValue: keyText)
-      else { continue }
-      guard let protectedValue = try row.decode(String?.self, atIndex: 1) else {
+    for record in records {
+      guard let key = AppSettingKey(rawValue: record.key) else { continue }
+      guard let protectedValue = record.value else {
         unavailableKeys.insert(key)
         continue
       }
