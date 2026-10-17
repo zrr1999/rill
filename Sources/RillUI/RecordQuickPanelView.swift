@@ -146,7 +146,7 @@ public struct RecordQuickPanelView: View {
                   ?? panelText(.allRecords)
               ).lineLimit(1)
             }
-            .menuStyle(.borderlessButton).font(.system(size: 11)).foregroundStyle(.secondary)
+            .menuStyle(.borderlessButton).font(.caption).foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("quick-records.collection")
             Button {
@@ -154,7 +154,7 @@ public struct RecordQuickPanelView: View {
             } label: {
               Image(systemName: RillSystemSymbol.sliderHorizontal3.rawValue)
             }
-            .buttonStyle(.borderless).font(.system(size: 12)).frame(width: 28, height: 28)
+            .buttonStyle(.borderless).font(.callout).frame(width: 28, height: 28)
             .foregroundStyle(.secondary)
             .accessibilityLabel(panelText(.searchAndFilterOptions))
           }.controlSize(.small).frame(height: 25).padding(.horizontal, 13).padding(.top, 10)
@@ -165,7 +165,7 @@ public struct RecordQuickPanelView: View {
           )
           .frame(height: 30).padding(.horizontal, 15)
           resultList
-        }.frame(width: RecordPanelAppearance.sidebarWidth)
+        }.rillScaledWidth(RecordPanelAppearance.sidebarWidth, minimum: 180, maximum: 240)
           .rillGlass(in: RecordPanelAppearance.paneShape)
         contentPreview
           .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -174,7 +174,7 @@ public struct RecordQuickPanelView: View {
       }
       .padding(RecordPanelAppearance.paneInset)
       HStack(spacing: 8) {
-        Text(statusText).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+        Text(statusText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         Spacer(minLength: 0)
         addToDrafts.frame(width: 88)
         Button(text(.copy)) {
@@ -191,7 +191,7 @@ public struct RecordQuickPanelView: View {
         .help(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language))
         .accessibilityIdentifier("quick-records.insert")
       }
-      .font(.system(size: 12)).controlSize(.large)
+      .font(.callout).controlSize(.large)
       .padding(.horizontal, 15).frame(height: 56)
       .accessibilityIdentifier("quick-records.actions")
     }
@@ -245,7 +245,7 @@ public struct RecordQuickPanelView: View {
       Text(panelText(.addToDrafts))
     }
     .menuStyle(.borderlessButton).menuIndicator(.hidden)
-    .font(.system(size: 12)).foregroundStyle(Color.accentColor).frame(height: 32)
+    .font(.callout).foregroundStyle(Color.accentColor).frame(height: 32)
     .disabled(model.selectedID == nil)
     .accessibilityIdentifier("quick-records.add-to-drafts")
   }
@@ -285,15 +285,15 @@ public struct RecordQuickPanelView: View {
       if let preview = model.preview {
         VStack(alignment: .leading, spacing: 0) {
           VStack(alignment: .leading, spacing: 4) {
-            Text(text(.preview)).font(.system(size: 17, weight: .medium)).lineLimit(1)
+            Text(text(.preview)).font(.title3.weight(.medium)).lineLimit(1)
             HStack(spacing: 5) {
               if let application = preview.record.provenance.sourceApplicationName { Text(application) }
               Text(preview.record.createdAt, style: .relative)
-            }.font(.system(size: 11)).foregroundStyle(.secondary)
+            }.font(.caption).foregroundStyle(.secondary)
           }.padding(.horizontal, 22).padding(.top, 18).frame(height: 72, alignment: .top)
           ScrollView {
             RecordContentPreview(record: preview.record, language: language, imageHeight: 240)
-              .font(.system(size: 14)).lineSpacing(7)
+              .font(.body)
               .frame(maxWidth: .infinity, alignment: .leading)
               .padding(.horizontal, 22).padding(.bottom, 18)
           }
@@ -304,7 +304,7 @@ public struct RecordQuickPanelView: View {
           if model.isLoadingPreview || model.isSearching {
             ProgressView().controlSize(.small)
           } else {
-            Text(text(.recordUnavailable)).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(text(.recordUnavailable)).font(.callout).foregroundStyle(.secondary)
           }
           Spacer()
         }
@@ -420,16 +420,16 @@ public struct RecordQuickPanelView: View {
     HStack(spacing: 6) {
       VStack(alignment: .leading, spacing: 4) {
         Text(item.header.kind == .image ? text(.image) : item.header.preview)
-          .font(.system(size: 12, weight: .medium)).lineLimit(1)
+          .font(.callout.weight(.medium)).lineLimit(1)
         HStack(spacing: 5) {
           if item.metadata.isPinned { Image(systemName: RillSystemSymbol.pinFill.rawValue) }
           Text(item.header.provenance.sourceApplicationName ?? "").lineLimit(1)
           Text(item.header.createdAt, style: .relative)
-        }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+        }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
       }
       Spacer(minLength: 0)
       if index < 9 {
-        Text("⌘\(index + 1)").font(.system(size: 10).monospacedDigit()).foregroundStyle(.tertiary)
+        Text("⌘\(index + 1)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
           .accessibilityHidden(true)
       }
     }

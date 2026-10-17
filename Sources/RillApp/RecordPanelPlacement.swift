@@ -1,8 +1,19 @@
 import AppKit
+import RillUI
 
 enum RecordPanelPlacement {
-  static let capsuleSize = NSSize(width: 260, height: 48)
-  static let pageSize = NSSize(width: 668, height: 468)
+  static var capsuleSize: NSSize {
+    NSSize(
+      width: RillDynamicLength.scaled(260, minimum: 260, maximum: 340),
+      height: RillDynamicLength.scaled(48, minimum: 48, maximum: 64)
+    )
+  }
+  static var pageSize: NSSize {
+    NSSize(
+      width: RillDynamicLength.scaled(668, minimum: 620, maximum: 820),
+      height: RillDynamicLength.scaled(468, minimum: 400, maximum: 640)
+    )
+  }
   static let gap: CGFloat = 14
   static let margin: CGFloat = 12
   private static let sideSwitchHysteresis: CGFloat = 24

@@ -32,13 +32,16 @@ public struct RecordPanelCapsuleView: View {
     HStack(spacing: 8) {
       HStack(spacing: 10) {
         dragGrip
-        Image(systemName: RillSystemSymbol.tray.rawValue).font(.system(size: 14)).foregroundStyle(.secondary)
-        Text(panelText(.drafts)).font(.system(size: 14, weight: .medium))
+        Image(systemName: RillSystemSymbol.tray.rawValue).font(.body).foregroundStyle(.secondary)
+        Text(panelText(.drafts)).font(.body.weight(.medium))
         Text("\(buffers.snapshot?.remainingCount ?? 0)")
-          .font(.system(size: 14).monospacedDigit()).foregroundStyle(.secondary)
+          .contentTransition(.numericText())
+          .font(.body.monospacedDigit()).foregroundStyle(.secondary)
           .frame(width: 40, alignment: .leading).lineLimit(1)
         Spacer(minLength: 0)
-        Image(systemName: RillSystemSymbol.exclamationmarkCircle.rawValue).foregroundStyle(.orange)
+        Image(systemName: RillSystemSymbol.exclamationmarkCircle.rawValue)
+          .symbolEffect(.bounce, value: needsAttention)
+          .foregroundStyle(.orange)
           .frame(width: 16).opacity(needsAttention ? 1 : 0)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -58,7 +61,10 @@ public struct RecordPanelCapsuleView: View {
         .accessibilityIdentifier("record-panel.close")
     }
     .padding(.leading, 14).padding(.trailing, 8)
-    .frame(width: 260, height: 48)
+    .rillScaledFrame(
+      width: 260, minimumWidth: 260, maximumWidth: 340,
+      height: 48, minimumHeight: 48, maximumHeight: 64
+    )
     .rillGlass(in: Capsule(), interactive: true)
     .accessibilityIdentifier("record-panel.capsule")
   }
