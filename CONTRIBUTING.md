@@ -323,9 +323,10 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 跳过整个 macOS job。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
 `README.md` 随 App 分发，因此仍走应用预检。
 
-`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限，通过 API 获取当前
-标题、正文和事件中 base commit 的 PR 模板，再交给 ZenDev 官方的
-`validate-title`、`validate-body` Actions 校验。它不依赖 Automation，也不豁免机器人。
+`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限。它用 `actions/checkout`
+只检出事件中 base commit 的 PR 模板，再由 `octokit/request-action` 读取当前标题和
+正文，交给 ZenDev 官方的 `validate-title`、`validate-body` Actions 校验。
+它不依赖 Automation，也不豁免机器人。
 
 `Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
 仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
@@ -335,8 +336,8 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 [`GITHUB_TOKEN` 改名不会触发 `edited` 工作流](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。
 已经规范化的标题不会再次触发改名或重跑；正文不合规仍会检查失败。
 `pull-requests: write` 和重跑所需的 `actions: write` 只授予 Automation。
-两个工作流都不检出仓库代码，也不读取上游运行的 artifacts；Automation 进入默认
-分支后生效。提交信息由本地 prek
+Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两个工作流都不读取
+上游运行的 artifacts。Automation 进入默认分支后生效。提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
 ## 生成文件
