@@ -4,7 +4,7 @@
 
 ## 当前证据
 
-仓库包含 Release worker 回放工具 `scripts/asr_replay.py`、质量评分 `scripts/asr_eval.py`、性能比较 `scripts/asr_perf.py` 和 120 个采集槽位
+仓库包含 `tools/` 内部包中的 Release worker 回放、质量评分、性能比较工具和 120 个采集槽位
 `Evals/ASR/collection-plan.json`，**不包含 120 条已录制、已授权的音频**。
 槽位分为 72 条开发集和 48 条保留验收集；参考文本当前为空，不能直接通过评分。
 填写参考文本前，应听取实际录音并人工复核；提示用户朗读的句子不能直接当作真值。
@@ -117,7 +117,7 @@ ASR 的 CE 在本机显式运行，私有录音不上传 GitHub。三套 LLM 的
 
 ```sh
 scripts/preflight.sh swift release --result-file /private/path/release.json
-uv run --script scripts/asr_replay.py --build-receipt /private/path/release.json \
+just replay-asr --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state cold_process --repetitions 3 --output /private/path/cold.jsonl
 ```
@@ -168,12 +168,12 @@ configuration 指定 `model_id`、仓库锁定的 `model_revision`、可选 `lan
 
 ## Release 宿主处理路径
 
-`scripts/product_path_replay.py` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、
+`just replay-product` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、
 空白规范化、加密 SQLite 提交和隔离输出端运行清单。它不访问麦克风、不粘贴、不下载模型，
 也不写入用户数据库。配置中的 `replacements` 是 `pattern` / `replacement` 对；没有 LLM 步骤。
 
 ```sh
-uv run --script scripts/product_path_replay.py --build-receipt /private/path/release.json \
+just replay-product --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state warm --repetitions 3 --output /private/path/host-warm.jsonl
 ```

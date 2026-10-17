@@ -34,6 +34,7 @@ just test
 just test-desktop   # 在已解锁的交互式桌面验证窗口焦点与键盘路由
 scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
+just test-tools     # 独立运行评测和回放工具的离线测试
 just validate-performance-workloads # 校验离线性能工作负载；CodSpeed 用法见 Benchmarks/README.md
 just ci             # 保留增量产物的完整门禁
 just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
@@ -45,7 +46,7 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 `RILL_RECORD_STRESS=1` 启用它们，分组不减少验收项。
 
 `just check` 只运行 prek 内建检查、上游提供的 TOML、Actionlint 和 Typos
-检查，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
+检查、内部工具包的 Ruff / ty，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
 完整历史扫描或项目策略测试。格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
 记录整仓格式化提交，本地可用 `git config blame.ignoreRevsFile .git-blame-ignore-revs`
 让 `git blame` 跳过它。
@@ -55,6 +56,27 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 `scripts/preflight.sh test-scripts` 是脚本策略测试的统一入口，由 `just test-scripts` 和
 完整预检共同调用；各测试文件只负责自己的行为，不再嵌套运行其他测试套件。
 第三方许可证检查需要真实依赖 checkout，仍在预检完成 Release 构建后执行。
+
+评测和回放工具位于 `tools/src/rill_dev/evaluation/`，由 `tools/pyproject.toml`
+及 `tools/uv.lock` 管理一个内部 Python 包。`just eval-quality`、
+`just bench-performance asr`、`just accept-asr`、`just replay-asr` 和
+`just replay-product` 调用该包的命令入口。开发环境使用 Python 3.11，保留原有最低版本兼容性；
+`uv run --locked --project tools` 会安装当前 checkout 的可编辑包和锁定依赖。
+
+`just test-tools` 使用 pytest 收集 `tools/tests/` 中的离线测试，包含原有 unittest 用例；
+完整脚本检查和 Linux CI 也运行这组测试。测试使用合成数据与假 worker，不读取私有录音或调用模型。
+Ruff 的 lint、格式检查与 ty 配置集中在 `tools/pyproject.toml`，由 `just check` / prek 复用：
+
+```bash
+uv run --locked --project tools ruff check tools
+uv run --locked --project tools ruff format --check tools
+uv run --locked --project tools ty check --project tools
+just test-tools
+```
+
+源码指纹和 Release 回执仍由构建驱动验证。内部包通过 `source-inputs` 和
+`receipt --json` 读取它们；装配脚本原有的 `receipt --field` 接口继续可用。
+构建、发布及独立辅助脚本仍使用下文的 PEP 723 方式。
 
 不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/preflight.sh swift` 运行，以保证使用仓库锁定的依赖图。
 

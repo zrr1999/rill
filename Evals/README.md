@@ -3,7 +3,12 @@
 Quality evaluations measure whether model output meets expectations. Performance
 benchmarks measure time and resources; their workloads live in
 [Benchmarks](../Benchmarks/README.md). Deterministic implementation tests stay in
-`Tests` and `scripts/tests`, including corpus validation and scorer regression tests.
+`Tests` and `tools/tests`, including corpus validation and scorer regression tests.
+
+The replay and analysis implementation is the internal `rill_dev.evaluation`
+package in `tools/`. `just test-tools` runs its offline tests using the locked
+Python environment; it neither loads models nor calls providers. The existing
+`just` commands below are the supported entry points.
 
 | Suite | Corpus | Quality rule | Execution |
 | --- | --- | --- | --- |
