@@ -679,6 +679,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
         "tools": [],
         "metadata": {},
         "parallel_tool_calls": false,
+        "tool_choice": "auto",
         "status": "completed"
       }
       """.utf8
@@ -695,7 +696,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
           "input_tokens": 120,
           "output_tokens": 24,
           "total_tokens": 144,
-          "input_tokens_details": {"cached_tokens": 0},
+          "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
           "output_tokens_details": {"reasoning_tokens": 0}
         },
         "model": "gpt-5.6-luna",
@@ -725,6 +726,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
         "tools": [],
         "metadata": {},
         "parallel_tool_calls": false,
+        "tool_choice": "auto",
         "status": "completed"
       }
       """.utf8
