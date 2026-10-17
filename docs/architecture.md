@@ -147,6 +147,9 @@ recording surface immediately. `VoiceRunModel` keeps capture state separate from
 panel visibility, so tail updates cannot reopen the panel and Esc remains armed
 until capture closes. A matching re-press restores the same capture presentation.
 The stop cue follows actual capture closure to keep it out of the recorded tail.
+The start cue completes playback before microphone capture begins, so speaker
+output cannot enter the recording. Startup authorization precedes the cue;
+capture failures after it remain failures and do not produce a stop cue.
 `HotkeyEventTap` answers gesture-state queries from its recognizer: an observed
 key-up cannot be overridden by stale system flags. System sampling is reserved
 for recovering an interrupted tap that may have missed a physical transition.

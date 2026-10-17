@@ -378,8 +378,9 @@ Complete the pass in both App languages.
       managed WAV, and restores wake listening without replaying the text.
 - [ ] With macOS output unmuted and at an audible level, Fn capture and wake-word
       activation use the same start cue. Hold-to-talk, toggle, manual, and menu-bar
-      capture play one start cue after readiness and one stop cue after input
-      closes. Cancellation, failed starts, and rapid replacement never replay
+      capture play one start cue after authorization and wait for its playback
+      to complete before starting microphone capture, then play one stop cue
+      after input closes. Cancellation and rapid replacement never replay
       stale cues; wake activation never duplicates its start cue. Verify with
       speakers and headphones that the start cue does not obscure the first
       syllable or appear in the transcript. A voice-assistant run speaks its LLM

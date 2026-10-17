@@ -247,6 +247,15 @@ public actor WorkflowAudioRunController {
           WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: workflow)
       )
 
+      if binding != .wakeWord {
+        let token = RecordingCueToken()
+        startCue = (runID, token)
+        let task = Task { await recordingCueAction(.started, token) }
+        startCueTasks[runID] = task
+        await task.value
+        startCueTasks[runID] = nil
+        guard lifecycle == .accepting, isPreparing(runID) else { throw CancellationError() }
+      }
       try await liveAudioSession.startCapture(request, using: audioCaptureService)
       guard lifecycle == .accepting, isPreparing(runID) else {
         await liveAudioSession.cancel()
@@ -286,14 +295,6 @@ public actor WorkflowAudioRunController {
         state = .idle
       }
       throw error
-    }
-    if binding != .wakeWord {
-      let token = RecordingCueToken()
-      startCue = (runID, token)
-      let task = Task { await recordingCueAction(.started, token) }
-      startCueTasks[runID] = task
-      await task.value
-      startCueTasks[runID] = nil
     }
     enqueueDiagnostic(
       level: .info,
@@ -824,6 +825,7 @@ public actor WorkflowAudioRunController {
     await cancelRun()
     let cueTasks = Array(startCueTasks.values)
     for task in cueTasks {
+      task.cancel()
       await task.value
     }
     await drainCaptureSignalTasks()
