@@ -152,7 +152,7 @@ npx --yes --ignore-scripts wrangler@4.136.3 deploy           # 部署到正式�
 首次部署会按 `routes` 创建自定义域名；若目标已有 DNS 记录，先核对记录用途，
 不要覆盖其他服务。部署后确认 Cloudflare 中的源码分支与 commit，检查 HTTPS 首页、
 `/docs/usage/`、`/docs/records/`、搜索、`/docs/examples/conditional-workflow.toml`、
-`/docs/schemas/workflow-v3.schema.json` 和不存在路径的 404。
+`/docs/schemas/workflow-v1.schema.json` 和不存在路径的 404。
 PR 预览还应确认正式站点的部署版本未改变。
 
 ## 代码地图维护

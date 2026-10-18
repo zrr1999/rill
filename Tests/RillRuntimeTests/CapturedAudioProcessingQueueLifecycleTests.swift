@@ -244,7 +244,7 @@ private struct AudioLifecycleRecognizer: SpeechRecognizer {
 }
 
 private struct AudioLifecycleAction: OutputAction {
-  let id = "audio-lifecycle.action"
+  let id = RecordActionID.store
   let probe: AudioLifecycleExecutionProbe
   var recordStore: RecordStore?
 
@@ -379,7 +379,9 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     let store = RecordStore()
     let queue = await makeQueue(recognitionShouldFail: false, recordStore: store)
     var workflow = makeWorkflow()
-    workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true"
+    for index in workflow.plan.output.actions.indices where workflow.plan.output.actions[index].id == RecordActionID.store {
+      workflow.plan.output.actions[index].configuration.buffer = "speech"
+    }
     let runIDs = [UUID(), UUID()]
     for runID in runIDs {
       await queue.enqueue(
@@ -410,7 +412,11 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
       let store = RecordStore()
       let queue = await makeQueue(recognitionShouldFail: fails, recordStore: store)
       var workflow = makeWorkflow()
-      if collects { workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true" }
+      if collects {
+        for index in workflow.plan.output.actions.indices where workflow.plan.output.actions[index].id == RecordActionID.store {
+          workflow.plan.output.actions[index].configuration.buffer = "speech"
+        }
+      }
       let file = try makeAudioFile()
       defer { try? FileManager.default.removeItem(at: file) }
       await queue.enqueue(
@@ -440,7 +446,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
       executionProbe: executionProbe
     )
     var workflow = makeWorkflow()
-    workflow.metadata["eventType"] = "groupItemCreated"
+    workflow.properties.availability = .planned
 
     await queue.enqueue(
       authorizationLease: makeAudioProcessingTestLease(
@@ -489,7 +495,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
       }
     )
     var workflow = makeWorkflow()
-    workflow.metadata["eventType"] = "groupItemCreated"
+    workflow.properties.availability = .planned
 
     await queue.enqueue(
       authorizationLease: makeAudioProcessingTestLease(
@@ -546,7 +552,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
       }
     )
     var workflow = makeWorkflow()
-    workflow.metadata["eventType"] = "groupItemCreated"
+    workflow.properties.availability = .planned
 
     await queue.enqueue(
       authorizationLease: makeAudioProcessingTestLease(
@@ -1128,7 +1134,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
       }
     )
     var unsupportedWorkflow = makeWorkflow()
-    unsupportedWorkflow.metadata["eventType"] = "groupItemCreated"
+    unsupportedWorkflow.properties.availability = .planned
     let transfer = await queue.enqueue(
       authorizationLease: makeAudioProcessingTestLease(
         runID: UUID(),
@@ -1252,10 +1258,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
   private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Audio Lifecycle Workflow",
-      pipeline: PipelineDeclaration(
-        recognizerID: "audio-lifecycle.recognizer",
-        outputActions: [OutputActionReference(id: "audio-lifecycle.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "audio-lifecycle.recognizer", actions: [OutputActionReference(id: RecordActionID.store)]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

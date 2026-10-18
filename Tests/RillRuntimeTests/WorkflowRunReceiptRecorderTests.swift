@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import Foundation
@@ -189,7 +190,8 @@ final class WorkflowRunReceiptRecorderTests: XCTestCase {
       localDataProtector: AESGCMDataProtector(key: Data(repeating: 7, count: AESGCMDataProtector.keyByteCount)))
     let recorder = WorkflowRunReceiptRecorder(repository: store, eventBus: EventBus())
     let workflow = WorkflowDefinition(
-      name: "Headless voice", pipeline: .init(recognizerID: "test", outputActions: []),
+      name: "Headless voice",
+      plan: makeTestAudioPlan(recognizerID: "test"),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     let runID = UUID()
     try await recorder.begin(runID: runID, workflowID: workflow.id, trigger: .hotkey, historyWorkflow: workflow)

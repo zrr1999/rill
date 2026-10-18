@@ -13,37 +13,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  message:
+  pr-message:
     name: PR message
     runs-on: ubuntu-latest
     steps:
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - name: Check out the PR body template
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: "0.12.17"
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: .github/pull_request_template.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
-      - name: Read the PR body template
+      - name: Read current PR metadata
+        id: pr
+        uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae # v3.0.0
+        with:
+          route: GET /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          gh api \
-            --header "Accept: application/vnd.github.raw+json" \
-            "repos/${GH_REPO}/contents/.github/pull_request_template.md?ref=${BASE_SHA}" \
-            > "$RUNNER_TEMP/pr-body-template.md"
+          GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Check PR title and body
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          current_pr="$(gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}")"
-          pr_title="$(jq --raw-output '.title' <<< "$current_pr")"
-          pr_body="$(jq --raw-output '.body // ""' <<< "$current_pr")"
-          uvx --no-build --from zendev==0.4.0 \
-            --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
-            zendev message check --title --profile zendev --text "$pr_title"
-          uvx --no-build --from zendev==0.4.0 \
-            --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
-            zendev message check --body --template "$RUNNER_TEMP/pr-body-template.md" --text "$pr_body"
+      - name: Check PR title
+        uses: zendev-lab/zendev/actions/validate-title@91087d4d4e9841aaf8cead8b7c6d294a3db63b10 # v0.4.0
+        with:
+          text: ${{ fromJSON(steps.pr.outputs.data).title }}
+          profile: zendev
+
+      - name: Check PR body
+        uses: zendev-lab/zendev/actions/validate-body@91087d4d4e9841aaf8cead8b7c6d294a3db63b10 # v0.4.0
+        with:
+          body: ${{ fromJSON(steps.pr.outputs.data).body }}

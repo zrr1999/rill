@@ -34,6 +34,7 @@ just test
 just test-desktop   # 在已解锁的交互式桌面验证窗口焦点与键盘路由
 scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
+just test-tools     # 独立运行评测和回放工具的离线测试
 just validate-performance-workloads # 校验离线性能工作负载；CodSpeed 用法见 Benchmarks/README.md
 just ci             # 保留增量产物的完整门禁
 just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
@@ -45,8 +46,8 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 `RILL_RECORD_STRESS=1` 启用它们，分组不减少验收项。
 
 `just check` 只运行 prek 内建检查、上游提供的 TOML、Actionlint 和 Typos
-检查，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
-完整历史扫描或项目策略测试。格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
+检查、内部工具包的 Ruff / ty，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
+完整历史扫描或项目策略测试。Swift 格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
 记录整仓格式化提交，本地可用 `git config blame.ignoreRevsFile .git-blame-ignore-revs`
 让 `git blame` 跳过它。
 这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
@@ -55,6 +56,28 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 `scripts/preflight.sh test-scripts` 是脚本策略测试的统一入口，由 `just test-scripts` 和
 完整预检共同调用；各测试文件只负责自己的行为，不再嵌套运行其他测试套件。
 第三方许可证检查需要真实依赖 checkout，仍在预检完成 Release 构建后执行。
+
+评测和回放工具位于 `tools/src/rill_dev/evaluation/`，由 `tools/pyproject.toml`
+及 `tools/uv.lock` 管理一个内部 Python 包。`just eval-quality`、
+`just bench-performance asr`、`just accept-asr`、`just replay-asr` 和
+`just replay-product` 调用该包的命令入口。开发环境使用 Python 3.11，保留原有最低版本兼容性；
+`uv run --locked --project tools` 会安装当前 checkout 的可编辑包和锁定依赖。
+工具包的 uv 配置禁止构建第三方源码分发包；当前 checkout 的可编辑安装仍可执行。
+
+`just test-tools` 使用 pytest 收集 `tools/tests/` 中的离线测试，包含原有 unittest 用例；
+完整脚本检查和 Linux CI 也运行这组测试。测试使用合成数据与假 worker，不读取私有录音或调用模型。
+Ruff 的 lint、格式检查与 ty 配置集中在 `tools/pyproject.toml`，由 `just check` / prek 复用：
+
+```bash
+uv run --locked --project tools ruff check tools
+uv run --locked --project tools ruff format --check tools
+uv run --locked --project tools ty check --project tools
+just test-tools
+```
+
+源码指纹和 Release 回执仍由构建驱动验证。内部包通过 `source-inputs` 和
+`receipt --json` 读取它们；装配脚本原有的 `receipt --field` 接口继续可用。
+构建、发布及独立辅助脚本仍使用下文的 PEP 723 方式。
 
 不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/preflight.sh swift` 运行，以保证使用仓库锁定的依赖图。
 
@@ -289,7 +312,7 @@ GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可�
 
 `Evals/` 属于质量评测：ASR、文本改写、词汇纠错和上下文纠错。`Benchmarks/` 属于性能基准。
 `just eval-quality <suite>` 显式运行质量评测，`just bench-performance asr --target <metric>` 比较已采集的性能。
-真实 LLM 评测集中在 `RillQualityEvaluations`，由手动 CE 或本地显式命令执行；普通 CI 不运行它们，
+真实 LLM 评测集中在 `RillQualityEvaluations`，由每周 CE、手动 CE 或本地显式命令执行；普通 CI 不运行它们，
 但始终测试评分器、回放数据校验和语料格式。详见 [质量评测](Evals/README.md)、
 [性能基准](Benchmarks/README.md) 和 [ASR 回放及验收](docs/asr-evaluation.md)。
 
@@ -312,7 +335,7 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
 | [ci-performance.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-performance.yml) | CI - Performance | CodSpeed Linux 文本预览 CPU simulation |
-| [ce-quality.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ce-quality.yml) | CE - Quality | 手动运行固定合成语料的 LLM 质量评测，不作为 PR 检查 |
+| [ce-quality.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ce-quality.yml) | CE - Quality | 每周一北京时间 09:30 运行三套固定合成语料的 LLM 质量评测，也支持手动选择，不作为 PR 检查 |
 | [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
@@ -323,8 +346,10 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 跳过整个 macOS job。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
 `README.md` 随 App 分发，因此仍走应用预检。
 
-`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限，通过 API 获取当前
-标题、正文和事件中 base commit 的 PR 模板。它不依赖 Automation，也不豁免机器人。
+`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限。它用 `actions/checkout`
+只检出事件中 base commit 的 PR 模板，再由 `octokit/request-action` 读取当前标题和
+正文，交给 ZenDev 官方的 `validate-title`、`validate-body` Actions 校验。
+它不依赖 Automation，也不豁免机器人。
 
 `Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
 仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
@@ -334,20 +359,19 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 [`GITHUB_TOKEN` 改名不会触发 `edited` 工作流](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。
 已经规范化的标题不会再次触发改名或重跑；正文不合规仍会检查失败。
 `pull-requests: write` 和重跑所需的 `actions: write` 只授予 Automation。
-两个工作流都不检出仓库代码，也不读取上游运行的 artifacts；Automation 进入默认
-分支后生效。提交信息由本地 prek
+Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两个工作流都不读取
+上游运行的 artifacts。Automation 进入默认分支后生效。提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
 ## 生成文件
 
 不要直接编辑生成产物。
 
-- 内建工作流以 `Sources/RillApp/Resources/BuiltinWorkflows.toml` 为事实源。修改后运行：
-
-  ```bash
-  uv run --script scripts/generate_builtin_workflows.py
-  uv run --script scripts/generate_builtin_workflows.py --check
-  ```
+- 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，每个文件
+  使用与用户工作流相同的新 v1 格式。`index.json` 只维护文件顺序与本地化标题。
+  `WorkflowDocumentCodecTests.packagedWorkflowsUseTheSameParser` 验证全部资源；
+  装配 App 时通过实际可执行文件的 `--validate-workflows` 入口再次校验打包资源。
+  不生成 JSON 或 Swift 执行定义。
 
 - `THIRD_PARTY_NOTICES.md` 由锁文件和脚本内受审证据生成。依赖变化后运行：
 
@@ -356,7 +380,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
   uv run --script scripts/generate_third_party_notices.py --check
   ```
 
-- 图标的矢量事实源是 `Resources/AppIcon/Rill.svg` 和 `RillMenuBar.svg`。修改后运行 `scripts/assemble_app_bundle.sh render-brand`（需要 librsvg），同步提交受审 PNG、菜单栏 PDF 和同目录 `README.md` 中的 SHA-256；PNG 的新 hash 也须同步到装配脚本里的 ICNS 校验和图标测试。`scripts/render_app_icon_renditions.swift` 从 PNG 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/assemble_app_bundle.sh app-icon` 再装配 ICNS。正常构建直接使用已提交的 PNG/PDF，不依赖 SVG 工具。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
+- 图标的矢量事实源是 `Resources/AppIcon/Rill.svg` 和 `RillMenuBar.svg`。修改后运行 `scripts/assemble_app_bundle.sh render-brand`（需要 librsvg），同步提交受审 PNG、菜单栏 PDF、输入法 TIFF 和同目录 `README.md` 中的 SHA-256；PNG 的新 hash 也须同步到装配脚本里的 ICNS 校验和图标测试。`scripts/render_app_icon_renditions.swift` 从 PNG 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/assemble_app_bundle.sh app-icon` 再装配 ICNS。正常构建直接使用已提交的 PNG/PDF/TIFF，不依赖 SVG 工具。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
 
 生成器、事实源和生成结果应放在同一个提交中。
 
@@ -366,7 +390,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
 使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
 当前统一版本是 0.4.0；prek 的上游 revision 和 CI Actions 均固定到 commit，
-ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本。
+本地 hook 使用固定版本的已发布组件，CI 由官方 Actions 安装对应提交的源码。
 
 - `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
   `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
@@ -376,11 +400,13 @@ ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本�
   PR 标题必须使用英文；描述可使用中文。
 - 一个提交表达一个可审阅的意图，说明最终行为和实际测试结果。
   人工验收未完成时明确记录，不能用单元测试或本地开发签名代替。
-- 验证记录包含命令、实际工具链、执行结果或测试数量，以及对应提交与 CI 链接；
-  本地检查和托管 CI 分别记录。等待当前提交的检查全部结束后再报告 CI 通过。
+- PR 描述不重复 CI 已验证的内容，如命令、工具链、测试数量和 CI 链接；重点写实机演示：
+  在实际运行的 Rill 上操作了什么、看到了什么，附截图、录屏或操作步骤，并列出 CI 未覆盖的
+  人工验收和已知限制。
 - 依赖 PR 从底层修复、验证，再按依赖顺序向上传播；同一根因在上层重复失败时，
   先定位拥有该改动的底层 PR。更新 base 或 head 后重新确认检查对应的提交，并重新
-  运行受影响验证，不沿用旧提交的绿色结果。未完成的原生验收继续明确列出。
+  运行受影响验证，不沿用旧提交的绿色结果。每层 PR 描述只演示本层改动，未完成的原生验收
+  继续明确列出。
 - 原创贡献使用项目的 AGPL-3.0-only 许可；引入第三方代码时保留其原始
   版权和许可声明，并同步对应的来源证据。
 

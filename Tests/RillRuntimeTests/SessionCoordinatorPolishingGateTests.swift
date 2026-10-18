@@ -1,3 +1,4 @@
+import RillPlatform
 import RillDomainTestSupport
 import Foundation
 import Testing
@@ -40,7 +41,7 @@ struct SessionCoordinatorPolishingGateTests {
     let receipts = try await fixture.receipts.receipts(matching: .init(runID: summary.runID))
     let receipt = try #require(receipts.first)
     #expect(receipt.stepDetails.last?.result == step.result)
-    #expect(receipt.actionDetails.map(\.result) == [.storedRecord, .injected])
+    #expect(receipt.actionDetails.map(\.result) == [.storedRecord, .injected, .storedRecord])
     if skip { #expect(receipt.stepDetails.last?.durationMilliseconds == nil) }
   }
 
@@ -64,7 +65,7 @@ struct SessionCoordinatorPolishingGateTests {
   @Test func answersNeverConsultThePolishingGate() async throws {
     var fixture = try fixture(skip: true)
     let index = try #require(fixture.workflow.plan.process.steps.firstIndex { $0.kind == .llmRewrite })
-    fixture.workflow.plan.process.steps[index].kind = .llmAnswer
+    fixture.workflow.plan.process.steps[index] = WorkflowProcessStep(kind: .llmAnswer, prompt: "Answer", reasoning: .high)
     let outcome = await fixture.coordinator.runReportingOutcome(
       workflow: fixture.workflow, contextSnapshot: .empty, preRecognizedText: "Answer me")
     guard case .completed = outcome else {
@@ -92,7 +93,7 @@ struct SessionCoordinatorPolishingGateTests {
     let transformer = PolishingTransformerProbe()
     let delivery = PolishingDeliveryProbe(store: store)
     let receipts = InMemoryWorkflowRunReceiptRepository()
-    let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
+    let workflow = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
     let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: .init(recognizers: []),

@@ -1,3 +1,4 @@
+import RillPlatform
 import RillDomainTestSupport
 import RillTestSupport
 import Foundation
@@ -18,7 +19,7 @@ struct ContextMemoryControllerTests {
     defer { try? FileManager.default.removeItem(at: directory) }
     let protector = try AESGCMDataProtector(key: Data(repeating: 0x42, count: AESGCMDataProtector.keyByteCount))
     let store = try SQLitePersistenceStore(databaseURL: directory.appendingPathComponent("rill.sqlite"), localDataProtector: protector)
-    var workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
+    var workflow = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
     #expect(workflow.supportsVocabularyCorrection)
     let provider = ContextSettingsGate()
     var settings = ContextFeatureSettings()
@@ -36,7 +37,7 @@ struct ContextMemoryControllerTests {
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while memory.isLoading && ContinuousClock.now < deadline { await Task.yield() }
     try #require(memory.isAuthorized)
-    let modelSnapshot = WorkflowModelSnapshot(languageModels: [.fast: await provider.read()])
+    let modelSnapshot = WorkflowModelSnapshot(languageModel: await provider.read())
     await provider.block()
     let context = ContextSnapshot(
       focus: .init(
@@ -71,12 +72,12 @@ struct ContextMemoryControllerTests {
           recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates, modelSnapshot: modelSnapshot)
           == nil)
       privacy.update(.init())
-      workflow.metadata[WorkflowMetadataKey.catalog] = "custom"
+      workflow.properties.isBuiltin = false
       #expect(
         try await controller.prepare(
           runID: UUID(), workflow: workflow, context: context,
           recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: UUID()), vocabularyCandidates: candidates, modelSnapshot: modelSnapshot)
-          == nil)
+          != nil)
       memory.invalidateAuthorization()
       #expect(frozen.request.authorization?.isValid == false)
     } catch {
@@ -93,7 +94,7 @@ struct ContextMemoryControllerTests {
     defer { try? FileManager.default.removeItem(at: directory) }
     let protector = try AESGCMDataProtector(key: Data(repeating: 0x42, count: AESGCMDataProtector.keyByteCount))
     let store = try SQLitePersistenceStore(databaseURL: directory.appendingPathComponent("rill.sqlite"), localDataProtector: protector)
-    let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
+    let workflow = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
     let provider = ContextSettingsGate()
     var settings = ContextFeatureSettings()
     settings.memoryEnabled = true
@@ -110,7 +111,7 @@ struct ContextMemoryControllerTests {
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while memory.isLoading && ContinuousClock.now < deadline { await Task.yield() }
     #expect(memory.isAuthorized)
-    let modelSnapshot = WorkflowModelSnapshot(languageModels: [.fast: await provider.read()])
+    let modelSnapshot = WorkflowModelSnapshot(languageModel: await provider.read())
     await provider.block()
     let runID = UUID()
     let start = ContinuousClock.now

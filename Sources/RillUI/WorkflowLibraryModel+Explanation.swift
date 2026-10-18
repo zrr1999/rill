@@ -10,7 +10,7 @@ extension WorkflowLibraryModel {
     guard !settings.hasBegunApplicationShutdown else { return }
     cancelWorkflowExplanation()
 
-    guard let workflow = self.workflows.first(where: { $0.id == requestedWorkflow.id }) else {
+    guard !invalidWorkflowFileIDs.contains(requestedWorkflow.id), let workflow = self.workflows.first(where: { $0.id == requestedWorkflow.id }) else {
       self.workflowExplanationState = .failed(
         workflowID: requestedWorkflow.id,
         reason: .workflowUnavailable
@@ -19,20 +19,12 @@ extension WorkflowLibraryModel {
     }
 
     let recognizerResolution = WorkflowRecognizerResolution.localSpeech
-    let outputResolution: WorkflowOutputResolution
-    switch self.settings.builtinPushToTalkOutputMode {
-    case .pasteIntoApp:
-      outputResolution = .builtinPasteIntoApplication
-    case .saveToVoiceGroup:
-      outputResolution = .builtinSaveToVoiceGroup
-    }
-
+    guard let workflow = try? (outputStatesByID[workflow.id] ?? WorkflowOutputState(workflowID: workflow.id)).applying(to: workflow) else { return }
     let generation = self.workflowExplanationGeneration
     switch WorkflowExecutionPlanResolver.resolve(
       workflow,
       initiatedBy: .manual,
-      recognizer: recognizerResolution,
-      output: outputResolution
+      recognizer: recognizerResolution
     ) {
     case .blocked(let receipt):
       finishWorkflowExplanation(

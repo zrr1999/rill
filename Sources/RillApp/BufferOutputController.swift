@@ -24,7 +24,6 @@ final class BufferOutputController: NSObject {
   private var pendingMessage: LocalizedStringResource?
   private var cancelButton: NSButton?
 
-  var presentStatus: (() -> Void)?
   var isVisible: Bool { panel?.isVisible ?? false }
 
   init(
@@ -211,11 +210,6 @@ final class BufferOutputController: NSObject {
   private func showConfirmation() {
     guard let model else { return }
     isPresentingDrag = false
-    if let presentStatus {
-      panel?.orderOut(nil)
-      presentStatus()
-      return
-    }
     show(
       content: NSHostingView(
         rootView: BufferOutputStatusView(model: model, summaryOnly: false)))

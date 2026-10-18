@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "0aa792c6fad8d6c5a4728eab71e364773a9e4118",
+  "baseline": "3e5038cdda5349a948cc906dd982e3fcbf46675a",
   "nodes": [
     {
       "id": "RillApp",
@@ -21,10 +21,7 @@
         "Sources/RillApp/LocalDataKeyResolution.swift",
         "Sources/RillApp/LocalSpeechPreparationProgress.swift",
         "Sources/RillApp/RecordPanelController.swift",
-        "Sources/RillApp/RecordPanelHoverController.swift",
         "Sources/RillApp/RecordPanelPlacement.swift",
-        "Sources/RillApp/Resources/BuiltinWorkflowManifest.json",
-        "Sources/RillApp/Resources/BuiltinWorkflows.toml",
         "Sources/RillApp/Resources/RillMenuBarRecordsTemplate.pdf",
         "Sources/RillApp/Resources/RillMenuBarTemplate.pdf",
         "Sources/RillApp/Resources/WorkflowTemplates/clipboard_capture.toml",
@@ -41,7 +38,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -66,12 +63,12 @@
         {
           "path": "Tests/RillAppTests/ClipboardPanelControllerTests.swift",
           "line": 100,
-          "symbol": "testUnifiedPanelPreservesEditorUndoSearchAndCompositionAcrossModesAndCollapse",
+          "symbol": "testUnifiedPanelPreservesEditorUndoAndCompositionAcrossModesAndReopening",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -108,7 +105,7 @@
         {
           "path": "Tests/RillAppTests/RecordPanelCollectionTests.swift",
           "line": 15,
-          "symbol": "testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture",
+          "symbol": "testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget",
           "framework": "XCTest"
         },
         {
@@ -119,14 +116,14 @@
         },
         {
           "path": "Tests/RillAppTests/RecordPanelControllerTests.swift",
-          "line": 58,
+          "line": 57,
           "symbol": "testSettingsHidesPanelEvenWithoutAReturnCandidate",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/RecordPanelInteractionTests.swift",
-          "line": 8,
-          "symbol": "shortPressRestartsHoverWithoutExpandingOrDragging",
+          "line": 12,
+          "symbol": "panelOpensCenteredInsideTheCurrentScreen",
           "framework": "Swift Testing"
         },
         {
@@ -149,7 +146,7 @@
         },
         {
           "path": "Tests/RillAppTests/WorkflowAudioRunControllerTests.swift",
-          "line": 450,
+          "line": 439,
           "symbol": "testPreparingPreviewUsesOwnedRunBeforePreflightCompletes",
           "framework": "XCTest"
         }
@@ -160,7 +157,7 @@
       "id": "RillUI",
       "label": "RillUI",
       "group": "应用组装",
-      "role": "负责 SwiftUI/AppKit 视图、功能状态、导航、设置和记录面板。",
+      "role": "负责 SwiftUI/AppKit 视图、功能状态、导航、统一模型服务设置、工作流输出选择和记录面板。",
       "impact": "改动会影响焦点、无障碍、编辑、可见进度和恢复。",
       "files": [
         "Sources/RillUI/AppModel+Events.swift",
@@ -260,7 +257,6 @@
         "Sources/RillUI/RecordJevPanelModel.swift",
         "Sources/RillUI/RecordJevSheet.swift",
         "Sources/RillUI/RecordPanelAppearance.swift",
-        "Sources/RillUI/RecordPanelCapsuleView.swift",
         "Sources/RillUI/RecordPanelPresentation.swift",
         "Sources/RillUI/RecordQuickPanelModel.swift",
         "Sources/RillUI/RecordQuickPanelView.swift",
@@ -311,18 +307,21 @@
         "Sources/RillUI/WorkflowExplanationSheet.swift",
         "Sources/RillUI/WorkflowLibraryModel+Explanation.swift",
         "Sources/RillUI/WorkflowLibraryModel.swift",
+        "Sources/RillUI/WorkflowOutputChoices.swift",
         "Sources/RillUI/WorkflowStepPresentation.swift",
         "Sources/RillUI/WorkflowVocabularyView.swift",
         "Sources/RillUI/WorkflowsView.swift"
       ],
       "evidence": [
         "Package.swift",
-        "Sources/RillUI/AppModel+Events.swift"
+        "Sources/RillUI/AppModel+Events.swift",
+        "Sources/RillUI/SettingsView+LLMProvider.swift",
+        "Sources/RillUI/WorkflowOutputChoices.swift"
       ],
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -335,12 +334,12 @@
         {
           "path": "Tests/RillAppTests/ClipboardPanelControllerTests.swift",
           "line": 100,
-          "symbol": "testUnifiedPanelPreservesEditorUndoSearchAndCompositionAcrossModesAndCollapse",
+          "symbol": "testUnifiedPanelPreservesEditorUndoAndCompositionAcrossModesAndReopening",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -359,7 +358,7 @@
         {
           "path": "Tests/RillAppTests/RecordPanelCollectionTests.swift",
           "line": 15,
-          "symbol": "testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture",
+          "symbol": "testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget",
           "framework": "XCTest"
         },
         {
@@ -370,15 +369,9 @@
         },
         {
           "path": "Tests/RillAppTests/RecordPanelControllerTests.swift",
-          "line": 58,
+          "line": 57,
           "symbol": "testSettingsHidesPanelEvenWithoutAReturnCandidate",
           "framework": "XCTest"
-        },
-        {
-          "path": "Tests/RillAppTests/RecordPanelInteractionTests.swift",
-          "line": 8,
-          "symbol": "shortPressRestartsHoverWithoutExpandingOrDragging",
-          "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillAppTests/RillMenuBarIconTests.swift",
@@ -430,7 +423,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelLiveAudioStopTests.swift",
-          "line": 7,
+          "line": 8,
           "symbol": "testHiddenCaptureMovesAutomaticEndpointFromRecordingToTranscribing",
           "framework": "XCTest"
         },
@@ -454,13 +447,13 @@
         },
         {
           "path": "Tests/RillUITests/AppModelRunReceiptTests.swift",
-          "line": 212,
+          "line": 213,
           "symbol": "testDiscardedCaptureReturnsToIdleBeforeARunStarts",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelScalarSettingsAvailabilityTests.swift",
-          "line": 8,
+          "line": 9,
           "symbol": "testInvalidClosedScalarValuesRemainUnavailableWithoutMutation",
           "framework": "XCTest"
         },
@@ -490,25 +483,25 @@
         },
         {
           "path": "Tests/RillUITests/AppModelTests+Part1.swift",
-          "line": 54,
+          "line": 44,
           "symbol": "testNonAudioWorkflowAuthorizationFailureDoesNotReachCoordinatorOrAction",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelTests+Part2.swift",
-          "line": 10,
+          "line": 11,
           "symbol": "testPersistedVoiceResultReloadsAndTerminalUpdatesPresentation",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelWorkflowExplanationTests.swift",
-          "line": 96,
+          "line": 97,
           "symbol": "testProviderReceivesCurrentResolvedRouteAndManualInvocation",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/BufferDictationWorkflowTests.swift",
-          "line": 15,
+          "line": 16,
           "symbol": "explicitDraftRecordingFreezesIntentAndNeverIncludesExternalInsertion",
           "framework": "Swift Testing"
         },
@@ -550,7 +543,7 @@
         },
         {
           "path": "Tests/RillUITests/GlobalSearchTests.swift",
-          "line": 9,
+          "line": 10,
           "symbol": "testSettingsSectionsFollowProgressiveImportanceOrder",
           "framework": "XCTest"
         },
@@ -628,7 +621,7 @@
         },
         {
           "path": "Tests/RillUITests/JevHotwordSettingsTests.swift",
-          "line": 9,
+          "line": 10,
           "symbol": "settingsDefaultOffAndRevocationIsSynchronous",
           "framework": "Swift Testing"
         },
@@ -718,7 +711,7 @@
         },
         {
           "path": "Tests/RillUITests/MenuBarNativeMenuTests.swift",
-          "line": 10,
+          "line": 11,
           "symbol": "testNativeMenuKeepsActionIconsAndOneSettingsEntryInBothLanguages",
           "framework": "XCTest"
         },
@@ -726,6 +719,12 @@
           "path": "Tests/RillUITests/MenuBarOperationPanelStateTests.swift",
           "line": 9,
           "symbol": "testStatusDetailUsesStableWidthForShortAndLongContent",
+          "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillUITests/ModelServiceNavigationTests.swift",
+          "line": 10,
+          "symbol": "testDesktopServiceDeepLinksShareOnePaneAndHideWithIt",
           "framework": "XCTest"
         },
         {
@@ -814,7 +813,7 @@
         },
         {
           "path": "Tests/RillUITests/RunHistoryBrowsingUITests.swift",
-          "line": 363,
+          "line": 364,
           "symbol": "testPaginationKeepsOneResidentPageAndRefetchesNewerPage",
           "framework": "XCTest"
         },
@@ -832,7 +831,7 @@
         },
         {
           "path": "Tests/RillUITests/SmartCleanupRenderTests.swift",
-          "line": 9,
+          "line": 10,
           "symbol": "testRenderActivityTextSteps",
           "framework": "XCTest"
         },
@@ -856,7 +855,7 @@
         },
         {
           "path": "Tests/RillUITests/TrustedLocalSpeechCatalogTests.swift",
-          "line": 32,
+          "line": 33,
           "symbol": "testEmptyCatalogCannotEnableLocalSpeechThroughAnInjectedAvailabilityFlag",
           "framework": "XCTest"
         },
@@ -886,8 +885,8 @@
         },
         {
           "path": "Tests/RillUITests/VocabularyCollectionPresentationTests.swift",
-          "line": 22,
-          "symbol": "testCollectionDeletionRequiresConfirmationAndRemovesItsBindings",
+          "line": 23,
+          "symbol": "testDesktopCollectionDeletionRequiresConfirmationAndRemovesItsBindings",
           "framework": "XCTest"
         },
         {
@@ -928,7 +927,7 @@
         },
         {
           "path": "Tests/RillUITests/VoiceSetupReadinessTests.swift",
-          "line": 7,
+          "line": 8,
           "symbol": "testInitialSetupWaitsForLoadingAndDoesNotReopenAfterSkipping",
           "framework": "XCTest"
         },
@@ -940,13 +939,19 @@
         },
         {
           "path": "Tests/RillUITests/WebhookReleaseGateTests.swift",
-          "line": 7,
+          "line": 8,
           "symbol": "testLegacyWebhookWorkflowIsRejectedBeforeAppModelExecution",
           "framework": "XCTest"
         },
         {
+          "path": "Tests/RillUITests/WorkflowOutputAccessibilityTests.swift",
+          "line": 12,
+          "symbol": "testDesktopOutputSwitchesExposeIdentityValueAndAutomaticState",
+          "framework": "XCTest"
+        },
+        {
           "path": "Tests/RillUITests/WorkflowTextFileTests.swift",
-          "line": 10,
+          "line": 11,
           "symbol": "workflowSelectionSurvivesRestart",
           "framework": "Swift Testing"
         }
@@ -957,7 +962,7 @@
       "id": "RillCore",
       "label": "RillCore",
       "group": "领域逻辑",
-      "role": "定义共享值类型、隐私契约、持久化端口和副作用端口。",
+      "role": "定义共享值类型、模型服务快照、工作流输出状态、隐私契约、持久化端口和副作用端口。",
       "impact": "契约改动会传播到多数模块；Core 不负责 UI 或具体存储。",
       "files": [
         "Sources/RillCore/AudioCaptureEndpointing.swift",
@@ -985,7 +990,6 @@
         "Sources/RillCore/HotkeyModels.swift",
         "Sources/RillCore/HotwordRanking.swift",
         "Sources/RillCore/InteractionCueModels.swift",
-        "Sources/RillCore/JSONWorkflowManifestLoader.swift",
         "Sources/RillCore/JevAPIKey.swift",
         "Sources/RillCore/LLMTextProcessing.swift",
         "Sources/RillCore/LanguageModelConfiguration.swift",
@@ -1042,6 +1046,7 @@
         "Sources/RillCore/WorkflowExplanation.swift",
         "Sources/RillCore/WorkflowFileStore.swift",
         "Sources/RillCore/WorkflowManifest.swift",
+        "Sources/RillCore/WorkflowOutputState.swift",
         "Sources/RillCore/WorkflowPlan.swift",
         "Sources/RillCore/WorkflowResultModels.swift",
         "Sources/RillCore/WorkflowRunTerminalRepository.swift"
@@ -1049,12 +1054,13 @@
       "evidence": [
         "Package.swift",
         "Sources/RillCore/LanguageModelConfiguration.swift",
-        "Sources/RillCore/RecordPorts.swift"
+        "Sources/RillCore/RecordPorts.swift",
+        "Sources/RillCore/WorkflowOutputState.swift"
       ],
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -1066,19 +1072,19 @@
         },
         {
           "path": "Tests/RillAppTests/BuiltinVoiceOutputTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "savesFinalTextBeforeDeliveryEvenWhenDeliveryFails",
           "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillAppTests/ClipboardPanelControllerTests.swift",
           "line": 100,
-          "symbol": "testUnifiedPanelPreservesEditorUndoSearchAndCompositionAcrossModesAndCollapse",
+          "symbol": "testUnifiedPanelPreservesEditorUndoAndCompositionAcrossModesAndReopening",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -1103,7 +1109,7 @@
         {
           "path": "Tests/RillAppTests/RecordPanelCollectionTests.swift",
           "line": 15,
-          "symbol": "testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture",
+          "symbol": "testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget",
           "framework": "XCTest"
         },
         {
@@ -1114,7 +1120,7 @@
         },
         {
           "path": "Tests/RillAppTests/RecordPanelControllerTests.swift",
-          "line": 58,
+          "line": 57,
           "symbol": "testSettingsHidesPanelEvenWithoutAReturnCandidate",
           "framework": "XCTest"
         },
@@ -1138,7 +1144,7 @@
         },
         {
           "path": "Tests/RillAppTests/WorkflowAudioRunControllerTests.swift",
-          "line": 450,
+          "line": 439,
           "symbol": "testPreparingPreviewUsesOwnedRunBeforePreflightCompletes",
           "framework": "XCTest"
         },
@@ -1227,15 +1233,9 @@
           "framework": "Swift Testing"
         },
         {
-          "path": "Tests/RillCoreTests/JSONWorkflowManifestLoaderTests.swift",
-          "line": 6,
-          "symbol": "testLoaderDecodesValidManifest",
-          "framework": "XCTest"
-        },
-        {
           "path": "Tests/RillCoreTests/LanguageModelConfigurationTests.swift",
-          "line": 6,
-          "symbol": "snapshotsResolveOnlyUsedRolesAndRetainTheAdmittedModel",
+          "line": 14,
+          "symbol": "singleConnectionServesAllLevels",
           "framework": "Swift Testing"
         },
         {
@@ -1371,16 +1371,10 @@
           "framework": "Swift Testing"
         },
         {
-          "path": "Tests/RillCoreTests/WorkflowDefinitionMetadataTests.swift",
-          "line": 5,
-          "symbol": "testWorkflowCaptureExclusionDefaultsToEnabled",
-          "framework": "XCTest"
-        },
-        {
           "path": "Tests/RillCoreTests/WorkflowManifestTests.swift",
-          "line": 5,
-          "symbol": "testSpeechPresetMetadataIsTypedAndUnknownAvailabilityFailsClosed",
-          "framework": "XCTest"
+          "line": 6,
+          "symbol": "declarationOwnsEnablementAndPreview",
+          "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillCoreTests/WorkflowPlanTests.swift",
@@ -1558,7 +1552,7 @@
         },
         {
           "path": "Tests/RillPlatformTests/RecordingInteractionCuePlayerTests.swift",
-          "line": 6,
+          "line": 7,
           "symbol": "testInteractionCuesAreShortDistinctNonSilentTones",
           "framework": "XCTest"
         },
@@ -1594,8 +1588,14 @@
         },
         {
           "path": "Tests/RillPlatformTests/WorkflowDocumentCodecTests.swift",
-          "line": 8,
-          "symbol": "speechTemplatesStoreAndDeliverTheSameResult",
+          "line": 32,
+          "symbol": "roundTripPreservesExplicitIntentAndIdentity",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillPlatformTests/WorkflowOutputStateTests.swift",
+          "line": 12,
+          "symbol": "selectionIsSeparateAndDoesNotChangeFrozenRun",
           "framework": "Swift Testing"
         },
         {
@@ -1618,7 +1618,7 @@
         },
         {
           "path": "Tests/RillProvidersTests/CleanupProtectionProviderTests.swift",
-          "line": 8,
+          "line": 9,
           "symbol": "ordinaryAndContextualCleanupRejectChangedQuantities",
           "framework": "Swift Testing"
         },
@@ -1714,7 +1714,7 @@
         },
         {
           "path": "Tests/RillProvidersTests/SpeechWorkerSupervisorTests.swift",
-          "line": 15,
+          "line": 16,
           "symbol": "testFrozenHotwordRunKeepsModelAndAutomaticLanguageDespiteNewSettings",
           "framework": "XCTest"
         },
@@ -1738,7 +1738,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/AuthorizedLiveAudioSessionTests.swift",
-          "line": 66,
+          "line": 67,
           "symbol": "testCaptureCannotSealBeforePrivacyMonitorStarts",
           "framework": "XCTest"
         },
@@ -1762,7 +1762,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/CleanupProtectionFallbackTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "failedCleanupIsSkippedAndDeliversOriginalOnce",
           "framework": "Swift Testing"
         },
@@ -1774,7 +1774,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/DiagnosticsRecorderPrivacyTests.swift",
-          "line": 147,
+          "line": 137,
           "symbol": "testRecordSanitizesMemoryRepositoryAndPublishedEvent",
           "framework": "XCTest"
         },
@@ -1828,7 +1828,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/PrivacyRunGateTests.swift",
-          "line": 108,
+          "line": 109,
           "symbol": "testAdmissionAndCloudConfirmationShareTheFrozenModelBinding",
           "framework": "XCTest"
         },
@@ -1840,7 +1840,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/QueuedAudioAuthorizationLeaseTests.swift",
-          "line": 63,
+          "line": 95,
           "symbol": "testLeasePreservesIssuedRunAndWorkflowAndRejectsMismatchedTrigger",
           "framework": "XCTest"
         },
@@ -1966,7 +1966,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordingSessionManagerTimingTests.swift",
-          "line": 282,
+          "line": 281,
           "symbol": "testInvalidatedCueTokenSuppressesLateSynchronousEffect",
           "framework": "XCTest"
         },
@@ -1984,7 +1984,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RuntimeCoordinationRegressionTests.swift",
-          "line": 188,
+          "line": 174,
           "symbol": "testCoordinatorRemainsBusyUntilFailedTerminalStageFinishes",
           "framework": "XCTest"
         },
@@ -1996,7 +1996,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorPolishingGateTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "predictionControlsLLMAndPreservesStoreBeforeDelivery",
           "framework": "Swift Testing"
         },
@@ -2014,7 +2014,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 503,
+          "line": 492,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
           "framework": "XCTest"
         },
@@ -2023,12 +2023,6 @@
           "line": 35,
           "symbol": "branchesAndSkippedOutputsProduceOrderedReceipts",
           "framework": "Swift Testing"
-        },
-        {
-          "path": "Tests/RillRuntimeTests/WebhookProtectingSettingsStoreTests.swift",
-          "line": 8,
-          "symbol": "testMigrationProtectsPayloadAtomicallyAndForcesWorkflowDisabled",
-          "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowExecutionPolicyTests.swift",
@@ -2044,25 +2038,25 @@
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowManifestValidatorTests.swift",
-          "line": 23,
+          "line": 24,
           "symbol": "testValidatorAllowsPlannedPresetWithUnavailableFutureComponents",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowPlanCompilerTests.swift",
-          "line": 46,
+          "line": 47,
           "symbol": "testDuplicateRegistrationsFailWithoutSelectingAProvider",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowPrivacyDestinationClassifierTests.swift",
-          "line": 6,
+          "line": 7,
           "symbol": "testVoiceAssistantClassifiesLocalRecognitionCloudLLMAndLocalSpeechOutput",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowRunReceiptRecorderTests.swift",
-          "line": 183,
+          "line": 184,
           "symbol": "testRuntimePersistsBodyAndReceiptWithoutPresentationConsumer",
           "framework": "XCTest"
         },
@@ -2110,7 +2104,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelLiveAudioStopTests.swift",
-          "line": 7,
+          "line": 8,
           "symbol": "testHiddenCaptureMovesAutomaticEndpointFromRecordingToTranscribing",
           "framework": "XCTest"
         },
@@ -2134,13 +2128,13 @@
         },
         {
           "path": "Tests/RillUITests/AppModelRunReceiptTests.swift",
-          "line": 212,
+          "line": 213,
           "symbol": "testDiscardedCaptureReturnsToIdleBeforeARunStarts",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelScalarSettingsAvailabilityTests.swift",
-          "line": 8,
+          "line": 9,
           "symbol": "testInvalidClosedScalarValuesRemainUnavailableWithoutMutation",
           "framework": "XCTest"
         },
@@ -2170,25 +2164,25 @@
         },
         {
           "path": "Tests/RillUITests/AppModelTests+Part1.swift",
-          "line": 54,
+          "line": 44,
           "symbol": "testNonAudioWorkflowAuthorizationFailureDoesNotReachCoordinatorOrAction",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelTests+Part2.swift",
-          "line": 10,
+          "line": 11,
           "symbol": "testPersistedVoiceResultReloadsAndTerminalUpdatesPresentation",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelWorkflowExplanationTests.swift",
-          "line": 96,
+          "line": 97,
           "symbol": "testProviderReceivesCurrentResolvedRouteAndManualInvocation",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/BufferDictationWorkflowTests.swift",
-          "line": 15,
+          "line": 16,
           "symbol": "explicitDraftRecordingFreezesIntentAndNeverIncludesExternalInsertion",
           "framework": "Swift Testing"
         },
@@ -2230,7 +2224,7 @@
         },
         {
           "path": "Tests/RillUITests/GlobalSearchTests.swift",
-          "line": 9,
+          "line": 10,
           "symbol": "testSettingsSectionsFollowProgressiveImportanceOrder",
           "framework": "XCTest"
         },
@@ -2296,7 +2290,7 @@
         },
         {
           "path": "Tests/RillUITests/JevHotwordSettingsTests.swift",
-          "line": 9,
+          "line": 10,
           "symbol": "settingsDefaultOffAndRevocationIsSynchronous",
           "framework": "Swift Testing"
         },
@@ -2350,7 +2344,7 @@
         },
         {
           "path": "Tests/RillUITests/MenuBarNativeMenuTests.swift",
-          "line": 10,
+          "line": 11,
           "symbol": "testNativeMenuKeepsActionIconsAndOneSettingsEntryInBothLanguages",
           "framework": "XCTest"
         },
@@ -2358,6 +2352,12 @@
           "path": "Tests/RillUITests/MenuBarOperationPanelStateTests.swift",
           "line": 9,
           "symbol": "testStatusDetailUsesStableWidthForShortAndLongContent",
+          "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillUITests/ModelServiceNavigationTests.swift",
+          "line": 10,
+          "symbol": "testDesktopServiceDeepLinksShareOnePaneAndHideWithIt",
           "framework": "XCTest"
         },
         {
@@ -2428,7 +2428,7 @@
         },
         {
           "path": "Tests/RillUITests/RunHistoryBrowsingUITests.swift",
-          "line": 363,
+          "line": 364,
           "symbol": "testPaginationKeepsOneResidentPageAndRefetchesNewerPage",
           "framework": "XCTest"
         },
@@ -2446,7 +2446,7 @@
         },
         {
           "path": "Tests/RillUITests/SmartCleanupRenderTests.swift",
-          "line": 9,
+          "line": 10,
           "symbol": "testRenderActivityTextSteps",
           "framework": "XCTest"
         },
@@ -2470,7 +2470,7 @@
         },
         {
           "path": "Tests/RillUITests/TrustedLocalSpeechCatalogTests.swift",
-          "line": 32,
+          "line": 33,
           "symbol": "testEmptyCatalogCannotEnableLocalSpeechThroughAnInjectedAvailabilityFlag",
           "framework": "XCTest"
         },
@@ -2500,8 +2500,8 @@
         },
         {
           "path": "Tests/RillUITests/VocabularyCollectionPresentationTests.swift",
-          "line": 22,
-          "symbol": "testCollectionDeletionRequiresConfirmationAndRemovesItsBindings",
+          "line": 23,
+          "symbol": "testDesktopCollectionDeletionRequiresConfirmationAndRemovesItsBindings",
           "framework": "XCTest"
         },
         {
@@ -2536,7 +2536,7 @@
         },
         {
           "path": "Tests/RillUITests/VoiceSetupReadinessTests.swift",
-          "line": 7,
+          "line": 8,
           "symbol": "testInitialSetupWaitsForLoadingAndDoesNotReopenAfterSkipping",
           "framework": "XCTest"
         },
@@ -2548,13 +2548,19 @@
         },
         {
           "path": "Tests/RillUITests/WebhookReleaseGateTests.swift",
-          "line": 7,
+          "line": 8,
           "symbol": "testLegacyWebhookWorkflowIsRejectedBeforeAppModelExecution",
           "framework": "XCTest"
         },
         {
+          "path": "Tests/RillUITests/WorkflowOutputAccessibilityTests.swift",
+          "line": 12,
+          "symbol": "testDesktopOutputSwitchesExposeIdentityValueAndAutomaticState",
+          "framework": "XCTest"
+        },
+        {
           "path": "Tests/RillUITests/WorkflowTextFileTests.swift",
-          "line": 10,
+          "line": 11,
           "symbol": "workflowSelectionSurvivesRestart",
           "framework": "Swift Testing"
         }
@@ -2593,19 +2599,19 @@
         },
         {
           "path": "Tests/RillAppTests/BuiltinVoiceOutputTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "savesFinalTextBeforeDeliveryEvenWhenDeliveryFails",
           "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillAppTests/ClipboardPanelControllerTests.swift",
           "line": 100,
-          "symbol": "testUnifiedPanelPreservesEditorUndoSearchAndCompositionAcrossModesAndCollapse",
+          "symbol": "testUnifiedPanelPreservesEditorUndoAndCompositionAcrossModesAndReopening",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -2618,7 +2624,7 @@
         {
           "path": "Tests/RillAppTests/RecordPanelCollectionTests.swift",
           "line": 15,
-          "symbol": "testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture",
+          "symbol": "testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget",
           "framework": "XCTest"
         },
         {
@@ -2791,13 +2797,13 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RuntimeCoordinationRegressionTests.swift",
-          "line": 188,
+          "line": 174,
           "symbol": "testCoordinatorRemainsBusyUntilFailedTerminalStageFinishes",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorPolishingGateTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "predictionControlsLLMAndPreservesStoreBeforeDelivery",
           "framework": "Swift Testing"
         },
@@ -2815,13 +2821,13 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 503,
+          "line": 492,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowRunReceiptRecorderTests.swift",
-          "line": 183,
+          "line": 184,
           "symbol": "testRuntimePersistsBodyAndReceiptWithoutPresentationConsumer",
           "framework": "XCTest"
         },
@@ -2930,7 +2936,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -2954,7 +2960,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/CleanupProtectionFallbackTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "failedCleanupIsSkippedAndDeliversOriginalOnce",
           "framework": "Swift Testing"
         },
@@ -3026,7 +3032,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RuntimeCoordinationRegressionTests.swift",
-          "line": 188,
+          "line": 174,
           "symbol": "testCoordinatorRemainsBusyUntilFailedTerminalStageFinishes",
           "framework": "XCTest"
         },
@@ -3044,7 +3050,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowRunReceiptRecorderTests.swift",
-          "line": 183,
+          "line": 184,
           "symbol": "testRuntimePersistsBodyAndReceiptWithoutPresentationConsumer",
           "framework": "XCTest"
         },
@@ -3097,7 +3103,7 @@
       "id": "RillWorkflows",
       "label": "RillWorkflows",
       "group": "领域逻辑",
-      "role": "负责录音会话、已授权工作流执行、取消、输出顺序和运行回执。",
+      "role": "负责录音会话、已授权工作流编译与执行、取消、冻结的服务绑定、输出顺序和运行回执。",
       "impact": "改动会影响采集生命周期、取消、先保存后输出，以及终态历史。",
       "files": [
         "Sources/RillWorkflows/AuthorizedAudioProcessingLease.swift",
@@ -3125,7 +3131,6 @@
         "Sources/RillWorkflows/SelectionCaptureRecognizer.swift",
         "Sources/RillWorkflows/SessionCoordinator.swift",
         "Sources/RillWorkflows/SpeechWorkflowAdapters.swift",
-        "Sources/RillWorkflows/WebhookProtectingSettingsStore.swift",
         "Sources/RillWorkflows/WorkflowAudioRunController.swift",
         "Sources/RillWorkflows/WorkflowExecutionPolicy.swift",
         "Sources/RillWorkflows/WorkflowExplainService.swift",
@@ -3140,12 +3145,14 @@
       ],
       "evidence": [
         "Package.swift",
-        "Sources/RillWorkflows/AuthorizedAudioProcessingLease.swift"
+        "Sources/RillWorkflows/AuthorizedAudioProcessingLease.swift",
+        "Sources/RillWorkflows/WorkflowPlanCompiler.swift",
+        "Sources/RillWorkflows/SessionCoordinator.swift"
       ],
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -3157,19 +3164,19 @@
         },
         {
           "path": "Tests/RillAppTests/BuiltinVoiceOutputTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "savesFinalTextBeforeDeliveryEvenWhenDeliveryFails",
           "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillAppTests/ClipboardPanelControllerTests.swift",
           "line": 100,
-          "symbol": "testUnifiedPanelPreservesEditorUndoSearchAndCompositionAcrossModesAndCollapse",
+          "symbol": "testUnifiedPanelPreservesEditorUndoAndCompositionAcrossModesAndReopening",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -3188,7 +3195,7 @@
         {
           "path": "Tests/RillAppTests/RecordPanelCollectionTests.swift",
           "line": 15,
-          "symbol": "testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture",
+          "symbol": "testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget",
           "framework": "XCTest"
         },
         {
@@ -3199,7 +3206,7 @@
         },
         {
           "path": "Tests/RillAppTests/RecordPanelControllerTests.swift",
-          "line": 58,
+          "line": 57,
           "symbol": "testSettingsHidesPanelEvenWithoutAReturnCandidate",
           "framework": "XCTest"
         },
@@ -3223,7 +3230,7 @@
         },
         {
           "path": "Tests/RillAppTests/WorkflowAudioRunControllerTests.swift",
-          "line": 450,
+          "line": 439,
           "symbol": "testPreparingPreviewUsesOwnedRunBeforePreflightCompletes",
           "framework": "XCTest"
         },
@@ -3235,7 +3242,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/AuthorizedLiveAudioSessionTests.swift",
-          "line": 66,
+          "line": 67,
           "symbol": "testCaptureCannotSealBeforePrivacyMonitorStarts",
           "framework": "XCTest"
         },
@@ -3253,7 +3260,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/CleanupProtectionFallbackTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "failedCleanupIsSkippedAndDeliversOriginalOnce",
           "framework": "Swift Testing"
         },
@@ -3265,7 +3272,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/DiagnosticsRecorderPrivacyTests.swift",
-          "line": 147,
+          "line": 137,
           "symbol": "testRecordSanitizesMemoryRepositoryAndPublishedEvent",
           "framework": "XCTest"
         },
@@ -3319,7 +3326,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/PrivacyRunGateTests.swift",
-          "line": 108,
+          "line": 109,
           "symbol": "testAdmissionAndCloudConfirmationShareTheFrozenModelBinding",
           "framework": "XCTest"
         },
@@ -3331,7 +3338,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/QueuedAudioAuthorizationLeaseTests.swift",
-          "line": 63,
+          "line": 95,
           "symbol": "testLeasePreservesIssuedRunAndWorkflowAndRejectsMismatchedTrigger",
           "framework": "XCTest"
         },
@@ -3439,7 +3446,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordingSessionManagerTimingTests.swift",
-          "line": 282,
+          "line": 281,
           "symbol": "testInvalidatedCueTokenSuppressesLateSynchronousEffect",
           "framework": "XCTest"
         },
@@ -3457,7 +3464,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RuntimeCoordinationRegressionTests.swift",
-          "line": 188,
+          "line": 174,
           "symbol": "testCoordinatorRemainsBusyUntilFailedTerminalStageFinishes",
           "framework": "XCTest"
         },
@@ -3469,7 +3476,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorPolishingGateTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "predictionControlsLLMAndPreservesStoreBeforeDelivery",
           "framework": "Swift Testing"
         },
@@ -3487,7 +3494,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 503,
+          "line": 492,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
           "framework": "XCTest"
         },
@@ -3496,12 +3503,6 @@
           "line": 35,
           "symbol": "branchesAndSkippedOutputsProduceOrderedReceipts",
           "framework": "Swift Testing"
-        },
-        {
-          "path": "Tests/RillRuntimeTests/WebhookProtectingSettingsStoreTests.swift",
-          "line": 8,
-          "symbol": "testMigrationProtectsPayloadAtomicallyAndForcesWorkflowDisabled",
-          "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowExecutionPolicyTests.swift",
@@ -3517,25 +3518,25 @@
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowManifestValidatorTests.swift",
-          "line": 23,
+          "line": 24,
           "symbol": "testValidatorAllowsPlannedPresetWithUnavailableFutureComponents",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowPlanCompilerTests.swift",
-          "line": 46,
+          "line": 47,
           "symbol": "testDuplicateRegistrationsFailWithoutSelectingAProvider",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowPrivacyDestinationClassifierTests.swift",
-          "line": 6,
+          "line": 7,
           "symbol": "testVoiceAssistantClassifiesLocalRecognitionCloudLLMAndLocalSpeechOutput",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowRunReceiptRecorderTests.swift",
-          "line": 183,
+          "line": 184,
           "symbol": "testRuntimePersistsBodyAndReceiptWithoutPresentationConsumer",
           "framework": "XCTest"
         },
@@ -3559,25 +3560,25 @@
         },
         {
           "path": "Tests/RillUITests/AppModelRunReceiptTests.swift",
-          "line": 212,
+          "line": 213,
           "symbol": "testDiscardedCaptureReturnsToIdleBeforeARunStarts",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelTests+Part1.swift",
-          "line": 54,
+          "line": 44,
           "symbol": "testNonAudioWorkflowAuthorizationFailureDoesNotReachCoordinatorOrAction",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelTests+Part2.swift",
-          "line": 10,
+          "line": 11,
           "symbol": "testPersistedVoiceResultReloadsAndTerminalUpdatesPresentation",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/AppModelWorkflowExplanationTests.swift",
-          "line": 96,
+          "line": 97,
           "symbol": "testProviderReceivesCurrentResolvedRouteAndManualInvocation",
           "framework": "XCTest"
         },
@@ -3589,7 +3590,7 @@
         },
         {
           "path": "Tests/RillUITests/JevHotwordSettingsTests.swift",
-          "line": 9,
+          "line": 10,
           "symbol": "settingsDefaultOffAndRevocationIsSynchronous",
           "framework": "Swift Testing"
         },
@@ -3634,6 +3635,12 @@
           "line": 11,
           "symbol": "testBufferInputFailureShowsRecoveryWithoutInterruptingTheActiveRun",
           "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillUITests/WorkflowTextFileTests.swift",
+          "line": 11,
+          "symbol": "workflowSelectionSurvivesRestart",
+          "framework": "Swift Testing"
         }
       ],
       "testNote": "每个直接导入此模块的测试文件记录一条真实的 XCTest 或 Swift Testing 声明；不代表完整覆盖或执行结果。可执行程序与 C 适配层模块未记录直接测试声明，仍需原生集成验收。"
@@ -3665,13 +3672,14 @@
       "id": "RillPlatform",
       "label": "RillPlatform",
       "group": "适配器",
-      "role": "提供 macOS 麦克风、快捷键、输出、钥匙串、文件存储和输入法安装适配器。",
+      "role": "提供 macOS 麦克风、快捷键、输出、钥匙串、工作流文件与内建 TOML 资源加载，以及输入法安装适配器。",
       "impact": "真实权限、焦点和系统效果需要原生环境验收。",
       "files": [
         "Sources/RillPlatform/AVAudioCaptureService.swift",
         "Sources/RillPlatform/AppleVoiceProcessingAudioProcessor.swift",
         "Sources/RillPlatform/BufferFilePromiseWriter.swift",
         "Sources/RillPlatform/BuiltinContextProvider.swift",
+        "Sources/RillPlatform/BuiltinWorkflowCatalog.swift",
         "Sources/RillPlatform/CorpusExporter.swift",
         "Sources/RillPlatform/CursorTextPreviewCoordinator.swift",
         "Sources/RillPlatform/EncryptedCorpusRecordingArchiveStore.swift",
@@ -3685,7 +3693,6 @@
         "Sources/RillPlatform/KeychainCredentialStore.swift",
         "Sources/RillPlatform/KeychainLocalDataKeyStore.swift",
         "Sources/RillPlatform/KeychainWebhookConfigurationStore.swift",
-        "Sources/RillPlatform/LegacyWorkflowManifestFileLoader.swift",
         "Sources/RillPlatform/LocalSpeechIncrementalWaveWriter.swift",
         "Sources/RillPlatform/LocalSpeechVoiceCaptureRuntime.swift",
         "Sources/RillPlatform/ManagedTemporaryAudioCleanupOwner.swift",
@@ -3696,6 +3703,12 @@
         "Sources/RillPlatform/RecordBufferTextOutput.swift",
         "Sources/RillPlatform/RecordSystemPorts.swift",
         "Sources/RillPlatform/RecordingInteractionCuePlayer.swift",
+        "Sources/RillPlatform/Resources/BuiltinWorkflows/bufferDictation.toml",
+        "Sources/RillPlatform/Resources/BuiltinWorkflows/bufferDraftDictation.toml",
+        "Sources/RillPlatform/Resources/BuiltinWorkflows/index.json",
+        "Sources/RillPlatform/Resources/BuiltinWorkflows/smartCleanup.toml",
+        "Sources/RillPlatform/Resources/BuiltinWorkflows/speechRecognition.toml",
+        "Sources/RillPlatform/Resources/BuiltinWorkflows/voiceAssistant.toml",
         "Sources/RillPlatform/RillStorageResiduePurger.swift",
         "Sources/RillPlatform/RillTemporaryFileJanitor.swift",
         "Sources/RillPlatform/RimeProfileInstaller.swift",
@@ -3716,12 +3729,14 @@
       ],
       "evidence": [
         "Package.swift",
-        "Sources/RillPlatform/AVAudioCaptureService.swift"
+        "Sources/RillPlatform/AVAudioCaptureService.swift",
+        "Sources/RillPlatform/BuiltinWorkflowCatalog.swift",
+        "Sources/RillPlatform/WorkflowDocumentCodec.swift"
       ],
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -3729,6 +3744,18 @@
           "path": "Tests/RillAppTests/BufferOutputControllerTests.swift",
           "line": 14,
           "symbol": "dragAccessibilityFollowsLanguageWithoutChangingPayloadOrPasteboard",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillAppTests/BuiltinVoiceOutputTests.swift",
+          "line": 12,
+          "symbol": "savesFinalTextBeforeDeliveryEvenWhenDeliveryFails",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
+          "line": 17,
+          "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
         {
@@ -3746,7 +3773,7 @@
         {
           "path": "Tests/RillAppTests/RecordPanelCollectionTests.swift",
           "line": 15,
-          "symbol": "testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture",
+          "symbol": "testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget",
           "framework": "XCTest"
         },
         {
@@ -3763,7 +3790,7 @@
         },
         {
           "path": "Tests/RillAppTests/WorkflowAudioRunControllerTests.swift",
-          "line": 450,
+          "line": 439,
           "symbol": "testPreparingPreviewUsesOwnedRunBeforePreflightCompletes",
           "framework": "XCTest"
         },
@@ -3901,7 +3928,7 @@
         },
         {
           "path": "Tests/RillPlatformTests/RecordingInteractionCuePlayerTests.swift",
-          "line": 6,
+          "line": 7,
           "symbol": "testInteractionCuesAreShortDistinctNonSilentTones",
           "framework": "XCTest"
         },
@@ -3955,8 +3982,14 @@
         },
         {
           "path": "Tests/RillPlatformTests/WorkflowDocumentCodecTests.swift",
-          "line": 8,
-          "symbol": "speechTemplatesStoreAndDeliverTheSameResult",
+          "line": 32,
+          "symbol": "roundTripPreservesExplicitIntentAndIdentity",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillPlatformTests/WorkflowOutputStateTests.swift",
+          "line": 12,
+          "symbol": "selectionIsSeparateAndDoesNotChangeFrozenRun",
           "framework": "Swift Testing"
         },
         {
@@ -3964,6 +3997,18 @@
           "line": 7,
           "symbol": "testUsesXDGConfigHomeAndFallsBackForRelativeValue",
           "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillProvidersTests/CleanupBudgetProviderTests.swift",
+          "line": 20,
+          "symbol": "transportBudgetFollowsWorkflowWhileDeepSeekParametersStayIndependent",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillProvidersTests/CleanupProtectionProviderTests.swift",
+          "line": 9,
+          "symbol": "ordinaryAndContextualCleanupRejectChangedQuantities",
+          "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillProvidersTests/FocusedApplicationInsertActionTests.swift",
@@ -3978,10 +4023,22 @@
           "framework": "XCTest"
         },
         {
+          "path": "Tests/RillProvidersTests/SpeechWorkerSupervisorTests.swift",
+          "line": 16,
+          "symbol": "testFrozenHotwordRunKeepsModelAndAutomaticLanguageDespiteNewSettings",
+          "framework": "XCTest"
+        },
+        {
           "path": "Tests/RillRuntimeTests/CapturedAudioProcessingQueueLifecycleTests.swift",
           "line": 378,
           "symbol": "testCollectedSpeechPositionsExistBeforeDeferredAudioAndCancelCleanly",
           "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillRuntimeTests/CleanupProtectionFallbackTests.swift",
+          "line": 12,
+          "symbol": "failedCleanupIsSkippedAndDeliversOriginalOnce",
+          "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillRuntimeTests/FailedAudioRecoveryControllerTests.swift",
@@ -4021,7 +4078,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordingSessionManagerTimingTests.swift",
-          "line": 282,
+          "line": 281,
           "symbol": "testInvalidatedCueTokenSuppressesLateSynchronousEffect",
           "framework": "XCTest"
         },
@@ -4032,14 +4089,44 @@
           "framework": "XCTest"
         },
         {
+          "path": "Tests/RillRuntimeTests/SessionCoordinatorPolishingGateTests.swift",
+          "line": 12,
+          "symbol": "predictionControlsLLMAndPreservesStoreBeforeDelivery",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillUITests/BufferDictationWorkflowTests.swift",
+          "line": 16,
+          "symbol": "explicitDraftRecordingFreezesIntentAndNeverIncludesExternalInsertion",
+          "framework": "Swift Testing"
+        },
+        {
           "path": "Tests/RillUITests/InternationalizationTests.swift",
           "line": 13,
           "symbol": "negotiatesSupportedLanguagesInPreferenceOrder",
           "framework": "Swift Testing"
         },
         {
-          "path": "Tests/RillUITests/WorkflowTextFileTests.swift",
+          "path": "Tests/RillUITests/MenuBarNativeMenuTests.swift",
+          "line": 11,
+          "symbol": "testNativeMenuKeepsActionIconsAndOneSettingsEntryInBothLanguages",
+          "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillUITests/SmartCleanupRenderTests.swift",
           "line": 10,
+          "symbol": "testRenderActivityTextSteps",
+          "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillUITests/WorkflowOutputAccessibilityTests.swift",
+          "line": 12,
+          "symbol": "testDesktopOutputSwitchesExposeIdentityValueAndAutomaticState",
+          "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillUITests/WorkflowTextFileTests.swift",
+          "line": 11,
           "symbol": "workflowSelectionSurvivesRestart",
           "framework": "Swift Testing"
         }
@@ -4055,7 +4142,6 @@
       "files": [
         "Sources/RillProviders/BuiltinActions.swift",
         "Sources/RillProviders/BuiltinTransformers.swift",
-        "Sources/RillProviders/BuiltinWorkflowCatalog.swift",
         "Sources/RillProviders/CleanupContentGuard.swift",
         "Sources/RillProviders/ContextCorrectionProvider.swift",
         "Sources/RillProviders/DecisionHotwordRankingProvider.swift",
@@ -4073,19 +4159,19 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/BuiltinVoiceOutputTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "savesFinalTextBeforeDeliveryEvenWhenDeliveryFails",
           "framework": "Swift Testing"
         },
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -4121,7 +4207,7 @@
         },
         {
           "path": "Tests/RillProvidersTests/CleanupProtectionProviderTests.swift",
-          "line": 8,
+          "line": 9,
           "symbol": "ordinaryAndContextualCleanupRejectChangedQuantities",
           "framework": "Swift Testing"
         },
@@ -4211,7 +4297,7 @@
         },
         {
           "path": "Tests/RillProvidersTests/SpeechWorkerSupervisorTests.swift",
-          "line": 15,
+          "line": 16,
           "symbol": "testFrozenHotwordRunKeepsModelAndAutomaticLanguageDespiteNewSettings",
           "framework": "XCTest"
         },
@@ -4235,7 +4321,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/CleanupProtectionFallbackTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "failedCleanupIsSkippedAndDeliversOriginalOnce",
           "framework": "Swift Testing"
         },
@@ -4253,7 +4339,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorPolishingGateTests.swift",
-          "line": 11,
+          "line": 12,
           "symbol": "predictionControlsLLMAndPreservesStoreBeforeDelivery",
           "framework": "Swift Testing"
         }
@@ -4288,7 +4374,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",
-          "line": 16,
+          "line": 17,
           "symbol": "vocabularyOnlyUsesFrozenCandidatesWithoutAwaitingProviderAndRevokes",
           "framework": "Swift Testing"
         },
@@ -4372,7 +4458,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/WorkflowRunReceiptRecorderTests.swift",
-          "line": 183,
+          "line": 184,
           "symbol": "testRuntimePersistsBodyAndReceiptWithoutPresentationConsumer",
           "framework": "XCTest"
         }
@@ -4401,7 +4487,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -4437,7 +4523,7 @@
         },
         {
           "path": "Tests/RillProvidersTests/SpeechWorkerSupervisorTests.swift",
-          "line": 15,
+          "line": 16,
           "symbol": "testFrozenHotwordRunKeepsModelAndAutomaticLanguageDespiteNewSettings",
           "framework": "XCTest"
         },
@@ -4455,7 +4541,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/AuthorizedLiveAudioSessionTests.swift",
-          "line": 66,
+          "line": 67,
           "symbol": "testCaptureCannotSealBeforePrivacyMonitorStarts",
           "framework": "XCTest"
         },
@@ -4485,14 +4571,8 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 503,
+          "line": 492,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
-          "framework": "XCTest"
-        },
-        {
-          "path": "Tests/RillRuntimeTests/WebhookProtectingSettingsStoreTests.swift",
-          "line": 8,
-          "symbol": "testMigrationProtectsPayloadAtomicallyAndForcesWorkflowDisabled",
           "framework": "XCTest"
         }
       ],
@@ -4520,7 +4600,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 440,
+          "line": 441,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -4574,7 +4654,7 @@
         },
         {
           "path": "Tests/RillProvidersTests/SpeechWorkerSupervisorTests.swift",
-          "line": 15,
+          "line": 16,
           "symbol": "testFrozenHotwordRunKeepsModelAndAutomaticLanguageDespiteNewSettings",
           "framework": "XCTest"
         },
@@ -4685,6 +4765,7 @@
       "files": [
         "Sources/RillInputMethodKit/CandidateWindow.swift",
         "Sources/RillInputMethodKit/InputMethodComposition.swift",
+        "Sources/RillInputMethodKit/InputMethodKeyEvent.swift",
         "Sources/RillInputMethodKit/RillInputController.swift",
         "Sources/RillInputMethodKit/RimeEngine.swift",
         "Sources/RillInputMethodKit/RimeProfileProbe.swift"
@@ -4698,6 +4779,12 @@
           "path": "Tests/RillInputMethodTests/InputMethodCompositionTests.swift",
           "line": 8,
           "symbol": "unhandledEventsPreserveSelectedDocumentText",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillInputMethodTests/InputMethodKeyEventTests.swift",
+          "line": 9,
+          "symbol": "capsLockReportsTheStateBeforeEachToggle",
           "framework": "Swift Testing"
         }
       ],
@@ -5394,9 +5481,10 @@
       "id": "dataflow-RillApp-RillUI",
       "source": "RillApp",
       "target": "RillUI",
-      "label": "构造并注入功能服务",
+      "label": "构造并注入功能服务与解析后的内建工作流",
       "evidence": [
-        "Sources/RillApp/AppBootstrap.swift"
+        "Sources/RillApp/AppBootstrap.swift",
+        "Sources/RillPlatform/BuiltinWorkflowCatalog.swift"
       ],
       "kind": "dataflow"
     },
@@ -5404,10 +5492,12 @@
       "id": "dataflow-RillUI-RillWorkflows",
       "source": "RillUI",
       "target": "RillWorkflows",
-      "label": "启动已授权工作流并接收运行进度",
+      "label": "应用声明中的输出选择，启动已授权工作流并接收运行进度",
       "evidence": [
         "Sources/RillUI/AppModel+WorkflowActions.swift",
-        "Sources/RillWorkflows/SessionCoordinator.swift"
+        "Sources/RillWorkflows/SessionCoordinator.swift",
+        "Sources/RillUI/AppModel+WorkflowRouting.swift",
+        "Sources/RillUI/AppModel+WorkflowDocuments.swift"
       ],
       "kind": "dataflow"
     },
@@ -5457,10 +5547,11 @@
       "id": "dataflow-RillWorkflows-RillProviders",
       "source": "RillWorkflows",
       "target": "RillProviders",
-      "label": "执行已注册的文本和输出提供者",
+      "label": "按冻结的服务配置执行已注册的文本和输出提供者",
       "evidence": [
         "Sources/RillApp/AppBootstrap.swift",
-        "Sources/RillWorkflows/WorkflowTextExecutor.swift"
+        "Sources/RillWorkflows/WorkflowTextExecutor.swift",
+        "Sources/RillCore/LanguageModelConfiguration.swift"
       ],
       "kind": "dataflow"
     },
@@ -5567,7 +5658,7 @@
     {
       "id": "dictation",
       "title": "本地听写 → 保存记录 → 目标应用",
-      "command": "原生验收：选择并准备本地识别模型，按住 Fn，说一段无敏感信息的文本后松开，检查已保存记录和目标应用中的文本。",
+      "command": "原生验收：选择并准备本地 ASR 模型，在当前 Fn 工作流中启用目标应用输出，按住 Fn 说一段无敏感信息的文本后松开，检查已保存记录和目标应用中的文本。",
       "steps": [
         {
           "node": "RillPlatform",
@@ -5578,9 +5669,11 @@
         },
         {
           "node": "RillWorkflows",
-          "description": "冻结运行上下文，解析识别和输出顺序。",
+          "description": "冻结已授权工作流与服务绑定，编译识别步骤和所选输出。",
           "evidence": [
-            "Sources/RillWorkflows/SessionCoordinator.swift"
+            "Sources/RillWorkflows/SessionCoordinator.swift",
+            "Sources/RillWorkflows/WorkflowPlanCompiler.swift",
+            "Sources/RillUI/AppModel+WorkflowRouting.swift"
           ]
         },
         {
@@ -5606,10 +5699,11 @@
         },
         {
           "node": "RillWorkflows",
-          "description": "按配置顺序执行输出动作；内置流程先保存再投递。",
+          "description": "按声明顺序执行已启用输出；内建听写先保存，再按选择插入目标应用和收进待发区。",
           "evidence": [
             "Sources/RillWorkflows/WorkflowOutputExecutor.swift",
-            "Sources/RillApp/Resources/BuiltinWorkflows.toml"
+            "Sources/RillPlatform/Resources/BuiltinWorkflows/speechRecognition.toml",
+            "Sources/RillCore/WorkflowOutputState.swift"
           ]
         },
         {
@@ -5680,25 +5774,30 @@
     {
       "id": "rewrite",
       "title": "主动启用智能整理 → 运行回执",
-      "command": "使用已配置且获授权的服务进行原生验收：开启智能整理，听写测试文本，检查保存结果和运行回执。",
+      "command": "使用已配置且获授权的全局 LLM 服务进行原生验收：启用智能整理 Fn 工作流，听写测试文本，检查保存结果和运行回执；目标应用与待发区输出按当前开关执行。",
       "steps": [
         {
           "node": "RillUI",
-          "description": "配置工作流和服务偏好。",
+          "description": "配置全局模型服务，启用智能整理工作流并选择声明中的可选输出。",
           "evidence": [
-            "Sources/RillUI/AppModel+WorkflowActions.swift"
+            "Sources/RillUI/AppModel+WorkflowActions.swift",
+            "Sources/RillUI/SettingsView+LLMProvider.swift",
+            "Sources/RillUI/WorkflowOutputChoices.swift",
+            "Sources/RillPlatform/Resources/BuiltinWorkflows/smartCleanup.toml"
           ]
         },
         {
           "node": "RillWorkflows",
-          "description": "授权并执行文本转换。",
+          "description": "验证服务能力和授权，使用冻结的模型快照执行文本转换。",
           "evidence": [
-            "Sources/RillWorkflows/WorkflowTextExecutor.swift"
+            "Sources/RillWorkflows/WorkflowTextExecutor.swift",
+            "Sources/RillWorkflows/PrivacyRunGate.swift",
+            "Sources/RillCore/LanguageModelConfiguration.swift"
           ]
         },
         {
           "node": "RillProviders",
-          "description": "调用配置的 LLM 适配器。",
+          "description": "按服务配置调用 LLM 适配器；保留输入仅适用于工作流显式声明的可恢复失败。",
           "evidence": [
             "Sources/RillProviders/OpenAITextRewriteTransformer.swift"
           ]

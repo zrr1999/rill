@@ -10,7 +10,10 @@ import RillCore
 struct RecordingInteractionFeedbackTests {
   @Test func sharedAppActionPlaysBothSoundsAndRejectsInvalidatedTokens() async {
     var played: [RecordingInteractionCue] = []
-    let action = AppBootstrap.recordingCueAction { played.append($0) }
+    let action = AppBootstrap.recordingCueAction {
+      played.append($0)
+      return nil
+    }
     await action(.started, RecordingCueToken())
     await action(.stopped, RecordingCueToken())
     let staleToken = RecordingCueToken()
@@ -32,7 +35,7 @@ struct WorkflowAudioRunControllerCueTests {
     let expected: [CueCapture.Event] =
       binding == .wakeWord
       ? [.started, .finished, .cue(.stopped)]
-      : [.started, .cue(.started), .finished, .cue(.stopped)]
+      : [.cue(.started), .started, .finished, .cue(.stopped)]
     #expect(await fixture.capture.events == expected)
     await fixture.shutdown()
   }
@@ -46,9 +49,9 @@ struct WorkflowAudioRunControllerCueTests {
     await gate.waitUntilEntered()
     await fixture.controller.cancelRun()
     await gate.release()
-    try await start.value
+    await #expect(throws: CancellationError.self) { try await start.value }
 
-    #expect(await fixture.capture.events == [.started, .cancelled])
+    #expect(await fixture.capture.events == [.cancelled])
     await fixture.shutdown()
   }
 
@@ -65,7 +68,7 @@ struct WorkflowAudioRunControllerCueTests {
 
     #expect(
       await fixture.capture.events == [
-        .started, .cue(.started), .finished, .started, .cue(.started), .finished, .cue(.stopped),
+        .cue(.started), .started, .finished, .cue(.started), .started, .finished, .cue(.stopped),
       ])
     await fixture.shutdown()
   }
@@ -82,10 +85,10 @@ struct WorkflowAudioRunControllerCueTests {
     // Capture cancellation has completed, but shutdown still owns the cue task.
     #expect(await fixture.capture.didShutdown == false)
     await gate.release()
-    try await start.value
+    await #expect(throws: CancellationError.self) { try await start.value }
     await shutdown.value
 
-    #expect(await fixture.capture.events == [.started, .cancelled])
+    #expect(await fixture.capture.events == [.cancelled])
     #expect(await fixture.capture.didShutdown)
     await fixture.queue.shutdown()
   }
@@ -102,7 +105,7 @@ struct WorkflowAudioRunControllerCueTests {
     }
     let events = await fixture.capture.events
     #expect(!events.contains(.cue(.stopped)))
-    #expect(events.contains(.cue(.started)) == (failure == .finish))
+    #expect(events.contains(.cue(.started)))
     await fixture.shutdown()
   }
 }
@@ -114,7 +117,7 @@ private struct CueFixture {
   let workflow = WorkflowDefinition(
     name: "Recording feedback",
     trigger: .manual,
-    pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+    plan: makeTestAudioPlan(recognizerID: "missing"),
     ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
   )
 

@@ -1,6 +1,8 @@
 name: "CE - Quality"
 
 on:
+  schedule:
+    - cron: "30 1 * * 1" # Monday 09:30 Asia/Shanghai (UTC+8)
   workflow_dispatch:
     inputs:
       suite:
@@ -25,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite == 'all' && '["text-rewrite","vocabulary-correction","context-correction"]' || format('["{0}"]', inputs.suite)) }}
+        suite: ${{ fromJSON((github.event_name == 'schedule' || inputs.suite == 'all') && '["text-rewrite","vocabulary-correction","context-correction"]' || format('["{0}"]', inputs.suite)) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,7 +42,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-        run: uv run --no-build --locked --script scripts/eval_quality.py "$EVALUATION_SUITE"
+        run: uv run --no-build --locked --project tools rill-eval-quality "$EVALUATION_SUITE"
       - name: Save content-free quality and performance summaries
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

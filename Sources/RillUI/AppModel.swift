@@ -21,7 +21,7 @@ public final class AppModel {
     .ttsModel,
     .openAIAPIKey,
     .openAIBaseURL,
-    .openAIModel, .intelligentAPIKey, .intelligentBaseURL, .intelligentModel,
+    .openAIModel,
   ]
 
   static let recognizerIDsRequiringCapturedAudio: Set<String> = [
@@ -109,11 +109,7 @@ public final class AppModel {
   public var localSpeechTestWorkflow: WorkflowDefinition? {
     guard
       var workflow = self.workflowLibrary.workflows.first(where: { workflow in
-        workflow.trigger == .hotkey
-          && workflow.metadata[WorkflowMetadataKey.catalog]
-            == BuiltinWorkflowRoutingValue.catalog
-          && workflow.metadata[WorkflowMetadataKey.builtinKind]
-            == Self.builtinPushToTalkKindValue
+        workflow.trigger == .hotkey && workflow.plan.process.allSteps.contains { $0.kind == .recognizeSpeech }
       })
     else {
       return nil
@@ -130,14 +126,8 @@ public final class AppModel {
       actions: [OutputActionReference(id: "record.store")],
       deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst)
     )
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.catalog)
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.triggerGesture)
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.builtinKind)
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.exclusiveGroup)
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.recognizerSelectionMode)
-    workflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
-      RecordCollection.voiceInputID.rawValue.uuidString
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
+    workflow.properties = WorkflowProperties()
+    workflow.plan.output.actions[0].configuration.collections = [RecordCollection.voiceInputID.rawValue]
     return workflow
   }
   public var enabledTextStyleWorkflows: [WorkflowDefinition] {
@@ -301,7 +291,7 @@ public final class AppModel {
       @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void,
     finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void,
     verifyOpenAIConfigurationAction:
-      @escaping @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void,
+      @escaping @Sendable (OpenAISettings) async throws -> Void,
     retryFailedAudioRecoveryAction:
       @escaping @Sendable (
         UUID,
@@ -421,9 +411,9 @@ public final class AppModel {
     self.settingsStore = settingsStore
     self.vocabulary = VocabularyLibraryModel(
       settings: settings, source: vocabularyRuleSource,
-      didChange: { [workflowLibrary] bindings in
+      didChange: { [workflowLibrary] _ in
         workflowLibrary.cancelWorkflowExplanation()
-        workflowLibrary.rebuild(defaultVocabularyBindings: bindings)
+        workflowLibrary.rebuild()
         workflowLibraryChangedAction()
       },
       saveFailed: { [history] in
@@ -479,8 +469,8 @@ public final class AppModel {
       loadSettings()
     } else {
       self.settings.isLoading = false
-      for role in LanguageModelRole.allCases {
-        self.settings.setCredentialAvailability(.inaccessible, for: role)
+      do {
+        self.settings.setCredentialAvailability(.inaccessible)
       }
       if settingsStore == nil {
         self.settings.unavailableScalarSettingKeys.formUnion(
@@ -502,18 +492,7 @@ extension AppModel {
   nonisolated static let localSpeechRecognizerID = AppSettingsCodec.localSpeechRecognizerID
   nonisolated static let sherpaOnnxRecognizerID = AppSettingsCodec.sherpaOnnxRecognizerID
   nonisolated static let sherpaStreamingRecognizerID = AppSettingsCodec.sherpaStreamingRecognizerID
-  nonisolated static let workflowOriginMetadataKey = AppSettingsCodec.workflowOriginMetadataKey
-  nonisolated static let userWorkflowOriginMetadataValue = AppSettingsCodec
-    .userWorkflowOriginMetadataValue
-  nonisolated static let workflowCatalogMetadataKey = WorkflowMetadataKey.catalog
-  nonisolated static let builtinWorkflowCatalogValue = BuiltinWorkflowRoutingValue.catalog
-  nonisolated static let triggerGestureMetadataKey = WorkflowMetadataKey.triggerGesture
-  nonisolated static let fnHoldGestureValue = BuiltinWorkflowRoutingValue.pushToTalkGesture
   nonisolated static let defaultHotkeyGesture = "control-option-shift-space"
-  nonisolated static let builtinPushToTalkOutputModeMetadataKey = WorkflowMetadataKey
-    .settingsExposeOutputMode
-  nonisolated static let builtinPushToTalkKindValue = "push-to-talk.dictation"
-  nonisolated static let builtinPushToTalkPolishKindValue = "push-to-talk.polish"
   nonisolated static let localSpeechTestWorkflowID = UUID(
     uuidString: "95DA4DD0-38BF-4AE6-AF6E-493FA77E748B"
   )!
@@ -572,12 +551,6 @@ extension AppModel {
     handlePreferredSpeechEngineChange(from: oldValue)
   }
 
-  func applyBuiltinPushToTalkOutputMode(_ newValue: BuiltinPushToTalkOutputMode) {
-    let oldValue = self.settings.builtinPushToTalkOutputMode
-    self.settings.builtinPushToTalkOutputMode = newValue
-    handleBuiltinPushToTalkOutputModeChange(from: oldValue)
-  }
-
   func applyLongRecordingModeEnabled(_ newValue: Bool) {
     let oldValue = self.settings.longRecordingModeEnabled
     self.settings.longRecordingModeEnabled = newValue
@@ -620,9 +593,9 @@ extension AppModel {
     handleResidentSpeechBudgetConfirmationChange(from: oldValue)
   }
 
-  func applyOpenAIAPIKey(_ value: String) { applyLanguageModelAPIKey(value, for: .fast) }
-  func applyOpenAIBaseURL(_ value: String) { applyLanguageModelBaseURL(value, for: .fast) }
-  func applyOpenAIModel(_ value: String) { applyLanguageModelIdentifier(value, for: .fast) }
+  func applyOpenAIAPIKey(_ value: String) { applyLanguageModelAPIKey(value) }
+  func applyOpenAIBaseURL(_ value: String) { applyLanguageModelBaseURL(value) }
+  func applyOpenAIModel(_ value: String) { applyLanguageModelIdentifier(value) }
 
   func applyTTSModelIdentifier(_ newValue: String) {
     let oldValue = self.settings.ttsModelIdentifier

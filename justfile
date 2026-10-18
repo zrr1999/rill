@@ -39,6 +39,10 @@ test-desktop:
 test-scripts:
     scripts/preflight.sh test-scripts
 
+# Test the internal evaluation and replay tools without model or provider access.
+test-tools:
+    uv run --locked --project tools pytest tools/tests
+
 # Build and validate the production performance workloads.
 validate-performance-workloads:
     bash scripts/build_benchmarks.sh
@@ -46,7 +50,7 @@ validate-performance-workloads:
 # Run one explicit quality evaluation (real LLM calls are opt-in).
 [positional-arguments]
 eval-quality suite *args:
-    uv run --script scripts/eval_quality.py "$@"
+    uv run --locked --project tools rill-eval-quality "$@"
 
 # Compare paired ASR performance or measure native panel presentation.
 [positional-arguments]
@@ -56,7 +60,7 @@ bench-performance suite *args:
     suite="$1"
     shift
     case "$suite" in
-      asr) uv run --script scripts/asr_perf.py "$@" ;;
+      asr) uv run --locked --project tools rill-bench-asr "$@" ;;
       panel) bash scripts/benchmark_panel.sh "$@" ;;
       *) echo "Supported performance suites: asr, panel" >&2; exit 2 ;;
     esac
@@ -64,7 +68,17 @@ bench-performance suite *args:
 # Apply the explicit ASR experiment admission policy to two matching reports.
 [positional-arguments]
 accept-asr *args:
-    uv run --script scripts/asr_acceptance.py "$@"
+    uv run --locked --project tools rill-accept-asr "$@"
+
+# Replay authorized audio through a verified Release speech worker.
+[positional-arguments]
+replay-asr *args:
+    uv run --locked --project tools rill-replay-asr "$@"
+
+# Replay authorized audio through the host pipeline with isolated output.
+[positional-arguments]
+replay-product *args:
+    uv run --locked --project tools rill-replay-product "$@"
 
 # Reproduce the complete local CI gate.
 ci:

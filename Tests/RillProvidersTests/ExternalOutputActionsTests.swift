@@ -9,10 +9,7 @@ final class ExternalOutputActionsTests: XCTestCase {
     let action = WebhookPostAction(client: client)
     let context = makeActionContext(
       actionID: ExternalOutputActionID.webhookPost,
-      configuration: [
-        ExternalOutputActionConfigurationKey.webhookURL: "https://example.com/hook",
-        ExternalOutputActionConfigurationKey.webhookHeadersJSON: #"{"X-Project":"Rill"}"#,
-      ]
+      configuration: .init(webhookURL: "https://example.com/hook", webhookHeadersJSON: #"{"X-Project":"Rill"}"#)
     )
 
     let result = try await action.execute(text: "hello webhook", context: context)
@@ -35,7 +32,7 @@ final class ExternalOutputActionsTests: XCTestCase {
       text: "secret",
       context: makeActionContext(
         actionID: ExternalOutputActionID.webhookPost,
-        configuration: [ExternalOutputActionConfigurationKey.webhookURL: "http://example.com/hook"]
+        configuration: .init(webhookURL: "http://example.com/hook")
       )
     )
     assertFailed(publicHTTPResult, contains: "HTTPS")
@@ -46,7 +43,7 @@ final class ExternalOutputActionsTests: XCTestCase {
       text: "local",
       context: makeActionContext(
         actionID: ExternalOutputActionID.webhookPost,
-        configuration: [ExternalOutputActionConfigurationKey.webhookURL: "http://127.0.0.1:8787/hook"]
+        configuration: .init(webhookURL: "http://127.0.0.1:8787/hook")
       )
     )
     XCTAssertEqual(loopbackResult, .externalOutput("Webhook"))
@@ -67,7 +64,7 @@ final class ExternalOutputActionsTests: XCTestCase {
       text: "must stay local",
       context: makeActionContext(
         actionID: ExternalOutputActionID.webhookPost,
-        configuration: [ExternalOutputActionConfigurationKey.webhookURL: "https://example.com/hook"]
+        configuration: .init(webhookURL: "https://example.com/hook")
       )
     )
 
@@ -88,7 +85,7 @@ final class ExternalOutputActionsTests: XCTestCase {
       text: "hello",
       context: makeActionContext(
         actionID: ExternalOutputActionID.webhookPost,
-        configuration: [ExternalOutputActionConfigurationKey.webhookURL: "https://example.com/hook"]
+        configuration: .init(webhookURL: "https://example.com/hook")
       )
     )
     assertFailed(serverFailure, contains: "HTTP 500")
@@ -122,13 +119,16 @@ private enum WebhookPrivacyTestError: LocalizedError, Sendable {
 
 private func makeActionContext(
   actionID: String,
-  configuration: [String: String] = [:]
+  configuration: WorkflowOutputParameters = .init()
 ) -> ActionContext {
   let workflow = WorkflowDefinition(
     name: "External Output Test",
-    pipeline: PipelineDeclaration(
-      recognizerID: "test.recognizer",
-      outputActions: [OutputActionReference(id: actionID, configuration: configuration)]
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test.recognizer")),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: actionID, configuration: configuration)], deliveryPolicy: .init(strategy: .immediate))
     ),
     ui: WorkflowUIConfig(symbolName: "square.and.arrow.up", accentColorName: "green")
   )

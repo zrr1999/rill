@@ -21,7 +21,7 @@ import unittest
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 GENERATOR = PROJECT_DIR / "scripts" / "generate_third_party_notices.py"
 ASSEMBLER = PROJECT_DIR / "scripts" / "assemble_app_bundle.sh"
-WORKFLOW_GENERATOR = PROJECT_DIR / "scripts" / "generate_builtin_workflows.py"
+WORKFLOW_RESOURCES = PROJECT_DIR / "Sources" / "RillPlatform" / "Resources" / "BuiltinWorkflows"
 APP_ICON_RENDITION_RENDERER = (
     PROJECT_DIR / "scripts" / "render_app_icon_renditions.swift"
 )
@@ -159,10 +159,9 @@ class Fixture:
 
         own_bundle = build_dir / "RillMacOS_RillApp.bundle"
         create_bundle(own_bundle, "dev.zrr.Rill.resources")
-        workflow_manifest = (
-            own_bundle / "Contents" / "Resources" / "BuiltinWorkflowManifest.json"
-        )
-        write_json(workflow_manifest, {"workflows": []})
+        platform_bundle = build_dir / "RillMacOS_RillPlatform.bundle"
+        create_bundle(platform_bundle, "dev.zrr.Rill.platform-resources")
+        shutil.copytree(WORKFLOW_RESOURCES, platform_bundle / "Contents" / "Resources" / "BuiltinWorkflows")
 
         ui_bundle = build_dir / "RillMacOS_RillUI.bundle"
         create_bundle(ui_bundle, "dev.zrr.Rill.ui-resources")
@@ -183,7 +182,6 @@ class Fixture:
         for source in (
             GENERATOR,
             ASSEMBLER,
-            WORKFLOW_GENERATOR,
             APP_ICON_RENDITION_RENDERER,
         ):
             shutil.copy2(source, scripts / source.name)

@@ -43,7 +43,8 @@ docs_assets = [
   "docs/codemap/codemap.lock",
   "LICENSE",
   "docs/examples/conditional-workflow.toml",
-  "docs/schemas/workflow-v3.schema.json",
+  "docs/schemas/workflow-v1.schema.json",
+  "docs/schemas/workflow-state-v1.schema.json",
 ]
 
 [project.theme]

@@ -15,6 +15,8 @@
 
 关系箭头表示明确标注的调用或数据方向，不代表所有箭头都是 Swift import。
 SQLite 的连接与事务归 RillPersistence，图与成员关系归 RecordStore；注入由 AppBootstrap 完成。
+内建工作流由 RillPlatform 从独立 TOML 资源加载，与用户文件共用解析器。
+模型服务配置独立于工作流；运行冻结服务绑定与输出选择，只按声明顺序执行已启用输出。
 
 ## 本地使用与证据
 

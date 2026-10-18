@@ -6,6 +6,7 @@
 """Assemble and sign the standalone InputMethodKit frontend and its pinned Rime runtime."""
 
 import argparse
+import hashlib
 from pathlib import Path
 import plistlib
 import re
@@ -27,8 +28,9 @@ def assemble(executable: Path, output: Path) -> None:
     for name in ("MacOS", "Frameworks", "Helpers", "Resources"):
         (contents / name).mkdir(parents=True, exist_ok=True)
     prepare_data(contents / "Resources")
-    icon = project_dir / "Sources/RillApp/Resources/RillMenuBarTemplate.pdf"
-    shutil.copy2(icon, contents / "Resources" / icon.name)
+    icon = project_dir / "Resources/AppIcon/RillInputMethodTemplate.tiff"
+    icon_name = f"RillInputMethod-{hashlib.sha256(icon.read_bytes()).hexdigest()[:16]}.tiff"
+    shutil.copy2(icon, contents / "Resources" / icon_name)
     shutil.copy2(executable, contents / "MacOS/RillInputMethod")
     subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks",
                     str(contents / "MacOS/RillInputMethod")], check=True)
@@ -44,18 +46,19 @@ def assemble(executable: Path, output: Path) -> None:
         "CFBundleIdentifier": identifier, "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",
         "CFBundleDevelopmentRegion": "en",
         "CFBundleExecutable": "RillInputMethod", "CFBundlePackageType": "APPL",
-        "CFBundleVersion": "2", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "26.0",
+        "CFBundleVersion": "3", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "26.0",
+        "CFBundleIconFile": icon_name,
         "LSUIElement": True, "NSPrincipalClass": "NSApplication",
         "InputMethodConnectionName": "RillInputMethodConnection",
         "InputMethodServerControllerClass": "RillInputController",
         "TISInputSourceID": identifier,
-        "TISIconIsTemplate": True, "tsInputMethodIconFileKey": icon.name,
+        "TISIconIsTemplate": True, "tsInputMethodIconFileKey": icon_name,
         "ComponentInputModeDict": {
             "tsInputModeListKey": {input_source_id: {
                 "TISInputSourceID": input_source_id, "TISIntendedLanguage": "zh-Hans",
-                "tsInputModeMenuIconFileKey": icon.name,
-                "tsInputModeAlternateMenuIconFileKey": icon.name,
-                "tsInputModePaletteIconFileKey": icon.name,
+                "tsInputModeMenuIconFileKey": icon_name,
+                "tsInputModeAlternateMenuIconFileKey": icon_name,
+                "tsInputModePaletteIconFileKey": icon_name,
                 "tsInputModeCharacterRepertoireKey": ["Hans", "Hant", "Latn"],
                 "tsInputModeDefaultStateKey": True, "tsInputModeIsVisibleKey": True,
                 "tsInputModePrimaryInScriptKey": True, "tsInputModeScriptKey": "smUnicodeScript",

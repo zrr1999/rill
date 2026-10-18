@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rill workflow output state v1",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "rill.workflow-state"
+    },
+    "version": {
+      "const": 1
+    },
+    "workflow_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "outputs": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]{1,128}$"
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "workflow_id",
+    "outputs"
+  ],
+  "additionalProperties": false
+}

@@ -66,6 +66,10 @@ Record results for TextEdit, browser, Codex, VS Code, WeChat and Terminal, cover
 
 - Marked text, six vertical candidates, digits/arrows/Return/Escape, paging, mouse
   choice, English/Chinese switching, and existing selected-text preservation.
+- Caps Lock switches modes in both directions, including after changing apps or
+  input sources. Shift-letter input preserves case without toggling modes; left
+  and right modifier bindings remain distinct. Imported bilingual schemas return
+  Chinese and English candidates for the same input and preserve word casing.
 - Same-app field changes, mouse cursor moves, app/source switches while composing,
   and no late commit to a newly focused client.
 - Light/dark appearance, long candidates, display edges and multiple displays.

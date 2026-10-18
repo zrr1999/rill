@@ -122,7 +122,7 @@ public struct WorkflowPlanCompiler: Sendable {
       }
     }
     for binding in workflow.plan.setup.vocabularyBindings
-    where !collectionIDs.contains(binding.collectionID) {
+    where !binding.optional && !collectionIDs.contains(binding.collectionID) {
       throw WorkflowPlanCompilationError.missingVocabularyCollection(binding.collectionID)
     }
 
@@ -166,7 +166,7 @@ public struct WorkflowPlanCompiler: Sendable {
     let plan =
       inputOverride == .text && workflow.inputKind == .audio
       ? workflow.plan.acceptingTextInput() : workflow.plan
-    do { try WorkflowPlanValidator.validate(plan, input: input, requireOutput: !allowEmptyOutput) } catch {
+    do { try WorkflowPlanValidator.validate(plan, input: input) } catch {
       throw WorkflowPlanCompilationError.invalidPlan(error.localizedDescription)
     }
     if input == .audio, let route = plan.setup.speechRoute,

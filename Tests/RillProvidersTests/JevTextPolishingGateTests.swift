@@ -85,14 +85,17 @@ struct DecisionTextPolishingGateTests {
   @Test func unrelatedWorkflowsAnswersAndContextualReferencesAreNotPredicted() async throws {
     let fixture = fixture()
     var custom = context(fixture.settings)
-    custom.workflow.metadata = [:]
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: custom))
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: .init(kind: .llmAnswer, prompt: "Answer"), context: context(fixture.settings)))
+    var ungated = step
+    ungated.decision = nil
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: ungated, context: custom))
+    #expect(
+      try await !fixture.gate.shouldSkip(
+        text: "text", step: .init(kind: .llmAnswer, prompt: "Answer", reasoning: .some(.high)), context: context(fixture.settings)))
     var referenced = context(fixture.settings)
     referenced.correctionRequest = .init(transcript: "text", imageSummary: .init(terms: ["term"], observations: []))
     #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: referenced))
     #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
-    custom.workflow.metadata["text.polishing-gate"] = "classification"
+    custom.workflow.properties.isBuiltin = false
     #expect(try await fixture.gate.shouldSkip(text: "text", step: step, context: custom))
     await fixture.gate.shutdown()
   }
@@ -173,14 +176,25 @@ struct DecisionTextPolishingGateTests {
     await fixture.gate.shutdown()
   }
 
-  private var step: PostProcessStep { .init(kind: .llmRewrite, prompt: "Correct clear errors; preserve meaning and language.") }
+  private var step: PostProcessStep {
+    var step = PostProcessStep(kind: .llmRewrite, prompt: "Correct clear errors; preserve meaning and language.", reasoning: .some(.none))
+    step.decision = .init(optional: true)
+    return step
+  }
 
   private func context(_ settings: DecisionModelSettingsSource) -> TransformContext {
     let workflow = WorkflowDefinition(
       name: "Cleanup",
-      pipeline: .init(recognizerID: "local-speech", postProcessSteps: [step], outputActions: [.init(id: "record.store")]),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([step]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [.init(id: "record.store")], deliveryPolicy: .init(strategy: .immediate))),
       ui: .init(symbolName: "sparkles", accentColorName: "purple"),
-      metadata: [WorkflowMetadataKey.builtinKind: "push-to-talk.polish"])
+      properties: .init())
     return .init(
       runID: UUID(), workflow: workflow,
       contextSnapshot: .init(
