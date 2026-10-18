@@ -48,9 +48,7 @@ private struct RillScaledWidth: ViewModifier {
   let maximum: CGFloat
 
   func body(content: Content) -> some View {
-    content
-      .frame(width: RillDynamicLength.scaled(base, minimum: minimum, maximum: maximum))
-      .opacity(textScale > 0 ? 1 : 1)
+    content.frame(width: rillClamped(base, minimum: minimum, maximum: maximum, scale: textScale))
   }
 }
 
@@ -65,12 +63,16 @@ private struct RillScaledFrame: ViewModifier {
   let alignment: Alignment
 
   func body(content: Content) -> some View {
-    content
-      .frame(
-        width: RillDynamicLength.scaled(baseWidth, minimum: minimumWidth, maximum: maximumWidth),
-        height: RillDynamicLength.scaled(baseHeight, minimum: minimumHeight, maximum: maximumHeight),
-        alignment: alignment
-      )
-      .opacity(textScale > 0 ? 1 : 1)
+    content.frame(
+      width: rillClamped(baseWidth, minimum: minimumWidth, maximum: maximumWidth, scale: textScale),
+      height: rillClamped(baseHeight, minimum: minimumHeight, maximum: maximumHeight, scale: textScale),
+      alignment: alignment
+    )
   }
+}
+
+private func rillClamped(
+  _ base: CGFloat, minimum: CGFloat, maximum: CGFloat, scale: CGFloat
+) -> CGFloat {
+  min(maximum, max(minimum, (base * scale).rounded()))
 }
