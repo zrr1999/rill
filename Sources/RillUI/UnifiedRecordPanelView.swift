@@ -39,7 +39,10 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   public var body: some View {
     panel
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(.ultraThinMaterial)
+      .rillGlass(
+        in: RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous),
+        interactive: false
+      )
       .containerShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
       .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
       .accessibilityIdentifier("record-panel.unified")
@@ -53,7 +56,9 @@ public struct UnifiedRecordPanelView<Records: View>: View {
             Spacer()
             Button(panelText(.done)) { showsOutputReview = false }
           }
-        }.padding(20).frame(width: 420)
+        }.padding(20)
+          .frame(maxWidth: 640)
+          .presentationSizing(.fitted)
       }
   }
 
@@ -121,7 +126,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
       }
     }
     .padding(3)
-    .background(.thinMaterial, in: Capsule())
+    .rillGlass(in: Capsule(), interactive: false)
     .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: presentation.mode)
     .disabled(buffers.editor.session?.hasMarkedText == true)
     .accessibilityElement(children: .contain)
@@ -134,8 +139,10 @@ public struct UnifiedRecordPanelView<Records: View>: View {
       Text(panelText(mode == .drafts ? .drafts : .collections))
       if mode == .drafts {
         Text("\(buffers.snapshot?.remainingCount ?? 0)")
+          .contentTransition(.numericText())
           .monospacedDigit().foregroundStyle(.secondary)
           .frame(width: 30).lineLimit(1).minimumScaleFactor(0.7)
+          .animation(reduceMotion ? nil : .snappy, value: buffers.snapshot?.remainingCount ?? 0)
       }
     }
     .font(.system(size: 12, weight: selected ? .medium : .regular))
@@ -147,6 +154,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private var notice: some View {
     HStack(spacing: 8) {
       Image(systemName: needsAttention ? RillSystemSymbol.exclamationmarkCircle.rawValue : RillSystemSymbol.checkmarkCircle.rawValue)
+        .symbolEffect(.bounce, value: needsAttention)
         .foregroundStyle(needsAttention ? Color.orange : Color.secondary)
         .font(.system(size: 13)).frame(width: 16)
       Text(noticeText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)

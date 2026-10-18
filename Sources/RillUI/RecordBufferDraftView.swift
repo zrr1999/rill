@@ -15,6 +15,8 @@ public struct RecordBufferDraftView: View {
   @State private var showsCollectionControls = false
   @State private var showsDetails = false
   @State private var showsFailure = false
+  @State private var copyFeedback = 0
+  @State private var sendFeedback = 0
 
   public init(model: AppModel, onFinishEditing: @escaping () -> Void = {}) {
     self.model = model.recordWorkspace.buffers.editor
@@ -156,17 +158,26 @@ public struct RecordBufferDraftView: View {
         .frame(width: 88, height: 32)
         .disabled(model.session == nil || model.session?.hasMarkedText == true)
         .accessibilityIdentifier("record-buffer.finish-editing")
-      Button(panelText(.copy)) { if let session = model.session { copyText(session.text) } }
-        .buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
-        .frame(width: 60, height: 32)
-        .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
-        .accessibilityIdentifier("record-buffer.copy")
-      Button(panelText(.send), action: model.send)
-        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
-        .tint(.accentColor).frame(width: 84, height: 32)
-        .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
-        .help(text(.returnSendsWhileEditingReturn))
-        .accessibilityIdentifier("record-buffer.send")
+      Button(panelText(.copy)) {
+        guard let session = model.session else { return }
+        copyFeedback &+= 1
+        copyText(session.text)
+      }
+      .buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
+      .frame(width: 60, height: 32)
+      .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
+      .sensoryFeedback(.success, trigger: copyFeedback)
+      .accessibilityIdentifier("record-buffer.copy")
+      Button(panelText(.send)) {
+        sendFeedback &+= 1
+        model.send()
+      }
+      .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
+      .tint(.accentColor).frame(width: 84, height: 32)
+      .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
+      .sensoryFeedback(.impact, trigger: sendFeedback)
+      .help(text(.returnSendsWhileEditingReturn))
+      .accessibilityIdentifier("record-buffer.send")
     }
     .font(.system(size: 12)).controlSize(.large)
     .padding(.horizontal, 15).frame(height: 56)
