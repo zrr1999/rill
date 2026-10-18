@@ -117,7 +117,7 @@ private struct CueFixture {
   let workflow = WorkflowDefinition(
     name: "Recording feedback",
     trigger: .manual,
-    pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+    plan: makeTestAudioPlan(recognizerID: "missing"),
     ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
   )
 

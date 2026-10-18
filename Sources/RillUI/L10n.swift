@@ -472,13 +472,13 @@ extension L10n {
 
   public static func workflowTrigger(
     _ trigger: TriggerBinding,
-    metadata: [String: String] = [:],
+    gesture: String? = nil,
     language: AppLanguage
   ) -> String {
     return switch trigger {
     case .manual: L10n.resource("L10n.Manual").string(for: language)
     case .menuBar: L10n.resource("L10n.Menu.Bar").string(for: language)
-    case .hotkey: hotkeyGesture(metadata["trigger.gesture"], language: language)
+    case .hotkey: hotkeyGesture(gesture, language: language)
     case .wakeWord: L10n.resource("L10n.Wake.Word").string(for: language)
     }
   }
@@ -569,13 +569,4 @@ extension L10n {
     }
   }
 
-  public static func builtinPushToTalkOutputMode(
-    _ mode: BuiltinPushToTalkOutputMode,
-    language: AppLanguage
-  ) -> String {
-    switch mode {
-    case .pasteIntoApp: return catalogString("builtinPushToTalkOutputMode.pasteIntoApp", language: language)
-    case .saveToVoiceGroup: return catalogString("builtinPushToTalkOutputMode.saveToVoiceGroup", language: language)
-    }
-  }
 }

@@ -234,7 +234,7 @@ public enum LocalSpeechModelCatalog {
       modelID: effectiveModelIdentifier(settings: settings),
       language: LocalSpeechRecognitionPolicy.resolvedLanguage(
         requestLanguage: workflow.plan.setup.speechRoute?.language,
-        workflowLanguage: workflow.metadata[WorkflowMetadataKey.languageOverride],
+        workflowLanguage: workflow.plan.setup.speechRoute?.language,
         configurationLanguage: settings.language))
   }
 

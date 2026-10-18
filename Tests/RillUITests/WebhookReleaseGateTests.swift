@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillUI
@@ -7,17 +8,19 @@ final class WebhookReleaseGateTests: XCTestCase {
   func testLegacyWebhookWorkflowIsRejectedBeforeAppModelExecution() {
     let workflow = WorkflowDefinition(
       name: "Legacy Webhook",
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: [
-          OutputActionReference(
-            id: ExternalOutputActionID.webhookPost,
-            configuration: [
-              ExternalOutputActionConfigurationKey.webhookURL: "https://example.com/private-hook"
-            ]
-          )
-        ]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]),
+        output: WorkflowOutputPhase(
+          actions: [
+            OutputActionReference(
+              id: ExternalOutputActionID.webhookPost,
+              configuration: .init(webhookURL: "https://example.com/private-hook")
+            )
+          ], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "network.slash", accentColorName: "orange")
     )
     let harness = makeHarness(workflow: workflow)
@@ -40,10 +43,7 @@ final class WebhookReleaseGateTests: XCTestCase {
     ] {
       let workflow = WorkflowDefinition(
         name: "Supported External Output",
-        pipeline: PipelineDeclaration(
-          recognizerID: "ui.test.recognizer",
-          outputActions: [OutputActionReference(id: actionID)]
-        ),
+        plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: actionID)]),
         ui: WorkflowUIConfig(symbolName: "square.and.arrow.up", accentColorName: "blue")
       )
       let harness = makeHarness(workflow: workflow)
@@ -56,21 +56,21 @@ final class WebhookReleaseGateTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Persisted Legacy Webhook",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: [
-          OutputActionReference(
-            id: ExternalOutputActionID.webhookPost,
-            configuration: [
-              ExternalOutputActionConfigurationKey.webhookURL: "https://example.com/preserved-hook",
-              ExternalOutputActionConfigurationKey.webhookHeadersJSON: #"{"X-Project":"preserved"}"#,
-            ]
-          )
-        ]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "ui.test.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]),
+        output: WorkflowOutputPhase(
+          actions: [
+            OutputActionReference(
+              id: ExternalOutputActionID.webhookPost,
+              configuration: .init(webhookURL: "https://example.com/preserved-hook", webhookHeadersJSON: #"{"X-Project":"preserved"}"#)
+            )
+          ], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "network.slash", accentColorName: "orange"),
-      metadata: [AppModel.workflowOriginMetadataKey: AppModel.userWorkflowOriginMetadataValue]
-    )
+      properties: .init())
     let encoded = try XCTUnwrap(
       String(data: JSONEncoder().encode([workflow]), encoding: .utf8)
     )
@@ -79,12 +79,7 @@ final class WebhookReleaseGateTests: XCTestCase {
 
     await harness.model.waitForInitialVoiceConfiguration()
 
-    let loadedAction = try XCTUnwrap(harness.model.workflowLibrary.customWorkflows.first?.pipeline.outputActions.first)
-    XCTAssertEqual(loadedAction.id, ExternalOutputActionID.webhookPost)
-    XCTAssertEqual(
-      loadedAction.configuration[ExternalOutputActionConfigurationKey.webhookHeadersJSON],
-      #"{"X-Project":"preserved"}"#
-    )
+    XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
     XCTAssertFalse(harness.model.enabledWorkflows(for: .manual).contains { $0.id == workflow.id })
 
     let storage = await settingsStore.activitySnapshot()

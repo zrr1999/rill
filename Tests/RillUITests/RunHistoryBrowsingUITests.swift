@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -777,10 +778,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
     WorkflowDefinition(
       name: name,
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: []
-      ),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

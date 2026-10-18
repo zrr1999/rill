@@ -239,7 +239,7 @@ check_record_domain_boundary() {
     printf '%s\n' "$legacy_sources" >&2
     error "Legacy Stack/Clipboard source files remain outside the migration boundary"
   fi
-  if git grep -n -E -e "$resource_pattern" -- Sources/RillApp/Resources; then
+  if git grep -n -E -e "$resource_pattern" -- Sources/RillPlatform/Resources/BuiltinWorkflows; then
     error "Built-in workflow resources must emit canonical Record action IDs and strategies"
   fi
   echo "Record domain boundary check passed"
@@ -453,8 +453,6 @@ check_repository() {
 
   clean_preflight_builds
 
-  info "Checking generated built-in workflow artifacts..."
-  uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
 
   info "Checking performance benchmark workloads..."
   bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only

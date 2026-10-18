@@ -1,8 +1,26 @@
 import AppKit
 import RillUI
+import RillPlatform
 import SwiftUI
 
 @main
+private enum RillEntryPoint {
+  @MainActor static func main() {
+    let arguments = CommandLine.arguments
+    if arguments.dropFirst().first == "--validate-workflows" {
+      guard arguments.count == 3 else { exit(2) }
+      do {
+        _ = try BuiltinWorkflowCatalog(directory: URL(fileURLWithPath: arguments[2])).manifest()
+        exit(0)
+      } catch {
+        FileHandle.standardError.write(Data("Invalid workflow resources: \(error.localizedDescription)\n".utf8))
+        exit(1)
+      }
+    }
+    RillApplication.main()
+  }
+}
+
 struct RillApplication: App {
   fileprivate static let mainWindowID = "main"
 

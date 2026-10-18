@@ -601,10 +601,7 @@ private func makeManager(
   let workflow = WorkflowDefinition(
     name: "Recording Timing Workflow",
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(
-      recognizerID: "recording.timing-recognizer",
-      outputActions: []
-    ),
+    plan: makeTestAudioPlan(recognizerID: "recording.timing-recognizer"),
     ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
   )
   let privacyRunGate = PrivacyRunGate(

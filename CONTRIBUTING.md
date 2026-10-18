@@ -189,8 +189,8 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
 | [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
 
-公开文档站只收录用户指南、高级工作流参考和隐私/许可说明。技术契约、发布流程与
-开发命令在本表维护入口，不进入站点正文或搜索索引。
+公开文档站收录用户指南、高级工作流参考和隐私/许可说明，并提供独立的代码地图入口。
+其余技术契约、发布流程与开发命令在本表维护入口，不进入站点正文或搜索索引。
 
 文档站使用 Zensical；`just docs` 严格构建并检查链接，`just docs-serve` 提供自动刷新的
 本地预览。页面清单、依赖锁定与站点交付边界见 [文档站维护](docs/documentation.md)。
@@ -361,7 +361,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。`CI - Tests` �
 `Policy - PR` 独立响应 `pull_request` 事件，只有读取权限。它用 `actions/checkout`
 只检出事件中 base commit 的 PR 模板，再由 `octokit/request-action` 读取当前标题和
 正文，交给 ZenDev 官方的 `validate-title`、`validate-body` Actions 校验。
-它不依赖 Automation，也不豁免机器人。
+它不依赖 Automation；所有作者都检查标题，作者类型为 Bot 的 PR 跳过正文模板检查。
 
 `Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
 仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
@@ -379,12 +379,11 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
 
 不要直接编辑生成产物。
 
-- 内建工作流以 `Sources/RillApp/Resources/BuiltinWorkflows.toml` 为事实源。修改后运行：
-
-  ```bash
-  uv run --script scripts/generate_builtin_workflows.py
-  uv run --script scripts/generate_builtin_workflows.py --check
-  ```
+- 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，每个文件
+  使用与用户工作流相同的新 v1 格式。`index.json` 只维护文件顺序与本地化标题。
+  `WorkflowDocumentCodecTests.packagedWorkflowsUseTheSameParser` 验证全部资源；
+  装配 App 时通过实际可执行文件的 `--validate-workflows` 入口再次校验打包资源。
+  不生成 JSON 或 Swift 执行定义。
 
 - `THIRD_PARTY_NOTICES.md` 由锁文件和脚本内受审证据生成。依赖变化后运行：
 
@@ -413,11 +412,13 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
   PR 标题必须使用英文；描述可使用中文。
 - 一个提交表达一个可审阅的意图，说明最终行为和实际测试结果。
   人工验收未完成时明确记录，不能用单元测试或本地开发签名代替。
-- 验证记录包含命令、实际工具链、执行结果或测试数量，以及对应提交与 CI 链接；
-  本地检查和托管 CI 分别记录。等待当前提交的检查全部结束后再报告 CI 通过。
+- PR 描述不重复 CI 已验证的内容，如命令、工具链、测试数量和 CI 链接；重点写实机演示：
+  在实际运行的 Rill 上操作了什么、看到了什么，附截图、录屏或操作步骤，并列出 CI 未覆盖的
+  人工验收和已知限制。
 - 依赖 PR 从底层修复、验证，再按依赖顺序向上传播；同一根因在上层重复失败时，
   先定位拥有该改动的底层 PR。更新 base 或 head 后重新确认检查对应的提交，并重新
-  运行受影响验证，不沿用旧提交的绿色结果。未完成的原生验收继续明确列出。
+  运行受影响验证，不沿用旧提交的绿色结果。每层 PR 描述只演示本层改动，未完成的原生验收
+  继续明确列出。
 - 原创贡献使用项目的 AGPL-3.0-only 许可；引入第三方代码时保留其原始
   版权和许可声明，并同步对应的来源证据。
 

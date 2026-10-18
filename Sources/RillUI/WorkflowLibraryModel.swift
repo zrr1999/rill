@@ -22,14 +22,20 @@ public final class WorkflowLibraryModel {
     .available
   public internal(set) var workflowTriggerConflicts: [WorkflowTriggerConflict] = []
   public internal(set) var workflowConflictIDsByWorkflowID: [UUID: [UUID]] = [:]
-  public internal(set) var workflowCustomizations: [WorkflowCustomization] = []
   public internal(set) var workflowEnabledStates: [UUID: Bool] = [:]
   public internal(set) var workflowFileURLsByID: [UUID: URL] = [:]
   public internal(set) var workflowFileSourcesByID: [UUID: String] = [:]
+  public internal(set) var outputStatesByID: [UUID: WorkflowOutputState] = [:]
+  var outputStateSourcesByID: [UUID: String] = [:]
+  public internal(set) var savingOutputStates: Set<UUID> = []
+
+  func installOutputStates(_ records: [WorkflowFileRecord]) {
+    outputStatesByID = Dictionary(uniqueKeysWithValues: records.compactMap { record in record.outputState.map { (record.workflow.id, $0) } })
+    outputStateSourcesByID = Dictionary(uniqueKeysWithValues: records.compactMap { record in record.outputStateSource.map { (record.workflow.id, $0) } })
+  }
   public internal(set) var workflowFileIssues: [WorkflowFileIssue] = []
   public internal(set) var invalidWorkflowFileIDs: Set<UUID> = []
   public internal(set) var workflowFileLoadGeneration: Int = 0
-  public internal(set) var usesWorkflowFilesAsSource: Bool = false
   public internal(set) var hasModifiedWorkflowLibrary: Bool = false
   var workflowLibraryErrorPresentation: ((AppLanguage) -> String?)?
   public var workflowLibraryError: String? { workflowLibraryErrorPresentation?(settings.language) }
@@ -45,7 +51,7 @@ public final class WorkflowLibraryModel {
     self.workflows = workflows
   }
 
-  func rebuild(defaultVocabularyBindings: [VocabularyCollectionBinding]) {
+  func rebuild() {
     let builtInWorkflowIDs = Set(builtInWorkflows.map(\.id))
     let builtInOverridesByID = Dictionary(
       uniqueKeysWithValues:
@@ -72,9 +78,7 @@ public final class WorkflowLibraryModel {
       }
       return builtIn
     }
-    workflows = (sortedCustomWorkflows + effectiveBuiltInWorkflows).map {
-      workflowApplyingVocabularyCustomization($0, defaultBindings: defaultVocabularyBindings)
-    }
+    workflows = sortedCustomWorkflows + effectiveBuiltInWorkflows
     synchronizeWorkflowEnabledStates()
   }
 
@@ -92,23 +96,7 @@ public final class WorkflowLibraryModel {
     ]
   }
 
-  private func workflowApplyingVocabularyCustomization(
-    _ workflow: WorkflowDefinition, defaultBindings: [VocabularyCollectionBinding]
-  ) -> WorkflowDefinition {
-    if workflowFileURLsByID[workflow.id] != nil { return workflow }
-    var workflow = workflow
-    if let customization = workflowCustomizations.first(where: {
-      $0.workflowID == workflow.id
-    }), let bindings = customization.vocabularyBindings {
-      workflow.plan.setup.vocabularyBindings = bindings
-    } else if workflow.plan.setup.speechRoute != nil {
-      workflow.plan.setup.vocabularyBindings = defaultBindings
-    }
-    return workflow
-  }
-
   func synchronizeWorkflowEnabledStates() {
-    migrateRetiredBuiltinPushToTalkSelection()
     let validWorkflowIDs = Set(workflows.map(\.id))
     workflowEnabledStates = workflowEnabledStates.filter { validWorkflowIDs.contains($0.key) }
 
@@ -122,25 +110,6 @@ public final class WorkflowLibraryModel {
 
     normalizeExclusiveWorkflowSelections()
     updateWorkflowTriggerConflicts()
-  }
-
-  private func migrateRetiredBuiltinPushToTalkSelection() {
-    guard
-      let speechRecognitionID = UUID(
-        uuidString: "B9E19A88-F9FB-4AB3-8444-CDBF7E215A88"
-      ),
-      workflows.contains(where: { $0.id == speechRecognitionID })
-    else {
-      return
-    }
-    let retiredIDs = [
-      "A8E19A88-F9FB-4AB3-8444-CDBF7E215A88",
-      "D1E19A88-F9FB-4AB3-8444-CDBF7E215A88",
-    ].compactMap(UUID.init(uuidString:))
-    guard retiredIDs.contains(where: { workflowEnabledStates[$0] == true }) else {
-      return
-    }
-    workflowEnabledStates[speechRecognitionID] = true
   }
 
   func normalizeExclusiveWorkflowSelections() {

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillSpeech
 
 @testable import RillCore
@@ -318,13 +319,11 @@ private func makeLiveWorkflow() -> WorkflowDefinition {
   WorkflowDefinition(
     name: "Live Cloud Text Test",
     trigger: .manual,
-    pipeline: PipelineDeclaration(
+    plan: makeTestAudioPlan(
       recognizerID: "sherpa-onnx.local",
       postProcessSteps: [
-        PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
-      ],
-      outputActions: []
-    ),
+        PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))
+      ]),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

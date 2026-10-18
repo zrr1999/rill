@@ -6,11 +6,14 @@ final class PrivacyModelsTests: XCTestCase {
     let workflow = WorkflowDefinition(
       id: UUID(uuidString: "D74E1D72-32B2-4499-8A4F-A9F967A1BEE8")!,
       name: "Voice Assistant",
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .llmRewrite)],
-        outputActions: [OutputActionReference(id: "speech.speak")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "speech.speak")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
     let authorization = try CloudProcessingAuthorization(
@@ -399,10 +402,12 @@ private func makeContext(
 private func makeWorkflow(recognizerID: String) -> WorkflowDefinition {
   WorkflowDefinition(
     name: "Privacy Test Workflow",
-    pipeline: PipelineDeclaration(
-      recognizerID: recognizerID,
-      outputActions: [OutputActionReference(id: "clipboard.capture")]
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizerID)),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "clipboard.capture")], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "lock", accentColorName: "blue")
   )
 }

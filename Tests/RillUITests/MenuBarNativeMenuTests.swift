@@ -1,3 +1,4 @@
+import RillPlatform
 import AppKit
 import SwiftUI
 import XCTest
@@ -43,29 +44,28 @@ final class MenuBarNativeMenuTests: XCTestCase {
     }
   }
 
-  func testVoiceMenuSelectionsUseExistingSettingsCommands() async throws {
+  func testVoiceMenuUsesWorkflowOutputChoices() async throws {
     _ = NSApplication.shared
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
     let model = makeHarness(
-      settingsStore: UITestSettingsStore(storage: [
-        .interfaceLanguage: AppLanguage.english.rawValue,
-        .longRecordingModeEnabled: "false",
-        .builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.pasteIntoApp.rawValue,
-      ])
-    ).model
+      workflows: workflows, settingsStore: UITestSettingsStore(storage: [.interfaceLanguage: AppLanguage.english.rawValue, .longRecordingModeEnabled: "false"])
+    )
+    .model
     await model.waitForInitialVoiceConfiguration()
     let menu = NSHostingMenu(rootView: MenuBarStatusView(model: model))
     menu.update()
-    let voice = try XCTUnwrap(menu.items.first { $0.title == "Voice Input" }?.submenu)
+    let voice = try XCTUnwrap(menu.items.first { $0.title == L10n.string(.menuVoiceInput, language: .english) }?.submenu)
     voice.update()
-    XCTAssertEqual(voice.items.first { $0.title == "Hold to Talk" }?.state, .on)
-    XCTAssertEqual(voice.items.first { $0.title == "Collect in Drafts" }?.state, .off)
-
-    voice.performActionForItem(at: try XCTUnwrap(voice.items.firstIndex { $0.title == "Press Once to Start/Stop" }))
+    let pendingTitle = L10n.resource("models.output.pending").string(for: .english)
+    XCTAssertEqual(voice.items.first { $0.title == pendingTitle }?.state, .on)
+    voice.performActionForItem(at: try XCTUnwrap(voice.items.firstIndex { $0.title == L10n.string(.menuLongRecordingToggle, language: .english) }))
     XCTAssertTrue(model.settings.longRecordingModeEnabled)
     voice.update()
-    voice.performActionForItem(at: try XCTUnwrap(voice.items.firstIndex { $0.title == "Collect in Drafts" }))
-    XCTAssertEqual(model.settings.builtinPushToTalkOutputMode, .saveToVoiceGroup)
+    voice.performActionForItem(at: try XCTUnwrap(voice.items.firstIndex { $0.title == pendingTitle }))
     await model.flushPendingPersistenceWrites()
+    let workflow = try XCTUnwrap(model.activeVoiceInputWorkflow)
+    let action = try XCTUnwrap(workflow.plan.output.actions.last)
+    XCTAssertFalse(model.isWorkflowOutputEnabled(action, index: 2, workflow: workflow))
     await model.recordWorkspace.shutdown()
   }
 

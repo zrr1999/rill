@@ -1,22 +1,12 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
 @testable import RillUI
 
-private actor FailThenSucceedDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
-  func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+private actor FailThenSucceedDiagnosticRepository: NonMaintainingDiagnosticRepository {
+  func reportUnexpectedHistoryMaintenance() async {
     XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteAllEvents() async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
-  }
-
-  func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
-    XCTFail("This recording test must not perform history maintenance.")
-    throw RunHistoryGenerationError.unsupported
   }
 
   func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
@@ -59,7 +49,7 @@ extension AppModelTests {
       authorizeWorkflowRunAction: { _ in throw AuthorizationDenied() }
     )
 
-    harness.model.runWorkflow(harness.workflow)
+    harness.model.runWorkflowText("hello", workflow: harness.workflow)
     await harness.model.waitForInteractiveWorkflowRun()
 
     let actionCount = await harness.actionLog.snapshot()
@@ -67,9 +57,7 @@ extension AppModelTests {
     XCTAssertFalse(harness.model.voice.isRunning)
     XCTAssertEqual(
       harness.model.lastFailure,
-      harness.model.settings.language == .english
-        ? "Workflow could not start. Review Privacy and provider settings, then retry."
-        : "工作流无法启动。请检查隐私与服务商设置后重试。"
+      L10n.resource("surface.theWorkflowCouldNotFinish").string(for: harness.model.settings.language)
     )
     XCTAssertEqual(actionCount, 0)
     XCTAssertEqual(coordinatorState, .idle)
@@ -156,8 +144,8 @@ extension AppModelTests {
       return events
     }
 
-    harness.model.runWorkflow(harness.workflow)
-    harness.model.runWorkflow(harness.workflow)
+    harness.model.runWorkflowText("hello", workflow: harness.workflow)
+    harness.model.runWorkflowText("hello", workflow: harness.workflow)
 
     let events = await collector.value
     let failures = events.compactMap { event -> String? in
@@ -183,10 +171,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "Local Dictation",
       titleKey: .rewriteDemoStack,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let harness = makeHarness(
@@ -254,10 +239,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "Local Dictation",
       titleKey: .rewriteDemoStack,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let harness = makeHarness(
@@ -302,10 +284,7 @@ extension AppModelTests {
     let workflow = WorkflowDefinition(
       name: "File Dictation",
       titleKey: .rewriteDemoStack,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "cyan")
     )
     let harness = makeHarness(
@@ -341,10 +320,7 @@ extension AppModelTests {
       workflow: WorkflowDefinition(
         name: "Internal Name Changed",
         titleKey: .ambiguousDemoStack,
-        pipeline: PipelineDeclaration(
-          recognizerID: "ui.test.recognizer",
-          outputActions: [OutputActionReference(id: "ui.test.action")]
-        ),
+        plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
       )
     )
@@ -374,10 +350,7 @@ extension AppModelTests {
     let secondaryWorkflow = WorkflowDefinition(
       name: "Secondary Workflow",
       titleKey: .rewriteDemoStack,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let settingsStore = UITestSettingsStore(
@@ -401,10 +374,7 @@ extension AppModelTests {
     let secondaryWorkflow = WorkflowDefinition(
       name: "Secondary Workflow",
       titleKey: .rewriteDemoStack,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let settingsStore = UITestSettingsStore(
@@ -562,14 +532,16 @@ extension AppModelTests {
       id: UUID(),
       name: "Stored Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: AppModel.localSpeechRecognizerID,
-        postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-        outputActions: [OutputActionReference(id: "focused-application.insert")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: AppModel.localSpeechRecognizerID)),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .normalizeWhitespace)]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "text.cursor", accentColorName: "teal"),
-      metadata: [AppModel.workflowOriginMetadataKey: AppModel.userWorkflowOriginMetadataValue]
-    )
+      properties: .init())
     let storedRule = VocabularyRule(
       kind: .mapping,
       pattern: "stored phrase",
@@ -637,7 +609,7 @@ extension AppModelTests {
 
     activity = await settingsStore.activitySnapshot()
     preparation = await preparationProbe.snapshot()
-    XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [storedWorkflow.id])
+    XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
     XCTAssertEqual(harness.model.vocabulary.vocabularyRules.map(\.id), [storedRule.id])
     XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModels, storedDownloadedModels)
     XCTAssertEqual(preparation.prepareCount, 0)
@@ -696,10 +668,7 @@ extension AppModelTests {
     let secondaryWorkflow = WorkflowDefinition(
       name: "Secondary Workflow",
       titleKey: .rewriteDemoStack,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
     )
     let settingsStore = UITestSettingsStore()
@@ -1047,61 +1016,23 @@ extension AppModelTests {
 
     let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
-    XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
-    XCTAssertEqual(resolvedHotkeyWorkflow?.plan.output.actions.map(\.id), ["record.store", "focused-application.insert"])
-    XCTAssertEqual(resolvedHotkeyWorkflow?.targetRecordCollectionIDs, [RecordCollection.voiceInputID])
-  }
-
-  func testBuiltinHotkeyWorkflowUsesConfiguredVoiceGroupOutputMode() async {
-    let harness = makeHarness(workflows: [makeBuiltinPushToTalkWorkflow()])
-
-    harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
-
-    let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
-
-    XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.outputActions.map(\.id), ["record.store"])
-    XCTAssertEqual(
-      resolvedHotkeyWorkflow?.targetRecordCollectionIDs,
-      [RecordCollection.voiceInputID]
-    )
-  }
-
-  func testAppModelExecutionRoutingMatchesRuntimeResolvedPlan() throws {
-    let workflow = makeBuiltinPushToTalkWorkflow()
-    let harness = makeHarness(workflows: [workflow])
-    harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
-
-    let actual = harness.model.enabledWorkflows(for: .hotkey).first
-    guard
-      case .resolved(let plan) = WorkflowExecutionPlanResolver.resolve(
-        workflow,
-        initiatedBy: .hotkey,
-        recognizer: .localSpeech,
-        output: .builtinSaveToVoiceGroup
-      )
-    else {
-      return XCTFail("Expected the runtime routing choices to resolve.")
-    }
-
-    XCTAssertEqual(try XCTUnwrap(actual), plan.executionWorkflow)
+    XCTAssertEqual(resolvedHotkeyWorkflow?.plan.setup.speechRoute?.recognizerID, AppModel.localSpeechRecognizerID)
+    XCTAssertEqual(resolvedHotkeyWorkflow?.plan.output.actions.map(\.id), ["focused-application.insert"])
+    XCTAssertEqual(resolvedHotkeyWorkflow?.targetRecordCollectionIDs, [])
   }
 
   func testCustomHotkeyWorkflowKeepsOwnRecognizerWhenPreferredSpeechEngineChanges() async {
     let customHotkeyWorkflow = WorkflowDefinition(
       name: "Custom Hotkey Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "custom.hotkey.recognizer",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "custom.hotkey.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange"),
-      metadata: [AppModel.workflowOriginMetadataKey: AppModel.userWorkflowOriginMetadataValue]
-    )
+      properties: .init())
     let harness = makeHarness(workflows: [customHotkeyWorkflow])
 
     let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
-    XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, "custom.hotkey.recognizer")
+    XCTAssertEqual(resolvedHotkeyWorkflow?.plan.setup.speechRoute?.recognizerID, "custom.hotkey.recognizer")
   }
 
   func testLiveSubtitlePanelActionReceivesModelUpdates() async {
@@ -1260,16 +1191,13 @@ extension AppModelTests {
     )
   }
 
-  func testLoadsPersistedWorkflowEnabledStates() async throws {
+  func testOldEnabledStatesCannotChangeWorkflowDefinitions() async throws {
     let primaryWorkflow = makeDefaultWorkflow()
     let secondaryWorkflow = WorkflowDefinition(
       id: UUID(),
       name: "Secondary Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "ui.test.recognizer", actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange")
     )
     let storedEnabledStates = try XCTUnwrap(
@@ -1289,24 +1217,25 @@ extension AppModelTests {
     await harness.model.waitForInitialVoiceConfiguration()
 
     XCTAssertTrue(harness.model.isWorkflowEnabled(primaryWorkflow))
-    XCTAssertFalse(harness.model.isWorkflowEnabled(secondaryWorkflow))
+    XCTAssertTrue(harness.model.isWorkflowEnabled(secondaryWorkflow))
   }
 
-  func testLoadsPersistedCustomWorkflowsAndSelection() async throws {
+  func testOldSettingsWorkflowLibraryIsIgnored() async throws {
     let customWorkflow = WorkflowDefinition(
       id: UUID(),
       name: "Custom Follow-up",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-        outputActions: [OutputActionReference(id: "focused-application.insert")],
-        uncertaintyPolicy: UncertaintyPolicy(mode: .off, confidenceThreshold: 0, timeoutSeconds: 0),
-        deliveryPolicy: DeliveryPolicy(strategy: .immediate)
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech),
+            WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: UncertaintyPolicy(mode: .off, confidenceThreshold: 0, timeoutSeconds: 0)),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .normalizeWhitespace)]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: DeliveryPolicy(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "text.cursor", accentColorName: "teal"),
-      metadata: ["workflow.origin": "user", "trigger.gesture": "control-option-shift-space"]
-    )
+      properties: .init(gesture: "control-option-shift-space"))
     let payload = try XCTUnwrap(String(data: JSONEncoder().encode([customWorkflow]), encoding: .utf8))
     let settingsStore = UITestSettingsStore(
       storage: [
@@ -1318,8 +1247,9 @@ extension AppModelTests {
 
     await harness.model.waitForInitialVoiceConfiguration()
 
-    XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.count, 1)
-    XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.first?.name, "Custom Follow-up")
-    XCTAssertTrue(harness.model.isCustomWorkflow(try XCTUnwrap(harness.model.workflowLibrary.customWorkflows.first)))
+    XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
+    XCTAssertFalse(harness.model.workflowLibrary.workflows.contains { $0.id == customWorkflow.id })
+    let preserved = try await settingsStore.string(forKey: .customWorkflows)
+    XCTAssertEqual(preserved, payload)
   }
 }

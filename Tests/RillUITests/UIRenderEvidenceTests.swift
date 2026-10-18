@@ -346,7 +346,7 @@ final class UIRenderEvidenceTests: XCTestCase {
     await workspace.shutdown()
   }
 
-  func testRenderAPIProviderSettings() async throws {
+  func testRenderModelServiceSettings() async throws {
     guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
       throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
     }
@@ -358,10 +358,17 @@ final class UIRenderEvidenceTests: XCTestCase {
     for language in AppLanguage.allCases {
       model.setInterfaceLanguage(language)
       for dark in [false, true] {
-        model.showSettings(.providers)
-        try await render(
-          SettingsView(model: model, pane: .voice), size: NSSize(width: 760, height: 1100),
-          dark: dark, to: output.appendingPathComponent("api-providers-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+        for size in [NSSize(width: 960, height: 720), NSSize(width: 760, height: 640)] {
+          for section in [nil, SettingsSection.speech, .decision, .llm, .tts] {
+            model.selectedSettingsPane = .models
+            model.presentSettings()
+            if let section { model.showSettings(section) }
+            let name = section?.rawValue ?? "overview"
+            try await render(
+              MainShellView(model: model), size: size,
+              dark: dark, to: output.appendingPathComponent("model-services-\(name)-\(Int(size.width))-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+          }
+        }
       }
     }
     await workspace.shutdown()

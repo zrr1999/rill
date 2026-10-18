@@ -16,7 +16,7 @@ final class RecordPanelCollectionTests: XCTestCase {
     for voice in [false, true] {
       let settings: [AppSettingKey: String] =
         voice
-        ? [.builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.saveToVoiceGroup.rawValue]
+        ? [.builtinPushToTalkOutputMode: "voice-group"]
         : [.systemClipboardCaptureEnabled: "true"]
       let (model, output) = makeHarness(RecordStore(), initialSettings: settings)
       let controller = makeController(
@@ -51,7 +51,11 @@ final class RecordPanelCollectionTests: XCTestCase {
     addTeardownBlock { await controller.shutdown() }
     XCTAssertFalse(controller.isVisible)
 
-    XCTAssertTrue(model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
+    model.workflowLibrary.workflows.append(
+      WorkflowDefinition(
+        name: "Pending collection",
+        plan: .init(setup: .init(), process: .init(), output: .init(actions: [.init(id: RecordActionID.store, configuration: .init(buffer: "speech"))])),
+        ui: .init(symbolName: "doc", accentColorName: "blue")))
     await waitForMainRunLoopDefaultMode()
     XCTAssertFalse(controller.isVisible)
     show(controller, model: model)
@@ -82,7 +86,8 @@ final class RecordPanelCollectionTests: XCTestCase {
     XCTAssertFalse(controller.isVisible)
   }
 
-  func testSendingDismissesPanelAndDoesNotRecaptureAChangedTarget() async throws {
+  func testDesktopSendingDismissesPanelAndDoesNotRecaptureAChangedTarget() async throws {
+    guard try await requireInteractiveDesktop() else { return }
     for reduceMotion in [false, true] {
       for changeTarget in [false, true] {
         let store = RecordStore()

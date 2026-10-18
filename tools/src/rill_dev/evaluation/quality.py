@@ -20,14 +20,13 @@ ROOT = repository.ROOT
 
 
 class Observation(TypedDict):
-    key: tuple[str, str, int]
     mode: str
     matched: bool
     failed: bool
     fallback: bool
     attempted: bool
     elapsed: float
-    category: str | None
+    category: str
 
 
 SUITES = {
@@ -90,38 +89,163 @@ def expected_observations(suite, cases):
     return expected
 
 
+def validate_cases(cases):
+    if (
+        not cases
+        or any(not isinstance(case.get("id"), str) or not case["id"] for case in cases)
+        or len({case["id"] for case in cases}) != len(cases)
+    ):
+        raise ValueError("Evaluation cases must be nonempty and have unique IDs.")
+    for case in cases:
+        literals = case.get("protected_literals", [])
+        if (
+            not isinstance(literals, list)
+            or any(not isinstance(value, str) or not value for value in literals)
+            or len(set(literals)) != len(literals)
+            or any(
+                value not in case.get("transcript", "") or value not in case.get("expected", "")
+                for value in literals
+            )
+        ):
+            raise ValueError(
+                "Protected literals must be unique nonempty strings present in the input and expectation."
+            )
+
+
+def protected_literals_match(case, output):
+    literals = case.get("protected_literals", [])
+    return not literals or (
+        isinstance(output, str)
+        and all(output.count(value) == case["expected"].count(value) for value in literals)
+    )
+
+
+def quality_counts(rows, suite):
+    result = {
+        "n": len(rows),
+        "exact_matches": sum(row["matched"] for row in rows),
+        "failures": sum(row["failed"] for row in rows),
+        "fallbacks": sum(row["fallback"] for row in rows),
+    }
+    if suite == "vocabulary-correction":
+        result["preservation_mismatches"] = sum(
+            not row["matched"] and row["category"] not in {"correction", "identifier"}
+            for row in rows
+        )
+    return result
+
+
+def paired_comparisons(suite, expected, indexed):
+    modes = {
+        "text-rewrite": [("ordinary", "contextual")],
+        "context-correction": [("text", "references")],
+        "vocabulary-correction": [("text", "fullVocabulary"), ("text", "asrVocabulary")],
+    }
+    comparisons = []
+    for baseline, candidate in modes[suite]:
+        pairs = sorted(
+            (identifier, repetition)
+            for identifier, mode, repetition in expected
+            if mode == baseline and (identifier, candidate, repetition) in expected
+        )
+        if not pairs:
+            continue
+        counts = dict(
+            expected_pairs=len(pairs),
+            paired=0,
+            improved=0,
+            regressed=0,
+            both_matched=0,
+            neither_matched=0,
+            unrequested_pairs=0,
+            incomplete_pairs=0,
+        )
+        for identifier, repetition in pairs:
+            before = indexed.get((identifier, baseline, repetition))
+            after = indexed.get((identifier, candidate, repetition))
+            if before is None or after is None or before["attempted"] != after["attempted"]:
+                counts["incomplete_pairs"] += 1
+            elif not before["attempted"]:
+                counts["unrequested_pairs"] += 1
+            else:
+                counts["paired"] += 1
+                outcome = {
+                    (False, True): "improved",
+                    (True, False): "regressed",
+                    (True, True): "both_matched",
+                    (False, False): "neither_matched",
+                }
+                counts[outcome[before["matched"], after["matched"]]] += 1
+        comparisons.append(dict(baseline_mode=baseline, candidate_mode=candidate, **counts))
+    return comparisons
+
+
 def reports(suite, raw, cases, identity, runner_succeeded):
     body = raw.get("observations", [])
     observations = body if isinstance(body, list) else body["observations"]
-    values: list[Observation] = []
+    expected = expected_observations(suite, cases)
+    by_id = {case["id"]: case for case in cases}
+    # Only the repository's public category names may become uploaded summary keys.
+    fixed_cases = json.loads((ROOT / "Evals" / SUITES[suite][0] / "cases.json").read_text())
+    categories = {case["category"] for case in fixed_cases}
+    grouped: dict[tuple[str, str, int], list[Observation]] = {}
     for row in observations:
+        identifier = row.get("sampleID" if suite == "text-rewrite" else "id")
         if suite == "text-rewrite":
-            identifier, mode = row["sampleID"], "contextual" if row["contextual"] else "ordinary"
-            matched = row["matchesExpectedContent"]
-        else:
-            identifier, mode = row["id"], row["mode"]
-            matched = (
-                row["exactMatch"] if suite == "vocabulary-correction" else row["exactContentMatch"]
+            contextual = row.get("contextual")
+            mode = (
+                ("contextual" if contextual else "ordinary") if type(contextual) is bool else None
             )
+        else:
+            mode = row.get("mode")
+        repetition = row.get("repetition", 1)
+        if (
+            not isinstance(identifier, str)
+            or not isinstance(mode, str)
+            or type(repetition) is not int
+        ):
+            continue
+        key = identifier, mode, repetition
+        if key not in expected:
+            continue
+        matched = (
+            row["matchesExpectedContent"]
+            if suite == "text-rewrite"
+            else row["exactMatch" if suite == "vocabulary-correction" else "exactContentMatch"]
+        )
+        failed = row.get("failed", False)
+        fallback = row.get("fallback", row.get("fellBack", False))
+        attempted = row.get("attemptedRequest", True)
+        if any(type(value) is not bool for value in (matched, failed, fallback, attempted)):
+            raise ValueError("Invalid provider observation flags.")
         elapsed = row["elapsedMilliseconds"]
         if type(elapsed) not in (int, float) or not math.isfinite(elapsed) or elapsed < 0:
             raise ValueError("Invalid provider timing.")
-        values.append(
-            {
-                "key": (identifier, mode, row.get("repetition", 1)),
-                "mode": mode,
-                "matched": matched,
-                "failed": row.get("failed", False),
-                "fallback": row.get("fallback", row.get("fellBack", False)),
-                "attempted": row.get("attemptedRequest", True),
-                "elapsed": elapsed,
-                "category": row.get("category"),
-            }
-        )
-    expected = expected_observations(suite, cases)
-    complete = len(values) == len(expected) and {row["key"] for row in values} == expected
-    quality, performance = {}, {}
-    for mode in sorted({row["mode"] for row in values}):
+        case = by_id[identifier]
+        if suite == "text-rewrite":
+            matched = matched and protected_literals_match(case, row.get("output"))
+        category = case.get("category")
+        value: Observation = {
+            "mode": mode,
+            "matched": matched and not failed,
+            "failed": failed,
+            "fallback": fallback,
+            "attempted": attempted,
+            "elapsed": elapsed,
+            "category": category if category in categories else "other",
+        }
+        grouped.setdefault(key, []).append(value)
+    # An ambiguous coordinate contributes no score or timing, even if its rows agree.
+    indexed = {key: rows[0] for key, rows in grouped.items() if len(rows) == 1}
+    values = list(indexed.values())
+    paired = paired_comparisons(suite, expected, indexed)
+    complete = (
+        len(observations) == len(expected)
+        and set(indexed) == expected
+        and not any(pair["incomplete_pairs"] for pair in paired)
+    )
+    quality, by_category, performance = {}, {}, {}
+    for mode in sorted({mode for _, mode, _ in expected}):
         group = [row for row in values if row["mode"] == mode]
         # The vocabulary suite's established counts exclude empty, unrequested input.
         scored = (
@@ -129,28 +253,21 @@ def reports(suite, raw, cases, identity, runner_succeeded):
             if suite == "vocabulary-correction"
             else group
         )
-        quality[mode] = {
-            "n": len(scored),
-            "exact_matches": sum(row["matched"] for row in scored),
-            "failures": sum(row["failed"] for row in scored),
-            "fallbacks": sum(row["fallback"] for row in scored),
+        quality[mode] = quality_counts(scored, suite)
+        by_category[mode] = {
+            category: quality_counts([row for row in scored if row["category"] == category], suite)
+            for category in sorted({row["category"] for row in scored})
         }
-        if suite == "vocabulary-correction":
-            quality[mode]["preservation_mismatches"] = sum(
-                not row["matched"] and row["category"] not in {"correction", "identifier"}
-                for row in scored
-            )
         timings = sorted(row["elapsed"] for row in group if row["attempted"])
         performance[mode] = {
             "n": len(timings),
             "p50_ms": timings[math.ceil(len(timings) * 0.5) - 1] if timings else None,
             "p95_ms": timings[math.ceil(len(timings) * 0.95) - 1] if timings else None,
         }
-    failed = any(
-        row["failed"] or (suite == "text-rewrite" and not row["matched"]) for row in values
-    )
+    known_failure = any(row["failed"] for rows in grouped.values() for row in rows)
+    failed = known_failure or any(suite == "text-rewrite" and not row["matched"] for row in values)
     incomplete = [] if complete else ["incomplete_observations"]
-    if not runner_succeeded and not failed:
+    if not runner_succeeded:
         incomplete.append("runner_failed")
     decision = (
         "fail"
@@ -168,7 +285,7 @@ def reports(suite, raw, cases, identity, runner_succeeded):
         model=raw.get("model"),
         provider_fingerprint=raw.get("providerFingerprint"),
         expected_observations=len(expected),
-        observations=len(values),
+        observations=len(observations),
         run_status="incomplete" if incomplete else "completed",
     )
     quality_report = dict(
@@ -176,13 +293,14 @@ def reports(suite, raw, cases, identity, runner_succeeded):
         kind="quality",
         decision=decision,
         quality=quality,
+        quality_by_category=by_category,
+        paired_comparisons=paired,
         incomplete=incomplete,
         policy="all_expected_content_matches" if suite == "text-rewrite" else "report_only",
     )
     if suite == "vocabulary-correction":
-        quality_report["skipped_asr_comparisons"] = (
-            body.get("skippedASRComparisons", []) if isinstance(body, dict) else []
-        )
+        eligible = {identifier for identifier, mode, _ in expected if mode == "asrVocabulary"}
+        quality_report["skipped_asr_comparison_count"] = len(cases) - len(eligible)
     performance_report = dict(
         common,
         kind="performance",
@@ -201,8 +319,7 @@ def run_llm(suite, output):
         raise ValueError("Missing evaluation configuration: " + ", ".join(missing))
     corpus = corpus_path(suite, environment)
     cases = json.loads(corpus.read_text())
-    if not cases or len({case["id"] for case in cases}) != len(cases):
-        raise ValueError("Evaluation cases must be nonempty and have unique IDs.")
+    validate_cases(cases)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.mkdir(mode=0o700)
     identity = {

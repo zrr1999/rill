@@ -39,6 +39,7 @@ public enum AppSettingKey: String, Codable, Sendable, Equatable {
   case openAIAPIKey = "provider.openai.api-key"
   case openAIBaseURL = "provider.openai.base-url"
   case openAIModel = "provider.openai.model"
+  // Retired connection identities are retained as opaque stored data; no service reads them.
   case intelligentAPIKey = "provider.intelligent.api-key"
   case intelligentBaseURL = "provider.intelligent.base-url"
   case intelligentModel = "provider.intelligent.model"
@@ -56,6 +57,7 @@ public enum AppSettingKey: String, Codable, Sendable, Equatable {
   case localHistoryMaintenanceState = "history.local-maintenance-state"
   case failedAudioRecoveryEnabled = "audio.failed-recovery-enabled"
   case corpusRecordingArchiveEnabled = "audio.benchmark-archive-enabled"
+  // Retired output preference; workflow companion files own output choices.
   case builtinPushToTalkOutputMode = "workflow.builtin-push-to-talk.output-mode"
   case longRecordingModeEnabled = "recording.long-mode-enabled"
   case recordingDurationLimit = "recording.duration-limit"
@@ -221,15 +223,6 @@ public struct LocalSpeechModelDescriptor: Identifiable, Equatable, Sendable {
     self.approximateDownloadByteCount = approximateDownloadByteCount
     self.conservativeRuntimePeakByteCount = conservativeRuntimePeakByteCount
   }
-}
-
-public enum BuiltinPushToTalkOutputMode: String, Codable, CaseIterable, Identifiable, Sendable,
-  Equatable
-{
-  case pasteIntoApp = "inject"
-  case saveToVoiceGroup = "voice-group"
-
-  public var id: String { rawValue }
 }
 
 public struct LocalSpeechSettings: Codable, Sendable, Equatable {

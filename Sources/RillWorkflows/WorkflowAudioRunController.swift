@@ -151,7 +151,7 @@ public actor WorkflowAudioRunController {
         suppliedTriggerEvent.binding == binding,
         suppliedTriggerEvent.workflowID == workflow.id
       else {
-        throw SessionCoordinator.SessionError.unsupportedWorkflow(.invalidEventType)
+        throw SessionCoordinator.SessionError.unsupportedWorkflow(.invalidConfiguration)
       }
     }
     let runID = suppliedTriggerEvent?.id ?? UUID()
