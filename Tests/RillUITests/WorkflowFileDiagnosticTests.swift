@@ -84,11 +84,11 @@ final class WorkflowFileDiagnosticTests: XCTestCase {
     let fileIssue = WorkflowFileIssue(filename: "invalid.toml", message: "Invalid file", workflowID: invalid.id)
     let files = UITestWorkflowFileStore(
       records: [.init(workflow: workflow, isEnabled: true, fileURL: file)], issues: [warning, fileIssue], configurationDirectoryURL: directory)
-    let settings = UITestSettingsStore(storage: [.workflowEnabledStates: "{invalid-json"])
+    let settings = UITestSettingsStore(unavailableKeys: [.workflowLibrary])
     let model = makeHarness(workflows: [], settingsStore: settings, workflowFileStore: files).model
     await model.waitForInitialVoiceConfiguration()
     XCTAssertEqual(model.workflowLibrary.workflowLibraryAvailability, .unavailable)
-    try await settings.setString("{}", forKey: .workflowEnabledStates)
+    await settings.setUnavailableKeys([])
     model.retryUnavailableStoredSettingsDomains()
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while model.workflowLibrary.workflowLibraryAvailability != .available && ContinuousClock.now < deadline { await Task.yield() }
