@@ -152,7 +152,7 @@ public struct SettingsView: View {
   ) {
     self.model = model
     self.pane = pane
-    _expandedSettingsSections = State(initialValue: Set(pane.sections))
+    _expandedSettingsSections = State(initialValue: pane == .models ? [] : Set(pane.sections))
     self.privacyNoticeDocument = privacyNoticeDocument
     let wakeWordSettings = model.wakeWordSettingsSnapshot
     _wakePhrasesText = State(
@@ -177,13 +177,10 @@ public struct SettingsView: View {
           Section { voiceAssistantResourcesSection }
           Section { recordPanelSection }
           if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
-        case .asr:
+        case .models:
           Section { speechEngineSection }
-        case .decision:
           Section { decisionProviderSettingsSection }
-        case .llm:
           Section { llmProviderSettingsSection }
-        case .tts:
           Section { ttsServiceSettingsSection }
         case .vocabulary:
           Section {

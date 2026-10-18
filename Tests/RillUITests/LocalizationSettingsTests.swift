@@ -53,6 +53,19 @@ final class LocalizationSettingsTests: XCTestCase {
     )
   }
 
+  func testServiceTitlesUseOnlyTheSelectedLanguage() {
+    let titles: [(SettingsSection, String, String)] = [
+      (.speech, "Speech Recognition", "语音识别"),
+      (.decision, "Classification & Scoring", "分类与评分"),
+      (.llm, "Language Model", "语言模型"),
+      (.tts, "Speech Synthesis", "语音合成"),
+    ]
+    for (section, english, chinese) in titles {
+      XCTAssertEqual(section.title(language: .english), english)
+      XCTAssertEqual(section.title(language: .simplifiedChinese), chinese)
+    }
+  }
+
   func testWakeWordAndReadinessHelpersMatchMigratedCopy() {
     XCTAssertEqual(
       L10n.settingsResourceDownloadTitle("local ASR", language: .english),

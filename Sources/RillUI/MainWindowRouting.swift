@@ -109,16 +109,13 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
-  case general, input, asr, decision, llm, tts, vocabulary, privacy, data
+  case general, input, models, vocabulary, privacy, data
   public var id: String { rawValue }
   var sections: [SettingsSection] {
     switch self {
     case .general: [.language]
     case .input: [.input, .voiceAssistant, .recordPanel]
-    case .asr: [.speech]
-    case .decision: [.decision]
-    case .llm: [.llm]
-    case .tts: [.tts]
+    case .models: [.speech, .decision, .llm, .tts]
     case .vocabulary: [.vocabulary, .contextMemory]
     case .privacy: [.permissions, .privacy]
     case .data: [.storage, .diagnostics]
@@ -126,10 +123,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
   }
   func title(language: AppLanguage) -> String {
     switch self {
-    case .asr: L10n.resource("models.service.asr").string(for: language)
-    case .decision: L10n.resource("models.service.decision").string(for: language)
-    case .llm: L10n.resource("models.service.llm").string(for: language)
-    case .tts: L10n.resource("models.service.tts").string(for: language)
+    case .models: L10n.workspace(.modelServices, language: language)
     case .general: L10n.workspace(.general, language: language)
     case .input: L10n.workspace(.input, language: language)
     case .vocabulary: L10n.workspace(.vocabularyMemory, language: language)
@@ -145,10 +139,7 @@ extension SettingsSection {
     switch self {
     case .language: .general
     case .input, .recordPanel, .voiceAssistant: .input
-    case .speech: .asr
-    case .decision: .decision
-    case .llm: .llm
-    case .tts: .tts
+    case .speech, .decision, .llm, .tts: .models
     case .vocabulary, .contextMemory: .vocabulary
     case .permissions, .privacy: .privacy
     case .storage, .diagnostics: .data

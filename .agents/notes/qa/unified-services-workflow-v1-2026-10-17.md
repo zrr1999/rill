@@ -65,3 +65,15 @@
 - 桌面仍可由电脑控制工具正常读取。按“词库窗口 → 输出开关”稳定复现，诊断发现测试主动切换 XCTest 宿主的 activation policy 后，前一窗口关闭使宿主从 active 变为 inactive；后一普通面板可见且可成为 key，却未取得焦点。
 - 删除测试对宿主 activation policy 的修改，保留外部 AX 所需的 `finishLaunching()`，并让输出开关用例独立初始化 AppKit。四类服务、词库窗口和输出开关三个用例按原顺序通过。临时诊断输出已移除；未修改先决探针、超时或任何焦点/AX 断言。
 - `just test-desktop` 完整 9 个用例通过，包含四类服务隔离、词库确认、输出开关与真实面板焦点。完整预检继续在修复后的提交验证，以 PR 最终 head 的实际结果为准。此修复仅影响测试宿主，服务页面与实拍中的产品代码不变。
+
+
+## 2026-10-18：单个模型服务入口与单语言模块
+
+- 用户明确侧栏只保留一个“模型服务”，页面内分为语音识别、分类与评分、语言模型和语音合成四个模块；上文的四个独立侧栏页面已被此决定替代。模块标题只使用当前界面语言，不并列英文缩写或译名。设置回到六个页面，服务深链仍保留四个独立目标。
+- 模型服务首次进入显示四个折叠模块，深链展开并定位目标，切换页面继续保留草稿和展开状态；隐藏页面维持原有点击与辅助功能隔离。DESIGN.md、UI 方向、位置参考、用户指南和验收清单同步更新。
+- 导航、焦点与本地化定向测试 69 项通过；中英文、明暗、960×720 和 760×640 的概览与四个展开模块共 40 张受控渲染通过。完整 `just test-desktop` 的 9 个用例通过，覆盖单入口、四个模块、深链展开及离开后的 AX 隔离；折叠操作使用实际聚焦的模块和空格键，与运行中 App 的键盘观察一致。AX 树检查不视为实际 VoiceOver 验收。
+- 使用仓库包装器构建 Release 测试副本，父提交 `d8099fae1efc1fe969f8842fd15c91dd9fd322da`，包含本次 UI 修正。构建回执源码指纹 `e99626f3ad08a6f6a6d8fc043671159daf15aee7cc99d767dfa7b3af379b6a20`；签名后 App 可执行文件 SHA-256 为 `1f8abcc6e3e394cfba63d4cf1481719ebf67447b2189f2249083d60af45a0e4f`。此后仅调整测试的交互方式与证据文件，产品代码未改变。
+- macOS 27.0.1（26A434）/ Apple Silicon；测试副本沿用既有本机开发签名，未安装。独立 SQLite、模型缓存和 XDG 文件实际位于 `.artifacts/model-services-modules-native/profile/`。未修改钥匙串凭据或系统授权，未调用云端验证。
+- 实际逐项展开四个模块，以空格收起；中英文切换后仍为同一侧栏入口。助手配置按钮进入同页语言模型模块，⌘[ 返回工作区。关闭直接输入输出后，设置与工作流详情均显示关闭，保存记录继续启用且不可关闭。
+- 六张原始完整窗口实拍位于 `.github/pr-screenshots/workflow-v1/`：`settings-model-services-zh.jpg`、`settings-model-services-en.jpg`、`settings-model-services-llm-zh.jpg`、`settings-model-services-tts-en.jpg`、`settings-output-choices-zh.jpg` 与 `workflow-detail-zh.jpg`。保留工具返回的原始 JPEG 字节（2582×1708），不裁切、不拼接、不编辑；旧的四页截图已移除。
+- 测试副本与 worker 已退出，原安装版已恢复至原模型设置页，进程核对只剩 `/Applications/Rill.app`。物理 Fn、中文 IME、跨应用投递、实际 VoiceOver 与可听 TTS 仍需人工验收；本地完整预检和托管质量结果按最终 PR head 记录。

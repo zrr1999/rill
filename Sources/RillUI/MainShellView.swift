@@ -497,13 +497,7 @@ extension MainShellView {
         .accessibilityIdentifier("settings.back")
       }
       Section {
-        settingsPaneRows([.general, .input])
-      }
-      Section(L10n.workspace(.modelServices, language: model.settings.language)) {
-        settingsPaneRows([.asr, .decision, .llm, .tts])
-      }
-      Section {
-        settingsPaneRows([.vocabulary, .privacy, .data])
+        settingsPaneRows(SettingsPane.allCases)
       }
     }
     .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)

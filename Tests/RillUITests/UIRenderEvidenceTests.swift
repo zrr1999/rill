@@ -358,12 +358,16 @@ final class UIRenderEvidenceTests: XCTestCase {
     for language in AppLanguage.allCases {
       model.setInterfaceLanguage(language)
       for dark in [false, true] {
-        for pane in [SettingsPane.asr, .decision, .llm, .tts] {
-          model.selectedSettingsPane = pane
-          model.presentSettings()
-          try await render(
-            MainShellView(model: model), size: NSSize(width: 960, height: 720),
-            dark: dark, to: output.appendingPathComponent("model-service-\(pane.rawValue)-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+        for size in [NSSize(width: 960, height: 720), NSSize(width: 760, height: 640)] {
+          for section in [nil, SettingsSection.speech, .decision, .llm, .tts] {
+            model.selectedSettingsPane = .models
+            model.presentSettings()
+            if let section { model.showSettings(section) }
+            let name = section?.rawValue ?? "overview"
+            try await render(
+              MainShellView(model: model), size: size,
+              dark: dark, to: output.appendingPathComponent("model-services-\(name)-\(Int(size.width))-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+          }
         }
       }
     }

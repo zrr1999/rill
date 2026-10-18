@@ -59,7 +59,7 @@ final class UnifiedWorkspaceTests: XCTestCase {
     let model = makeHarness().model
     for item in SettingsItem.allCases {
       model.showSettings(.privacy, item: item)
-      XCTAssertEqual(model.selectedSettingsPane, .decision)
+      XCTAssertEqual(model.selectedSettingsPane, .models)
       XCTAssertEqual(model.settingsNavigationRequest?.section, .decision)
       XCTAssertEqual(model.settingsNavigationRequest?.item, item)
     }

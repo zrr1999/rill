@@ -29,14 +29,14 @@ final class GlobalSearchIndexTests: XCTestCase {
     )
   }
 
-  func testSpeechServiceUsesTheASRLabel() {
+  func testSpeechServiceUsesLocalizedLabelsAndKeepsASRSearchTerms() {
     XCTAssertEqual(
       SettingsSection.speech.title(language: .english),
-      "Speech Recognition · ASR"
+      "Speech Recognition"
     )
     XCTAssertEqual(
       SettingsSection.speech.title(language: .simplifiedChinese),
-      "语音识别 · ASR"
+      "语音识别"
     )
     XCTAssertFalse(SettingsSection.speech.searchKeywords.contains("tts"))
     XCTAssertTrue(SettingsSection.tts.searchKeywords.contains("tts"))

@@ -1445,7 +1445,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     XCTAssertFalse(harness.model.isShowingSettings)
     XCTAssertEqual(harness.model.selectedSidebarSection, .records)
     XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
-    XCTAssertEqual(harness.model.selectedSettingsPane, .asr)
+    XCTAssertEqual(harness.model.selectedSettingsPane, .models)
     let sidebar = try XCTUnwrap(sidebarTable(in: window))
     XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
   }
@@ -1524,7 +1524,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     harness.model.showRunHistory()
     XCTAssertFalse(harness.model.isShowingSettings)
     XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
-    XCTAssertEqual(harness.model.selectedSettingsPane, .asr)
+    XCTAssertEqual(harness.model.selectedSettingsPane, .models)
   }
 
   func testDismissSettingsDropsComparisonReturnButResumeStillWorksBeforeDismiss() {

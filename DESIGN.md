@@ -202,11 +202,15 @@ insets and the native editor's padding, remain local to their owners.
 | Pending strip | Fixed capsule, separate from the page; drag, hover, accessible open, and close | [RecordPanelCapsuleView](Sources/RillUI/RecordPanelCapsuleView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
-Settings has General and Input, a Model services group with four peer pages
-(ASR, Decision, LLM, and TTS), then Vocabulary & Memory, Privacy, and Data.
-Input owns Fn, wake listening, and panel shortcuts; service pages own their
-connection or local model resources. They replace the main sidebar until Back. The selected pane
-is the window subtitle; mounted hidden panes preserve drafts while remaining
+Settings has six sidebar pages: General, Input, Model services, Vocabulary &
+Memory, Privacy, and Data. Model services contains four expandable modules:
+speech recognition, classification and scoring, language model, and speech
+synthesis. Their titles follow the interface language without bilingual suffixes.
+The initial overview shows all four modules collapsed; a service deep link expands
+and focuses its module. Input owns Fn, wake listening, and panel shortcuts; each
+service owns its connection or local model resources. Settings replaces the main
+sidebar until Back. The selected pane is the window subtitle; mounted hidden
+panes preserve drafts while remaining
 outside hit testing and accessibility navigation.
 
 Main-window navigation keeps All Records, Activity, and Workflows in one top
@@ -318,8 +322,8 @@ be off. Each choice is stored in the workflow's adjacent state file and reports
 conflicts without discarding external edits. Explicit new-item and draft dictation
 use dedicated workflow declarations with a single Record destination.
 
-The Model services sidebar group opens independent ASR, Decision, LLM and TTS
-pages. Model identifiers, resources and residency stay inside their owning service. Workflows
+The single Model services sidebar page groups four service modules. Model
+identifiers, resources and residency stay inside their owning module. Workflows
 show their tasks and reasoning levels without connection or credential controls.
 The item list uses `.listStyle(.inset)` with native selection colors. See
 [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift).
