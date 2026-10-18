@@ -36,7 +36,7 @@ DEPENDENCIES = {
 
 FOUNDATION_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin"}
 SYSTEM_IMPORTS = {
-    "RillCore": FOUNDATION_IMPORTS,
+    "RillCore": FOUNDATION_IMPORTS | {"Synchronization"},
     "RillTestSupport": FOUNDATION_IMPORTS | {"AppKit", "XCTest"},
     "RillDomainTestSupport": FOUNDATION_IMPORTS,
     "RillSpeechContracts": FOUNDATION_IMPORTS,
