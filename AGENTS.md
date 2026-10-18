@@ -9,6 +9,14 @@ indexed by `.agents/notes/README.md`; read them on demand and never treat them a
 current truth. Formal docs (`docs/`, README, CONTRIBUTING, site pages) must not
 reference notes; only AGENTS.md, skills, and the notes index may point to them.
 
+## Repository layout
+
+- Preserve the existing repository layout. Do not add new tracked directories,
+  including under `.github/`, without the user's explicit request or approval.
+- Do not commit PR screenshots, screen recordings, or temporary acceptance
+  artifacts. Attach media to the PR and keep local evidence in the ignored
+  `.artifacts/` directory.
+
 ## Delivery and reporting
 
 - Wait until every check for the current head commit has finished before
