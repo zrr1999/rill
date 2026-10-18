@@ -37,9 +37,9 @@ final class WorkflowDirectoryObserver {
         (try? FileManager.default.contentsOfDirectory(
           at: directory, includingPropertiesForKeys: nil, options: .skipsHiddenFiles))
         ?? []
-      urls += children.filter { $0.pathExtension.lowercased() == "toml" }.sorted {
+      urls += children.filter { $0.pathExtension.lowercased() == "toml" || $0.lastPathComponent.hasSuffix(".state.json") }.sorted {
         $0.path < $1.path
-      }.prefix(XDGWorkflowFileStore.maximumFileCount)
+      }.prefix(XDGWorkflowFileStore.maximumFileCount * 2)
     }
     for url in urls {
       let descriptor = open(url.path, O_EVTONLY | O_NOFOLLOW)

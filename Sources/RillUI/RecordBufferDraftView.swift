@@ -5,7 +5,6 @@ public struct RecordBufferDraftView: View {
   @Bindable private var model: RecordBufferDraftModel
   @Bindable private var voice: VoiceRunModel
   @Bindable private var settings: SettingsPersistenceModel
-  private let setVoiceCollection: (Bool) -> Void
   private let setClipboardCollection: (Bool) -> Void
   private let onFinishEditing: () -> Void
   private let copyText: (String) -> Void
@@ -23,9 +22,6 @@ public struct RecordBufferDraftView: View {
     self.settings = model.settings
     self.onFinishEditing = onFinishEditing
     copyText = { [weak model] in model?.copyTextToClipboard($0) }
-    setVoiceCollection = { [weak model] enabled in
-      model?.setBuiltinPushToTalkOutputMode(enabled ? .saveToVoiceGroup : .pasteIntoApp)
-    }
     setClipboardCollection = { [weak model] enabled in
       model?.setSystemClipboardCaptureEnabled(enabled)
     }
@@ -180,15 +176,6 @@ public struct RecordBufferDraftView: View {
   private var collectionControls: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 24) {
-        Toggle(
-          text(.collectVoiceInDrafts),
-          isOn: Binding(
-            get: { settings.builtinPushToTalkOutputMode == .saveToVoiceGroup },
-            set: { setVoiceCollection($0) })
-        )
-        .disabled(!settings.canMutateScalarSettings(in: .input))
-        .help(text(.whenOffFnDictationTypes))
-        .accessibilityIdentifier("record-buffer.collect-voice")
         Toggle(
           text(.collectClipboardInDrafts),
           isOn: Binding(

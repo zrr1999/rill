@@ -56,12 +56,18 @@ struct VocabularyCorrectionEvaluationTests {
     let key = try #require(environment["DEEPSEEK_API_KEY"].flatMap { $0.isEmpty ? nil : $0 }, "Supply DEEPSEEK_API_KEY in the process environment")
     let settings = OpenAISettings(apiKey: key, baseURL: LLMTextProcessing.deepSeekBaseURL, model: LLMTextProcessing.deepSeekModel)
     let grant = ContextReferenceAuthorization(providerFingerprint: ContextProviderIdentity.fingerprint(settings))
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings })
     let samples = try loadCases(path: environment["RILL_VOCABULARY_EVALUATION_CASES"])
     let workflow = WorkflowDefinition(
-      name: "Vocabulary evaluation", pipeline: .init(recognizerID: "fixture", outputActions: []),
+      name: "Vocabulary evaluation",
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "fixture")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
-    let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
+    let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt, reasoning: .some(.none))
     var observations: [Observation] = []
     let skipped = samples.filter { $0.asrEvidence?.isComplete != true }.map(\.id)
     for repetition in 1...3 {

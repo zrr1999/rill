@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import Foundation
@@ -60,6 +61,37 @@ private actor LeaseConfirmationProbe {
 }
 
 final class QueuedAudioAuthorizationLeaseTests: XCTestCase {
+  func testOptionalUnconfiguredLLMDoesNotChangeLocalAudioLeaseDestinations() async throws {
+    var workflow = makeCloudLeaseWorkflow()
+    workflow.plan.process.steps[workflow.plan.process.steps.count - 1].optional = true
+    let stepID = try XCTUnwrap(workflow.plan.process.steps.last?.id)
+    let models = LanguageModelSettingsSource()
+    var gate = makeLeaseGate()
+    gate.modelSnapshotProvider = { try models.snapshot(for: $0) }
+    let lease = try await issueLease(gate: gate, runID: UUID(), workflow: workflow)
+    let claim = try await lease.claim(triggerEvent: .init(binding: .hotkey, workflowID: workflow.id, sourceID: "optional-llm"))
+    let consumed = try await claim.finalize()
+    XCTAssertEqual(consumed.authorizedContext.modelSnapshot?.skippedStepIDs, [stepID])
+  }
+
+  func testLiveMonitorRetainsTheSkippedOptionalLLMBinding() async throws {
+    var workflow = makeCloudLeaseWorkflow()
+    workflow.plan.process.steps[workflow.plan.process.steps.count - 1].optional = true
+    let models = LanguageModelSettingsSource()
+    var gate = makeLeaseGate()
+    gate.modelSnapshotProvider = { try models.snapshot(for: $0) }
+    let context = makeLeaseContext()
+    let session = try await gate.issueLiveAudioSession(
+      runID: UUID(), privacyContextProvider: { context }, contextProvider: { _ in context },
+      recognitionOptionsProvider: { _, _ in .empty }, workflow: workflow,
+      revocationHandler: { _, _ in XCTFail("The skipped cloud task cannot revoke local capture.") })
+    try await session.startMonitoring()
+    models.update(.init(apiKey: "new-configuration"))
+    try await session.sealCapture()
+    XCTAssertTrue(session.audioLifetime.isActive)
+    await session.cancel()
+  }
+
   func testLeasePreservesIssuedRunAndWorkflowAndRejectsMismatchedTrigger() async throws {
     let runID = UUID()
     var workflow = makeLeaseWorkflow()
@@ -81,7 +113,7 @@ final class QueuedAudioAuthorizationLeaseTests: XCTestCase {
     let consumed = try await claim.finalize()
 
     XCTAssertEqual(consumed.runID, runID)
-    XCTAssertEqual(consumed.authorizedContext.workflow.pipeline.recognizerID, "sherpa-onnx.local")
+    XCTAssertEqual(consumed.authorizedContext.workflow.plan.setup.speechRoute?.recognizerID, "sherpa-onnx.local")
 
     let mismatchedLease = try await issueLease(
       gate: gate,
@@ -303,10 +335,7 @@ private func makeLeaseWorkflow() -> WorkflowDefinition {
   WorkflowDefinition(
     name: "Queued Lease",
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(
-      recognizerID: "sherpa-onnx.local",
-      outputActions: []
-    ),
+    plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local"),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }
@@ -314,7 +343,7 @@ private func makeLeaseWorkflow() -> WorkflowDefinition {
 private func makeCloudLeaseWorkflow() -> WorkflowDefinition {
   var workflow = makeLeaseWorkflow()
   workflow.plan.process.steps.removeAll { $0.kind.postProcessKind != nil }
-  workflow.plan.process.steps.append(WorkflowProcessStep(kind: .llmRewrite, prompt: "Rewrite"))
+  workflow.plan.process.steps.append(WorkflowProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none)))
   return workflow
 }
 

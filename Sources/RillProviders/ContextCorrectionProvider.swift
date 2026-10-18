@@ -217,13 +217,14 @@ public struct ContextCorrectionProvider: CorrectionContextSummarizing, MemoryCon
     try Task.checkCancellation()
     let settings = try await settingsProvider()
     try ContextProviderIdentity.validate(authorization, settings: settings)
+    try LanguageModelConfiguration(migrating: settings).validate(reasoning: .none)
     guard !settings.apiKey.isEmpty, image == nil || ContextProviderIdentity.supportsImages(settings) else {
       throw ContextCorrectionError.invalidReference
     }
     let request = OpenAIResponsesRequest(
       input: input, instructions: instructions, baseURL: settings.baseURL, model: settings.model,
       store: false, stream: false, maxOutputTokens: 4_096,
-      modelRole: .fast, temperature: 0.1,
+      reasoning: .none, temperature: 0.1,
       timeoutInterval: timeout, referenceImage: image, jsonOutput: true
     )
     try await onRequest()
