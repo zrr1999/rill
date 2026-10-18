@@ -46,6 +46,11 @@ just docs
 
 界面采用中文导航、系统字体和随系统切换的深浅主题。搜索由浏览器本地执行；
 Zensical 当前的搜索对话框仍使用英文，文档内容可用中文搜索。没有配置分析服务。
+站内链接使用即时导航，页面底部提供上一页/下一页；下载资源仍按普通链接打开。
+页面操作提供 GitHub 编辑、查看源文件和「复制为 Markdown」（按钮提示目前为英文）。
+内置 `llmstxt` 插件同时生成 `/llms.txt` 与逐页 Markdown。`project.plugins.llmstxt.sections`
+显式列出收录页面，路径失效时严格构建失败；增加使用说明或参考页时，同时加入 `nav` 和该列表。
+许可、第三方与数据来源清单（含输入法依赖）不收录，也不显示「复制为 Markdown」。
 
 ## 验证与交付
 
@@ -124,5 +129,5 @@ npx --yes --ignore-scripts wrangler@4.136.3 deploy           # 部署到正式�
 首次部署会按 `routes` 创建自定义域名；若目标已有 DNS 记录，先核对记录用途，
 不要覆盖其他服务。部署后确认 Cloudflare 中的源码分支与 commit，检查 HTTPS 首页、
 `/docs/usage/`、`/docs/records/`、搜索、`/docs/examples/conditional-workflow.toml`、
-`/docs/schemas/workflow-v2.schema.json` 和不存在路径的 404。
+`/docs/schemas/workflow-v1.schema.json` 和不存在路径的 404。
 PR 预览还应确认正式站点的部署版本未改变。

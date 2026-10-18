@@ -17,7 +17,7 @@ MIN_MACOS="26.0"
 OWN_RESOURCE_BUNDLE="RillMacOS_RillApp.bundle"
 UI_RESOURCE_BUNDLE="RillMacOS_RillUI.bundle"
 MLX_RESOURCE_BUNDLE="mlx-swift_Cmlx.bundle"
-WORKFLOW_MANIFEST="BuiltinWorkflowManifest.json"
+WORKFLOW_RESOURCES="RillMacOS_RillPlatform.bundle/Contents/Resources/BuiltinWorkflows"
 PROJECT_DOCUMENTS=("LICENSE" "README.md")
 THIRD_PARTY_NOTICES_NAME="THIRD_PARTY_NOTICES.md"
 LOCAL_MODEL_NOTICES_NAME="LOCAL_MODEL_NOTICES.md"
@@ -218,11 +218,14 @@ render_brand_assets() {
     --stylesheet "$temporary_directory/records.css" \
     "$source_dir/RillMenuBar.svg" \
     --output "$output_dir/RillMenuBarRecordsTemplate.pdf"
+  swift "$PROJECT_DIR/scripts/render_input_method_icon.swift" \
+    "$output_dir/RillMenuBarTemplate.pdf" "$source_dir/RillInputMethodTemplate.tiff"
   shasum -a 256 "$source_dir/Rill.svg" \
     "$source_dir/AppIcon-1024-routed-voice-cursor.png" \
     "$source_dir/RillMenuBar.svg" \
     "$output_dir/RillMenuBarTemplate.pdf" \
-    "$output_dir/RillMenuBarRecordsTemplate.pdf"
+    "$output_dir/RillMenuBarRecordsTemplate.pdf" \
+    "$source_dir/RillInputMethodTemplate.tiff"
   rm -rf "$temporary_directory"
 }
 
@@ -542,11 +545,10 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
     error "Packaged resource bundle differs from build output: $bundle_name"
 done
 
-MANIFEST_SOURCE="$BUILD_DIR/$OWN_RESOURCE_BUNDLE/Contents/Resources/$WORKFLOW_MANIFEST"
-MANIFEST_DESTINATION="$APP_BUNDLE/Contents/Resources/$OWN_RESOURCE_BUNDLE/Contents/Resources/$WORKFLOW_MANIFEST"
-[[ -f "$MANIFEST_SOURCE" ]] || error "Built-in workflow manifest not found: $MANIFEST_SOURCE"
-[[ -f "$MANIFEST_DESTINATION" ]] || error "Built-in workflow manifest was not packaged"
-cmp -s "$MANIFEST_SOURCE" "$MANIFEST_DESTINATION" || error "Packaged workflow manifest differs from build output"
+WORKFLOW_SOURCE="$BUILD_DIR/$WORKFLOW_RESOURCES"
+WORKFLOW_DESTINATION="$APP_BUNDLE/Contents/Resources/$WORKFLOW_RESOURCES"
+[[ -d "$WORKFLOW_SOURCE" && -d "$WORKFLOW_DESTINATION" ]] || error "Built-in workflow resources were not packaged"
+diff -qr "$WORKFLOW_SOURCE" "$WORKFLOW_DESTINATION" >/dev/null || error "Packaged workflow resources differ from build output"
 [[ -f "$THIRD_PARTY_NOTICES_DESTINATION" ]] || error "Third-party notices were not packaged"
 cmp -s "$THIRD_PARTY_NOTICES_SOURCE" "$THIRD_PARTY_NOTICES_DESTINATION" ||
   error "Packaged third-party notices differ from the reviewed source"
@@ -565,8 +567,7 @@ for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
     error "Packaged localized Info.plist strings differ from source: $localization"
 done
 
-uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --validate \
-  <"$MANIFEST_DESTINATION"
+"$APP_BUNDLE/Contents/MacOS/$APP_NAME" --validate-workflows "$WORKFLOW_DESTINATION"
 
 extract_app_intents_metadata() {
   local const_file list source_list dependency xcode_version

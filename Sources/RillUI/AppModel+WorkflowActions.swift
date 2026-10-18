@@ -6,8 +6,8 @@ import RillKnowledge
 import RillSpeech
 
 private enum WorkflowExecutionSupportIssue: Equatable {
-  case legacyClipboardAutomationUnsupported
-  case invalidEventType
+  case wrongExecutionSurface
+  case invalidConfiguration
   case plannedCapabilityUnavailable
   case missingProductionTransformer
   case unregisteredOutputAction(String)
@@ -84,23 +84,23 @@ extension AppModel {
 
   private func workflowLibraryIsReadyForMutation(reportingToEditor: Bool) -> Bool {
     guard !self.settings.isLoading else {
-      let message = L10n.runText(.workflowLibraryLoading, language: self.settings.language)
+      let message: (AppLanguage) -> String? = { L10n.runText(.workflowLibraryLoading, language: $0) }
       if reportingToEditor {
-        self.workflowLibrary.workflowEditorError = message
+        self.workflowLibrary.workflowEditorErrorPresentation = message
       } else {
-        self.workflowLibrary.workflowLibraryError = message
+        self.workflowLibrary.workflowLibraryErrorPresentation = message
       }
       return false
     }
     guard isWorkflowLibraryAvailable else {
       refreshUnavailableStoredSettingsDomainErrors()
       let message =
-        self.workflowLibrary.workflowLibraryError
-        ?? L10n.runText(.workflowLibraryUnavailable, language: self.settings.language)
+        self.workflowLibrary.workflowLibraryErrorPresentation
+        ?? { L10n.runText(.workflowLibraryUnavailable, language: $0) }
       if reportingToEditor {
-        self.workflowLibrary.workflowEditorError = message
+        self.workflowLibrary.workflowEditorErrorPresentation = message
       } else {
-        self.workflowLibrary.workflowLibraryError = message
+        self.workflowLibrary.workflowLibraryErrorPresentation = message
       }
       return false
     }
@@ -116,19 +116,24 @@ extension AppModel {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
     guard let workflow = self.workflowLibrary.workflows.first(where: { $0.id == workflowID }) else { return }
 
-    if isEnabled, let activationError = workflowEnablementError(for: workflow) {
-      self.workflowLibrary.workflowLibraryError = activationError
+    if isEnabled, let activationIssue = workflowExecutionSupportIssue(for: workflow) {
+      self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
+        guard let self else { return nil }
+        return self.workflowEnableError(for: activationIssue).string(for: language)
+      }
       return
     }
 
     if isEnabled {
       let conflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
       guard conflicts.isEmpty else {
-        self.workflowLibrary.workflowLibraryError = L10n.workflowEnableConflict(
-          trigger: workflow.trigger,
-          names: conflicts.map { localizedWorkflowName(for: $0) },
-          language: self.settings.language
-        )
+        self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+          return L10n.workflowEnableConflict(
+            trigger: workflow.trigger,
+            names: conflicts.map { L10n.workflowName($0.presentation, language: language) },
+            language: language
+          )
+        }
         return
       }
     }
@@ -143,20 +148,21 @@ extension AppModel {
         changes[candidate.id] = false
       }
     }
-    self.workflowLibrary.workflowLibraryError = nil
+    self.workflowLibrary.workflowLibraryErrorPresentation = nil
     if persistWorkflowFileEnabledStates(changes) { return }
-    self.workflowLibrary.workflowEnabledStates.merge(changes) { _, new in new }
-    updateWorkflowTriggerConflicts()
-    persistWorkflowEnabledStates()
-    workflowLibraryChangedAction()
+    self.workflowLibrary.workflowLibraryErrorPresentation = { language in L10n.resource("run.workflowLibraryUnavailable").string(for: language) }
   }
 
-  private func persistWorkflowFileEnabledStates(_ changes: [UUID: Bool]) -> Bool {
+  func persistWorkflowFileEnabledStates(_ changes: [UUID: Bool]) -> Bool {
     guard let workflowFileStore else { return false }
-    let records = self.workflowLibrary.customWorkflows.compactMap { workflow -> (WorkflowDefinition, Bool, URL?, String?)? in
+    let records = self.workflowLibrary.workflows.compactMap { workflow -> (WorkflowDefinition, Bool, URL?, String?)? in
       guard let enabled = changes[workflow.id] else { return nil }
+      var declaration = workflow
+      declaration.name = localizedWorkflowName(for: workflow)
+      declaration.titleKey = nil
+      declaration.properties.isBuiltin = false
       return (
-        workflow,
+        declaration,
         enabled,
         self.workflowLibrary.workflowFileURLsByID[workflow.id],
         self.workflowLibrary.workflowFileSourcesByID[workflow.id]
@@ -168,7 +174,7 @@ extension AppModel {
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
       defer { self.workflowLibrary.isUpdatingWorkflowEnabledStates = false }
-      // Persist deactivations first so a reload cannot enable both Fn self.workflowLibrary.workflows.
+      // Persist deactivations first so a reload cannot enable both Fn workflows.
       for (workflow, isEnabled, existingURL, source) in records.sorted(by: { !$0.1 && $1.1 }) {
         do {
           let record = try await workflowFileStore.saveDocument(
@@ -180,16 +186,17 @@ extension AppModel {
           self.workflowLibrary.workflowFileSourcesByID[workflow.id] = record.source
         } catch {
           await self.reloadWorkflowFiles()
-          self.workflowLibrary.workflowLibraryError = String(
-            format: L10n.runText(.workflowTOMLStateSaveFailedFormat, language: self.settings.language),
-            error.localizedDescription
-          )
+          self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+            return String(
+              format: L10n.runText(.workflowTOMLStateSaveFailedFormat, language: language),
+              L10n.workflowFileFailureDetail(error, language: language)
+            )
+          }
           return
         }
       }
       // Commit built-in selection only after every file change has succeeded.
       self.workflowLibrary.workflowEnabledStates.merge(changes) { _, new in new }
-      self.persistWorkflowEnabledStates()
       await self.reloadWorkflowFiles()
     }
     persistenceWrites.track(task)
@@ -204,9 +211,10 @@ extension AppModel {
           && isWorkflowExecutionSupported(workflow)
           && (self.workflowLibrary.workflowConflictIDsByWorkflowID[workflow.id]?.isEmpty ?? true)
       }
-      .compactMap { workflow in
-        resolvedWorkflowForExecution(workflow, trigger: trigger)
-      }
+  }
+
+  public func executionWorkflows(for trigger: TriggerBinding) -> [WorkflowDefinition] {
+    enabledWorkflows(for: trigger).compactMap { resolvedWorkflowForExecution($0, trigger: trigger) }
   }
 
   public func conflictingWorkflows(for workflow: WorkflowDefinition) -> [WorkflowDefinition] {
@@ -261,7 +269,7 @@ extension AppModel {
       refreshUnavailableStoredSettingsDomainErrors()
       return
     }
-    self.workflowLibrary.workflowLibraryError = nil
+    self.workflowLibrary.workflowLibraryErrorPresentation = nil
     selectTrustedLocalSpeechModel(modelIdentifier)
   }
 
@@ -292,8 +300,9 @@ extension AppModel {
   ) -> String {
     let category: String =
       switch descriptor.category {
-      case .performance: L10n.resource("AppModel.WorkflowActions.Performance").string(for: self.settings.language)
       case .intelligent: L10n.resource("AppModel.WorkflowActions.Intelligent").string(for: self.settings.language)
+      case .performance: L10n.resource("AppModel.WorkflowActions.Performance").string(for: self.settings.language)
+
       case .multilingual: L10n.resource("AppModel.WorkflowActions.Multilingual").string(for: self.settings.language)
       }
     let capacity: String
@@ -378,10 +387,9 @@ extension AppModel {
   }
 
   public func dictateToBuffer(_ input: BufferSpeechInput) {
-    guard
-      let workflow = workflowLibrary.workflows.first(where: {
-        $0.usesBuiltinPushToTalkOutputRouting(initiatedBy: .hotkey) && isWorkflowEnabled($0)
-      })
+    let title: WorkflowTitleKey = input.draftIntent == nil ? .bufferDictation : .bufferDraftDictation
+    guard let id = workflowLibrary.builtInWorkflows.first(where: { $0.titleKey == title })?.id,
+      let workflow = workflowLibrary.workflows.first(where: { $0.id == id && isWorkflowEnabled($0) })
     else {
       recordWorkspace.buffers.editor.reportRecordingFailure()
       return
@@ -396,6 +404,10 @@ extension AppModel {
 
   public func runWorkflow(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding, bufferInput: BufferSpeechInput? = nil) {
     guard !hasBegunApplicationShutdown, !self.settings.isLoading else { return }
+    guard workflow.inputKind != .record else {
+      lastFailureResource = L10n.resource("workflow.record-input.required")
+      return
+    }
     if isRecordingWorkflowAudioRun(for: workflow) {
       finishCapturedAudioWorkflowRun(for: workflow)
       return
@@ -406,12 +418,12 @@ extension AppModel {
       for: workflow,
       includeRuntimeAvailability: true
     ) {
-      lastFailure = workflowRunError(for: issue).string(for: self.settings.language)
+      lastFailureResource = workflowRunError(for: issue)
       append(workflowRunError(for: issue))
       return
     }
     guard isWorkflowEnabled(workflow) else {
-      lastFailure = L10n.runText(.runWorkflowDisabledNotice, language: self.settings.language)
+      lastFailureResource = L10n.resource("run.runWorkflowDisabledNotice")
       append(
         L10n.resource("run.runWorkflowDisabledNotice")
       )
@@ -420,7 +432,7 @@ extension AppModel {
     if workflow.prefersAutomaticRecognizerSelection,
       settings.hasUnavailableScalarSettings(in: .speechRoute)
     {
-      lastFailure = L10n.runText(.speechRoutingSettingsUnavailable, language: self.settings.language)
+      lastFailureResource = L10n.resource("run.speechRoutingSettingsUnavailable")
       append(
         L10n.resource("run.speechRoutingSettingsUnavailable")
       )
@@ -428,23 +440,16 @@ extension AppModel {
     }
 
     guard
-      var workflowForExecution = resolvedWorkflowForExecution(
+      let workflowForExecution = resolvedWorkflowForExecution(
         workflow,
         trigger: binding
       )
     else {
-      lastFailure = L10n.runText(.workflowRoutingUnresolvable, language: self.settings.language)
+      lastFailureResource = L10n.resource("run.workflowRoutingUnresolvable")
       append(
         L10n.resource("run.workflowRoutingUnresolvable")
       )
       return
-    }
-    if let bufferInput {
-      guard workflow.usesBuiltinPushToTalkOutputRouting(initiatedBy: .hotkey) else { return }
-      workflowForExecution.plan.output.actions = [OutputActionReference(id: RecordActionID.store)]
-      workflowForExecution.plan.output.deliveryPolicy = .init(strategy: .collectionFirst)
-      workflowForExecution.metadata[WorkflowMetadataKey.livePreviewPlacement] = LivePreviewPlacement.overlay.rawValue
-      workflowForExecution.metadata[WorkflowMetadataKey.collectSpeech] = bufferInput.draftIntent == nil ? "true" : nil
     }
     if requiresCapturedAudioForInteractiveRun(workflowForExecution) {
       startCapturedAudioWorkflowRun(for: workflowForExecution, initiatedBy: binding, draftInput: bufferInput?.draftIntent)
@@ -457,6 +462,7 @@ extension AppModel {
   func canTriggerWorkflow(_ workflow: WorkflowDefinition?) -> Bool {
     guard !hasBegunApplicationShutdown, !self.settings.isLoading else { return false }
     guard let workflow else { return false }
+    guard workflow.inputKind != .record else { return false }
     guard isWorkflowEnabled(workflow) else { return false }
     guard
       !workflow.prefersAutomaticRecognizerSelection
@@ -484,11 +490,12 @@ extension AppModel {
     for workflow: WorkflowDefinition,
     includeRuntimeAvailability: Bool = false
   ) -> WorkflowExecutionSupportIssue? {
+    guard let workflow = try? workflowApplyingOutputState(workflow) else { return .invalidConfiguration }
     switch WorkflowExecutionPolicy.issue(for: workflow) {
-    case .legacyClipboardAutomationUnsupported:
-      return .legacyClipboardAutomationUnsupported
-    case .invalidEventType:
-      return .invalidEventType
+    case .wrongExecutionSurface:
+      return .wrongExecutionSurface
+    case .invalidConfiguration:
+      return .invalidConfiguration
     case .plannedCapabilityUnavailable:
       return .plannedCapabilityUnavailable
     case nil:
@@ -513,23 +520,20 @@ extension AppModel {
         return .wakeWordModelNotReady
       }
     }
-    if workflow.plan.process.allSteps.contains(where: {
-      $0.kind == .llmRewrite || $0.kind == .llmAnswer
-    }) {
-      guard self.settings.openAICredentialAvailability == .available,
+    if workflow.plan.process.allSteps.contains(where: { !$0.optional && ($0.kind == .llmRewrite || $0.kind == .llmAnswer) }) {
+      let availability = settings.credentialAvailability()
+      guard availability == .available,
         !settings.hasUnavailableScalarSettings(in: .openAI)
       else {
-        return .openAIUnavailable(self.settings.openAICredentialAvailability)
+        return .openAIUnavailable(availability)
       }
-      guard OpenAISettings.isValidBaseURL(self.settings.openAIBaseURL),
-        OpenAISettings.isValidModelIdentifier(self.settings.openAIModel)
-      else {
+      guard (try? LanguageModelConfiguration(migrating: settings.languageModelSettings()).validate()) != nil else {
         return .openAIConfigurationInvalid
       }
-      if self.settings.openAIConfigurationVerificationState == .failed {
-        return .openAIVerificationFailed(self.settings.openAIVerificationFailure)
+      if settings.verificationState() == .failed {
+        return .openAIVerificationFailed(settings.verificationFailure())
       }
-      guard !self.settings.isLoadingPrivacySettings, self.settings.privacySettingsLoadError == nil else {
+      guard !settings.isLoadingPrivacySettings, settings.privacySettingsLoadError == nil else {
         return .privacySettingsUnavailable
       }
     }
@@ -543,10 +547,12 @@ extension AppModel {
   }
 
   func workflowEnablementError(for workflow: WorkflowDefinition) -> String? {
-    guard let issue = workflowExecutionSupportIssue(for: workflow) else {
-      return nil
-    }
-    return workflowEnableError(for: issue, language: self.settings.language)
+    workflowEnablementFailure(for: workflow)?.string(for: settings.language)
+  }
+
+  func workflowEnablementFailure(for workflow: WorkflowDefinition) -> LocalizedStringResource? {
+    guard let issue = workflowExecutionSupportIssue(for: workflow) else { return nil }
+    return workflowEnableError(for: issue)
   }
 
   private func workflowUsesCurrentLocalSpeechRoute(_ workflow: WorkflowDefinition) -> Bool {
@@ -559,40 +565,35 @@ extension AppModel {
   }
 
   private func workflowEnableError(
-    for issue: WorkflowExecutionSupportIssue,
-    language: AppLanguage
-  ) -> String {
+    for issue: WorkflowExecutionSupportIssue
+  ) -> LocalizedStringResource {
     return switch issue {
-    case .legacyClipboardAutomationUnsupported:
-      L10n.resource("AppModel.WorkflowActions.Legacy.collection.event.workflows.remain.disabled.use.record.routes.for.production.delivery").string(
-        for: self.settings.language)
-    case .invalidEventType:
-      L10n.resource("AppModel.WorkflowActions.This.workflow.declares.an.invalid.event.type.and.remains.disabled").string(for: self.settings.language)
+    case .wrongExecutionSurface:
+      L10n.resource("AppModel.WorkflowActions.Legacy.collection.event.workflows.remain.disabled.use.record.routes.for.production.delivery")
+    case .invalidConfiguration:
+      L10n.resource("AppModel.WorkflowActions.This.workflow.declares.an.invalid.event.type.and.remains.disabled")
     case .plannedCapabilityUnavailable:
-      L10n.resource("AppModel.WorkflowActions.This.preset.is.planned.but.is.not.available.in.the.current.build").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.preset.is.planned.but.is.not.available.in.the.current.build")
     case .missingProductionTransformer:
-      L10n.resource("AppModel.WorkflowActions.This.workflow.uses.a.text.step.that.has.no.production.transformer").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.workflow.uses.a.text.step.that.has.no.production.transformer")
     case .unregisteredOutputAction(let actionID):
       L10n.resource(
         "AppModel.WorkflowActions.This.workflow.uses.an.output.action.that.is.unavailable.in.this.build",
         defaultValue: "This workflow uses an output action that is unavailable in this build: \(String(describing: actionID))."
-      ).string(for: self.settings.language)
+      )
     case .openAIUnavailable(_):
-      L10n.resource("AppModel.WorkflowActions.Add.an.LLM.Provider.API.key.in.Settings.before.enabling.this.workflow").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Add.an.LLM.Provider.API.key.in.Settings.before.enabling.this.workflow")
     case .openAIConfigurationInvalid:
-      L10n.resource("AppModel.WorkflowActions.Enter.a.valid.OpenAI.compatible.endpoint.and.model.ID.before.enabling.this.workflow").string(
-        for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Enter.a.valid.OpenAI.compatible.endpoint.and.model.ID.before.enabling.this.workflow")
     case .openAIVerificationFailed:
-      L10n.resource("AppModel.WorkflowActions.The.current.LLM.configuration.failed.verification.Fix.it.or.verify.it.again.before.enabling").string(
-        for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.The.current.LLM.configuration.failed.verification.Fix.it.or.verify.it.again.before.enabling")
     case .microphonePermissionRequired:
-      L10n.resource("AppModel.WorkflowActions.Grant.microphone.access.before.enabling.wake.word.listening").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Grant.microphone.access.before.enabling.wake.word.listening")
     case .wakeWordModelNotReady:
-      L10n.resource("AppModel.WorkflowActions.Prepare.the.selected.local.ASR.model.before.enabling.wake.word.listening").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Prepare.the.selected.local.ASR.model.before.enabling.wake.word.listening")
     case .privacySettingsUnavailable:
-      L10n.resource("AppModel.WorkflowActions.Cloud.privacy.settings.are.unavailable.Repair.them.before.enabling.this.assistant.workflow").string(
-        for: self.settings.language)
-    case .localSpeechUnavailable(let availability): localSpeechWorkflowEnableError(availability, language: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.Cloud.privacy.settings.are.unavailable.Repair.them.before.enabling.this.assistant.workflow")
+    case .localSpeechUnavailable(let availability): localSpeechWorkflowEnableError(availability)
     }
   }
 
@@ -600,9 +601,9 @@ extension AppModel {
     for issue: WorkflowExecutionSupportIssue
   ) -> LocalizedStringResource {
     return switch issue {
-    case .legacyClipboardAutomationUnsupported:
+    case .wrongExecutionSurface:
       L10n.resource("AppModel.WorkflowActions.This.legacy.clipboard.event.workflow.is.disabled.and.cannot.run")
-    case .invalidEventType:
+    case .invalidConfiguration:
       L10n.resource("AppModel.WorkflowActions.This.workflow.cannot.run.because.its.event.type.is.invalid")
     case .plannedCapabilityUnavailable:
       L10n.resource("AppModel.WorkflowActions.This.planned.preset.cannot.run.in.the.current.build")
@@ -630,17 +631,14 @@ extension AppModel {
   }
 
   private func localSpeechWorkflowEnableError(
-    _ availability: LocalSpeechAvailability,
-    language: AppLanguage
-  ) -> String {
+    _ availability: LocalSpeechAvailability
+  ) -> LocalizedStringResource {
     return switch availability {
     case .architectureUnsupported:
-      L10n.resource("AppModel.WorkflowActions.This.build.does.not.include.a.compatible.local.speech.worker.Enable.a.supported.local").string(
-        for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.build.does.not.include.a.compatible.local.speech.worker.Enable.a.supported.local")
     case .trustMaterialUnavailable:
-      L10n.resource("AppModel.WorkflowActions.This.build.has.no.reviewed.local.speech.model.Choose.Cloud.speech.before.enabling.this").string(
-        for: self.settings.language)
-    case .available: L10n.resource("AppModel.WorkflowActions.Local.speech.is.currently.unavailable.for.this.workflow").string(for: self.settings.language)
+      L10n.resource("AppModel.WorkflowActions.This.build.has.no.reviewed.local.speech.model.Choose.Cloud.speech.before.enabling.this")
+    case .available: L10n.resource("AppModel.WorkflowActions.Local.speech.is.currently.unavailable.for.this.workflow")
     }
   }
 
@@ -706,7 +704,7 @@ extension AppModel {
   func launchWorkflowRun(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding) {
     guard !hasBegunApplicationShutdown else { return }
     self.voice.isRunning = true
-    lastFailure = nil
+    lastFailureResource = nil
 
     self.voice.interactiveWorkflowTaskGeneration &+= 1
     let generation = self.voice.interactiveWorkflowTaskGeneration
@@ -715,7 +713,6 @@ extension AppModel {
       defer { self.finishInteractiveWorkflowTask(generation: generation) }
       do {
         try Task.checkCancellation()
-        try await self.persistProviderSettingsForRun(workflow)
         let authorized = try await authorizeWorkflowRunAction(workflow)
         try Task.checkCancellation()
         await sessionCoordinator.run(
@@ -726,8 +723,8 @@ extension AppModel {
         self.voice.isRunning = false
       } catch {
         self.voice.isRunning = false
-        let failure = WorkflowOperationFailureStage.workflowStart.presentation
-        self.lastFailure = failure.string(for: self.settings.language)
+        let failure = L10n.modelServiceFailure(error) ?? WorkflowOperationFailureStage.workflowStart.presentation
+        self.lastFailureResource = failure
         self.append(failure)
       }
     }
@@ -738,7 +735,7 @@ extension AppModel {
     for workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding, draftInput: BufferDraftInputIntent? = nil
   ) {
     self.voice.isRunning = true
-    lastFailure = nil
+    lastFailureResource = nil
     self.voice.workflowAudioRunState = .preparing(workflowID: workflow.id)
 
     let taskID = UUID()
@@ -746,7 +743,6 @@ extension AppModel {
       guard let self else { return }
       defer { self.finishWorkflowAudioActionTask(id: taskID) }
       do {
-        try await self.persistProviderSettingsForRun(workflow)
         try await startWorkflowAudioRunAction(workflow, binding, draftInput)
         await MainActor.run {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
@@ -768,9 +764,9 @@ extension AppModel {
           self.voice.isRunning = false
           self.voice.workflowAudioRunState = .idle
           self.voice.workflowAudioCaptureRunID = nil
-          let failure = WorkflowOperationFailureStage.audioCaptureStart.presentation
-          self.lastFailure = failure.string(for: self.settings.language)
-          if draftInput != nil || workflow.metadata[WorkflowMetadataKey.collectSpeech] == "true" {
+          let failure = L10n.modelServiceFailure(error) ?? WorkflowOperationFailureStage.audioCaptureStart.presentation
+          self.lastFailureResource = failure
+          if draftInput != nil || workflow.collectsSpeech {
             self.recordWorkspace.buffers.editor.reportRecordingFailure()
           }
           self.append(failure)
@@ -799,7 +795,7 @@ extension AppModel {
           self.voice.workflowAudioRunState = .idle
           self.voice.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioTranscription.presentation
-          self.lastFailure = failure.string(for: self.settings.language)
+          self.lastFailureResource = failure
           self.append(failure)
         }
       }
@@ -812,17 +808,7 @@ extension AppModel {
   }
 
   func requiresCapturedAudioForInteractiveRun(_ workflow: WorkflowDefinition) -> Bool {
-    guard
-      let resolvedWorkflow = resolvedWorkflowForExecution(
-        workflow,
-        trigger: workflow.trigger
-      )
-    else {
-      return false
-    }
-    return Self.recognizerIDsRequiringCapturedAudio.contains(
-      resolvedWorkflow.plan.setup.speechRoute?.recognizerID ?? ""
-    )
+    workflow.inputKind == .audio
   }
 
   func isPreparingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
@@ -838,11 +824,6 @@ extension AppModel {
   func isTranscribingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
     guard case .transcribing(let workflowID) = self.voice.workflowAudioRunState else { return false }
     return workflowID == workflow.id
-  }
-
-  func persistProviderSettingsForRun(_ workflow: WorkflowDefinition) async throws {
-    guard !self.settings.isLoading else { throw CancellationError() }
-    _ = workflow
   }
 
   static func makeInteractiveTriggerEvent(
@@ -1030,7 +1011,7 @@ extension AppModel {
 
   public func setRecordPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != settings.bufferOutputHotkeyBinding else {
-      lastFailure = L10n.surface(.shortcutConflictsWithOutputNext, language: settings.language)
+      lastFailureResource = L10n.resource("surface.shortcutConflictsWithOutputNext")
       return
     }
     applyRecordPanelHotkeyBinding(.keyboardShortcut(shortcut))
@@ -1041,7 +1022,7 @@ extension AppModel {
   }
 
   public func reportRecordPanelPasteFailure() {
-    lastFailure = L10n.runText(.recordDeliveryFocusFailure, language: self.settings.language)
+    lastFailureResource = L10n.resource("run.recordDeliveryFocusFailure")
   }
 
   public func updatePermissionSnapshot(_ snapshot: PermissionSnapshot) {
@@ -1062,7 +1043,7 @@ extension AppModel {
 
   public func isCustomWorkflow(_ workflow: WorkflowDefinition) -> Bool {
     !isBuiltInWorkflow(workflow)
-      && workflow.metadata[Self.workflowOriginMetadataKey] == Self.userWorkflowOriginMetadataValue
+      && !workflow.properties.isBuiltin
   }
 
   public func isBuiltInWorkflow(_ workflow: WorkflowDefinition) -> Bool {
@@ -1088,7 +1069,6 @@ extension AppModel {
       return false
     }
     return self.workflowLibrary.customWorkflows.contains(where: { $0.id == workflow.id })
-      || self.workflowLibrary.workflowCustomizations.contains(where: { $0.workflowID == workflow.id })
       || self.workflowLibrary.workflowEnabledStates[workflow.id] != defaultWorkflow.isEnabledByDefault
   }
 
@@ -1099,7 +1079,9 @@ extension AppModel {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: true) else { return }
     let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedName.isEmpty else {
-      self.workflowLibrary.workflowEditorError = L10n.runText(.workflowNameRequired, language: self.settings.language)
+      self.workflowLibrary.workflowEditorErrorPresentation = { language in
+        return L10n.runText(.workflowNameRequired, language: language)
+      }
       return
     }
 
@@ -1114,22 +1096,26 @@ extension AppModel {
             != WorkflowNameDuplicationPolicy.normalizedName(trimmedName)
         } ?? true
       if isRename, workflowNameIsTaken(trimmedName, excluding: workflowID) {
-        self.workflowLibrary.workflowEditorError = L10n.workflowText(.workflowNameTakenError, language: self.settings.language)
+        self.workflowLibrary.workflowEditorErrorPresentation = { language in
+          return L10n.workflowText(.workflowNameTakenError, language: language)
+        }
         return
       }
     } else {
       resolvedName = uniqueWorkflowName(for: trimmedName)
     }
 
-    let existingMetadata =
+    let existingProperties =
       workflowID.flatMap { id in
-        self.workflowLibrary.customWorkflows.first(where: { $0.id == id })?.metadata
-          ?? self.workflowLibrary.builtInWorkflows.first(where: { $0.id == id })?.metadata
-      } ?? [:]
+        self.workflowLibrary.customWorkflows.first(where: { $0.id == id })?.properties
+          ?? self.workflowLibrary.builtInWorkflows.first(where: { $0.id == id })?.properties
+      } ?? WorkflowProperties()
     var sanitizedDraft = draft
     sanitizedDraft.name = resolvedName
-    if let validationError = sanitizedDraft.outputValidationError(language: self.settings.language) {
-      self.workflowLibrary.workflowEditorError = validationError
+    if sanitizedDraft.outputValidationError(language: self.settings.language) != nil {
+      self.workflowLibrary.workflowEditorErrorPresentation = { language in
+        return sanitizedDraft.outputValidationError(language: language)
+      }
       return
     }
     if sanitizedDraft.eventType == .wakeWord {
@@ -1138,17 +1124,19 @@ extension AppModel {
           WakeWordConfiguration(phrases: sanitizedDraft.wakePhrases)
         )
       } catch {
-        self.workflowLibrary.workflowEditorError = L10n.runWakeWordWorkflowSaveFailed(
-          detail: error.localizedDescription,
-          language: self.settings.language
-        )
+        self.workflowLibrary.workflowEditorErrorPresentation = { language in
+          return L10n.runWakeWordWorkflowSaveFailed(
+            detail: error.localizedDescription,
+            language: language
+          )
+        }
         return
       }
     }
 
     let workflow = sanitizedDraft.makeWorkflow(
       id: workflowID ?? UUID(),
-      existingMetadata: existingMetadata,
+      existingProperties: existingProperties,
       hotkeyGesture: Self.defaultHotkeyGesture
     )
 
@@ -1181,10 +1169,12 @@ extension AppModel {
         self.workflowLibrary.workflowFileURLsByID[workflow.id] = record.fileURL
         self.workflowLibrary.workflowFileSourcesByID[workflow.id] = record.source
       } catch {
-        self.workflowLibrary.workflowEditorError = String(
-          format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: self.settings.language),
-          error.localizedDescription
-        )
+        self.workflowLibrary.workflowEditorErrorPresentation = { language in
+          return String(
+            format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: language),
+            L10n.workflowFileFailureDetail(error, language: language)
+          )
+        }
         return
       }
     }
@@ -1198,24 +1188,28 @@ extension AppModel {
 
     if desiredEnabledState, let supportIssue {
       self.workflowLibrary.workflowEnabledStates[workflow.id] = false
-      self.workflowLibrary.workflowLibraryError = workflowEnableError(for: supportIssue, language: self.settings.language)
+      self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
+        guard let self else { return nil }
+        return self.workflowEnableError(for: supportIssue).string(for: language)
+      }
     } else if desiredEnabledState && !enableConflicts.isEmpty {
       self.workflowLibrary.workflowEnabledStates[workflow.id] = false
-      self.workflowLibrary.workflowLibraryError = L10n.workflowEnableConflict(
-        trigger: workflow.trigger,
-        names: enableConflicts.map { localizedWorkflowName(for: $0) },
-        language: self.settings.language
-      )
+      self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+        return L10n.workflowEnableConflict(
+          trigger: workflow.trigger,
+          names: enableConflicts.map { L10n.workflowName($0.presentation, language: language) },
+          language: language
+        )
+      }
     } else {
       if self.workflowLibrary.workflowEnabledStates[workflow.id] == nil {
         self.workflowLibrary.workflowEnabledStates[workflow.id] = true
       }
-      self.workflowLibrary.workflowLibraryError = nil
+      self.workflowLibrary.workflowLibraryErrorPresentation = nil
     }
 
-    self.workflowLibrary.workflowEditorError = nil
+    self.workflowLibrary.workflowEditorErrorPresentation = nil
     rebuildWorkflowLibrary()
-    persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
       L10n.resource("run.workflowSavedFormat", defaultValue: "Workflow saved: \(workflow.name)")
@@ -1258,21 +1252,25 @@ extension AppModel {
         guard let source = self.workflowLibrary.workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
         try await workflowFileStore.delete(fileURL: fileURL, expected: .source(source))
       } catch {
-        self.workflowLibrary.workflowLibraryError = String(
-          format: L10n.runText(.workflowTOMLFileRemoveFailedFormat, language: self.settings.language),
-          error.localizedDescription
-        )
+        self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+          return String(
+            format: L10n.runText(.workflowTOMLFileRemoveFailedFormat, language: language),
+            L10n.workflowFileFailureDetail(error, language: language)
+          )
+        }
         return
       }
     }
     self.workflowLibrary.hasModifiedWorkflowLibrary = true
     self.workflowLibrary.customWorkflows.remove(at: index)
     self.workflowLibrary.workflowFileURLsByID.removeValue(forKey: workflow.id)
+    self.workflowLibrary.workflowFileSourcesByID.removeValue(forKey: workflow.id)
+    self.workflowLibrary.outputStatesByID.removeValue(forKey: workflow.id)
+    self.workflowLibrary.outputStateSourcesByID.removeValue(forKey: workflow.id)
     self.workflowLibrary.workflowEnabledStates.removeValue(forKey: workflow.id)
-    self.workflowLibrary.workflowEditorError = nil
-    self.workflowLibrary.workflowLibraryError = nil
+    self.workflowLibrary.workflowEditorErrorPresentation = nil
+    self.workflowLibrary.workflowLibraryErrorPresentation = nil
     rebuildWorkflowLibrary()
-    persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
       L10n.resource("run.workflowRemovedFormat", defaultValue: "Workflow removed: \(workflow.name)")
@@ -1290,10 +1288,12 @@ extension AppModel {
         guard let source = self.workflowLibrary.workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
         try await workflowFileStore.delete(fileURL: fileURL, expected: .source(source))
       } catch {
-        self.workflowLibrary.workflowEditorError = String(
-          format: L10n.runText(.builtInWorkflowOverrideRemoveFailedFormat, language: self.settings.language),
-          error.localizedDescription
-        )
+        self.workflowLibrary.workflowEditorErrorPresentation = { language in
+          return String(
+            format: L10n.runText(.builtInWorkflowOverrideRemoveFailedFormat, language: language),
+            L10n.workflowFileFailureDetail(error, language: language)
+          )
+        }
         return
       }
     }
@@ -1301,12 +1301,13 @@ extension AppModel {
     self.workflowLibrary.hasModifiedWorkflowLibrary = true
     self.workflowLibrary.customWorkflows.removeAll { $0.id == workflow.id }
     self.workflowLibrary.workflowFileURLsByID.removeValue(forKey: workflow.id)
-    self.workflowLibrary.workflowCustomizations.removeAll { $0.workflowID == workflow.id }
+    self.workflowLibrary.workflowFileSourcesByID.removeValue(forKey: workflow.id)
+    self.workflowLibrary.outputStatesByID.removeValue(forKey: workflow.id)
+    self.workflowLibrary.outputStateSourcesByID.removeValue(forKey: workflow.id)
     self.workflowLibrary.workflowEnabledStates[workflow.id] = defaultWorkflow.isEnabledByDefault
-    self.workflowLibrary.workflowEditorError = nil
-    self.workflowLibrary.workflowLibraryError = nil
+    self.workflowLibrary.workflowEditorErrorPresentation = nil
+    self.workflowLibrary.workflowLibraryErrorPresentation = nil
     rebuildWorkflowLibrary()
-    persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
       L10n.resource("run.builtInWorkflowRestoredFormat", defaultValue: "Built-in workflow restored: \(localizedWorkflowName(for: defaultWorkflow))")
@@ -1337,7 +1338,7 @@ extension AppModel {
 extension AppModel {
   public func setBufferOutputHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != settings.recordPanelHotkeyBinding else {
-      lastFailure = L10n.surface(.shortcutConflictsWithTheClipboard, language: settings.language)
+      lastFailureResource = L10n.resource("surface.shortcutConflictsWithTheClipboard")
       return
     }
     applyBufferOutputHotkeyBinding(.keyboardShortcut(shortcut))

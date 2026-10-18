@@ -15,6 +15,13 @@
 无效文件会显示错误并阻止对应工作流运行，修正后再试。需要恢复时，
 用外部编辑器核对备份内容；恢复内建预设会移除该预设的自定义覆盖。
 
+## 输出开关
+
+工作流详情显示每个输出。自动启用的输出不可关闭；可选输出可以独立关闭，
+也可以全部关闭。选择保存在 TOML 旁的同名 `.state.json` 文件中。
+输入依赖由 Rill 检查：缺少可选服务时跳过对应处理，缺少必需服务时提示配置。
+旧格式工作流不再兼容；历史记录和录音仍会保留。
+
 ## 运行与输出
 
 音频工作流从配置的触发器或运行按钮启动。文本工作流的“运行剪贴板文本”
@@ -32,7 +39,7 @@
 复制成另一个工作流时，用 uuidgen 生成不同的 id。
 
 ~~~toml
-schema_version = 2
+schema_version = 1
 id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
 name = "整理并复制"
 enabled = false
@@ -63,7 +70,7 @@ kind = "system-clipboard.copy"
 
 [工作流 TOML 参考](workflow-toml.md)解释字段、条件、处理步骤和输出。
 也可以下载[条件示例](examples/conditional-workflow.toml)和
-[JSON Schema](schemas/workflow-v2.schema.json)。
+[JSON Schema](schemas/workflow-v1.schema.json)。
 
 运行详情显示本次使用的步骤与结果。record_duration 可选择计时；
 没有测量的数据不应当作零耗时或估算值。错误恢复见[排查问题](troubleshooting.md)。

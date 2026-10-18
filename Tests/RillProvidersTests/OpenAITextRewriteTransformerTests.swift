@@ -6,6 +6,58 @@ import XCTest
 @testable import RillProviders
 
 final class OpenAITextRewriteTransformerTests: XCTestCase {
+  func testCredentialRevokedDuringRequestRejectsReturnedText() async throws {
+    let source = LanguageModelSettingsSource()
+    source.update(OpenAISettings(apiKey: "test-key"))
+    let client = OpenAIResponsesClientStub(
+      result: .success(.init(status: .completed, outputText: "must not deliver", containsRefusal: false, httpStatusCode: 200)),
+      suspendResponse: true
+    )
+    let transformer = OpenAITextRewriteTransformer(settingsSource: source, clientFactory: { client })
+    var context = makeTransformContext()
+    context.workflow.plan.process.steps.append(.init(kind: .llmRewrite, prompt: "Edit", reasoning: .some(.none)))
+    context.modelSnapshot = try source.snapshot(for: context.workflow)
+    let capturedContext = context
+    let task = Task {
+      try await transformer.transform(
+        text: "input", step: PostProcessStep(kind: .llmRewrite, prompt: "Edit", reasoning: .some(.none)), context: capturedContext)
+    }
+    await client.waitUntilInvoked()
+    source.update(nil)
+    await client.resumeResponse()
+    do {
+      _ = try await task.value
+      XCTFail("Revoked credentials must reject a response already in flight")
+    } catch { XCTAssertEqual(error as? OpenAITextRewriteError, .credentialUnavailable) }
+  }
+
+  func testProductionResolverUsesFrozenServiceAndHonorsCredentialRevocation() async throws {
+    let source = LanguageModelSettingsSource()
+    let original = OpenAISettings(apiKey: "smart-key", baseURL: "https://api.deepseek.com", model: "deepseek-flash")
+    source.update(original)
+    let client = OpenAIResponsesClientStub(
+      result: .success(
+        .init(
+          status: .completed, outputText: "result", containsRefusal: false, httpStatusCode: 200)))
+    let transformer = OpenAITextRewriteTransformer(settingsSource: source, clientFactory: { client })
+    var context = makeTransformContext()
+    context.workflow.plan.process.steps.append(.init(kind: .llmRewrite, prompt: "Edit", reasoning: .high))
+    context.modelSnapshot = try source.snapshot(for: context.workflow)
+    source.update(.init(apiKey: "smart-key", model: "next-run-model"))
+    let step = PostProcessStep(kind: .llmRewrite, prompt: "Edit", reasoning: .high)
+    _ = try await transformer.transform(text: "input", step: step, context: context)
+    let invocation = await client.lastInvocation()
+    XCTAssertEqual(invocation?.request.model, "deepseek-flash")
+    XCTAssertEqual(invocation?.request.baseURL, "https://api.deepseek.com")
+    XCTAssertEqual(invocation?.request.reasoning, .high)
+    XCTAssertNil(invocation?.request.temperature)
+    source.update(nil)
+    do {
+      _ = try await transformer.transform(text: "input", step: step, context: context)
+      XCTFail("Revoked credentials must block the next request")
+    } catch { XCTAssertEqual(error as? OpenAITextRewriteError, .credentialUnavailable) }
+  }
+
   func testOnlyRecoverableProviderFailuresPermitSpeechTextFallback() {
     for error in [
       OpenAITextRewriteError.rateLimited,
@@ -39,11 +91,11 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: {
+      settingsProvider: { _ in
         OpenAISettings(
           apiKey: " test-key ",
-          baseURL: "https://gateway.example.com/openai/v1",
-          model: "vendor/custom-model"
+          baseURL: "https://api.openai.com/v1",
+          model: "gpt-5.6-luna"
         )
       },
       clientFactory: { client }
@@ -52,7 +104,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
 
     let output = try await transformer.transform(
       text: "呃 这是 原始正文",
-      step: PostProcessStep(kind: .llmRewrite, prompt: "Make this concise."),
+      step: PostProcessStep(kind: .llmRewrite, prompt: "Make this concise.", reasoning: .some(.none)),
       context: makeTransformContext(selectedText: contextCanary)
     )
 
@@ -64,8 +116,8 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     XCTAssertTrue(invocation.request.instructions.contains("Make this concise."))
     XCTAssertTrue(invocation.request.instructions.contains("Preserve its meaning"))
     XCTAssertFalse(invocation.request.instructions.contains(contextCanary))
-    XCTAssertEqual(invocation.request.baseURL, "https://gateway.example.com/openai/v1")
-    XCTAssertEqual(invocation.request.model, "vendor/custom-model")
+    XCTAssertEqual(invocation.request.baseURL, "https://api.openai.com/v1")
+    XCTAssertEqual(invocation.request.model, "gpt-5.6-luna")
     XCTAssertFalse(invocation.request.store)
     XCTAssertFalse(invocation.request.stream)
     XCTAssertEqual(
@@ -86,13 +138,13 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      settingsProvider: { _ in OpenAISettings(apiKey: "test-key") },
       clientFactory: { client }
     )
 
     _ = try await transformer.transform(
       text: "为什么天空是蓝色？",
-      step: PostProcessStep(kind: .llmAnswer, prompt: "Answer briefly."),
+      step: PostProcessStep(kind: .llmAnswer, prompt: "Answer briefly.", reasoning: .some(.high)),
       context: makeTransformContext()
     )
 
@@ -116,11 +168,11 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: {
+      settingsProvider: { _ in
         OpenAISettings(
           apiKey: "secret-key-canary",
-          baseURL: "https://private-gateway.example/v1",
-          model: "vendor/answer-model"
+          baseURL: "https://api.openai.com/v1",
+          model: "gpt-5.6-luna"
         )
       },
       clientFactory: { client }
@@ -128,13 +180,13 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
 
     let result = try await transformer.transformWithTrace(
       text: "actual question",
-      step: PostProcessStep(kind: .llmAnswer, prompt: "Answer in one sentence."),
+      step: PostProcessStep(kind: .llmAnswer, prompt: "Answer in one sentence.", reasoning: .some(.high)),
       context: makeTransformContext(selectedText: "unrelated-context-canary")
     )
 
     XCTAssertEqual(result.text, "actual answer")
     XCTAssertEqual(result.trace.providerID, "llm.responses")
-    XCTAssertEqual(result.trace.modelID, "vendor/answer-model")
+    XCTAssertEqual(result.trace.modelID, "gpt-5.6-luna")
     XCTAssertEqual(result.trace.workflowPrompt, "Answer in one sentence.")
     XCTAssertTrue(result.trace.systemPrompt.contains("Answer the supplied user request"))
     XCTAssertTrue(result.trace.systemPrompt.contains("Answer in one sentence."))
@@ -151,27 +203,27 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     XCTAssertFalse(encodedTrace.contains("unrelated-context-canary"))
   }
 
-  func testLegacyVoiceAssistantRewriteUsesAssistantContract() async throws {
+  func testRewriteTaskUsesRewriteContract() async throws {
     let client = OpenAIResponsesClientStub(
       result: .success(
         .init(status: .completed, outputText: "回答", containsRefusal: false, httpStatusCode: 200)
       )
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      settingsProvider: { _ in OpenAISettings(apiKey: "test-key") },
       clientFactory: { client }
     )
 
     _ = try await transformer.transform(
       text: "问题",
-      step: PostProcessStep(kind: .llmRewrite, prompt: "Answer."),
-      context: makeTransformContext(speechMode: .voiceAssistant)
+      step: PostProcessStep(kind: .llmRewrite, prompt: "Answer.", reasoning: .some(.none)),
+      context: makeTransformContext()
     )
 
     let capturedInvocation = await client.lastInvocation()
     let invocation = try XCTUnwrap(capturedInvocation)
-    XCTAssertTrue(invocation.request.instructions.contains("Answer the supplied user request"))
-    XCTAssertFalse(invocation.request.instructions.contains("Transform only the supplied transcript"))
+    XCTAssertFalse(invocation.request.instructions.contains("Answer the supplied user request"))
+    XCTAssertTrue(invocation.request.instructions.contains("Transform only the supplied transcript"))
   }
 
   func testTransformerRejectsMissingCredentialAndInvalidConfigurationBeforeTransport() async {
@@ -188,13 +240,13 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     ] {
       let client = OpenAIResponsesClientStub(result: .failure(expectedError))
       let transformer = OpenAITextRewriteTransformer(
-        settingsProvider: { settings },
+        settingsProvider: { _ in settings },
         clientFactory: { client }
       )
       await assertRewriteError(expectedError) {
         _ = try await transformer.transform(
           text: "text",
-          step: PostProcessStep(kind: .llmRewrite, prompt: "Polish."),
+          step: PostProcessStep(kind: .llmRewrite, prompt: "Polish.", reasoning: .some(.none)),
           context: makeTransformContext()
         )
       }
@@ -227,13 +279,13 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     for (response, expectedError) in cases {
       let client = OpenAIResponsesClientStub(result: .success(response))
       let transformer = OpenAITextRewriteTransformer(
-        settingsProvider: { OpenAISettings(apiKey: "test-key") },
+        settingsProvider: { _ in OpenAISettings(apiKey: "test-key") },
         clientFactory: { client }
       )
       await assertRewriteError(expectedError) {
         _ = try await transformer.transform(
           text: "text",
-          step: PostProcessStep(kind: .llmRewrite, prompt: "Polish."),
+          step: PostProcessStep(kind: .llmRewrite, prompt: "Polish.", reasoning: .some(.none)),
           context: makeTransformContext()
         )
       }
@@ -253,13 +305,13 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       delay: .seconds(30)
     )
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      settingsProvider: { _ in OpenAISettings(apiKey: "test-key") },
       clientFactory: { client }
     )
     let task = Task {
       try await transformer.transform(
         text: "text",
-        step: PostProcessStep(kind: .llmRewrite, prompt: "Polish."),
+        step: PostProcessStep(kind: .llmRewrite, prompt: "Polish.", reasoning: .some(.none)),
         context: makeTransformContext()
       )
     }
@@ -286,7 +338,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     try await OpenAIConfigurationVerifier.verify(
       settings: OpenAISettings(
         apiKey: "verification-key",
-        baseURL: "https://gateway.example.com/v1"
+        baseURL: "https://api.openai.com/v1"
       ),
       clientFactory: { client }
     )
@@ -298,12 +350,12 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       invocation.request.instructions,
       "This is a provider configuration check. Return only OK."
     )
-    XCTAssertEqual(invocation.request.baseURL, "https://gateway.example.com/v1")
+    XCTAssertEqual(invocation.request.baseURL, "https://api.openai.com/v1")
     XCTAssertEqual(invocation.request.model, "gpt-5.6-luna")
     XCTAssertNil(invocation.request.maxOutputTokens)
   }
 
-  func testMacPawAdapterUsesCustomEndpointPathAndRequiredBodyFields() async throws {
+  func testMacPawAdapterUsesVerifiedEndpointAndRequiredBodyFields() async throws {
     OpenAIRequestCaptureProtocol.reset(responseData: completedResponseData)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [OpenAIRequestCaptureProtocol.self]
@@ -317,8 +369,8 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       request: OpenAIResponsesRequest(
         input: "transcript-canary",
         instructions: "instruction-canary",
-        baseURL: "https://gateway.example.com/openai/v1",
-        model: "vendor/custom-model",
+        baseURL: OpenAISettings.defaultBaseURL,
+        model: OpenAIModelOption.luna.rawValue,
         store: false,
         stream: false,
         maxOutputTokens: 4_096
@@ -329,20 +381,52 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     XCTAssertEqual(result.status, .completed)
     XCTAssertEqual(result.outputText, "polished")
     let request = try XCTUnwrap(requestRecorder.capturedRequest())
-    XCTAssertEqual(request.url?.path, "/openai/v1/responses")
+    XCTAssertEqual(request.url?.path, "/v1/responses")
     XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret-token-canary")
     let body = try XCTUnwrap(request.httpBody)
     let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
     XCTAssertEqual(json["input"] as? String, "transcript-canary")
     XCTAssertEqual(json["instructions"] as? String, "instruction-canary")
-    XCTAssertEqual(json["model"] as? String, "vendor/custom-model")
+    XCTAssertEqual(json["model"] as? String, OpenAIModelOption.luna.rawValue)
     XCTAssertEqual(json["store"] as? Bool, false)
     XCTAssertEqual(json["stream"] as? Bool, false)
     XCTAssertEqual(json["max_output_tokens"] as? Int, 4_096)
-    XCTAssertNil(json["reasoning"])
+    XCTAssertEqual((json["reasoning"] as? [String: String])?["effort"], "none")
     XCTAssertNil(json["metadata"])
     XCTAssertNil(json["user"])
     XCTAssertNil(json["previous_response_id"])
+  }
+
+  func testMacPawAdapterRejectsUnverifiedEndpointBeforeTransport() async throws {
+    let recorder = OpenAIRequestRecorder()
+    let client = MacPawOpenAIResponsesClient(additionalMiddlewares: [recorder])
+    do {
+      _ = try await client.createResponse(
+        request: .init(
+          input: "private", instructions: "test", baseURL: "https://gateway.example/v1",
+          model: OpenAIModelOption.luna.rawValue, store: false, stream: false, maxOutputTokens: nil), apiKey: "test-key")
+      XCTFail("An unverified service must be rejected before transport.")
+    } catch let error as LanguageModelConfigurationError {
+      XCTAssertEqual(error, .unsupportedReasoning(.none))
+    }
+    XCTAssertNil(recorder.capturedRequest())
+  }
+
+  func testMacPawAdapterMapsEveryPortableReasoningLevel() async throws {
+    for level in ReasoningLevel.allCases {
+      OpenAIRequestCaptureProtocol.reset(responseData: completedResponseData)
+      let configuration = URLSessionConfiguration.ephemeral
+      configuration.protocolClasses = [OpenAIRequestCaptureProtocol.self]
+      let recorder = OpenAIRequestRecorder()
+      let client = MacPawOpenAIResponsesClient(session: URLSession(configuration: configuration), additionalMiddlewares: [recorder])
+      _ = try await client.createResponse(
+        request: .init(
+          input: "test", instructions: "test", baseURL: OpenAISettings.defaultBaseURL,
+          model: "gpt-5.6-luna", store: false, stream: false, maxOutputTokens: nil, reasoning: level), apiKey: "synthetic-key")
+      let body = try XCTUnwrap(recorder.capturedRequest()?.httpBody)
+      let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+      XCTAssertEqual((json["reasoning"] as? [String: String])?["effort"], level.rawValue)
+    }
   }
 
   func testMacPawAdapterCollectsTypedOutputWhenConvenienceFieldIsAbsent() async throws {
@@ -507,7 +591,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       request: OpenAIResponsesRequest(
         input: "Return exactly OK.",
         instructions: "This is a provider configuration check. Return only OK.",
-        baseURL: "https://gateway.example.com/v1",
+        baseURL: OpenAISettings.defaultBaseURL,
         model: OpenAIModelOption.luna.rawValue,
         store: false,
         stream: false,
@@ -548,31 +632,17 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     }
   }
 
-  func testMacPawAdapterAllowsPlainHTTPForLoopbackEndpoint() async throws {
-    OpenAIRequestCaptureProtocol.reset(responseData: completedResponseData)
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.protocolClasses = [OpenAIRequestCaptureProtocol.self]
-    let requestRecorder = OpenAIRequestRecorder()
-    let client = MacPawOpenAIResponsesClient(
-      session: URLSession(configuration: configuration),
-      additionalMiddlewares: [requestRecorder]
-    )
-
-    _ = try await client.createResponse(
-      request: .init(
-        input: "text",
-        instructions: "instruction",
-        baseURL: "http://127.0.0.1:11434/v1",
-        model: "local-model",
-        store: false,
-        stream: false,
-        maxOutputTokens: 8
-      ),
-      apiKey: "local-key"
-    )
-
-    let request = try XCTUnwrap(requestRecorder.capturedRequest())
-    XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:11434/v1/responses")
+  func testMacPawAdapterRejectsUnverifiedLoopbackCapabilities() async throws {
+    let client = MacPawOpenAIResponsesClient()
+    do {
+      _ = try await client.createResponse(
+        request: .init(
+          input: "text", instructions: "test", baseURL: "http://127.0.0.1:11434/v1",
+          model: "local-model", store: false, stream: false, maxOutputTokens: 8), apiKey: "local-key")
+      XCTFail("Loopback transport permission does not establish model capabilities.")
+    } catch let error as LanguageModelConfigurationError {
+      XCTAssertEqual(error, .unsupportedReasoning(.none))
+    }
   }
 
   func testMacPawAdapterMapsAuthenticationAndRateLimitWithoutLeakingBody() async {
@@ -693,10 +763,13 @@ private actor OpenAIResponsesClientStub: OpenAIResponsesServing {
   private let delay: Duration?
   private var invocation: Invocation?
   private var invocationWaiters: [CheckedContinuation<Void, Never>] = []
+  private var suspendResponse: Bool
+  private var responseWaiter: CheckedContinuation<Void, Never>?
 
-  init(result: Result<OpenAIResponsesResult, Error>, delay: Duration? = nil) {
+  init(result: Result<OpenAIResponsesResult, Error>, delay: Duration? = nil, suspendResponse: Bool = false) {
     self.result = result
     self.delay = delay
+    self.suspendResponse = suspendResponse
   }
 
   func createResponse(
@@ -707,6 +780,9 @@ private actor OpenAIResponsesClientStub: OpenAIResponsesServing {
     let waiters = invocationWaiters
     invocationWaiters.removeAll()
     waiters.forEach { $0.resume() }
+    if suspendResponse {
+      await withCheckedContinuation { responseWaiter = $0 }
+    }
     if let delay {
       try await Task.sleep(for: delay)
     }
@@ -714,6 +790,12 @@ private actor OpenAIResponsesClientStub: OpenAIResponsesServing {
   }
 
   func lastInvocation() -> Invocation? { invocation }
+
+  func resumeResponse() {
+    suspendResponse = false
+    responseWaiter?.resume()
+    responseWaiter = nil
+  }
 
   func waitUntilInvoked() async {
     guard invocation == nil else { return }
@@ -778,24 +860,18 @@ private final class OpenAIRequestCaptureState: @unchecked Sendable {
   }
 }
 
-private func makeTransformContext(
-  selectedText: String = "",
-  speechMode: SpeechWorkflowMode? = nil
-) -> TransformContext {
-  var metadata: [String: String] = [:]
-  if let speechMode {
-    metadata[WorkflowMetadataKey.speechMode] = speechMode.rawValue
-  }
+private func makeTransformContext(selectedText: String = "") -> TransformContext {
   return TransformContext(
     runID: UUID(),
     workflow: WorkflowDefinition(
       name: "Rewrite",
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: [OutputActionReference(id: "focused-application.insert")]
-      ),
-      ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple"),
-      metadata: metadata
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate))),
+      ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple")
     ),
     contextSnapshot: ContextSnapshot(
       focus: FocusSnapshot(

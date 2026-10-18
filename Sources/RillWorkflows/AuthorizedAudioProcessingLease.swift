@@ -20,6 +20,7 @@ public actor AuthorizedAudioProcessingLease {
     let liveAuthorizationState: LiveAudioSessionAuthorizationState?
     let audioLifetime: AudioCaptureLifetime?
     let contextPreparation: RunContextPreparation?
+    let modelSnapshot: WorkflowModelSnapshot?
     let preparedRecognition: PreparedRecognitionContext?
 
     init(
@@ -34,7 +35,8 @@ public actor AuthorizedAudioProcessingLease {
       liveAuthorizationState: LiveAudioSessionAuthorizationState? = nil,
       audioLifetime: AudioCaptureLifetime? = nil,
       contextPreparation: RunContextPreparation? = nil,
-      preparedRecognition: PreparedRecognitionContext? = nil
+      preparedRecognition: PreparedRecognitionContext? = nil,
+      modelSnapshot: WorkflowModelSnapshot? = nil
     ) {
       self.runID = runID
       self.workflow = workflow
@@ -48,6 +50,7 @@ public actor AuthorizedAudioProcessingLease {
       self.audioLifetime = audioLifetime
       self.contextPreparation = contextPreparation
       self.preparedRecognition = preparedRecognition
+      self.modelSnapshot = modelSnapshot
     }
   }
 

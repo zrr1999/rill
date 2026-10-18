@@ -82,13 +82,13 @@ drain separately from the clipboard polling lifecycle.
 | --- | --- | --- |
 | Records, memberships, buffers, routes, leases, and persistence revision | `RecordStore` | Commands commit before publishing catalog updates or collection events. |
 | Pending draft text, revisions and speech suggestions | `RecordStore` | Drafts belong to exact buffer entries; sending derives an immutable Record and replaces that entry atomically. |
-| Unified panel mode, visibility, placement, target capture and focus | `RecordPanelController` | One controller owns a fixed non-key capsule and a separate page keeping Collections and Drafts mounted. Hover never captures a target or resizes the capsule; each explicit editing visit freezes its target, and draft sending keeps the capsule visible. |
+| Unified panel mode, visibility, placement, target capture and focus | `RecordPanelController` | One controller owns the on-demand page, keeping Collections and Drafts mounted. Cmd+Cmd restores the last mode; dismissal leaves no resident window. Each explicit editing visit freezes its target, and draft sending dismisses the page before output. |
 | Draft selection, native composition and unsaved edits | `RecordBufferDraftModel` | One editing session retains local text on failure and drains accepted saves at shutdown; panel visibility does not own persistence. |
 | SQLite connection and transactions | `SQLitePersistenceStore` | One GRDB `DatabaseQueue` serves settings, history, and catalog operations. Each synchronous `SQLitePersistenceSession` borrows that connection only for the queue access; a transaction never suspends between statements. |
 | Active workflow recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |
 | Authorized workflow run | `SessionCoordinator` | Frozen workflow/context and resolved provider plan remain attached to one run. |
 | Live recognition context | `LiveRecognitionContextResolver` | Compiles vocabulary once at capture admission; the processing lease carries the frozen plan, language, model and hints to final recognition. Complete applicable hotwords remain a separate projection for opt-in Smart Cleanup references. |
-| Optional hotword ranking | `HotwordSelection` in Workflows | Owns independent session consent, the bounded memory cache and background tasks. It validates the shared Jev credential before and after requests; App shutdown drains accepted work. |
+| Optional hotword ranking | `HotwordSelection` in Workflows | Owns independent session consent, the bounded memory cache and background tasks. It validates the shared classification credential before and after requests; App shutdown drains accepted work. |
 | UI settings reads | `AppModelSettingsReadTaskOwner` | Replaced reads remain owned until drained; shutdown rejects new reads. |
 | UI persistence tasks | `PersistenceWriteCoordinator` | Overlapping single-key and atomic multi-key writes serialize; all accepted tasks remain tracked until completion. |
 | Unsaved settings and retry policy | `SettingsPersistenceModel` | Latest-write completion updates visible state; failures retain the exact value to retry. `AppSettingsCodec` owns stored-value decoding and migration. |
@@ -147,6 +147,9 @@ recording surface immediately. `VoiceRunModel` keeps capture state separate from
 panel visibility, so tail updates cannot reopen the panel and Esc remains armed
 until capture closes. A matching re-press restores the same capture presentation.
 The stop cue follows actual capture closure to keep it out of the recorded tail.
+The start cue completes playback before microphone capture begins, so speaker
+output cannot enter the recording. Startup authorization precedes the cue;
+capture failures after it remain failures and do not produce a stop cue.
 `HotkeyEventTap` answers gesture-state queries from its recognizer: an observed
 key-up cannot be overridden by stale system flags. System sampling is reserved
 for recovering an interrupted tap that may have missed a physical transition.
@@ -283,10 +286,13 @@ the migration adapter reads the file. Runtime test defaults live in
 
 ### 评测、诊断和功能命令
 
-质量评测位于 `Evals/`，真实模型由手动 CE 的 `RillQualityEvaluations` target 执行；
+质量评测位于 `Evals/`，真实模型由每周或手动 CE 的 `RillQualityEvaluations` target 执行；
 性能工作负载位于 `Benchmarks/`，CodSpeed 仅报告 CPU simulation。
-`asr_run_data` 拥有原始回放数据的读取与配对，质量评分、性能比较和显式综合验收分别消费该数据。
+`tools/` 内部包的 `rill_dev.evaluation.run_data` 拥有原始回放数据的读取与配对，
+质量评分、性能比较和显式综合验收分别消费该数据。
 回放不依赖任何评分器；正常 CI 只验证评测工具和确定性契约。入口与报告见 [质量评测](../Evals/README.md)。
+源码指纹与 Release 产物验证仍由构建驱动拥有；评测工具通过其只读 JSON 命令读取结果，
+不导入构建脚本或维护第二份回执校验。
 
 归档源码统一使用 Corpus 命名。现有 `BenchmarkRecordings` 目录、`audio.benchmark-archive-enabled`
 设置值、`benchmark_recordings` / `benchmark_recordings_key` 加密上下文、验证标记和
@@ -332,3 +338,37 @@ Record 复制、剪贴板采集控制和快捷键录制通过必需的 `RecordIn
 
 隐私保存失败与其他设置共同保留在未保存队列，整组五键重试；退出关闭用户编辑后仍排空
 并重试已接受快照。只有被新写入取代的结果不发布；当前写入的取消错误仍保留可重试状态。
+
+## Unified services and workflow admission
+
+Settings own four service categories: ASR, Decision, LLM and TTS. One LLM
+connection retains the previous fast endpoint, model and Keychain credential in
+place; the former intelligent connection is never read as a fallback. Inaccessible
+settings or credentials remain visible and block required dependencies.
+`LanguageModelSettingsSource` publishes accepted edits without rereading persistence
+for each request. Workflow LLM tasks explicitly declare `none`, `low` or `high`;
+verified service capabilities determine the native Responses parameter. Task kind
+owns instructions, timeout and output bounds independently of reasoning.
+
+`PrivacyRunGate` freezes the selected definition, enabled outputs and required
+service bindings into each authorized run. Capture, queued processing, transforms
+and speech output use that snapshot. Settings and companion edits affect later
+runs. Credential revocation, session consent and stricter privacy still take
+effect at request and effect boundaries. Missing optional processing services
+produce skipped receipts; missing required services stop admission with a settings
+prompt. Optional Decision prediction can be absent while the rewrite continues.
+
+All execution definitions use the new `schema_version = 1` TOML layout. Built-in resources,
+user files, templates and imports share `WorkflowDocumentCodec` and validation;
+packaging validates the actual resource bundle using the executable's validation
+entry point. Old TOML and JSON definitions are unsupported. Legacy settings data
+is retained and diagnosed without constructing executable workflows.
+
+Output switches live in the adjacent `<name>.state.json`. File writes compare
+both loaded sources, replace atomically and preserve backups. Corrupt, mismatched
+or stale state blocks new runs. `PersistenceWriteCoordinator` retains accepted
+state writes until shutdown drains them. Automatic outputs cannot be disabled;
+optional outputs can all be off. Executors run only the frozen enabled list, in
+order, preserving partial receipts after committed effects. Pending collection,
+collection targets, Decision gates and editor dictation are explicit declarations;
+no built-in identity or global output setting rewrites an execution plan.

@@ -347,7 +347,8 @@ extension SettingsView {
 
   func saveSensitiveAppRule() {
     do {
-      let name = trimmedOptional(sensitiveAppApplicationName)
+      let trimmedName = sensitiveAppApplicationName.trimmingCharacters(in: .whitespacesAndNewlines)
+      let name = trimmedName.isEmpty ? nil : trimmedName
       if let editingSensitiveAppRuleID {
         try model.editSensitiveAppRule(
           editingSensitiveAppRuleID,

@@ -94,14 +94,17 @@ final class ContextMemoryController {
   func prepare(
     runID: UUID, workflow: WorkflowDefinition, context: ContextSnapshot,
     recognitionOptions: SpeechRecognitionRequestOptions, audioLifetime: AudioCaptureLifetime,
-    vocabularyCandidates: [HotwordCandidate] = []
+    vocabularyCandidates: [HotwordCandidate] = [],
+    modelSnapshot: WorkflowModelSnapshot?
   ) async throws -> RunContextPreparation? {
     await maintenance.interrupt()
     try Task.checkCancellation()
     guard audioLifetime.isActive else { throw CancellationError() }
     guard let token = authorization, token.isValid,
       settings.authorizedWorkflowIDs.contains(workflow.id),
-      workflow.supportsContextualCorrection
+      workflow.supportsContextualCorrection,
+      let provider = modelSnapshot?.languageModel,
+      token.providerFingerprint == ContextProviderIdentity.fingerprint(provider)
     else { return nil }
     let vocabulary: CorrectionVocabularyReference?
     if settings.vocabularyCorrectionEnabled && workflow.supportsVocabularyCorrection,
@@ -129,7 +132,7 @@ final class ContextMemoryController {
       preparation = try await preparationOperations.run(timeout: .milliseconds(250)) { [weak self] in
         try await self?.prepareWithinBudget(
           runID: runID, workflow: workflow, context: context,
-          recognitionOptions: recognitionOptions, audioLifetime: audioLifetime, vocabularyReference: vocabulary)
+          recognitionOptions: recognitionOptions, audioLifetime: audioLifetime, vocabularyReference: vocabulary, provider: provider)
       }
     } catch is CancellationError { throw CancellationError() } catch {
       preparation = RunContextPreparation.skipped(
@@ -150,7 +153,8 @@ final class ContextMemoryController {
     runID: UUID, workflow: WorkflowDefinition, context: ContextSnapshot,
     recognitionOptions: SpeechRecognitionRequestOptions,
     audioLifetime: AudioCaptureLifetime,
-    vocabularyReference: CorrectionVocabularyReference?
+    vocabularyReference: CorrectionVocabularyReference?,
+    provider: OpenAISettings
   ) async throws -> RunContextPreparation? {
     guard let token = authorization, token.isValid,
       settings.authorizedWorkflowIDs.contains(workflow.id),
@@ -159,15 +163,14 @@ final class ContextMemoryController {
     else { return nil }
     let excluded = Set(privacy.sensitiveAppRules.filter(\.enabled).map(\.normalizedBundleIdentifier))
     guard !excluded.contains(SensitiveAppRule(bundleIdentifier: context.focus.bundleIdentifier ?? "").normalizedBundleIdentifier) else { return nil }
-    let provider = try await providerSettings()
     try Task.checkCancellation()
     guard token.isValid, token.providerFingerprint == ContextProviderIdentity.fingerprint(provider) else { throw CancellationError() }
     let generation = try await history.captureRunHistoryWriteGeneration()
     try Task.checkCancellation()
     let scope = ContextMemoryScope(
       workflowID: workflow.id, applicationBundleID: context.focus.bundleIdentifier,
-      language: recognitionOptions.language ?? workflow.metadata[WorkflowMetadataKey.languageOverride])
-    let summarizer = ContextCorrectionProvider(settingsProvider: providerSettings, authorization: token, operations: referenceRequests) { [repository] in
+      language: recognitionOptions.language ?? workflow.plan.setup.speechRoute?.language)
+    let summarizer = ContextCorrectionProvider(settingsProvider: { provider }, authorization: token, operations: referenceRequests) { [repository] in
       try await repository.recordForegroundContextRequest(authorization: token, now: Date())
     }
     let preparation = try await RunContextPreparation.prepare(

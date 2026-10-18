@@ -54,13 +54,6 @@ enum ContextCorrectionPrompts {
       vocabulary: request.vocabularyReference?.terms.isEmpty == false ? request.vocabularyReference : nil)
     return "reference_data:\n" + String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
   }
-
-  static func preservingNumbers(transcript: String, proposed: String) -> String {
-    let numbers = { (text: String) in
-      text.matches(of: /[0-9]+(?:[.,][0-9]+)*/).map { String($0.output) }
-    }
-    return numbers(transcript) == numbers(proposed) ? proposed : transcript
-  }
 }
 
 public struct ContextCorrectionProvider: CorrectionContextSummarizing, MemoryConsolidating {
@@ -224,13 +217,14 @@ public struct ContextCorrectionProvider: CorrectionContextSummarizing, MemoryCon
     try Task.checkCancellation()
     let settings = try await settingsProvider()
     try ContextProviderIdentity.validate(authorization, settings: settings)
+    try LanguageModelConfiguration(migrating: settings).validate(reasoning: .none)
     guard !settings.apiKey.isEmpty, image == nil || ContextProviderIdentity.supportsImages(settings) else {
       throw ContextCorrectionError.invalidReference
     }
     let request = OpenAIResponsesRequest(
       input: input, instructions: instructions, baseURL: settings.baseURL, model: settings.model,
       store: false, stream: false, maxOutputTokens: 4_096,
-      disablesThinking: LLMTextProcessing.usesDeepSeek(settings), temperature: 0.1,
+      reasoning: .none, temperature: 0.1,
       timeoutInterval: timeout, referenceImage: image, jsonOutput: true
     )
     try await onRequest()

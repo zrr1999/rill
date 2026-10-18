@@ -1,3 +1,4 @@
+import Foundation
 import RillCore
 
 extension L10n {
@@ -30,4 +31,14 @@ extension L10n {
   static func workflowDocument(_ key: WorkflowDocumentKey, language: AppLanguage) -> String {
     catalogString("workflowDocument.\(key.rawValue)", language: language)
   }
+  static func modelServiceFailure(_ error: any Error) -> LocalizedStringResource? {
+    guard let error = error as? LanguageModelConfigurationError else { return nil }
+    switch error {
+    case .decisionUnavailable: return resource("models.error.decision")
+    case .speechSynthesisUnavailable: return resource("models.error.tts")
+    case .unsupportedReasoning: return resource("models.error.reasoning")
+    case .unavailable, .invalidConfiguration, .missingCredential: return resource("models.error.llm")
+    }
+  }
+
 }

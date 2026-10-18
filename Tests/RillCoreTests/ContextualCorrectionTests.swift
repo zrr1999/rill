@@ -7,9 +7,14 @@ struct ContextualCorrectionTests {
     func workflow(_ steps: [PostProcessStepKind]) -> WorkflowDefinition {
       WorkflowDefinition(
         name: "Context",
-        pipeline: .init(
-          recognizerID: "fixture",
-          postProcessSteps: steps.map { .init(kind: $0, prompt: "Fixture") }, outputActions: []),
+        plan: WorkflowPlan(
+          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "fixture")),
+          process: WorkflowProcessPhase(
+            steps: [
+              WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+              WorkflowProcessStep(kind: .applyVocabulary),
+            ] + (steps.map { .init(kind: $0, prompt: "Fixture") }).map(WorkflowProcessStep.init)),
+          output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
         ui: .init(symbolName: "waveform", accentColorName: "blue"))
     }
     #expect(workflow([.normalizeWhitespace, .llmRewrite]).supportsContextualCorrection)

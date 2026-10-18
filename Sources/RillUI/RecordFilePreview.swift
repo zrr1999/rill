@@ -134,7 +134,7 @@ private struct RecordFilePreviewRow: View {
             [
               metadata.typeDescription,
               metadata.byteCount.map {
-                ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file)
+                Int64($0).formatted(.byteCount(style: .file).locale(language.formattingLocale))
               },
             ].compactMap { $0 }.joined(separator: " · ")
           )

@@ -91,7 +91,7 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
     }
     let modelIdentifier = request.modelID ?? selectionSource.currentModelIdentifier()
     guard SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelIdentifier),
-      try enabledModelIDsProvider().contains(modelIdentifier)
+      try request.modelID != nil || enabledModelIDsProvider().contains(modelIdentifier)
     else {
       throw SpeechSynthesisActionError.invalidRequest
     }

@@ -167,13 +167,12 @@ final class RecordQuickPanelRenderTests: XCTestCase {
         let first = try await fixture.insert("git reset --soft HEAD~1")
         let second = try await fixture.insert("git revert HEAD")
         let model = RecordJevPanelModel(settings: JevAPISettingsModel(service: fixture.service))
+        if scored { model.settings.setKey("unit-test-key") }
         model.prepare(query: "撤销上次提交，但保留代码改动", recordIDs: [first.id, second.id])
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while model.state == .preparing, ContinuousClock.now < deadline { await Task.yield() }
         XCTAssertEqual(model.state, .review)
         if scored {
-          model.settings.setKey("unit-test-key")
-          while !model.isConfigured, ContinuousClock.now < deadline { await Task.yield() }
           model.confirm()
           while model.state == .scoring, ContinuousClock.now < deadline { await Task.yield() }
           XCTAssertEqual(model.state, .ready)

@@ -158,7 +158,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Recording Cleanup",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "unused", outputActions: []),
+      plan: makeTestAudioPlan(recognizerID: "unused"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let eventBus = EventBus()
@@ -185,7 +185,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             cloudConfirmationRequired: false
           )
         },
-        cloudConfirmationProvider: { _, _, _ in true },
+        cloudConfirmationProvider: { _, _, _, _ in true },
         destinationClassifier: { _ in .classified([.localSpeech]) }
       ),
       workflowProvider: { [workflow] }
@@ -224,7 +224,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Transferred Recording Cleanup",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(recognizerID: "unused", outputActions: []),
+      plan: makeTestAudioPlan(recognizerID: "unused"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let eventBus = EventBus()
@@ -252,7 +252,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             cloudConfirmationRequired: false
           )
         },
-        cloudConfirmationProvider: { _, _, _ in true },
+        cloudConfirmationProvider: { _, _, _, _ in true },
         destinationClassifier: { _ in .classified([.localSpeech]) }
       ),
       workflowProvider: { [workflow] },

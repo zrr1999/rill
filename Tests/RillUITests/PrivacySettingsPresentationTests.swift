@@ -20,6 +20,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
     let rulesData = try JSONEncoder().encode([rule])
     let settingsStore = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .privacySensitiveAppRules: String(decoding: rulesData, as: UTF8.self),
         .privacyCloudConfirmationRequired: "false",
         .privacyHistoryPreviewMode: PrivacyHistoryPreviewMode.disabled.rawValue,
@@ -106,20 +107,23 @@ final class PrivacySettingsPresentationTests: XCTestCase {
     XCTAssertFalse(runtimeDecision.allowsClipboardCapture)
     let runtimeGate = PrivacyRunGate(
       settingsProvider: { try privacySettingsSource.currentSettings() },
-      cloudConfirmationProvider: { _, _, _ in true }
+      cloudConfirmationProvider: { _, _, _, _ in true }
     )
     do {
       _ = try await runtimeGate.authorize(
         context: runtimeContext,
         workflow: WorkflowDefinition(
           name: "Cloud Text Test",
-          pipeline: PipelineDeclaration(
-            recognizerID: "sherpa-onnx.local",
-            postProcessSteps: [
-              PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
-            ],
-            outputActions: []
-          ),
+          plan: WorkflowPlan(
+            setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+            process: WorkflowProcessPhase(
+              steps: [
+                WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+                WorkflowProcessStep(kind: .applyVocabulary),
+              ]
+                + ([
+                  PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))
+                ]).map(WorkflowProcessStep.init)), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
           ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
         )
       )
@@ -303,6 +307,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
   func testCorruptPrivacyRulesKeepSafeDefaultsAndExposeLoadFailure() async {
     let settingsStore = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .interfaceLanguage: AppLanguage.simplifiedChinese.rawValue,
         .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
         .privacySensitiveAppRules: "{not-json",
@@ -393,13 +398,17 @@ final class PrivacySettingsPresentationTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Local Dictation with Cloud Text Rewrite",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [
-          PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
-        ],
-        outputActions: [OutputActionReference(id: "system-clipboard.copy")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]
+            + ([
+              PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))
+            ]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
     )
 
@@ -433,7 +442,8 @@ private actor ControlledPrivacySettingsStore: SettingsStore {
     let atomicSnapshots: [[AppSettingKey: String]]
   }
 
-  private var storage: [AppSettingKey: String] = [:]
+  // These barriers exercise privacy writes after model migration has completed.
+  private var storage: [AppSettingKey: String] = [.languageModelRolesMigrated: "true"]
   private var atomicSnapshots: [[AppSettingKey: String]] = []
   private var atomicWriteCount = 0
   private var failingAtomicWriteCount: Int

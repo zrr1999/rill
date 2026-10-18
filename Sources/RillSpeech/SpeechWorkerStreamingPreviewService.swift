@@ -63,8 +63,7 @@ public actor SpeechWorkerStreamingPreviewService {
     do {
       let settings = try await settingsProvider()
       let modelID = LocalSpeechModelCatalog.effectiveModelIdentifier(
-        settings: settings,
-        modelOverride: nil
+        settings: settings
       )
       guard MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID),
         settings.enabledModelIDs.contains(modelID)

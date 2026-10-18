@@ -12,8 +12,37 @@ clear recognition errors in names, homophones and identifiers; they cannot add
 facts, answer questions, change tone, remove uncertainty, or substitute a newer
 fact for the user's words. The provider receives this fixed contract independently
 of user-controlled reference data. Ambiguous evidence must preserve the transcript.
-A numeric mismatch additionally falls back to the complete transcript locally.
-This guard does not prove semantic correctness; model behavior needs live evaluation.
+The same local content guard applies to ordinary canonical Smart Cleanup and
+contextual correction. It checks Chinese and Arabic numeric literals, attached
+signs, currencies and a bounded set of common units, plus HTTP(S) URLs in both
+directions. Chinese numeral characters within ordinary words are ignored unless
+they have a unit, an explicit quantity cue, a single-character literal boundary, or
+a recognized multi-place numeric form. Common ambiguous forms such as `千万`
+and `十分` need quantity/duration evidence; complete times such as `三点十分`
+are checked as one literal. This bounded lexical coverage cannot disambiguate
+every bare Chinese numeral. Common counters, weekday prefixes and ordinal
+prefixes are included, so `下周三`, `第三章`, `五月三号` and `两倍` remain protected.
+Existing quoted code, identifiers with code-specific spelling and
+command-line flags and simple calls/signatures without nested parentheses must
+survive verbatim; new identifiers remain allowed for spoken-code correction.
+Complex code needs quotation for complete literal protection. Actual line-start
+Markdown ordered-list markers are ignored so cleanup can structure a list without
+adding substantive numbers.
+
+Sentences containing natural-language negation must occur in both normalized
+documents in order, ignoring punctuation, whitespace and letter case. This
+permits added sentence boundaries but conservatively rejects word corrections
+inside a negative sentence, including some valid homophone fixes. Negation inside
+URLs or code does not trigger this sentence check. Literal number reformatting,
+such as `五百` to `500`, is also conservatively rejected. These bounded checks do
+not prove semantic correctness or interpret punctuation-dependent scope; model
+behavior still needs live evaluation.
+
+A rejected result raises the existing invalid-response error. The executor keeps
+the text immediately before the rewrite, reports a fallback, and records the
+cleanup step as skipped before delivering once. It does not store the rejected
+output as a successful LLM trace. Explicit custom rewrite instructions and
+assistant answers retain their existing semantics.
 
 ## Vocabulary references
 
@@ -29,7 +58,7 @@ hotwords after workflow binding and scope filtering. `ResolvedWorkflowPlan` keep
 this complete list separately from the existing 50-candidate ASR projection,
 even when the recognizer does not support hotwords. `PrivacyRunGate` passes the
 admission snapshot to `ContextMemoryController`; no second vocabulary read occurs.
-ASR provider limits, Jev ranking and local mapping rules remain unchanged.
+ASR provider limits, classification ranking and local mapping rules remain unchanged.
 
 `CorrectionVocabularyReference` packs whole terms in existing priority order into
 at most 12,000 UTF-8 bytes, including the encoded glossary object's JSON overhead
@@ -40,7 +69,7 @@ edits during recording apply to the next run. No extra model call is introduced.
 `RunContextPreparation` owns the ready glossary alongside the optional tasks.
 A failed or timed-out screen/memory preparation preserves it. Freezing transfers
 it into `ContextualCorrectionRequest.vocabularyReference`; the shared
-`hasCorrectionReferences` predicate bypasses the Jev polishing gate only when
+`hasCorrectionReferences` predicate bypasses the classification polishing gate only when
 usable references exist. Empty references preserve the normal cleanup path.
 The provider serializes terms under `reference_data.vocabulary`, never as
 instructions or mandatory replacements. The main request retains its 5-second
@@ -207,4 +236,4 @@ Quality and performance summaries are separate schema-2 reports under each run's
 `summaries/` directory. Vocabulary and context results are report-only (`not_assessed`),
 not automatic quality passes. Provider latency is request-scoped and has no regression
 verdict without a comparison policy. [CE](../Evals/README.md) runs these evaluations
-only on explicit request; their scoring and corpus checks remain in ordinary CI.
+weekly or on manual dispatch; their scoring and corpus checks remain in ordinary CI.
