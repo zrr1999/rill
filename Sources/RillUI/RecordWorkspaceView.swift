@@ -251,7 +251,7 @@ public struct RecordWorkspaceView: View {
             systemImage: RillSystemSymbol.chevronLeft.rawValue
           )
         }
-        .buttonStyle(RecordWorkspaceHoverButtonStyle())
+        .buttonStyle(RillHoverButtonStyle(kind: .tint))
         .accessibilityIdentifier("records.back")
         Spacer(minLength: 0)
       }
@@ -903,20 +903,5 @@ public struct RecordWorkspaceView: View {
   private func dismissError() {
     workspace.dismissError()
     if workspace.cleanup.plan == nil { workspace.cleanup.cancel() }
-  }
-}
-
-/// Plain label buttons still need a pointer acknowledgement; this style tints
-/// the label on hover and follows RillCardButtonStyle's Reduce Motion rule.
-private struct RecordWorkspaceHoverButtonStyle: ButtonStyle {
-  @State private var isHovering = false
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .foregroundStyle(isHovering ? Color.accentColor : Color.primary)
-      .opacity(configuration.isPressed ? 0.7 : 1)
-      .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovering)
-      .onHover { isHovering = $0 }
   }
 }

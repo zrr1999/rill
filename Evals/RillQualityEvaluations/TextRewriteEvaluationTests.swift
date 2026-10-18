@@ -13,6 +13,12 @@ struct TextRewriteEvaluationTests {
     let id: String
     let transcript: String
     let expected: String
+    let protectedLiterals: [String]?
+
+    private enum CodingKeys: String, CodingKey {
+      case id, transcript, expected
+      case protectedLiterals = "protected_literals"
+    }
   }
 
   private struct Observation: Encodable {
@@ -46,6 +52,14 @@ struct TextRewriteEvaluationTests {
         contentsOf:
           Self.root.appendingPathComponent("Evals/TextRewrite/cases.json")))
     try #require(!samples.isEmpty)
+    for sample in samples {
+      let literals = sample.protectedLiterals ?? []
+      try #require(Set(literals.map { Data($0.utf8) }).count == literals.count)
+      try #require(
+        literals.allSatisfy {
+          !$0.isEmpty && literalCount($0, in: sample.transcript) > 0 && literalCount($0, in: sample.expected) > 0
+        })
+    }
     let workflow = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.preservesTranscriptContent })
     let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt, reasoning: .some(.none))
     var observations: [Observation] = []
@@ -74,7 +88,10 @@ struct TextRewriteEvaluationTests {
             output = nil
           }
           let elapsed = start.duration(to: .now).components
-          let matched = output.map { normalized($0) == normalized(sample.expected) } ?? false
+          let matched =
+            output.map {
+              normalized($0) == normalized(sample.expected) && preservesLiterals($0, sample: sample)
+            } ?? false
           observations.append(
             .init(
               sampleID: sample.id, contextual: contextual, repetition: repetition,
@@ -93,5 +110,29 @@ struct TextRewriteEvaluationTests {
     text.unicodeScalars.filter {
       !CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines).contains($0)
     }.map(String.init).joined()
+  }
+
+  private func preservesLiterals(_ output: String, sample: Sample) -> Bool {
+    (sample.protectedLiterals ?? []).allSatisfy {
+      literalCount($0, in: output) == literalCount($0, in: sample.expected)
+    }
+  }
+
+  private func literalCount(_ literal: String, in text: String) -> Int {
+    guard !literal.isEmpty else { return 0 }
+    var count = 0
+    var start = text.startIndex
+    while let range = text.range(of: literal, options: .literal, range: start..<text.endIndex) {
+      count += 1
+      start = range.upperBound
+    }
+    return count
+  }
+
+  @Test func protectedLiteralsRejectUnicodeNormalizationAndChangedCounts() {
+    let sample = Sample(id: "fixture", transcript: "café.txt", expected: "café.txt", protectedLiterals: ["café.txt"])
+    #expect(preservesLiterals("café.txt", sample: sample))
+    #expect(!preservesLiterals("cafe\u{301}.txt", sample: sample))
+    #expect(!preservesLiterals("café.txt café.txt", sample: sample))
   }
 }

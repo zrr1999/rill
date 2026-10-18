@@ -31,6 +31,7 @@
 
 ## QA
 
+- [Documentation and code-map acceptance — 2026-10-16](qa/docs-codemap-2026-10-16.md)
 - [统一服务与 Workflow v1 验证（2026-10-17）](qa/unified-services-workflow-v1-2026-10-17.md)
 
 - [Optional Jev clipboard ranking verification](qa/jev-ranking-2026-09-21.md)

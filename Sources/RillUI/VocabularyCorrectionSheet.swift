@@ -152,7 +152,7 @@ public struct VocabularyCorrectionSheet: View {
       .padding(RillSpacing.dense)
       .rillSelection(draft.selectedOptionID == option.id, cornerRadius: RillRadius.row)
     }
-    .buttonStyle(RillCardButtonStyle(cornerRadius: RillRadius.row))
+    .buttonStyle(RillHoverButtonStyle(kind: .card(cornerRadius: RillRadius.row)))
     .accessibilityLabel("\(optionTitle(option)): \(optionSummary(option))")
     .accessibilityAddTraits(draft.selectedOptionID == option.id ? .isSelected : [])
   }
