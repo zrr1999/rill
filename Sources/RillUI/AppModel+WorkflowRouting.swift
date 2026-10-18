@@ -26,19 +26,12 @@ extension AppModel {
     trigger: TriggerBinding
   ) -> WorkflowDefinition? {
     let recognizerResolution = WorkflowRecognizerResolution.localSpeech
-    let outputResolution: WorkflowOutputResolution
-    switch self.settings.builtinPushToTalkOutputMode {
-    case .pasteIntoApp:
-      outputResolution = .builtinPasteIntoApplication
-    case .saveToVoiceGroup:
-      outputResolution = .builtinSaveToVoiceGroup
-    }
+    guard let workflow = try? workflowApplyingOutputState(workflow) else { return nil }
 
     switch WorkflowExecutionPlanResolver.resolve(
       workflow,
       initiatedBy: trigger,
-      recognizer: recognizerResolution,
-      output: outputResolution
+      recognizer: recognizerResolution
     ) {
     case .resolved(let plan):
       return plan.executionWorkflow

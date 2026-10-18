@@ -1,3 +1,4 @@
+import RillPlatform
 import Foundation
 import RillCore
 import Testing
@@ -9,36 +10,35 @@ struct CleanupBudgetProviderTests {
 
     func usesShortBudget(deepSeek: Bool) -> Bool {
       switch self {
-      case .canonical, .contextual: true
-      case .customRewrite, .canonicalWithCustomStep: deepSeek
-      case .answer, .voiceAssistantRewrite, .voiceAssistantAnswer: false
+      case .answer, .voiceAssistantAnswer: false
+      default: true
       }
     }
   }
 
-  @Test(arguments: Scenario.allCases, ["compatible-model", LLMTextProcessing.deepSeekModel])
+  @Test(arguments: Scenario.allCases, ["gpt-5.6-luna", LLMTextProcessing.deepSeekModel])
   func transportBudgetFollowsWorkflowWhileDeepSeekParametersStayIndependent(scenario: Scenario, model: String) async throws {
     let settings = settings(model: model)
     let fixture = try fixture(scenario)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings }, clientFactory: { client })
     #expect(try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context) == "预算五百元")
     let request = try #require(await client.requests.first)
     let deepSeek = model == LLMTextProcessing.deepSeekModel
     #expect(request.timeoutInterval == (scenario.usesShortBudget(deepSeek: deepSeek) ? 5 : 60))
-    let deepSeekRewrite = deepSeek && fixture.step.kind == .llmRewrite && fixture.context.workflow.speechMode != .voiceAssistant
-    #expect(request.modelRole == fixture.step.resolvedModelRole)
+    let deepSeekRewrite = deepSeek && fixture.step.kind == .llmRewrite && fixture.step.reasoning == .some(.none)
+    #expect(request.reasoning == fixture.step.reasoning)
     #expect(request.temperature == (deepSeekRewrite ? 0.1 : nil))
-    #expect(request.maxOutputTokens == (fixture.step.resolvedModelRole == .fast ? 4_096 : 16_384))
+    #expect(request.maxOutputTokens == (fixture.step.kind == .llmRewrite ? 4_096 : 16_384))
     await transformer.shutdown()
   }
 
-  @Test(arguments: Scenario.allCases, ["compatible-model", LLMTextProcessing.deepSeekModel])
+  @Test(arguments: Scenario.allCases, ["gpt-5.6-luna", LLMTextProcessing.deepSeekModel])
   func localDeadlineUsesTheSameEligibility(scenario: Scenario, model: String) async throws {
     let settings = settings(model: model)
     let fixture = try fixture(scenario)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client }, rewriteTimeout: .zero)
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings }, clientFactory: { client }, rewriteTimeout: .zero)
     if scenario.usesShortBudget(deepSeek: model == LLMTextProcessing.deepSeekModel) {
       await #expect(throws: OpenAITextRewriteError.timedOut) {
         _ = try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context)
@@ -59,7 +59,7 @@ struct CleanupBudgetProviderTests {
     let input = upstreamIsLong ? "预算五百元" : long
     fixture.context.correctionRequest = .init(transcript: input)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings }, clientFactory: { client })
     if upstreamIsLong {
       #expect(try await transformer.transform(text: long, step: fixture.step, context: fixture.context) == input)
       #expect(await client.requests.map(\.input) == [input])
@@ -72,39 +72,39 @@ struct CleanupBudgetProviderTests {
     await transformer.shutdown()
   }
 
-  @Test(arguments: [Scenario.canonical, .contextual, .customRewrite], LanguageModelRole.allCases)
-  func explicitRolesPreserveCleanupBudgets(scenario: Scenario, role: LanguageModelRole) async throws {
+  @Test(arguments: [Scenario.canonical, .contextual, .customRewrite], ReasoningLevel.allCases)
+  func explicitRolesPreserveCleanupBudgets(scenario: Scenario, role: ReasoningLevel) async throws {
     let settings = settings(model: LLMTextProcessing.deepSeekModel)
     var fixture = try fixture(scenario)
-    fixture.step.modelRole = role
+    fixture.step.reasoning = role
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings }, clientFactory: { client })
     _ = try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context)
     let request = try #require(await client.requests.first)
-    #expect(request.modelRole == role)
-    #expect(request.maxOutputTokens == (role == .fast ? 4_096 : 16_384))
-    #expect(request.timeoutInterval == (scenario == .customRewrite && role == .intelligent ? 60 : 5))
+    #expect(request.reasoning == role)
+    #expect(request.maxOutputTokens == 4_096)
+    #expect(request.timeoutInterval == 5)
     await transformer.shutdown()
   }
 
   @Test func compatibleCleanupDoesNotInheritDeepSeekInputLimit() async throws {
-    let settings = settings(model: "compatible-model")
+    let settings = settings(model: "gpt-5.6-luna")
     let fixture = try fixture(.canonical)
     let input = String(repeating: "字", count: 4_001)
     let client = EchoBudgetClient()
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _, _ in settings }, clientFactory: { client })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings }, clientFactory: { client })
     #expect(try await transformer.transform(text: input, step: fixture.step, context: fixture.context) == input)
     #expect(await client.requests.map(\.input) == [input])
     await transformer.shutdown()
   }
 
   @Test func cancelledLateResponsesRetainOwnerSlotsAndCannotCompleteCleanup() async throws {
-    let settings = settings(model: "compatible-model")
+    let settings = settings(model: "gpt-5.6-luna")
     let fixture = try fixture(.canonical)
     let client = HeldBudgetClient()
     let diagnostics = BudgetDiagnosticProbe()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { _, _ in settings }, clientFactory: { client }, diagnosticReporter: { await diagnostics.record($0) })
+      settingsProvider: { _ in settings }, clientFactory: { client }, diagnosticReporter: { await diagnostics.record($0) })
     let attempts = (0..<2).map { _ in
       Task { try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context) }
     }
@@ -130,22 +130,29 @@ struct CleanupBudgetProviderTests {
   }
 
   private func settings(model: String) -> OpenAISettings {
-    .init(apiKey: "synthetic-test-key", baseURL: "https://gateway.example/v1", model: model)
+    .init(apiKey: "synthetic-test-key", baseURL: model.hasPrefix("deepseek") ? LLMTextProcessing.deepSeekBaseURL : OpenAISettings.defaultBaseURL, model: model)
   }
 
   private func fixture(_ scenario: Scenario) throws -> (step: PostProcessStep, context: TransformContext) {
-    var workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup })
-    var step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
+    var workflow = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.preservesTranscriptContent })
+    var step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt, reasoning: .some(.none))
     if scenario == .customRewrite || scenario == .contextual {
       step.prompt = "Rewrite in a formal style."
       workflow = .init(
-        name: "Custom rewrite", pipeline: .init(recognizerID: "fixture", postProcessSteps: [step], outputActions: []),
+        name: "Custom rewrite",
+        plan: WorkflowPlan(
+          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "fixture")),
+          process: WorkflowProcessPhase(
+            steps: [
+              WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+              WorkflowProcessStep(kind: .applyVocabulary),
+            ] + ([step]).map(WorkflowProcessStep.init)), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
         ui: .init(symbolName: "waveform", accentColorName: "blue"))
     }
     if scenario == .canonicalWithCustomStep { step.prompt = "Rewrite in a formal style." }
     if scenario == .answer || scenario == .voiceAssistantAnswer { step.kind = .llmAnswer }
     if scenario == .voiceAssistantRewrite || scenario == .voiceAssistantAnswer {
-      workflow.metadata[WorkflowMetadataKey.speechMode] = SpeechWorkflowMode.voiceAssistant.rawValue
+
     }
     var context = TransformContext(
       runID: UUID(), workflow: workflow, contextSnapshot: .empty,

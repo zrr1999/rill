@@ -6,6 +6,7 @@
 """Check resources and the signing boundary of the standalone input method bundle."""
 
 import os
+import hashlib
 from pathlib import Path
 import plistlib
 import sys
@@ -38,16 +39,18 @@ class InputMethodAssemblyTests(unittest.TestCase):
             contents = bundle / "Contents"
             info = plistlib.loads((contents / "Info.plist").read_bytes())
             self.assertIs(info["TISIconIsTemplate"], True)
-            icons = [info["tsInputMethodIconFileKey"]]
+            icons = [info["tsInputMethodIconFileKey"], info["CFBundleIconFile"]]
             modes = info["ComponentInputModeDict"]["tsInputModeListKey"].values()
             for mode in modes:
                 icons.extend(mode[key] for key in (
                     "tsInputModeMenuIconFileKey", "tsInputModeAlternateMenuIconFileKey",
                     "tsInputModePaletteIconFileKey",
                 ))
-            brand = Path(__file__).resolve().parents[2] / "Sources/RillApp/Resources/RillMenuBarTemplate.pdf"
+            brand = Path(__file__).resolve().parents[2] / "Resources/AppIcon/RillInputMethodTemplate.tiff"
+            expected_name = f"RillInputMethod-{hashlib.sha256(brand.read_bytes()).hexdigest()[:16]}.tiff"
             for icon in icons:
                 with self.subTest(icon=icon):
+                    self.assertEqual(icon, expected_name)
                     self.assertEqual((contents / "Resources" / icon).read_bytes(), brand.read_bytes())
 
 

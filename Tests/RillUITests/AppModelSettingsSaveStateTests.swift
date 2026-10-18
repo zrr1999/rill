@@ -237,12 +237,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
   func testCollectionWriteFailureRetriesTheExactVocabularySnapshotAndClearsState() async throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    let workflowLibrary = String(
-      decoding: try encoder.encode(
-        WorkflowLibraryDocument(customWorkflows: [])
-      ),
-      as: UTF8.self
-    )
+    let workflowLibrary = "{\"schemaVersion\":2,\"customWorkflows\":[]}"
     let vocabularyLibrary = String(
       decoding: try encoder.encode(
         VocabularyLibraryDocument(collections: [.personal()])

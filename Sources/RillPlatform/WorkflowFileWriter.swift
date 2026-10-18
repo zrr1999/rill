@@ -2,10 +2,11 @@ import Foundation
 import RillCore
 
 actor WorkflowFileWriter {
-  func save(source: String, to url: URL, expected: WorkflowFileExpectation, historyDirectory: URL)
+  func save(source: String, to url: URL, expected: WorkflowFileExpectation, historyDirectory: URL, unchanged: (url: URL, source: String)? = nil)
     throws
   {
     try prepare(url.deletingLastPathComponent())
+    if let unchanged, try existingSource(unchanged.url) != unchanged.source { throw WorkflowFileConflict.changed }
     let previous = try existingSource(url)
     switch expected {
     case .missing: guard previous == nil else { throw WorkflowFileConflict.changed }
@@ -19,6 +20,7 @@ actor WorkflowFileWriter {
       try replace(Data(previous.utf8), at: version)
     }
     guard try existingSource(url) == previous else { throw WorkflowFileConflict.changed }
+    if let unchanged, try existingSource(unchanged.url) != unchanged.source { throw WorkflowFileConflict.changed }
     try replace(Data(source.utf8), at: url)
     // Maintenance failure must not turn a committed save into a reported failure.
     if let history = try? versions(in: historyDirectory) {

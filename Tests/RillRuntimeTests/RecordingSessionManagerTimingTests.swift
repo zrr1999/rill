@@ -155,9 +155,8 @@ private actor RecordingTimingAudioCaptureService: AudioCaptureService {
   }
 
   func cancelCapture(runID: UUID) async {
-    guard activeRunID == runID else { return }
     cancelCallCount += 1
-    activeRunID = nil
+    if activeRunID == runID { activeRunID = nil }
     resumeCancellationWaiters()
   }
 
@@ -415,6 +414,8 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
     await repository.waitUntilBlockedSaveEntered()
     await cueProbe.waitUntilEntered()
 
+    await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+
     var capture = await audioCaptureService.snapshot()
     XCTAssertTrue(capture.isInputRunning)
     guard case .recording = await manager.currentState() else {
@@ -445,6 +446,9 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
 
     await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
     await cueProbe.waitUntilEntered()
+
+    let captureDuringCue = await audioCaptureService.snapshot()
+    XCTAssertFalse(captureDuringCue.isInputRunning)
 
     let completion = RecordingTimingCompletionProbe()
     let shutdownTask = Task {
@@ -597,10 +601,7 @@ private func makeManager(
   let workflow = WorkflowDefinition(
     name: "Recording Timing Workflow",
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(
-      recognizerID: "recording.timing-recognizer",
-      outputActions: []
-    ),
+    plan: makeTestAudioPlan(recognizerID: "recording.timing-recognizer"),
     ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
   )
   let privacyRunGate = PrivacyRunGate(

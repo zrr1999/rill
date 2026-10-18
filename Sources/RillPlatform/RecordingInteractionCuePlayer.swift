@@ -1,5 +1,38 @@
 import AVFoundation
+import Foundation
 import RillCore
+
+public final class RecordingCuePlayback: @unchecked Sendable {
+  private let lock = NSLock()
+  private var finished = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  public func wait() async {
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        lock.withLock {
+          if finished {
+            continuation.resume()
+          } else {
+            waiters.append(continuation)
+          }
+        }
+      }
+    } onCancel: {
+      self.finish()
+    }
+  }
+
+  func finish() {
+    let pending = lock.withLock {
+      finished = true
+      let pending = waiters
+      waiters.removeAll()
+      return pending
+    }
+    for waiter in pending { waiter.resume() }
+  }
+}
 
 enum RecordingInteractionCueToneRenderer {
   static let sampleRate = 48_000.0
@@ -40,13 +73,14 @@ enum RecordingInteractionCueToneRenderer {
 
 /// Plays short, asset-free recording earcons through the app's audio process.
 ///
-/// The buffers are generated once and the engine is prepared eagerly so the
-/// confirmed recording transition does not wait on file I/O or sound decoding.
+/// Buffers are generated once. The returned playback completes at the device
+/// boundary, allowing microphone startup to follow the audible start cue.
 @MainActor
 public final class RecordingInteractionCuePlayer {
   private let engine = AVAudioEngine()
   private let player = AVAudioPlayerNode()
   private let buffers: [RecordingInteractionCue: AVAudioPCMBuffer]
+  private var activePlayback: RecordingCuePlayback?
 
   public init() {
     let format = AVAudioFormat(
@@ -70,23 +104,31 @@ public final class RecordingInteractionCuePlayer {
     engine.prepare()
   }
 
-  public func play(_ cue: RecordingInteractionCue) {
-    guard let buffer = buffers[cue] else { return }
+  @discardableResult
+  public func play(_ cue: RecordingInteractionCue) -> RecordingCuePlayback? {
+    guard let buffer = buffers[cue] else { return nil }
+    stop()
     if !engine.isRunning {
       do {
         try engine.start()
       } catch {
-        return
+        return nil
       }
     }
 
-    player.stop()
-    player.scheduleBuffer(buffer, at: nil, options: .interrupts)
+    let playback = RecordingCuePlayback()
+    activePlayback = playback
+    player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in
+      playback.finish()
+    }
     player.play()
+    return playback
   }
 
   public func stop() {
     player.stop()
+    activePlayback?.finish()
+    activePlayback = nil
   }
 
   private static func makeBuffer(

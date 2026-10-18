@@ -1874,15 +1874,18 @@ private func makeLocalSpeechRequest(
     workflow: WorkflowDefinition(
       name: "Local speech",
       trigger: triggerBinding,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: []
-      ),
+      plan: {
+        var plan = WorkflowPlan(
+          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+          process: WorkflowProcessPhase(steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate)))
+        plan.setup.speechRoute?.livePreviewPlacement = LivePreviewPlacement(rawValue: livePreviewPlacement.rawValue) ?? .overlay
+        return plan
+      }(),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
-      metadata: [
-        WorkflowMetadataKey.livePreviewPlacement: livePreviewPlacement.rawValue
-      ]
-    ),
+      properties: .init()),
     triggerEvent:
       triggerBinding == .wakeWord
       ? WorkflowTriggerEvent(

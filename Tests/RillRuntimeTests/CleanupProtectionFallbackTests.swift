@@ -1,3 +1,4 @@
+import RillPlatform
 import Foundation
 import RillCore
 import RillDomainTestSupport
@@ -12,12 +13,12 @@ struct CleanupProtectionFallbackTests {
     let settings = OpenAISettings(apiKey: "synthetic-test-key")
     let client = RejectedCleanupClient()
     let transformer = OpenAITextRewriteTransformer(
-      settingsProvider: { _, _ in settings }, clientFactory: { client }, rewriteTimeout: failureMode == .timeout ? .zero : .seconds(5))
+      settingsProvider: { _ in settings }, clientFactory: { client }, rewriteTimeout: failureMode == .timeout ? .zero : .seconds(5))
     let bus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: bus)
     let receipts = InMemoryWorkflowRunReceiptRepository()
     let output = CleanupFallbackOutput()
-    var workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup })
+    var workflow = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.preservesTranscriptContent })
     workflow.plan.output.actions = [.init(id: output.id)]
     let coordinator = makeTestSessionCoordinator(
       recognizerRegistry: .init(recognizers: [CleanupFallbackRecognizer()]),

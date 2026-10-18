@@ -55,6 +55,7 @@ let package = Package(
         "RillCore",
         .product(name: "TOML", package: "swift-toml"),
       ],
+      resources: [.copy("Resources/BuiltinWorkflows")],
       linkerSettings: [
         .linkedFramework("Security")
       ]
@@ -115,8 +116,6 @@ let package = Package(
         "RillUI",
       ],
       resources: [
-        .process("Resources/BuiltinWorkflowManifest.json"),
-        .process("Resources/BuiltinWorkflows.toml"),
         .process("Resources/RillMenuBarTemplate.pdf"),
         .process("Resources/RillMenuBarRecordsTemplate.pdf"),
         .copy("Resources/WorkflowTemplates"),

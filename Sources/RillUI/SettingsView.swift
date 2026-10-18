@@ -124,7 +124,6 @@ struct SettingsPermissionPresentation: Equatable {
 public struct SettingsView: View {
   @Bindable var model: AppModel
   let privacyNoticeDocument: PrivacyNoticeDocument?
-  @State var selectedLanguageModelRole: LanguageModelRole = .fast
   @State var sensitiveAppBundleIdentifier = ""
   @State var sensitiveAppApplicationName = ""
   @State var editingSensitiveAppRuleID: UUID?
@@ -153,7 +152,7 @@ public struct SettingsView: View {
   ) {
     self.model = model
     self.pane = pane
-    _expandedSettingsSections = State(initialValue: Set(pane.sections))
+    _expandedSettingsSections = State(initialValue: pane == .models ? [] : Set(pane.sections))
     self.privacyNoticeDocument = privacyNoticeDocument
     let wakeWordSettings = model.wakeWordSettingsSnapshot
     _wakePhrasesText = State(
@@ -174,15 +173,15 @@ public struct SettingsView: View {
         case .general:
           Section { languageSection }
         case .input:
-          Section {
-            builtinPushToTalkSection
-            recordPanelSection
-          }
-          if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
-        case .voice:
-          Section { speechEngineSection }
-          Section { apiProviderSettingsSection }
+          Section { builtinPushToTalkSection }
           Section { voiceAssistantResourcesSection }
+          Section { recordPanelSection }
+          if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
+        case .models:
+          Section { speechEngineSection }
+          Section { decisionProviderSettingsSection }
+          Section { llmProviderSettingsSection }
+          Section { ttsServiceSettingsSection }
         case .vocabulary:
           Section {
             vocabularySection
@@ -505,7 +504,7 @@ extension SettingsView {
         ? L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language)
         : L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language) + " · " + name
     case .input:
-      return L10n.builtinPushToTalkOutputMode(model.settings.builtinPushToTalkOutputMode, language: model.settings.language)
+      return L10n.workflowExplanationCopy(.outputs, language: model.settings.language)
     case .language:
       return model.settings.language.displayName
     case .storage:
@@ -838,19 +837,7 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      Picker(
-        L10n.text(.builtinPushToTalkOutputMode, language: model.settings.language),
-        selection: Binding(
-          get: { model.settings.builtinPushToTalkOutputMode },
-          set: { model.setBuiltinPushToTalkOutputMode($0) }
-        )
-      ) {
-        ForEach(BuiltinPushToTalkOutputMode.allCases) { mode in
-          Text(L10n.builtinPushToTalkOutputMode(mode, language: model.settings.language)).tag(mode)
-        }
-      }
-      .pickerStyle(.segmented)
-      .disabled(!model.settings.canMutateScalarSettings(in: .input))
+      if let workflow = model.activeVoiceInputWorkflow { WorkflowOutputChoices(model: model, workflow: workflow) }
       Text(L10n.text(.settingsBuiltinPushToTalkDescription, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)

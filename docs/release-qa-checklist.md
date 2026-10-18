@@ -220,8 +220,12 @@ cannot be confused with deleting stored content.
 
 Complete the pass in both App languages.
 
-- [ ] All Records, collections, Activity, Workflows, and all six settings panes in the
-      main window have a coherent VoiceOver reading and focus order. Back (⌘[) returns
+- [ ] All Records, collections, Activity, Workflows, and all six settings pages in the
+      main window have a coherent VoiceOver reading and focus order. Model services
+      is one sidebar page with four expandable service modules; their titles use only
+      the selected interface language. Deep links expand and focus their module,
+      and only the selected page exposes its controls. Wake listening belongs to Input.
+      Back (⌘[) returns
       to the page that was open before Settings. Settings → Data → Diagnostics remains
       accessible without changing that saved route.
 - [ ] Restricted history previews expose only the same truncated text shown
@@ -378,8 +382,9 @@ Complete the pass in both App languages.
       managed WAV, and restores wake listening without replaying the text.
 - [ ] With macOS output unmuted and at an audible level, Fn capture and wake-word
       activation use the same start cue. Hold-to-talk, toggle, manual, and menu-bar
-      capture play one start cue after readiness and one stop cue after input
-      closes. Cancellation, failed starts, and rapid replacement never replay
+      capture play one start cue after authorization and wait for its playback
+      to complete before starting microphone capture, then play one stop cue
+      after input closes. Cancellation and rapid replacement never replay
       stale cues; wake activation never duplicates its start cue. Verify with
       speakers and headphones that the start cue does not obscure the first
       syllable or appear in the transcript. A voice-assistant run speaks its LLM
@@ -499,34 +504,26 @@ is established per app and content type; see [continuous output](continuous-outp
 
 ### Editable pending drafts
 
-- [ ] Hover the freely placed capsule for 120ms: the separate page opens without
-      moving or resizing the capsule, stealing focus, or capturing an output target.
-      Drag from the capsule before the delay: it moves without opening the page.
-- [ ] Cross the gap to the page and return during the 220ms exit delay. The page
-      stays open. Keep a button pressed or edit with the pointer outside: it must
-      not collapse. Verify Keep open, attached sheets, and physical IME candidates.
-      Small movements within 6pt of the page edge must not start dismissal; a quick
-      pass over the capsule must not open it after the pointer has already left.
+- [ ] Press Cmd+Cmd in an external App. The unified panel opens centered on the
+      pointer's display, initially in Collections. Switch to Drafts, close, and
+      invoke again: the last mode returns. Repeat the shortcut in either mode to
+      close it, leaving no resident capsule or other idle Record window.
+- [ ] Check Escape, the header Close button, Done Editing, and focus loss to
+      another window. Each dismisses the panel without losing saved text or
+      selection. An attached sheet closes before the panel; physical IME candidates
+      take precedence. Returning focus during the dismissal delay keeps it open.
 - [ ] Change modes, counts, selections and output status while preparing to click
       Copy or Send. Window geometry and the bottom action positions stay fixed.
-- [ ] Drag the open pair near every screen edge and across displays. The capsule
-      reaches the 12pt screen margin independently of the wider page. Near the top,
-      the page moves below the capsule; near the bottom, it moves above. Keep the
-      current side while the full page fits, and keep a 14pt gap without overlap.
-      When neither side fits, limit the page height to available space and switch
-      only when the other side has more than 24pt extra space; small movements
-      near the midpoint must not repeatedly flip it. Restore normal height when
-      space returns. Reopen after a display change. Physical IME composition and
-      attached sheets must prevent dragging.
-- [ ] Check capsule drag/close and keyboard or VoiceOver expansion. No separate
-      collapse button is present; Escape and pointer exit retain their own behavior.
+- [ ] Invoke on each display, including after disconnecting a display. Keep the
+      page inside the visible screen with a 12pt margin; smaller screens reduce
+      its size. Verify Close and both mode controls with keyboard and VoiceOver.
 - [ ] Enable voice collection and clipboard collection separately, both in Settings
-      and in Drafts. Each enables the same saved preference and opens the resident
-      panel without stealing key focus. Relaunch with either enabled and check restoration.
-- [ ] Send a pending item and switch applications: Drafts stays visible. Close it
-      explicitly, then enable the other source to reopen it without losing edits or selection.
-- [ ] Focus an external text field, enter the already-visible Drafts window, and
-      send. Each new editing visit captures that target; arrivals and Send never recapture it.
+      and in Drafts. Each enables the same saved preference without opening the
+      panel. Relaunch with either enabled and receive new items: it stays hidden.
+- [ ] Send a pending item: the Record panel closes before output. Required output
+      confirmation and file/image dragging remain available in their temporary
+      window. Reopen explicitly to continue editing; arrivals and Send never
+      recapture the target from the original editing visit.
 - [ ] Open Drafts from both the menu bar and Record toolbar in Chinese/English,
       light/dark appearance and a narrow window; inspect selection contrast and VoiceOver labels.
 - [ ] With the physical Chinese IME, compose, choose candidates, replace a selection,

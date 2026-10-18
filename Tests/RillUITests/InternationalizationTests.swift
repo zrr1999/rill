@@ -231,5 +231,8 @@ private struct WakeWorkflowSaveFailureStore: WorkflowFileStore {
   func save(workflow _: WorkflowDefinition, isEnabled _: Bool, replacing _: URL?) async throws -> URL {
     throw WorkflowFileStoreError.unsupportedSchema(37)
   }
+  func saveDocument(_ document: WorkflowDocument, replacing fileURL: URL?, expected: WorkflowFileExpectation) async throws -> WorkflowFileRecord {
+    throw WorkflowFileStoreError.unsupportedSchema(37)
+  }
   func delete(fileURL _: URL) async throws { throw WorkflowFileStoreError.unsupportedSchema(37) }
 }

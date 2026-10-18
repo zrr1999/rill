@@ -13,31 +13,16 @@ public struct WorkflowDocumentCodec: Sendable {
     decoder.limits.maxArrayLength = 1_024
     decoder.limits.maxTableKeys = 1_024
     let shape = try decoder.decode(DocumentShape.self, from: source)
-    guard let version = shape.table?["schema_version"]?.integer else {
-      throw WorkflowDocumentError("schema_version", "An integer schema version is required.")
+    guard shape.table?["schema_version"]?.integer == WorkflowDocument.schemaVersion else {
+      throw WorkflowDocumentError("schema_version", "Unsupported workflow format. Use schema_version = 1; this file has not been changed.")
     }
-    var document: WorkflowDocument
-    switch version {
-    case 1:
-      try shape.validateDocument(legacy: true)
-      let legacy = try decoder.decode(WorkflowTOMLDocument.self, from: source)
-      document = try WorkflowDocument(workflow: legacy.workflow(), isEnabled: legacy.enabled)
-    case 2, 3:
-      try shape.validateDocument(globalModels: version == 3)
-      document = try decoder.decode(WorkflowFileDocument.self, from: source).document()
-    default:
-      throw WorkflowDocumentError(
-        "schema_version",
-        "Unsupported workflow version \(version). This file has not been changed.")
-    }
-    if version < 3 { document.workflow = document.workflow.followingGlobalModels() }
+    try shape.validateDocument()
+    let document = try decoder.decode(WorkflowFileDocument.self, from: source).document()
     try validate(document)
     return document
   }
 
   public func encode(_ document: WorkflowDocument, validating: Bool = true) throws -> String {
-    var document = document
-    document.workflow = document.workflow.followingGlobalModels()
     if validating { try validate(document) }
     let encoder = TOMLEncoder()
     encoder.outputFormatting = .sortedKeys
@@ -47,9 +32,7 @@ public struct WorkflowDocumentCodec: Sendable {
   public func validate(_ document: WorkflowDocument) throws {
     try XDGWorkflowFileStore.validate(document.workflow)
     let workflow = document.workflow
-    if let gate = workflow.metadata["text.polishing-gate"], gate != "classification" {
-      throw WorkflowDocumentError("options.text.polishing-gate", "Use classification; the decision model is selected in Settings.")
-    }
+    guard workflow.properties.automation == nil else { throw WorkflowDocumentError("trigger", "Record collection event automation is unavailable.") }
     guard (workflow.inputKind == .audio) == (workflow.plan.setup.speechRoute != nil) else {
       throw WorkflowDocumentError(
         "input.kind",
@@ -63,6 +46,7 @@ public struct WorkflowDocumentCodec: Sendable {
       try insertKey(step.documentID ?? step.id.uuidString, into: &keys)
     }
     for (index, action) in workflow.plan.output.actions.enumerated() {
+      _ = try DocumentAction(action, index: index).action()
       try insertKey(action.documentID ?? "output-\(index + 1)", into: &keys)
     }
   }
@@ -84,7 +68,7 @@ public struct WorkflowDocumentCodec: Sendable {
 }
 
 private struct WorkflowFileDocument: Codable {
-  var schema_version = 3
+  var schema_version = WorkflowDocument.schemaVersion
   var id: UUID
   var name: String
   var description: String?
@@ -95,8 +79,6 @@ private struct WorkflowFileDocument: Codable {
   var setup: WorkflowTOMLSetup?
   var process: [DocumentStep]?
   var output: DocumentOutput
-  var options: [String: String]?
-  var metadata: [String: String]?
 
   init(_ document: WorkflowDocument) {
     let workflow = document.workflow
@@ -106,45 +88,19 @@ private struct WorkflowFileDocument: Codable {
     enabled = document.isEnabled
     trigger = DocumentTrigger(
       kind: workflow.trigger.tomlValue,
-      gesture: workflow.metadata[WorkflowMetadataKey.triggerGesture])
+      gesture: workflow.properties.gesture, exclusive_group: workflow.exclusiveGroupIdentifier)
     input = DocumentInput(kind: workflow.inputKind)
     ui = WorkflowTOMLUI(config: workflow.ui)
-    setup = WorkflowTOMLSetup(phase: workflow.plan.setup, metadata: workflow.metadata)
+    setup = WorkflowTOMLSetup(phase: workflow.plan.setup)
     process = workflow.plan.process.steps.map(DocumentStep.init)
     output = DocumentOutput(workflow.plan.output)
-    let descriptive = workflow.metadata.filter {
-      $0.key.hasPrefix("user.") || $0.key == "workflow.origin"
-    }
-    metadata = descriptive.isEmpty ? nil : descriptive
-    var remaining = workflow.metadata.filter { descriptive[$0.key] == nil }
-    remaining.removeValue(forKey: WorkflowMetadataKey.triggerGesture)
-    for key in [
-      WorkflowMetadataKey.livePreviewEnabled, WorkflowMetadataKey.livePreviewPlacement,
-      WorkflowMetadataKey.streamingProfile,
-    ] where setup?.speech != nil {
-      remaining.removeValue(forKey: key)
-    }
-    options = remaining.isEmpty ? nil : remaining
   }
 
   func document() throws -> WorkflowDocument {
     guard let binding = TriggerBinding(tomlValue: trigger.kind) else {
       throw WorkflowDocumentError("trigger.kind", "Unknown trigger kind.")
     }
-    var runtimeMetadata = options ?? [:]
-    for (key, value) in metadata ?? [:] {
-      guard key.hasPrefix("user.") || key == "workflow.origin" else {
-        throw WorkflowDocumentError(
-          "metadata.\(key)",
-          "Descriptive metadata keys must start with user.; runtime options belong in options."
-        )
-      }
-      runtimeMetadata[key] = value
-    }
-    if let gesture = trigger.gesture {
-      runtimeMetadata[WorkflowMetadataKey.triggerGesture] = gesture
-    }
-    try setup?.speech?.applyMetadata(to: &runtimeMetadata)
+    let properties = WorkflowProperties(gesture: trigger.gesture, exclusiveGroup: trigger.exclusive_group)
     var workflow = try WorkflowDefinition(
       id: id, name: name, trigger: binding,
       plan: WorkflowPlan(
@@ -154,7 +110,7 @@ private struct WorkflowFileDocument: Codable {
         output: output.phase()
       ),
       ui: ui?.config ?? WorkflowUIConfig(symbolName: "sparkles", accentColorName: "blue"),
-      metadata: runtimeMetadata
+      properties: properties
     )
     workflow.documentDescription = description
     workflow.declaredInputKind = input.kind
@@ -165,6 +121,7 @@ private struct WorkflowFileDocument: Codable {
 private struct DocumentTrigger: Codable {
   var kind: String
   var gesture: String?
+  var exclusive_group: String? = nil
 }
 private struct DocumentInput: Codable { var kind: WorkflowInputKind }
 
@@ -174,7 +131,11 @@ private struct DocumentStep: Codable {
   var description: String?
   var prompt: String?
   var record_duration: Bool?
-  var model_role: LanguageModelRole?
+  var reasoning: ReasoningLevel?
+  var optional: Bool?
+  var on_failure: WorkflowTaskFailurePolicy?
+  var decision: WorkflowServiceRequirement?
+  var preserve_content: Bool?
   var uncertainty: WorkflowTOMLUncertainty?
   var condition: DocumentCondition?
   var then: [DocumentStep]?
@@ -186,7 +147,11 @@ private struct DocumentStep: Codable {
     description = step.nodeDescription
     prompt = step.prompt
     record_duration = step.recordDuration
-    model_role = step.postProcessStep?.resolvedModelRole
+    reasoning = step.reasoning
+    optional = step.optional ? true : nil
+    on_failure = step.failurePolicy == .fail ? nil : step.failurePolicy
+    decision = step.decision
+    preserve_content = step.preservesContent ? true : nil
     uncertainty = step.uncertaintyPolicy.map(WorkflowTOMLUncertainty.init)
     condition = step.condition.map(DocumentCondition.init)
     then = step.thenSteps.map { $0.map(DocumentStep.init) }
@@ -201,9 +166,12 @@ private struct DocumentStep: Codable {
       id: Self.runtimeID(id, workflowID: workflowID), kind: stepKind,
       prompt: prompt, uncertaintyPolicy: uncertainty?.policy(),
       recordDuration: record_duration,
-      modelRole: model_role
+      reasoning: reasoning
     )
-    step.modelRole = step.postProcessStep?.resolvedModelRole ?? step.modelRole
+    step.failurePolicy = on_failure ?? .fail
+    step.optional = optional ?? false
+    step.decision = decision
+    step.preservesContent = preserve_content ?? false
     step.documentID = id
     step.nodeDescription = description
     step.condition = try condition?.resolve()
@@ -228,7 +196,7 @@ private struct DocumentStep: Codable {
 
 private struct DocumentOutput: Codable {
   var strategy: String?
-  var actions: [DocumentAction]
+  var actions: [DocumentAction]?
 
   init(_ output: WorkflowOutputPhase) {
     strategy = output.deliveryPolicy.strategy.tomlValue
@@ -240,7 +208,7 @@ private struct DocumentOutput: Codable {
       throw WorkflowDocumentError("output.strategy", "Unknown delivery strategy.")
     }
     return try WorkflowOutputPhase(
-      actions: actions.map { try $0.action() }, deliveryPolicy: .init(strategy: strategy))
+      actions: (actions ?? []).map { try $0.action() }, deliveryPolicy: .init(strategy: strategy))
   }
 }
 
@@ -248,19 +216,72 @@ private struct DocumentAction: Codable {
   var id: String
   var kind: String
   var description: String?
-  var config: [String: String]?
+  var optional: Bool?
+  var collections: [UUID]?
+  var buffer: String?
+  var exclude_from_capture: Bool?
+  var voice: String?
+  var language: String?
+  var shortcut: String?
+  var path: String?
+  var webhook_reference: String?
   var condition: DocumentCondition?
 
   init(_ action: OutputActionReference, index: Int) {
     id = action.documentID ?? "output-\(index + 1)"
     kind = action.id
     description = action.nodeDescription
-    config = action.configuration.isEmpty ? nil : action.configuration
+    optional = action.optional ? true : nil
+    let values = action.configuration
+    collections = values.collections.isEmpty ? nil : values.collections
+    buffer = values.buffer
+    exclude_from_capture = values.excludeFromCapture ? nil : false
+    voice = values.voice
+    language = values.language
+    shortcut = values.shortcutName
+    path = values.markdownPath
+    webhook_reference = values.webhookReference
     condition = action.condition.map(DocumentCondition.init)
   }
-
   func action() throws -> OutputActionReference {
-    var action = OutputActionReference(id: kind, configuration: config ?? [:])
+    guard
+      [
+        RecordActionID.store, RecordActionID.systemClipboardCopy, RecordActionID.focusedApplicationInsert,
+        SpeechOutputActionID.speak, ExternalOutputActionID.webhookPost, ExternalOutputActionID.shortcutsRun,
+        ExternalOutputActionID.markdownAppend,
+      ].contains(kind)
+    else {
+      throw WorkflowDocumentError("output.\(id).kind", "Unknown output kind.")
+    }
+    var values = WorkflowOutputParameters()
+    if let collections {
+      guard kind == RecordActionID.store, Set(collections).count == collections.count else {
+        throw WorkflowDocumentError("output.\(id).collections", "Collections require a record.store action and unique IDs.")
+      }
+      values.collections = collections
+    }
+    if let buffer {
+      guard kind == RecordActionID.store, buffer == "speech" else {
+        throw WorkflowDocumentError("output.\(id).buffer", "Use the speech buffer on record.store.")
+      }
+      values.buffer = buffer
+    }
+    if let exclude_from_capture { values.excludeFromCapture = exclude_from_capture }
+    if voice != nil || language != nil {
+      guard kind == SpeechOutputActionID.speak else { throw WorkflowDocumentError("output.\(id)", "Voice and language belong to speech.speak.") }
+    }
+    if shortcut != nil && kind != ExternalOutputActionID.shortcutsRun { throw WorkflowDocumentError("output.\(id).shortcut", "Unexpected field.") }
+    if path != nil && kind != ExternalOutputActionID.markdownAppend { throw WorkflowDocumentError("output.\(id).path", "Unexpected field.") }
+    if webhook_reference != nil && kind != ExternalOutputActionID.webhookPost {
+      throw WorkflowDocumentError("output.\(id).webhook_reference", "Unexpected field.")
+    }
+    values.voice = voice
+    values.language = language
+    values.shortcutName = shortcut
+    values.markdownPath = path
+    values.webhookReference = webhook_reference
+    var action = OutputActionReference(id: kind, configuration: values)
+    action.optional = optional ?? false
     action.documentID = id
     action.nodeDescription = description
     action.condition = try condition?.resolve()
@@ -316,10 +337,12 @@ private indirect enum DocumentShape: Decodable {
   case tableValue([String: DocumentShape])
   case array([DocumentShape])
   case number(Int)
+  case text(String)
   case scalar
   var table: [String: DocumentShape]? {
     if case .tableValue(let value) = self { value } else { nil }
   }
+  var string: String? { if case .text(let value) = self { value } else { nil } }
   var integer: Int? { if case .number(let value) = self { value } else { nil } }
 
   init(from decoder: any Decoder) throws {
@@ -335,7 +358,7 @@ private indirect enum DocumentShape: Decodable {
       self = .array(values)
     } else {
       let value = try decoder.singleValueContainer()
-      self = (try? value.decode(Int.self)).map(Self.number) ?? .scalar
+      self = (try? value.decode(Int.self)).map(Self.number) ?? (try? value.decode(String.self)).map(Self.text) ?? .scalar
     }
   }
 
@@ -354,79 +377,63 @@ private indirect enum DocumentShape: Decodable {
     }
   }
 
-  func validateDocument(legacy: Bool = false, globalModels: Bool = false) throws {
-    try check(
-      legacy
-        ? [
-          "schema_version", "id", "name", "enabled", "trigger", "ui", "setup", "process",
-          "output", "metadata",
-        ]
-        : [
-          "schema_version", "id", "name", "description", "enabled", "trigger", "input",
-          "ui", "setup", "process", "output", "options", "metadata",
-        ], path: "")
-    if !legacy { try table?["trigger"]?.check(["kind", "gesture"], path: "trigger") }
+  func validateDocument() throws {
+    try check(["schema_version", "id", "name", "description", "enabled", "trigger", "input", "ui", "setup", "process", "output"], path: "")
+    try table?["trigger"]?.check(["kind", "gesture", "exclusive_group"], path: "trigger")
     try table?["input"]?.check(["kind"], path: "input")
     try table?["ui"]?.check(["symbol", "accent"], path: "ui")
     let setup = table?["setup"]
     try setup?.check(["speech", "vocabulary", "wake_word"], path: "setup")
-    try setup?.table?["speech"]?.check(
-      globalModels
-        ? ["language", "live_preview", "live_preview_placement", "streaming_profile"]
-        : [
-          "selection", "recognizer", "language", "local_model", "provider_model",
-          "live_preview", "live_preview_placement", "streaming_profile",
-        ], path: "setup.speech")
-    if globalModels {
-      for key in WorkflowDefinition.retiredModelOptionKeys where table?["options"]?.table?[key] != nil {
-        throw WorkflowDocumentError("options.\(key)", "Models are configured globally in Settings.")
-      }
-    }
+    try setup?.table?["speech"]?.check(["language", "live_preview", "live_preview_placement", "streaming_profile"], path: "setup.speech")
     try setup?.table?["wake_word"]?.check(["phrases"], path: "setup.wake_word")
     if case .array(let bindings) = setup?.table?["vocabulary"] {
       for binding in bindings {
-        try binding.check(["id", "collection", "uses", "when"], path: "setup.vocabulary")
-        try binding.table?["when"]?.check(
-          ["app_bundle_id", "clipboard_group", "locale"], path: "setup.vocabulary.when")
+        try binding.check(["id", "collection", "uses", "when", "optional"], path: "setup.vocabulary")
+        try binding.table?["when"]?.check(["app_bundle_id", "record_collection", "locale"], path: "setup.vocabulary.when")
       }
     }
-    try table?["process"]?.validateSteps(path: "process", legacy: legacy)
+    try table?["process"]?.validateSteps(path: "process")
     try table?["output"]?.check(["strategy", "actions"], path: "output")
     if case .array(let actions) = table?["output"]?.table?["actions"] {
       for (index, action) in actions.enumerated() {
         let path = "output.actions[\(index)]"
         try action.check(
-          legacy
-            ? ["id", "config"] : ["id", "kind", "description", "config", "condition"],
-          path: path)
+          [
+            "id", "kind", "description", "optional", "collections", "buffer", "exclude_from_capture", "voice", "language", "shortcut", "path",
+            "webhook_reference", "condition",
+          ], path: path)
         try action.table?["condition"]?.validateCondition(path: "\(path).condition")
-        if globalModels {
-          for key in [SpeechOutputActionConfigurationKey.provider, SpeechOutputActionConfigurationKey.model]
-          where action.table?["config"]?.table?[key] != nil {
-            throw WorkflowDocumentError("\(path).config.\(key)", "Models are configured globally in Settings.")
-          }
-        }
       }
     }
   }
-
-  func validateSteps(path: String, legacy: Bool = false) throws {
+  func validateSteps(path: String) throws {
     guard case .array(let steps) = self else { return }
     for (index, step) in steps.enumerated() {
       let path = "\(path)[\(index)]"
       try step.check(
-        legacy
-          ? ["id", "kind", "prompt", "uncertainty"]
-          : [
-            "id", "kind", "description", "prompt", "uncertainty", "condition", "then",
-            "else", "record_duration", "model_role",
-          ], path: path)
-      try step.table?["uncertainty"]?.check(
-        ["mode", "confidence_threshold", "timeout_seconds"], path: "\(path).uncertainty")
-      try step.table?["condition"]?.validateCondition(path: "\(path).condition")
-      for branch in ["then", "else"] {
-        try step.table?[branch]?.validateSteps(path: "\(path).\(branch)")
+        [
+          "id", "kind", "description", "prompt", "record_duration", "reasoning", "optional", "on_failure", "decision", "preserve_content", "uncertainty",
+          "condition", "then",
+          "else",
+        ], path: path)
+      let llm = ["llm-rewrite", "llm-answer"].contains(step.table?["kind"]?.string ?? "")
+      if !llm && step.table?["optional"] != nil { throw WorkflowDocumentError("\(path).optional", "Only service-dependent LLM tasks accept optional.") }
+      if llm != (step.table?["reasoning"] != nil) {
+        throw WorkflowDocumentError("\(path).reasoning", llm ? "An explicit reasoning level is required." : "Only LLM tasks accept reasoning.")
       }
+      if step.table?["decision"] != nil || step.table?["preserve_content"] != nil {
+        guard step.table?["kind"]?.string == "llm-rewrite" else {
+          throw WorkflowDocumentError(path, "Decision input and content preservation belong to llm-rewrite.")
+        }
+      }
+      if step.table?["on_failure"] != nil && step.table?["kind"]?.string != "llm-rewrite" {
+        throw WorkflowDocumentError("\(path).on_failure", "Failure policy belongs to rewrite tasks.")
+      }
+      try step.table?["decision"]?.check(["optional"], path: "\(path).decision")
+      try step.table?["uncertainty"]?.check(["mode", "confidence_threshold", "timeout_seconds"], path: "\(path).uncertainty")
+      try step.table?["condition"]?.validateCondition(path: "\(path).condition")
+      try step.table?["then"]?.validateSteps(path: "\(path).then")
+      try step.table?["else"]?.validateSteps(path: "\(path).else")
     }
   }
 

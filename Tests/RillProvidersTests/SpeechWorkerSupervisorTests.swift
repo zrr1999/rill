@@ -1,3 +1,4 @@
+import RillPlatform
 @testable import RillSpeechContracts
 @testable import RillSpeech
 import Darwin
@@ -403,7 +404,7 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
       fileURL: audioURL,
       fileOwnership: .managedTemporary
     )
-    let workflows = BuiltinWorkflowCatalog().manifest().workflows
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
     do {
       for workflow in workflows {
         let result = try await recognizer.recognize(
@@ -889,10 +890,12 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
   private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Worker Adapter Test",
-      pipeline: PipelineDeclaration(
-        recognizerID: "local-speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent")
     )
   }

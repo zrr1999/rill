@@ -80,7 +80,7 @@ public func makeAppModelForTesting(
     )
   },
   verifyOpenAIConfigurationAction:
-    @escaping @Sendable (OpenAISettings, LanguageModelRole) async throws -> Void = { _, _ in
+    @escaping @Sendable (OpenAISettings) async throws -> Void = { _ in
       throw NSError(
         domain: "Rill.AppModel.OpenAI",
         code: 1,

@@ -132,7 +132,7 @@ final class LocalPersistenceStatusPresentationTests: XCTestCase {
       recordCount: 2,
       canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp,
+
       localPersistenceStatus: sessionOnly
     )
 
