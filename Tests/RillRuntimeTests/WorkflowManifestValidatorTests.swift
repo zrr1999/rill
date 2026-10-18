@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
@@ -25,16 +26,16 @@ final class WorkflowManifestValidatorTests: XCTestCase {
       workflows: [
         WorkflowDefinition(
           name: "Planned Rewrite",
-          pipeline: PipelineDeclaration(
-            recognizerID: "future.recognizer",
-            postProcessSteps: [PostProcessStep(kind: .llmRewrite)],
-            outputActions: [OutputActionReference(id: "future.action")]
-          ),
+          plan: WorkflowPlan(
+            setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "future.recognizer")),
+            process: WorkflowProcessPhase(
+              steps: [
+                WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+                WorkflowProcessStep(kind: .applyVocabulary),
+              ] + ([PostProcessStep(kind: .llmRewrite, reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+            output: WorkflowOutputPhase(actions: [OutputActionReference(id: "future.action")], deliveryPolicy: .init(strategy: .immediate))),
           ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple"),
-          metadata: [
-            WorkflowMetadataKey.availability: WorkflowAvailability.planned.rawValue
-          ]
-        )
+          properties: .init(availability: WorkflowAvailability(rawValue: WorkflowAvailability.planned.rawValue) ?? .planned))
       ]
     )
     let validator = WorkflowManifestValidator(
@@ -51,10 +52,7 @@ final class WorkflowManifestValidatorTests: XCTestCase {
       workflows: [
         WorkflowDefinition(
           name: "Invalid Workflow",
-          pipeline: PipelineDeclaration(
-            recognizerID: "missing.recognizer",
-            outputActions: [OutputActionReference(id: "validator.action")]
-          ),
+          plan: makeTestAudioPlan(recognizerID: "missing.recognizer", actions: [OutputActionReference(id: "validator.action")]),
           ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
       ]
@@ -78,10 +76,7 @@ final class WorkflowManifestValidatorTests: XCTestCase {
       workflows: [
         WorkflowDefinition(
           name: "Valid Workflow",
-          pipeline: PipelineDeclaration(
-            recognizerID: "validator.recognizer",
-            outputActions: [OutputActionReference(id: "validator.action")]
-          ),
+          plan: makeTestAudioPlan(recognizerID: "validator.recognizer", actions: [OutputActionReference(id: "validator.action")]),
           ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
       ]

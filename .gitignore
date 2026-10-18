@@ -22,6 +22,9 @@ xcuserdata/
 # Python tooling caches
 __pycache__/
 *.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
 
 # Cloudflare local state and credentials
 /.wrangler/

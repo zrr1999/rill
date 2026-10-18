@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
@@ -107,25 +108,25 @@ private actor PrivacyContextSequence {
 final class PrivacyRunGateTests: XCTestCase {
   func testAdmissionAndCloudConfirmationShareTheFrozenModelBinding() async throws {
     let models = LanguageModelSettingsSource()
-    let original = OpenAISettings(apiKey: "test-key", model: "original-model")
-    models.update(original, for: .fast)
+    let original = OpenAISettings(apiKey: "test-key", model: "gpt-5.6-luna")
+    models.update(original)
     let context = makeRunContext(bundleIdentifier: "com.example.editor")
     let probe = ConfirmationProbe()
     var gate = PrivacyRunGate(
       settingsProvider: { .defaults },
       cloudConfirmationProvider: { _, _, _, snapshot in
-        XCTAssertEqual(snapshot?.languageModels[.fast], original)
-        models.update(OpenAISettings(apiKey: "test-key", model: "next-model"), for: .fast)
+        XCTAssertEqual(snapshot?.languageModel, original)
+        models.update(OpenAISettings(apiKey: "test-key", model: "next-model"))
         await probe.record()
         return true
       }
     )
-    gate.modelSnapshotProvider = { try models.snapshot(for: $0.languageModelRoles) }
+    gate.modelSnapshotProvider = { try models.snapshot(for: $0) }
     let admitted = try await gate.captureAuthorizedWorkflowRunContext(
       privacyContextProvider: { context }, contextProvider: { _ in context },
       recognitionOptionsProvider: { _, _ in .empty }, workflow: makeRunWorkflow(recognizerID: "remote.speech"))
-    XCTAssertEqual(admitted.modelSnapshot?.languageModels[.fast], original)
-    XCTAssertEqual(try models.currentSettings(for: .fast).model, "next-model")
+    XCTAssertEqual(admitted.modelSnapshot?.languageModel, original)
+    XCTAssertEqual(try models.currentSettings().model, "next-model")
     let confirmations = await probe.snapshot()
     XCTAssertEqual(confirmations, 1)
   }
@@ -755,13 +756,11 @@ private func makeRunWorkflow(
   let usesCloudTextFixture = recognizerID == "remote.speech"
   return WorkflowDefinition(
     name: "Privacy Run",
-    pipeline: PipelineDeclaration(
+    plan: makeTestAudioPlan(
       recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID,
       postProcessSteps: usesCloudTextFixture
-        ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")]
-        : [],
-      outputActions: actionIDs.map { OutputActionReference(id: $0) }
-    ),
+        ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]
+        : [], actions: actionIDs.map { OutputActionReference(id: $0) }),
     ui: WorkflowUIConfig(symbolName: "lock", accentColorName: "blue")
   )
 }

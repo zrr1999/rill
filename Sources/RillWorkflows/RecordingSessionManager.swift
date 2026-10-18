@@ -961,6 +961,14 @@ public actor RecordingSessionManager {
     let liveAudioSession = activeLiveAudioSession
     do {
       guard let liveAudioSession else { throw SessionCoordinator.SessionError.privacyAuthorizationRequired }
+      await recordingCueAction(.started, pendingStart.startCueToken)
+      completedStartCueCount += 1
+      guard !hasBegunApplicationShutdown, !Task.isCancelled,
+        activeRunID == pendingStart.runID,
+        case .preparing(let currentRunID) = state,
+        currentRunID == pendingStart.runID,
+        pendingStart.request.audioLifetime?.isActive ?? true
+      else { throw CancellationError() }
       try await liveAudioSession.startCapture(pendingStart.request, using: audioCaptureService)
       guard case .preparing(let expectedRunID) = state, expectedRunID == pendingStart.runID else {
         _ = pendingStart.request.audioLifetime?.cancel()
@@ -1010,18 +1018,6 @@ public actor RecordingSessionManager {
         message: "Push-to-talk recording started with \(pendingStart.gesture.rawValue).",
         runID: pendingStart.runID
       )
-      guard !hasBegunApplicationShutdown,
-        !Task.isCancelled,
-        activeRunID == pendingStart.runID,
-        case .recording(let currentRunID) = state,
-        currentRunID == pendingStart.runID,
-        pendingStart.request.audioLifetime?.isActive ?? true,
-        activeStartCueToken === pendingStart.startCueToken
-      else {
-        return
-      }
-      await recordingCueAction(.started, pendingStart.startCueToken)
-      completedStartCueCount += 1
     } catch is CancellationError {
       _ = pendingStart.request.audioLifetime?.cancel()
       if isCancellationInProgress(runID: pendingStart.runID) {

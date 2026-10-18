@@ -51,13 +51,14 @@ final class MLXAudioSwiftBackendTests: XCTestCase {
   func testLegacyWorkflowOverrideCannotChangeGlobalASR() {
     let workflow = WorkflowDefinition(
       name: "MLX override",
-      pipeline: PipelineDeclaration(recognizerID: "local-speech", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent"),
-      metadata: [
-        WorkflowMetadataKey.localSpeechModelOverride:
-          MLXAudioModelID.qwen3ASR17BInt8.rawValue
-      ]
-    )
+      properties: .init())
 
     XCTAssertEqual(
       LocalSpeechModelCatalog.effectiveModelIdentifier(

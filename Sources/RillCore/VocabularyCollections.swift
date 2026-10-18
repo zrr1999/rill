@@ -143,37 +143,6 @@ public struct VocabularyLibraryDocument: Codable, Sendable, Equatable {
   }
 }
 
-public struct WorkflowCustomization: Codable, Sendable, Equatable {
-  public var workflowID: UUID
-  public var vocabularyBindings: [VocabularyCollectionBinding]?
-
-  public init(
-    workflowID: UUID,
-    vocabularyBindings: [VocabularyCollectionBinding]? = nil
-  ) {
-    self.workflowID = workflowID
-    self.vocabularyBindings = vocabularyBindings
-  }
-}
-
-public struct WorkflowLibraryDocument: Codable, Sendable, Equatable {
-  public static let currentSchemaVersion = 2
-
-  public var schemaVersion: Int
-  public var customWorkflows: [WorkflowDefinition]
-  public var customizations: [WorkflowCustomization]
-
-  public init(
-    schemaVersion: Int = currentSchemaVersion,
-    customWorkflows: [WorkflowDefinition],
-    customizations: [WorkflowCustomization] = []
-  ) {
-    self.schemaVersion = schemaVersion
-    self.customWorkflows = customWorkflows
-    self.customizations = customizations
-  }
-}
-
 public struct ResolvedVocabularySnapshot: Sendable, Equatable {
   public var hotwordRules: [VocabularyRule]
   public var replacementRules: [VocabularyRule]

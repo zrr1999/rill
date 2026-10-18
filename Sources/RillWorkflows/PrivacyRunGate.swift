@@ -19,6 +19,21 @@ public struct PrivacyRunGate: Sendable {
   private func bindingModels(for workflow: WorkflowDefinition) throws -> Self {
     var gate = self
     gate.modelSnapshot = try modelSnapshotProvider(workflow)
+    let skipped = gate.modelSnapshot?.skippedStepIDs ?? []
+    let classify = destinationClassifier
+    gate.destinationClassifier = { workflow, invocation in
+      var active = workflow
+      func available(_ steps: [WorkflowProcessStep]) -> [WorkflowProcessStep] {
+        steps.filter { !skipped.contains($0.id) }.map { original in
+          var step = original
+          step.thenSteps = step.thenSteps.map(available)
+          step.elseSteps = step.elseSteps.map(available)
+          return step
+        }
+      }
+      active.plan.process.steps = available(active.plan.process.steps)
+      return classify(active, invocation)
+    }
     return gate
   }
 
@@ -125,7 +140,7 @@ public struct PrivacyRunGate: Sendable {
       [PrivacyProcessingDestination],
       WorkflowModelSnapshot?
     ) async -> Bool
-  private let destinationClassifier:
+  private var destinationClassifier:
     @Sendable (
       WorkflowDefinition,
       WorkflowRunInvocation
@@ -383,6 +398,7 @@ public struct PrivacyRunGate: Sendable {
       ) async throws -> SpeechRecognitionRequestOptions,
     workflow: WorkflowDefinition
   ) async throws -> AuthorizedWorkflowRunContext {
+    guard workflow.inputKind != .record else { throw GateError.recordOperationUnsupported }
     let gate = try bindingModels(for: workflow)
     let authorization = try await gate.captureAuthorizedContext(
       privacyContextProvider: privacyContextProvider,
@@ -451,7 +467,8 @@ public struct PrivacyRunGate: Sendable {
       ) async throws -> SpeechRecognitionRequestOptions,
     workflow: WorkflowDefinition
   ) async throws -> AuthorizedAudioProcessingLease {
-    try await issueAudioProcessingLease(
+    let gate = try bindingModels(for: workflow)
+    return try await gate.issueAudioProcessingLease(
       runID: runID,
       privacyContextProvider: privacyContextProvider,
       contextProvider: contextProvider,
@@ -482,9 +499,10 @@ public struct PrivacyRunGate: Sendable {
         LiveAudioAuthorizationRevocationReason
       ) async -> Void
   ) async throws -> AuthorizedLiveAudioSession {
+    let gate = try bindingModels(for: workflow)
     let liveAuthorizationState = LiveAudioSessionAuthorizationState()
     let audioLifetime = AudioCaptureLifetime(runID: runID)
-    let lease = try await issueAudioProcessingLease(
+    let lease = try await gate.issueAudioProcessingLease(
       runID: runID,
       privacyContextProvider: privacyContextProvider,
       contextProvider: contextProvider,
@@ -500,9 +518,9 @@ public struct PrivacyRunGate: Sendable {
       processingLease: lease,
       authorizationState: liveAuthorizationState,
       monitorInterval: monitorInterval,
-      validation: { [self] in
+      validation: { [gate] in
         let context = await privacyContextProvider()
-        return await self.liveAudioRevocationReason(
+        return await gate.liveAudioRevocationReason(
           context: context,
           workflow: workflow,
           expectedDestinations: lease.processingDestinationsAtIssuance,
@@ -529,7 +547,7 @@ public struct PrivacyRunGate: Sendable {
     if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
       throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
     }
-    let gate = try bindingModels(for: workflow)
+    let gate = self
     let capture = try await gate.captureAuthorizedPolicyContext(
       privacyContextProvider: privacyContextProvider,
       contextProvider: contextProvider,
@@ -552,7 +570,7 @@ public struct PrivacyRunGate: Sendable {
     defer {
       if !preparationTransferred { preparedRecognition?.hotwordPreparation?.cancel() }
     }
-    let finalPolicy = try await evaluatePolicy(
+    let finalPolicy = try await gate.evaluatePolicy(
       context: capture.sourcePrivacyContext,
       workflow: workflow
     )

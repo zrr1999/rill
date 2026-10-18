@@ -10,7 +10,7 @@ final class WorkflowPlanTests: XCTestCase {
     var branch = WorkflowProcessStep(kind: .conditional)
     branch.condition = .comparison(field: .text, operation: .contains, value: "Rill")
     branch.thenSteps = [WorkflowProcessStep(kind: .normalizeWhitespace)]
-    branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Polish")]
+    branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Polish", reasoning: .some(.none))]
     plan.process.steps.append(branch)
     let original = plan
 
@@ -51,7 +51,7 @@ final class WorkflowPlanTests: XCTestCase {
     XCTAssertEqual(decoded, workflow)
   }
 
-  func testLegacyPipelineDecodesIntoThreePhasePlan() throws {
+  func testLegacyPipelineIsRejected() throws {
     let workflow = makeVoiceWorkflow()
     var object = try XCTUnwrap(
       JSONSerialization.jsonObject(
@@ -73,17 +73,10 @@ final class WorkflowPlanTests: XCTestCase {
       "deliveryPolicy": ["strategy": "clipboardOnly"],
     ]
 
-    let decoded = try JSONDecoder().decode(
-      WorkflowDefinition.self,
-      from: JSONSerialization.data(withJSONObject: object)
-    )
-
-    XCTAssertEqual(decoded.plan.setup.speechRoute?.recognizerID, "legacy.recognizer")
-    XCTAssertEqual(
-      decoded.plan.process.steps.map(\.kind),
-      [.recognizeSpeech, .applyVocabulary]
-    )
-    XCTAssertEqual(decoded.plan.output.actions.map(\.id), ["system-clipboard.copy"])
+    XCTAssertThrowsError(
+      try JSONDecoder().decode(
+        WorkflowDefinition.self,
+        from: JSONSerialization.data(withJSONObject: object)))
   }
 
   func testValidatorRejectsRecognitionOutsideFirstPosition() {
@@ -103,7 +96,7 @@ final class WorkflowPlanTests: XCTestCase {
     }
   }
 
-  func testValidatorAllowsTextOnlyPlanAndRejectsEmptyOutput() throws {
+  func testValidatorAllowsTextOnlyPlanAndEmptyOutput() throws {
     var plan = WorkflowPlan(
       setup: WorkflowSetupPhase(),
       process: WorkflowProcessPhase(
@@ -116,11 +109,7 @@ final class WorkflowPlanTests: XCTestCase {
 
     XCTAssertNoThrow(try WorkflowPlanValidator.validate(plan, input: .text))
     plan.output.actions = []
-    XCTAssertThrowsError(
-      try WorkflowPlanValidator.validate(plan, input: .text)
-    ) { error in
-      XCTAssertEqual(error as? WorkflowPlanValidationError, .missingOutput)
-    }
+    XCTAssertNoThrow(try WorkflowPlanValidator.validate(plan, input: .text))
   }
 
   func testBindingConditionsAreAndWithinBindingAndOrAcrossBindings() {

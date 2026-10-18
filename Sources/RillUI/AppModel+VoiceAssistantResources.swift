@@ -36,12 +36,14 @@ extension AppModel {
   }
 
   public func disableWakeWordListening() {
-    for workflow in self.workflowLibrary.workflows
-    where
-      workflow.trigger == .wakeWord && isWorkflowEnabled(workflow)
-    {
-      setWorkflowEnabled(false, for: workflow.id)
-    }
+    guard !hasBegunApplicationShutdown, !settings.isLoading, isWorkflowLibraryAvailable,
+      !workflowLibrary.isUpdatingWorkflowEnabledStates
+    else { return }
+    let changes = Dictionary(
+      uniqueKeysWithValues: workflowLibrary.workflows.filter {
+        $0.trigger == .wakeWord && isWorkflowEnabled($0)
+      }.map { ($0.id, false) })
+    if !changes.isEmpty { _ = persistWorkflowFileEnabledStates(changes) }
   }
 
   public func updateWakeWordSettings(
@@ -85,12 +87,14 @@ extension AppModel {
       )
       if let workflowFileStore {
         do {
-          let fileURL = try await workflowFileStore.save(
-            workflow: updatedWorkflow,
-            isEnabled: self.workflowLibrary.workflowEnabledStates[updatedWorkflow.id] ?? true,
-            replacing: self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id]
-          )
-          self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id] = fileURL
+          let url = self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id]
+          guard let source = self.workflowLibrary.workflowFileSourcesByID[updatedWorkflow.id] else { throw WorkflowFileConflict.changed }
+          let record = try await workflowFileStore.saveDocument(
+            .init(
+              workflow: updatedWorkflow,
+              isEnabled: self.workflowLibrary.workflowEnabledStates[updatedWorkflow.id] ?? true), replacing: url, expected: .source(source))
+          self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id] = record.fileURL
+          self.workflowLibrary.workflowFileSourcesByID[updatedWorkflow.id] = record.source
         } catch {
           return .failed(localizedWorkflowFileSaveError(error))
         }
@@ -99,7 +103,6 @@ extension AppModel {
       self.workflowLibrary.workflowEditorErrorPresentation = nil
       self.workflowLibrary.workflowLibraryErrorPresentation = nil
       rebuildWorkflowLibrary()
-      persistWorkflowEnabledStates()
       persistCustomWorkflows()
       append(
         L10n.resource("run.wakePhrasesUpdatedFormat", defaultValue: "Wake phrases updated: \(editableWorkflow.name)")
@@ -115,17 +118,16 @@ extension AppModel {
       customizedWorkflow.plan.setup.wakeWord = WakeWordConfiguration(
         phrases: normalizedPhrases
       )
-      customizedWorkflow.metadata[Self.workflowOriginMetadataKey] =
-        Self.userWorkflowOriginMetadataValue
+      customizedWorkflow.properties.isBuiltin = false
 
       if let workflowFileStore {
         do {
-          let fileURL = try await workflowFileStore.save(
-            workflow: customizedWorkflow,
-            isEnabled: self.workflowLibrary.workflowEnabledStates[customizedWorkflow.id] ?? false,
-            replacing: nil
-          )
-          self.workflowLibrary.workflowFileURLsByID[customizedWorkflow.id] = fileURL
+          let record = try await workflowFileStore.saveDocument(
+            .init(
+              workflow: customizedWorkflow,
+              isEnabled: self.workflowLibrary.workflowEnabledStates[customizedWorkflow.id] ?? false), replacing: nil, expected: .missing)
+          self.workflowLibrary.workflowFileURLsByID[customizedWorkflow.id] = record.fileURL
+          self.workflowLibrary.workflowFileSourcesByID[customizedWorkflow.id] = record.source
         } catch {
           return .failed(localizedWorkflowFileSaveError(error))
         }
@@ -164,6 +166,7 @@ extension AppModel {
       return .failed(L10n.resource("run.wakeWorkflowNotFound"))
     }
 
+    await flushPendingPersistenceWrites()
     for workflow in self.workflowLibrary.workflows
     where
       workflow.trigger == .wakeWord
@@ -171,8 +174,10 @@ extension AppModel {
       && isWorkflowEnabled(workflow)
     {
       setWorkflowEnabled(false, for: workflow.id)
+      await flushPendingPersistenceWrites()
     }
     setWorkflowEnabled(enableListening, for: savedWorkflowID)
+    await flushPendingPersistenceWrites()
     if self.workflowLibrary.workflowLibraryError != nil {
       return .workflowLibraryFailed
     }
@@ -190,32 +195,31 @@ extension AppModel {
   private func voiceAssistantReadiness(
     for workflow: WorkflowDefinition?
   ) -> VoiceAssistantReadiness {
+    let workflow = workflow.flatMap { try? workflowApplyingOutputState($0) }
     let requiresLLM =
       workflow?.plan.process.allSteps.contains(where: {
-        $0.kind == .llmRewrite || $0.kind == .llmAnswer
+        !$0.optional && ($0.kind == .llmRewrite || $0.kind == .llmAnswer)
       }) ?? false
 
-    func readiness(for role: LanguageModelRole) -> VoiceAssistantLLMReadiness {
+    func readiness() -> VoiceAssistantLLMReadiness {
       if settings.isLoading { return .loading }
-      switch settings.credentialAvailability(for: role) {
+      switch settings.credentialAvailability() {
       case .loading, .saving: return .loading
       case .missing: return .credentialMissing
       case .inaccessible: return .credentialInaccessible
       case .available:
-        guard !settings.hasUnavailableScalarSettings(in: role.settingsDomain),
-          (try? LanguageModelConfiguration(migrating: settings.languageModelSettings(for: role)).validate(for: role)) != nil
+        guard !settings.hasUnavailableScalarSettings(in: .openAI),
+          (try? LanguageModelConfiguration(migrating: settings.languageModelSettings()).validate()) != nil
         else { return .configurationInvalid }
-        switch settings.verificationState(for: role) {
+        switch settings.verificationState() {
         case .idle: return .configured
         case .verifying: return .verifying
         case .verified: return .verified
-        case .failed: return .verificationFailed(settings.verificationFailure(for: role))
+        case .failed: return .verificationFailed(settings.verificationFailure())
         }
       }
     }
-    let roles = (workflow?.languageModelRoles ?? []).sorted { $0.rawValue < $1.rawValue }
-    let states = roles.map { readiness(for: $0) }
-    let llm = states.first { $0 != .configured && $0 != .verified } ?? states.first ?? .notRequired
+    let llm: VoiceAssistantLLMReadiness = requiresLLM ? readiness() : .notRequired
 
     let privacy: VoiceAssistantPrivacyReadiness
     if !requiresLLM {

@@ -40,6 +40,7 @@ jobs:
           profile: zendev
 
       - name: Check PR body
+        if: ${{ fromJSON(steps.pr.outputs.data).user.type != 'Bot' }}
         uses: zendev-lab/zendev/actions/validate-body@91087d4d4e9841aaf8cead8b7c6d294a3db63b10 # v0.4.0
         with:
           body: ${{ fromJSON(steps.pr.outputs.data).body }}

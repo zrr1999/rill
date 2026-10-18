@@ -71,12 +71,6 @@ extension AppModel {
     voice.synchronizeTTSSelection()
   }
 
-  func handleBuiltinPushToTalkOutputModeChange(from oldValue: BuiltinPushToTalkOutputMode) {
-    guard oldValue != self.settings.builtinPushToTalkOutputMode else { return }
-    workflowLibrary.cancelWorkflowExplanation()
-    persistBuiltinPushToTalkOutputModePreference()
-  }
-
   func handleLongRecordingModeChange(from oldValue: Bool) {
     guard oldValue != self.settings.longRecordingModeEnabled else { return }
     persistLongRecordingModePreference()

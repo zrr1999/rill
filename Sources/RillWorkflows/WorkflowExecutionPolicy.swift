@@ -13,24 +13,12 @@ public enum WorkflowExecutionSurfaceDecision: Sendable, Equatable {
 }
 
 public enum WorkflowExecutionPolicyIssue: String, Codable, Sendable, Equatable {
-  case legacyClipboardAutomationUnsupported
-  case invalidEventType
+  case wrongExecutionSurface
+  case invalidConfiguration
   case plannedCapabilityUnavailable
 }
 
 public enum WorkflowExecutionPolicy {
-  private static let legacyClipboardEventTypes: Set<String> = [
-    "groupItemCreated",
-    "groupItemEdited",
-    "groupItemRemoved",
-  ]
-  private static let supportedInteractiveEventTypes: Set<String> = [
-    TriggerBinding.hotkey.rawValue,
-    TriggerBinding.manual.rawValue,
-    TriggerBinding.menuBar.rawValue,
-    TriggerBinding.wakeWord.rawValue,
-  ]
-
   public static func issue(
     for workflow: WorkflowDefinition
   ) -> WorkflowExecutionPolicyIssue? {
@@ -41,9 +29,9 @@ public enum WorkflowExecutionPolicy {
     case .supported:
       return nil
     case .wrongSurface:
-      return .legacyClipboardAutomationUnsupported
+      return .wrongExecutionSurface
     case .invalidConfiguration:
-      return .invalidEventType
+      return .invalidConfiguration
     }
   }
 
@@ -65,25 +53,7 @@ public enum WorkflowExecutionPolicy {
     } else if workflow.plan.setup.wakeWord != nil {
       return .invalidConfiguration
     }
-    guard let eventType = workflow.metadata[WorkflowMetadataKey.legacyEventType] else {
-      return surface == .recordCollectionEvent ? .wrongSurface : .supported
-    }
-
-    if legacyClipboardEventTypes.contains(eventType) {
-      guard surface == .recordCollectionEvent else { return .wrongSurface }
-      do {
-        guard try workflow.parseRecordCollectionAutomationConfiguration() != nil else {
-          return .invalidConfiguration
-        }
-        return .supported
-      } catch {
-        return .invalidConfiguration
-      }
-    }
-
-    guard supportedInteractiveEventTypes.contains(eventType) else {
-      return .invalidConfiguration
-    }
+    if workflow.properties.automation != nil { return surface == .recordCollectionEvent ? .supported : .wrongSurface }
     return surface == .recordCollectionEvent ? .wrongSurface : .supported
   }
 }

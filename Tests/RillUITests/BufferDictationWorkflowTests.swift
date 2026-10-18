@@ -1,3 +1,4 @@
+import RillPlatform
 import Foundation
 import RillCore
 import Testing
@@ -13,10 +14,11 @@ private actor DraftRecordingProbe {
 @MainActor struct BufferDictationWorkflowTests {
   @Test(arguments: [false, true])
   func explicitDraftRecordingFreezesIntentAndNeverIncludesExternalInsertion(editing: Bool) async throws {
-    let workflow = makeBuiltinPushToTalkWorkflow()
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
+    let workflow = try #require(workflows.first { $0.titleKey == .speechRecognition })
     let probe = DraftRecordingProbe()
     let model = makeHarness(
-      workflow: workflow,
+      workflows: workflows,
       permissionSnapshot: .init(accessibility: .granted, microphone: .granted),
       startWorkflowAudioRunAction: { await probe.record($0, $1, $2) }
     ).model
@@ -28,12 +30,11 @@ private actor DraftRecordingProbe {
     await model.waitForWorkflowAudioActions()
     let start = try #require(await probe.starts.first)
     #expect(start.0.plan.output.actions.map(\.id) == [RecordActionID.store])
-    #expect(start.0.metadata[WorkflowMetadataKey.livePreviewPlacement] == LivePreviewPlacement.overlay.rawValue)
-    #expect(start.0.metadata[WorkflowMetadataKey.collectSpeech] == (editing ? nil : "true"))
+    #expect(start.0.plan.setup.speechRoute?.livePreviewPlacement.rawValue == LivePreviewPlacement.overlay.rawValue)
+    #expect(start.0.collectsSpeech == !editing)
     #expect(start.1 == .manual)
     #expect(start.2 == (editing ? intent : nil))
-    #expect(model.settings.builtinPushToTalkOutputMode == .pasteIntoApp)
-    #expect(workflow.plan.output.actions.map(\.id) == ["focused-application.insert"])
+    #expect(workflow.plan.output.actions.map(\.id) == ["record.store", "focused-application.insert", "record.store"])
     await model.stopInteractiveWorkflowRunsForApplicationShutdown()
   }
 }

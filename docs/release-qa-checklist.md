@@ -24,15 +24,17 @@ hashes together. Local development runs and historical WhisperKit/sherpa-onnx
 results do not satisfy current MLX speech-worker candidate gates. The current
 source and locked model catalog determine which tests and models apply.
 
-Successful `CI - Tests` runs retain a `native-preflight-app-<source revision>`
+The Release lane of `CI - Tests` retains a `native-preflight-app-release-<run id>-<attempt>`
 artifact for 14 days. It contains the arm64 app assembled and signature-verified
 by that run, its ZIP SHA-256, and the source revision/dirty state. Verify the
 checksum before extraction and record the app's embedded build identity for
 interaction QA. The bundle keeps the existing ad-hoc signature and `preflight`
 version; distribution trust and notarization still need the release candidate.
 Local preflight can save the same evidence by setting `RILL_PREFLIGHT_APP_DIR`
-to an artifact directory. Export happens after all preflight tests pass, and an
-existing archive is preserved rather than overwritten.
+to an artifact directory. CI exports after the Release lane passes; the parallel
+Tests lane may still be running. Use the app for acceptance only when that run's
+`Release preflight` aggregate succeeds. Default local preflight still exports
+after all tests pass. An existing archive is preserved rather than overwritten.
 
 Automated checks do not prove Gatekeeper behavior after a real download,
 permission prompts, physical Fn or input-method behavior, acoustic quality,
@@ -220,8 +222,12 @@ cannot be confused with deleting stored content.
 
 Complete the pass in both App languages.
 
-- [ ] All Records, collections, Activity, Workflows, and all six settings panes in the
-      main window have a coherent VoiceOver reading and focus order. Back (⌘[) returns
+- [ ] All Records, collections, Activity, Workflows, and all six settings pages in the
+      main window have a coherent VoiceOver reading and focus order. Model services
+      is one sidebar page with four expandable service modules; their titles use only
+      the selected interface language. Deep links expand and focus their module,
+      and only the selected page exposes its controls. Wake listening belongs to Input.
+      Back (⌘[) returns
       to the page that was open before Settings. Settings → Data → Diagnostics remains
       accessible without changing that saved route.
 - [ ] Restricted history previews expose only the same truncated text shown
@@ -378,8 +384,9 @@ Complete the pass in both App languages.
       managed WAV, and restores wake listening without replaying the text.
 - [ ] With macOS output unmuted and at an audible level, Fn capture and wake-word
       activation use the same start cue. Hold-to-talk, toggle, manual, and menu-bar
-      capture play one start cue after readiness and one stop cue after input
-      closes. Cancellation, failed starts, and rapid replacement never replay
+      capture play one start cue after authorization and wait for its playback
+      to complete before starting microphone capture, then play one stop cue
+      after input closes. Cancellation and rapid replacement never replay
       stale cues; wake activation never duplicates its start cue. Verify with
       speakers and headphones that the start cue does not obscure the first
       syllable or appear in the transcript. A voice-assistant run speaks its LLM

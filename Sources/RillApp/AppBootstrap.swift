@@ -29,18 +29,21 @@ struct AppContainer {
 @MainActor
 enum AppBootstrap {
   static func recordingCueAction(
-    playSound: @escaping @MainActor @Sendable (RecordingInteractionCue) -> Void
+    playSound: @escaping @MainActor @Sendable (RecordingInteractionCue) -> RecordingCuePlayback?
   ) -> @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void {
     { cue, token in
-      await MainActor.run {
+      let playback = await MainActor.run {
+        var playback: RecordingCuePlayback?
         token.performIfValid {
-          playSound(cue)
+          playback = playSound(cue)
           NSHapticFeedbackManager.defaultPerformer.perform(
             cue == .started ? .alignment : .generic,
             performanceTime: .now
           )
         }
+        return playback
       }
+      await playback?.wait()
     }
   }
 
@@ -327,7 +330,7 @@ enum AppBootstrap {
     for workflow: WorkflowDefinition,
     isEnabled: Bool
   ) -> RecordCollectionWorkflowRegistration? {
-    guard let configuration = try? workflow.parseRecordCollectionAutomationConfiguration() else {
+    guard let configuration = workflow.properties.automation else {
       return nil
     }
     return RecordCollectionWorkflowRegistration(
@@ -987,7 +990,7 @@ private enum AppContainerFactory {
     let localSpeechSettingsSource = LocalSpeechSettingsSource()
     let languageModelSettingsSource = LanguageModelSettingsSource()
     let openAISettingsProvider: @Sendable () async throws -> OpenAISettings = {
-      try languageModelSettingsSource.currentSettings(for: .fast)
+      try languageModelSettingsSource.currentSettings()
     }
     let speechWorkerSupervisor = SpeechWorkerSupervisor(
       configuration: .init(executableURL: speechWorkerExecutableURL)
@@ -1226,7 +1229,7 @@ private enum AppContainerFactory {
         collections: vocabulary?.collections ?? [],
         context: VocabularyRuleContext(
           contextSnapshot: context,
-          recordCollectionID: workflow.legacyTargetRecordCollectionID,
+          recordCollectionID: workflow.targetRecordCollectionIDs.first?.rawValue,
           locale: options.language))
       options.hints = VocabularyRecognitionHintResolver().resolve(rules: resolved.hotwordRules).hints
       return options
@@ -1574,19 +1577,14 @@ private enum AppContainerFactory {
       cloudConfirmationProvider: { workflow, _, processingDestinations, modelSnapshot in
         var providerIdentities: [String] = []
         if processingDestinations.contains(.cloudText) {
-          guard let bindings = modelSnapshot?.languageModels,
-            workflow.languageModelRoles.isSubset(of: Set(bindings.keys))
-          else { return false }
-          for role in workflow.languageModelRoles.sorted(by: { $0.rawValue < $1.rawValue }) {
-            guard let settings = bindings[role] else { return false }
-            providerIdentities.append(
-              cloudAuthorizationScopeIdentity([
-                LLMTextProcessing.providerID, role.rawValue,
-                settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                settings.model.trimmingCharacters(in: .whitespacesAndNewlines), settings.apiKey,
-              ]))
-          }
+          guard let settings = modelSnapshot?.languageModel else { return false }
+          providerIdentities.append(
+            cloudAuthorizationScopeIdentity([
+              LLMTextProcessing.providerID, settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+              settings.model.trimmingCharacters(in: .whitespacesAndNewlines), settings.apiKey,
+            ]))
         }
+
         if processingDestinations.contains(.cloudSpeech) {
           let route = workflow.plan.setup.speechRoute
           providerIdentities.append(
@@ -1636,10 +1634,12 @@ private enum AppContainerFactory {
       }
     )
     gate.modelSnapshotProvider = { workflow in
-      var snapshot = try providers.languageModelSettingsSource.snapshot(for: workflow.languageModelRoles)
-      snapshot.speechSynthesisModelID = providers.ttsModelSelectionSource.currentModelIdentifier()
-      snapshot.decisionAuthorization = providers.jevSessionSettings.currentAuthorization()
-      return snapshot
+      let ttsID = providers.ttsModelSelectionSource.currentModelIdentifier()
+      let ttsEnabled = (try? providers.localSpeechSettingsSource.currentSettings().enabledModelIDs.contains(ttsID)) == true
+      return try providers.languageModelSettingsSource.snapshot(
+        for: workflow,
+        decisionAuthorization: providers.jevSessionSettings.currentAuthorization(),
+        speechSynthesis: ttsEnabled ? .localModel(ttsID) : .system)
     }
     return gate
   }
@@ -2234,10 +2234,10 @@ private enum AppModelFactory {
       finishWorkflowAudioRunAction: {
         try await runtime.workflowAudioRunController.finishRun()
       },
-      verifyOpenAIConfigurationAction: { settings, role in
+      verifyOpenAIConfigurationAction: { settings in
         try await OpenAIConfigurationVerifier.verify(
           settings: settings,
-          role: role,
+
           diagnosticReporter: { event in
             await core.diagnostics.record(event)
           }
@@ -2485,22 +2485,13 @@ private enum AppPersistence {
         startupDiagnosticMessage =
           "SQLite persistence is active with an alternate protection key retained for safety."
       }
-      let protectedSettingsStore = WebhookProtectingSettingsStore(
-        settingsStore: store,
-        secureStore: KeychainWebhookConfigurationStore(
-          service: webhookKeychainServiceIdentifier
-        ),
-        eventReporter: { event in
-          try? await store.save(DiagnosticEventSanitizer.sanitize(event.diagnosticEvent))
-        }
-      )
       return PersistenceBackends(
         localPersistenceStatus: localPersistenceStatus,
         diagnosticRepository: store,
         historyRepository: store,
         runHistoryBrowser: store,
         runReceiptRepository: store,
-        settingsStore: protectedSettingsStore,
+        settingsStore: store,
         recordGraphPersistenceStore: store,
         residuePurger: RillStorageResiduePurger(
           rawStoragePurger: store,
@@ -2678,99 +2669,21 @@ enum WorkflowManifestResource {
     transformerRegistry: TextTransformerRegistry,
     actionRegistry: OutputActionRegistry
   ) -> LoadResult {
-    let fallback = BuiltinWorkflowCatalog().manifest()
-    guard let manifestURL else {
-      return LoadResult(
-        manifest: fallback,
-        diagnostic: manifestDiagnostic(
-          event: .workflowManifestBundleMissing,
-          metadata: [
-            "reason": "resource-unavailable",
-            "source": "packaged-resource",
-          ]
-        )
-      )
-    }
     do {
-      let manifest = try LegacyWorkflowManifestFileLoader(url: manifestURL).loadManifest()
-      try WorkflowManifestValidator(
-        recognizerRegistry: recognizerRegistry,
-        transformerRegistry: transformerRegistry,
-        actionRegistry: actionRegistry
-      ).validate(manifest)
-      return LoadResult(
-        manifest: manifest,
-        diagnostic: manifestDiagnostic(
-          event: .workflowManifestLoaded,
-          level: .info,
-          metadata: ["source": "packaged-resource"]
-        )
-      )
+      let manifest = try BuiltinWorkflowCatalog(directory: manifestURL).manifest()
+      try WorkflowManifestValidator(recognizerRegistry: recognizerRegistry, transformerRegistry: transformerRegistry, actionRegistry: actionRegistry).validate(
+        manifest)
+      return LoadResult(manifest: manifest, diagnostic: manifestDiagnostic(event: .workflowManifestLoaded, level: .info))
     } catch {
       return LoadResult(
-        manifest: fallback,
-        diagnostic: manifestDiagnostic(
-          event: .workflowManifestFallback,
-          metadata: [
-            "reason": "load-or-validation-failed",
-            "source": "packaged-resource",
-          ]
-        )
-      )
+        manifest: WorkflowManifest(workflows: []),
+        diagnostic: DiagnosticEvent(
+          subsystem: .providers, level: .error, event: .workflowManifestBundleMissing,
+          message: "Built-in workflow resources are invalid. No built-in workflows were activated.", metadata: [:]))
     }
   }
 
-  private nonisolated static func url(fileManager: FileManager = .default) -> URL? {
-    let resourceName = "BuiltinWorkflowManifest"
-    let fileName = "\(resourceName).json"
-    let bundleName = "RillMacOS_RillApp"
-    if let url = Bundle.main.url(forResource: resourceName, withExtension: "json") {
-      return url
-    }
-    if let url = resourceBundleURL(bundleName: bundleName, resourceName: resourceName) {
-      return url
-    }
-    return candidateDirectories().lazy.compactMap { directory in
-      resourceURL(
-        in: directory, fileName: fileName, bundleName: bundleName, fileManager: fileManager)
-    }.first
-  }
-
-  private nonisolated static func resourceBundleURL(bundleName: String, resourceName: String)
-    -> URL?
-  {
-    guard let bundleURL = Bundle.main.url(forResource: bundleName, withExtension: "bundle"),
-      let bundle = Bundle(url: bundleURL)
-    else { return nil }
-    return bundle.url(forResource: resourceName, withExtension: "json")
-  }
-
-  private nonisolated static func candidateDirectories() -> [URL] {
-    [
-      Bundle.main.resourceURL,
-      Bundle.main.bundleURL.deletingLastPathComponent(),
-      Bundle.main.executableURL?.deletingLastPathComponent(),
-      URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent(
-        "Resources"),
-    ].compactMap { $0 }
-  }
-
-  private nonisolated static func resourceURL(
-    in directory: URL,
-    fileName: String,
-    bundleName: String,
-    fileManager: FileManager
-  ) -> URL? {
-    let directURL = directory.appendingPathComponent(fileName)
-    if fileManager.fileExists(atPath: directURL.path) {
-      return directURL
-    }
-    let bundledURL =
-      directory
-      .appendingPathComponent("\(bundleName).bundle", isDirectory: true)
-      .appendingPathComponent(fileName)
-    return fileManager.fileExists(atPath: bundledURL.path) ? bundledURL : nil
-  }
+  private nonisolated static func url(fileManager: FileManager = .default) -> URL? { nil }
 
   private static func manifestDiagnostic(
     event: DiagnosticEventName,
@@ -2791,69 +2704,9 @@ enum WorkflowManifestResource {
     case .workflowManifestLoaded:
       return "Loaded workflow manifest from the app bundle."
     case .workflowManifestFallback:
-      return "Failed to load the workflow manifest. Falling back to the built-in catalog."
+      return "Failed to load the built-in workflows."
     default:
-      return "Workflow manifest resource was not found. Falling back to the built-in catalog."
-    }
-  }
-}
-
-extension WebhookConfigurationMigrationEvent {
-  fileprivate var diagnosticEvent: DiagnosticEvent {
-    switch self {
-    case .completed(let protectedActionCount):
-      return DiagnosticEvent(
-        subsystem: .platform,
-        level: .info,
-        event: .securityWebhookConfigurationProtected,
-        message: "Legacy Webhook configuration protection is ready.",
-        metadata: ["protectedActionCount": String(protectedActionCount)]
-      )
-    case .purgePending(let protectedActionCount):
-      return DiagnosticEvent(
-        subsystem: .platform,
-        level: .warning,
-        event: .securityWebhookConfigurationPurgePending,
-        message:
-          "Webhook values are protected, but physical SQLite cleanup is still pending and workflow library writes remain locked.",
-        metadata: ["protectedActionCount": String(protectedActionCount)]
-      )
-    case .blocked(let reason):
-      return DiagnosticEvent(
-        subsystem: .platform,
-        level: .error,
-        event: .securityWebhookConfigurationBlocked,
-        message:
-          "Legacy Webhook configuration could not be protected, so custom workflows were quarantined.",
-        metadata: ["reason": reason.diagnosticDescription]
-      )
-    }
-  }
-}
-
-extension WebhookConfigurationMigrationBlockReason {
-  fileprivate var diagnosticDescription: String {
-    switch self {
-    case .settingsReadFailed:
-      return "settings-read-failed"
-    case .invalidWorkflowLibrary:
-      return "invalid-workflow-library"
-    case .duplicateWorkflowID(let workflowID):
-      return "duplicate-workflow-id:\(workflowID.uuidString)"
-    case .invalidWorkflowEnabledStates:
-      return "invalid-workflow-enabled-states"
-    case .invalidSecureReference(let workflowID, let actionIndex):
-      return "invalid-secure-reference:\(workflowID.uuidString):\(actionIndex)"
-    case .secureReadFailed(let reference):
-      return "secure-read-failed:\(reference.rawValue)"
-    case .secureWriteFailed(let reference):
-      return "secure-write-failed:\(reference.rawValue)"
-    case .secureVerificationFailed(let reference):
-      return "secure-verification-failed:\(reference.rawValue)"
-    case .secureValueConflict(let reference):
-      return "secure-value-conflict:\(reference.rawValue)"
-    case .settingsWriteFailed:
-      return "settings-write-failed"
+      return "Built-in workflow resource was not found."
     }
   }
 }
@@ -2962,7 +2815,7 @@ final class WorkflowSelectionBridge {
   weak var model: AppModel?
 
   func enabledWorkflows(for trigger: TriggerBinding) -> [WorkflowDefinition] {
-    model?.enabledWorkflows(for: trigger) ?? []
+    model?.executionWorkflows(for: trigger) ?? []
   }
 
   func longRecordingModeEnabled() -> Bool {

@@ -1,46 +1,21 @@
 import Foundation
 
-public enum LanguageModelRole: String, Codable, CaseIterable, Identifiable, Sendable {
-  case fast
-  case intelligent
-
+public enum ReasoningLevel: String, Codable, CaseIterable, Identifiable, Sendable {
+  case none, low, high
   public var id: String { rawValue }
-
-  public var credentialKey: SecureCredentialKey {
-    self == .fast ? .openAIAPIKey : .intelligentAPIKey
-  }
-
-  public var baseURLKey: AppSettingKey {
-    self == .fast ? .openAIBaseURL : .intelligentBaseURL
-  }
-
-  public var modelKey: AppSettingKey {
-    self == .fast ? .openAIModel : .intelligentModel
-  }
-
 }
 
 public enum LanguageModelProvider: String, Codable, CaseIterable, Identifiable, Sendable {
   case openAI = "openai"
   case deepSeek = "deepseek"
   case compatible
-
   public var id: String { rawValue }
-
   public var defaultBaseURL: String {
-    switch self {
-    case .openAI, .compatible: OpenAISettings.defaultBaseURL
-    case .deepSeek: LLMTextProcessing.deepSeekBaseURL
-    }
+    self == .deepSeek ? LLMTextProcessing.deepSeekBaseURL : OpenAISettings.defaultBaseURL
   }
-
   public var defaultModel: String {
-    switch self {
-    case .openAI, .compatible: OpenAISettings.defaultModel
-    case .deepSeek: LLMTextProcessing.deepSeekModel
-    }
+    self == .deepSeek ? LLMTextProcessing.deepSeekModel : OpenAISettings.defaultModel
   }
-
   public static func infer(from baseURL: String) -> Self {
     switch URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?.host?.lowercased() {
     case "api.openai.com": .openAI
@@ -50,151 +25,134 @@ public enum LanguageModelProvider: String, Codable, CaseIterable, Identifiable, 
   }
 }
 
-/// Durable model selection. Credentials are stored separately in Keychain.
+/// Connection configuration. The adapter owns reasoning capabilities and native parameters.
 public struct LanguageModelConfiguration: Codable, Sendable, Equatable {
   public var provider: LanguageModelProvider
   public var baseURL: String
   public var model: String
-
-  public init(
-    provider: LanguageModelProvider = .openAI,
-    baseURL: String? = nil,
-    model: String? = nil
-  ) {
+  public init(provider: LanguageModelProvider = .openAI, baseURL: String? = nil, model: String? = nil) {
     self.provider = provider
     self.baseURL = baseURL ?? provider.defaultBaseURL
     self.model = model ?? provider.defaultModel
   }
-
   public init(migrating settings: OpenAISettings) {
-    self.init(
-      provider: .infer(from: settings.baseURL), baseURL: settings.baseURL, model: settings.model)
+    self.init(provider: .infer(from: settings.baseURL), baseURL: settings.baseURL, model: settings.model)
   }
-
-  public func validate(for role: LanguageModelRole) throws {
+  public func validate() throws {
     guard OpenAISettings.isValidBaseURL(baseURL), OpenAISettings.isValidModelIdentifier(model) else {
-      throw LanguageModelConfigurationError.invalidConfiguration(role)
+      throw LanguageModelConfigurationError.invalidConfiguration
     }
+  }
+  public func validate(reasoning: ReasoningLevel) throws {
+    try validate()
+    if !supportedReasoningLevels.contains(reasoning) {
+      throw LanguageModelConfigurationError.unsupportedReasoning(reasoning)
+    }
+  }
+  public var supportedReasoningLevels: Set<ReasoningLevel> {
+    guard let endpoint = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)), endpoint.scheme?.lowercased() == "https",
+      endpoint.port == nil || endpoint.port == 443
+    else { return [] }
     let name = model.trimmingCharacters(in: .whitespacesAndNewlines)
-    if provider == .openAI, role == .fast,
-      name == "gpt-6-astra" || name.hasPrefix("gpt-6-astra-")
-        || name == "gpt-6.1-sol" || name.hasPrefix("gpt-6.1-sol-")
-    {
-      throw LanguageModelConfigurationError.reasoningRequired(role)
+    let path = endpoint.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    switch (provider, endpoint.host?.lowercased(), path) {
+    case (.openAI, "api.openai.com", "v1"):
+      if ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-luna", "gpt-6-sol"].contains(name) { return Set(ReasoningLevel.allCases) }
+      if ["gpt-6-astra", "gpt-6.1-sol"].contains(name) { return [.low, .high] }
+    case (.deepSeek, "api.deepseek.com", ""), (.deepSeek, "api.deepseek.com", "v1"):
+      if ["deepseek-flash", "deepseek-v4-pro"].contains(name) { return Set(ReasoningLevel.allCases) }
+    default: break
     }
+    return []
   }
 }
 
 public enum LanguageModelConfigurationError: Error, LocalizedError, Sendable, Equatable {
-  case unavailable
-  case invalidConfiguration(LanguageModelRole)
-  case missingCredential(LanguageModelRole)
-  case reasoningRequired(LanguageModelRole)
-
+  case unavailable, invalidConfiguration, missingCredential, decisionUnavailable, speechSynthesisUnavailable
+  case unsupportedReasoning(ReasoningLevel)
   public var errorDescription: String? {
     switch self {
-    case .unavailable: "Model settings are unavailable."
-    case .invalidConfiguration(let role): "Configure the \(role.rawValue) model in Settings."
-    case .missingCredential(let role): "The \(role.rawValue) model needs an API key in Settings."
-    case .reasoningRequired: "This model cannot disable reasoning. Select it for the intelligent role."
+    case .decisionUnavailable: "Configure the Decision service in Settings before running this workflow."
+    case .speechSynthesisUnavailable: "Configure the TTS service in Settings before running this workflow."
+    case .unavailable: "Model service settings are unavailable."
+    case .invalidConfiguration: "Configure the language model service in Settings."
+    case .missingCredential: "The language model service needs an API key in Settings."
+    case .unsupportedReasoning(let level): "The configured service has no verified support for \(level.rawValue) reasoning."
     }
   }
 }
 
-/// Run-owned credentials and model bindings; deliberately not serializable.
-public struct WorkflowModelSnapshot: Sendable, Equatable {
-  public var languageModels: [LanguageModelRole: OpenAISettings]
-  public var decisionAuthorization: DecisionModelSettingsSource.Authorization?
-  public var speechSynthesisModelID: String?
+public enum SpeechSynthesisBinding: Sendable, Equatable {
+  case system
+  case localModel(String)
+}
 
+/// Run-owned service bindings. Credentials cannot be serialized with a workflow.
+public struct WorkflowModelSnapshot: Sendable, Equatable {
+  public var languageModel: OpenAISettings?
+  public var decisionAuthorization: DecisionModelSettingsSource.Authorization?
+  public var speechSynthesis: SpeechSynthesisBinding?
+  public var skippedStepIDs: Set<UUID>
   public init(
-    languageModels: [LanguageModelRole: OpenAISettings] = [:],
-    speechSynthesisModelID: String? = nil,
-    decisionAuthorization: DecisionModelSettingsSource.Authorization? = nil
+    languageModel: OpenAISettings? = nil, speechSynthesis: SpeechSynthesisBinding? = nil,
+    decisionAuthorization: DecisionModelSettingsSource.Authorization? = nil, skippedStepIDs: Set<UUID> = []
   ) {
-    self.languageModels = languageModels
-    self.speechSynthesisModelID = speechSynthesisModelID
+    self.languageModel = languageModel
+    self.speechSynthesis = speechSynthesis
     self.decisionAuthorization = decisionAuthorization
+    self.skippedStepIDs = skippedStepIDs
   }
 }
 
-/// The UI publishes accepted edits synchronously, independently of durable writes.
 public final class LanguageModelSettingsSource: @unchecked Sendable {
   private let lock = NSLock()
-  private var settings: [LanguageModelRole: OpenAISettings] = [:]
-
+  private var settings: OpenAISettings?
   public init() {}
-
-  public func update(_ value: OpenAISettings?, for role: LanguageModelRole) {
-    lock.withLock { settings[role] = value }
-  }
-
-  public func currentSettings(for role: LanguageModelRole) throws -> OpenAISettings {
-    let snapshot = try snapshot(for: [role])
-    guard let value = snapshot.languageModels[role] else { throw LanguageModelConfigurationError.unavailable }
-    return value
-  }
-
-  public func snapshot(for roles: Set<LanguageModelRole>) throws -> WorkflowModelSnapshot {
+  public func update(_ value: OpenAISettings?) { lock.withLock { settings = value } }
+  public func currentSettings() throws -> OpenAISettings {
     try lock.withLock {
-      var bindings: [LanguageModelRole: OpenAISettings] = [:]
-      for role in roles {
-        guard let value = settings[role] else { throw LanguageModelConfigurationError.unavailable }
-        try LanguageModelConfiguration(migrating: value).validate(for: role)
-        guard !value.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-          throw LanguageModelConfigurationError.missingCredential(role)
+      guard let settings else { throw LanguageModelConfigurationError.unavailable }
+      try LanguageModelConfiguration(migrating: settings).validate()
+      return settings
+    }
+  }
+  public func snapshot(
+    for workflow: WorkflowDefinition,
+    decisionAuthorization: DecisionModelSettingsSource.Authorization? = nil,
+    speechSynthesis: SpeechSynthesisBinding? = nil
+  ) throws -> WorkflowModelSnapshot {
+    try lock.withLock {
+      var snapshot = WorkflowModelSnapshot(speechSynthesis: speechSynthesis, decisionAuthorization: decisionAuthorization)
+      for step in workflow.plan.process.allSteps where step.kind == .llmRewrite || step.kind == .llmAnswer {
+        do {
+          guard let settings else { throw LanguageModelConfigurationError.unavailable }
+          guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LanguageModelConfigurationError.missingCredential
+          }
+          guard let reasoning = step.reasoning else { throw LanguageModelConfigurationError.invalidConfiguration }
+          try LanguageModelConfiguration(migrating: settings).validate(reasoning: reasoning)
+          snapshot.languageModel = settings
+        } catch {
+          guard step.optional else { throw error }
+          snapshot.skippedStepIDs.insert(step.id)
         }
-        bindings[role] = value
       }
-      return WorkflowModelSnapshot(languageModels: bindings)
-    }
-  }
-
-  public func validateCredential(_ value: OpenAISettings, for role: LanguageModelRole) throws {
-    guard lock.withLock({ settings[role]?.apiKey == value.apiKey }), !value.apiKey.isEmpty else {
-      throw LanguageModelConfigurationError.missingCredential(role)
-    }
-  }
-}
-
-extension WorkflowDefinition {
-  public var languageModelRoles: Set<LanguageModelRole> {
-    Set(plan.process.allSteps.compactMap { $0.postProcessStep?.resolvedModelRole })
-  }
-}
-
-extension WorkflowDefinition {
-  /// One-way import migration; obsolete selections never enter the executor.
-  public func followingGlobalModels() -> Self {
-    var workflow = self
-    if workflow.plan.setup.speechRoute != nil {
-      workflow.plan.setup.speechRoute?.selection = .automatic
-      workflow.plan.setup.speechRoute?.recognizerID = "local-speech"
-    }
-    for key in Self.retiredModelOptionKeys { workflow.metadata.removeValue(forKey: key) }
-    if workflow.metadata["text.polishing-gate"] == "jev" {
-      workflow.metadata["text.polishing-gate"] = "classification"
-    }
-    func migrate(_ steps: [WorkflowProcessStep]) -> [WorkflowProcessStep] {
-      steps.map { original in
-        var step = original
-        if let role = step.postProcessStep?.resolvedModelRole { step.modelRole = role }
-        step.thenSteps = step.thenSteps.map(migrate)
-        step.elseSteps = step.elseSteps.map(migrate)
-        return step
+      if decisionAuthorization == nil,
+        workflow.plan.process.allSteps.contains(where: { $0.decision?.optional == false && !snapshot.skippedStepIDs.contains($0.id) })
+      {
+        throw LanguageModelConfigurationError.decisionUnavailable
       }
+      if workflow.plan.output.actions.contains(where: { $0.id == SpeechOutputActionID.speak }),
+        speechSynthesis == nil
+      {
+        throw LanguageModelConfigurationError.speechSynthesisUnavailable
+      }
+      return snapshot
     }
-    workflow.plan.process.steps = migrate(workflow.plan.process.steps)
-    for index in workflow.plan.output.actions.indices where workflow.plan.output.actions[index].id == SpeechOutputActionID.speak {
-      workflow.plan.output.actions[index].configuration.removeValue(forKey: SpeechOutputActionConfigurationKey.provider)
-      workflow.plan.output.actions[index].configuration.removeValue(forKey: SpeechOutputActionConfigurationKey.model)
-    }
-    return workflow
   }
-
-  public static let retiredModelOptionKeys: Set<String> = [
-    WorkflowMetadataKey.recognizerSelectionMode, WorkflowMetadataKey.localSpeechModelOverride,
-    WorkflowMetadataKey.legacyWhisperKitModelOverride, "provider", "deepgram.model",
-    "openai.model", "openai.base-url", "speech.provider", "speech.model",
-  ]
+  public func validateCredential(_ value: OpenAISettings) throws {
+    guard lock.withLock({ settings?.apiKey == value.apiKey }), !value.apiKey.isEmpty else {
+      throw LanguageModelConfigurationError.missingCredential
+    }
+  }
 }

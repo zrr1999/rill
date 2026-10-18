@@ -1,3 +1,4 @@
+import RillPlatform
 @testable import RillRecords
 @testable import RillWorkflows
 import RillDomainTestSupport
@@ -11,11 +12,10 @@ struct BuiltinVoiceOutputTests {
   func savesFinalTextBeforeDeliveryEvenWhenDeliveryFails(
     title: WorkflowTitleKey, deliveryFails: Bool
   ) async throws {
-    let builtin = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == title })
+    let builtin = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == title })
     guard
       case .resolved(let plan) = WorkflowExecutionPlanResolver.resolve(
-        builtin, initiatedBy: builtin.trigger, recognizer: .localSpeech,
-        output: .builtinPasteIntoApplication
+        builtin, initiatedBy: builtin.trigger, recognizer: .localSpeech
       )
     else {
       Issue.record("Expected an executable built-in workflow")
@@ -52,10 +52,13 @@ struct BuiltinVoiceOutputTests {
     #expect(deliveries.first?.savedRecordCount == 1)
     #expect(saved.memberships.map(\.collectionID) == [RecordCollection.voiceInputID])
     let receipt = try #require(try await receipts.receipts(matching: .all).first)
-    #expect(
-      receipt.actionDetails.map(\.result) == [
-        .storedRecord, deliveryFails ? .failed : .externalOutput,
-      ])
+    var expected: [WorkflowActionResultCode] = [.storedRecord, deliveryFails ? .failed : .externalOutput]
+    let expectsPending = title != .voiceAssistant && !deliveryFails
+    if expectsPending { expected.append(.storedRecord) }
+    #expect(receipt.actionDetails.map(\.result) == expected)
+    let pending = try await store.bufferSnapshot()
+    #expect(pending.remainingCount == (expectsPending ? 1 : 0))
+    #expect(pending.next?.state == (expectsPending ? .ready : nil))
     #expect(receipt.termination == (deliveryFails ? .partiallyCompleted(code: .processing) : .completed))
   }
 }

@@ -97,7 +97,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     let fixture = JevPanelFixture()
     let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
     let model = makeHarness(recordWorkspace: workspace).model
-    model.showSettings(.providers, item: .jevCredential)
+    model.showSettings(.decision, item: .jevCredential)
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
       styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -1445,7 +1445,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     XCTAssertFalse(harness.model.isShowingSettings)
     XCTAssertEqual(harness.model.selectedSidebarSection, .records)
     XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
-    XCTAssertEqual(harness.model.selectedSettingsPane, .voice)
+    XCTAssertEqual(harness.model.selectedSettingsPane, .models)
     let sidebar = try XCTUnwrap(sidebarTable(in: window))
     XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
   }
@@ -1524,7 +1524,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     harness.model.showRunHistory()
     XCTAssertFalse(harness.model.isShowingSettings)
     XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
-    XCTAssertEqual(harness.model.selectedSettingsPane, .voice)
+    XCTAssertEqual(harness.model.selectedSettingsPane, .models)
   }
 
   func testDismissSettingsDropsComparisonReturnButResumeStillWorksBeforeDismiss() {

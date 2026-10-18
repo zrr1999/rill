@@ -2,90 +2,52 @@ import Foundation
 import RillCore
 
 extension SettingsPersistenceModel {
-  public func languageModelSettings(for role: LanguageModelRole) -> OpenAISettings {
-    switch role {
-    case .fast: OpenAISettings(apiKey: openAIAPIKey, baseURL: openAIBaseURL, model: openAIModel)
-    case .intelligent: OpenAISettings(apiKey: intelligentAPIKey, baseURL: intelligentBaseURL, model: intelligentModel)
-    }
+  public func languageModelSettings() -> OpenAISettings {
+    OpenAISettings(apiKey: openAIAPIKey, baseURL: openAIBaseURL, model: openAIModel)
   }
-
-  public func credentialAvailability(for role: LanguageModelRole) -> OpenAICredentialAvailability {
-    role == .fast ? openAICredentialAvailability : intelligentCredentialAvailability
+  public func credentialAvailability() -> OpenAICredentialAvailability { openAICredentialAvailability }
+  func setCredentialAvailability(_ value: OpenAICredentialAvailability) { openAICredentialAvailability = value }
+  public func verificationState() -> OpenAIConfigurationVerificationState { openAIConfigurationVerificationState }
+  public func verificationFailure() -> OpenAIVerificationFailure? { openAIVerificationFailure }
+  func verificationTaskOwner() -> ReplacingTaskOwner { openAIVerificationTaskOwner }
+  func setVerification(_ state: OpenAIConfigurationVerificationState, failure: OpenAIVerificationFailure?) {
+    openAIConfigurationVerificationState = state
+    openAIVerificationFailure = failure
   }
-
-  func setCredentialAvailability(_ value: OpenAICredentialAvailability, for role: LanguageModelRole) {
-    if role == .fast { openAICredentialAvailability = value } else { intelligentCredentialAvailability = value }
-  }
-
-  public func verificationState(for role: LanguageModelRole) -> OpenAIConfigurationVerificationState {
-    role == .fast ? openAIConfigurationVerificationState : intelligentVerificationState
-  }
-
-  public func verificationFailure(for role: LanguageModelRole) -> OpenAIVerificationFailure? {
-    role == .fast ? openAIVerificationFailure : intelligentVerificationFailure
-  }
-
-  func verificationTaskOwner(for role: LanguageModelRole) -> ReplacingTaskOwner {
-    role == .fast ? openAIVerificationTaskOwner : intelligentVerificationTaskOwner
-  }
-
-  func setVerification(_ state: OpenAIConfigurationVerificationState, failure: OpenAIVerificationFailure?, for role: LanguageModelRole) {
-    if role == .fast {
-      openAIConfigurationVerificationState = state
-      openAIVerificationFailure = failure
-    } else {
-      intelligentVerificationState = state
-      intelligentVerificationFailure = failure
-    }
-  }
-
-  public var canVerifyOpenAIConfiguration: Bool { canVerifyLanguageModel(.fast) }
-
-  public func canVerifyLanguageModel(_ role: LanguageModelRole) -> Bool {
+  public var canVerifyOpenAIConfiguration: Bool { canVerifyLanguageModel() }
+  public func canVerifyLanguageModel() -> Bool {
     !hasBegunApplicationShutdown && !isLoading
-      && credentialAvailability(for: role) == .available
-      && !hasUnavailableScalarSettings(in: role.settingsDomain)
-      && (try? LanguageModelConfiguration(migrating: languageModelSettings(for: role)).validate(for: role)) != nil
-      && verificationState(for: role) != .verifying
+      && openAICredentialAvailability == .available && !hasUnavailableScalarSettings(in: .openAI)
+      && (try? LanguageModelConfiguration(migrating: languageModelSettings()).validate()) != nil
+      && !LanguageModelConfiguration(migrating: languageModelSettings()).supportedReasoningLevels.isEmpty
+      && openAIConfigurationVerificationState != .verifying
   }
-
-  public func verifyOpenAIConfiguration(for role: LanguageModelRole = .fast) {
-    guard canVerifyLanguageModel(role) else { return }
-    let owner = verificationTaskOwner(for: role)
+  public func verifyOpenAIConfiguration() {
+    guard canVerifyLanguageModel() else { return }
+    let owner = openAIVerificationTaskOwner
     owner.cancel()
-    verificationGenerations[role, default: 0] &+= 1
-    let generation = verificationGenerations[role]
-    let settings = languageModelSettings(for: role)
-    setVerification(.verifying, failure: nil, for: role)
+    verificationGeneration &+= 1
+    let generation = verificationGeneration
+    let settings = languageModelSettings()
+    setVerification(.verifying, failure: nil)
     let taskID = UUID()
     let task = Task { @MainActor [weak self, owner] in
       defer { owner.finish(id: taskID) }
       guard let self else { return }
       do {
-        try await self.verifyOpenAIConfigurationAction(settings, role)
-        guard !Task.isCancelled, !self.hasBegunApplicationShutdown,
-          self.verificationGenerations[role] == generation
-        else { return }
-        self.setVerification(.verified, failure: nil, for: role)
+        try await self.verifyOpenAIConfigurationAction(settings)
+        guard !Task.isCancelled, !self.hasBegunApplicationShutdown, self.verificationGeneration == generation else { return }
+        self.setVerification(.verified, failure: nil)
         self.configurationChanged()
       } catch is CancellationError {
-        guard self.verificationGenerations[role] == generation else { return }
-        self.setVerification(.idle, failure: nil, for: role)
+        guard self.verificationGeneration == generation else { return }
+        self.setVerification(.idle, failure: nil)
       } catch {
-        guard !self.hasBegunApplicationShutdown,
-          self.verificationGenerations[role] == generation
-        else { return }
-        self.setVerification(
-          .failed,
-          failure: (error as? any OpenAIVerificationFailureProviding)?.openAIVerificationFailure ?? .unknown,
-          for: role)
+        guard !self.hasBegunApplicationShutdown, self.verificationGeneration == generation else { return }
+        self.setVerification(.failed, failure: (error as? any OpenAIVerificationFailureProviding)?.openAIVerificationFailure ?? .unknown)
         self.configurationChanged()
       }
     }
     owner.replace(id: taskID, with: task)
   }
-}
-
-extension LanguageModelRole {
-  public var settingsDomain: ScalarSettingsDomain { self == .fast ? .openAI : .intelligent }
 }

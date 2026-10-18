@@ -1,0 +1,22 @@
+[
+  {
+    "file": "speechRecognition.toml",
+    "title": "speechRecognition"
+  },
+  {
+    "file": "voiceAssistant.toml",
+    "title": "voiceAssistant"
+  },
+  {
+    "file": "smartCleanup.toml",
+    "title": "smartCleanup"
+  },
+  {
+    "file": "bufferDictation.toml",
+    "title": "bufferDictation"
+  },
+  {
+    "file": "bufferDraftDictation.toml",
+    "title": "bufferDraftDictation"
+  }
+]
