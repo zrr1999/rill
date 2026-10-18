@@ -1,4 +1,5 @@
 import RillCore
+import Testing
 @testable import RillPlatform
 import XCTest
 
@@ -18,5 +19,26 @@ final class RecordingInteractionCuePlayerTests: XCTestCase {
     XCTAssertEqual(stopped.first ?? 1, 0, accuracy: 0.000_001)
     XCTAssertEqual(started.last ?? 1, 0, accuracy: 0.000_001)
     XCTAssertEqual(stopped.last ?? 1, 0, accuracy: 0.000_001)
+  }
+}
+
+struct RecordingCuePlaybackTests {
+  @Test func cancellingPlaybackWaitDoesNotRequireAnAudioCallback() async {
+    let playback = RecordingCuePlayback()
+    let task = Task { await playback.wait() }
+    task.cancel()
+    await task.value
+    playback.finish()
+  }
+
+  @Test func playbackCompletionReleasesAllWaitersAndAllowsLateWaiters() async {
+    let playback = RecordingCuePlayback()
+    async let first: Void = playback.wait()
+    async let second: Void = playback.wait()
+    playback.finish()
+    await first
+    await second
+    await playback.wait()
+    playback.finish()
   }
 }

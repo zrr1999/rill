@@ -7,13 +7,6 @@ public enum WorkflowRecognizerResolution: Sendable, Equatable {
   case unresolved
 }
 
-public enum WorkflowOutputResolution: Sendable, Equatable {
-  case declared
-  case builtinPasteIntoApplication
-  case builtinSaveToVoiceGroup
-  case unresolved
-}
-
 public struct WorkflowResolvedExecutionPlan: Sendable, Equatable {
   fileprivate var workflow: WorkflowDefinition
   fileprivate var initiatedBy: TriggerBinding
@@ -37,8 +30,7 @@ public enum WorkflowExecutionPlanResolver {
   public static func resolve(
     _ workflow: WorkflowDefinition,
     initiatedBy trigger: TriggerBinding,
-    recognizer: WorkflowRecognizerResolution,
-    output: WorkflowOutputResolution
+    recognizer: WorkflowRecognizerResolution
   ) -> WorkflowExecutionPlanResolution {
     if WorkflowExecutionPolicy.issue(for: workflow) != nil {
       return .blocked(
@@ -60,35 +52,6 @@ public enum WorkflowExecutionPlanResolver {
     case (true, .declared),
       (true, .unresolved):
       unresolvedComponents.append(.recognizer)
-    }
-
-    let outputDependsOnSettings = workflow.usesBuiltinPushToTalkOutputRouting(
-      initiatedBy: trigger
-    )
-    switch (outputDependsOnSettings, output) {
-    case (true, .builtinPasteIntoApplication):
-      resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.collectSpeech)
-      resolvedWorkflow.plan.output.actions = [
-        OutputActionReference(id: "record.store"),
-        OutputActionReference(id: "focused-application.insert"),
-      ]
-      resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .immediate)
-      resolvedWorkflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
-        RecordCollection.voiceInputID.rawValue.uuidString
-      resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
-    case (true, .builtinSaveToVoiceGroup):
-      resolvedWorkflow.metadata[WorkflowMetadataKey.collectSpeech] = "true"
-      resolvedWorkflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = LivePreviewPlacement.overlay.rawValue
-      resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "record.store")]
-      resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .collectionFirst)
-      resolvedWorkflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
-        RecordCollection.voiceInputID.rawValue.uuidString
-      resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
-    case (false, _):
-      break
-    case (true, .declared),
-      (true, .unresolved):
-      unresolvedComponents.append(.outputAction)
     }
 
     guard unresolvedComponents.isEmpty else {

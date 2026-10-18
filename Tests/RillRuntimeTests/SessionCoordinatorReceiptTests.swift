@@ -564,7 +564,7 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
 
     let unsupportedRunID = UUID()
     var unsupportedWorkflow = makeWorkflow(actionIDs: ["blocking"])
-    unsupportedWorkflow.metadata["eventType"] = "groupItemCreated"
+    unsupportedWorkflow.properties.availability = .planned
     _ = await coordinator.runReportingOutcome(
       workflow: unsupportedWorkflow,
       runID: unsupportedRunID,
@@ -719,12 +719,12 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
   private func makeWorkflow(actionIDs: [String]) -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Private workflow name",
-      pipeline: PipelineDeclaration(
-        recognizerID: "receipt.recognizer",
-        outputActions: actionIDs.map { OutputActionReference(id: $0) },
-        uncertaintyPolicy: .init(mode: .off),
-        deliveryPolicy: .init(strategy: .immediate)
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "receipt.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init(mode: .off)),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: actionIDs.map { OutputActionReference(id: $0) }, deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

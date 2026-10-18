@@ -11,6 +11,7 @@ struct WorkflowRunSession: Sendable {
   let resolvedPlan: ResolvedWorkflowPlan
   let startedAt: Date
   let receiptIsActive: Bool
+  var modelSnapshot: WorkflowModelSnapshot? = nil
   var bufferDraftInput: BufferDraftInputIntent? = nil
 
   var presentation: WorkflowPresentation {
@@ -32,8 +33,7 @@ struct WorkflowTextExecutor: Sendable {
     from recognition: RecognitionResult,
     in session: WorkflowRunSession,
     initialSteps: [WorkflowTextStep],
-    correctionContext: RunContextPreparation.Frozen? = nil,
-    allowsSpeechTextFallback: Bool = false
+    correctionContext: RunContextPreparation.Frozen? = nil
   ) async throws -> TextTransformationResult {
     var finalText = recognition.bestText
     var references = correctionContext?.receipt
@@ -122,6 +122,11 @@ struct WorkflowTextExecutor: Sendable {
           )
           didRecordTransformStage = true
         }
+        if session.modelSnapshot?.skippedStepIDs.contains(step.id) == true {
+          try await finishProcessReceipt(session, result: .skipped)
+          processingSteps.append(await recordTextStep(kind: processStep.kind, result: .skipped, text: finalText, previousText: inputText, in: session))
+          continue
+        }
         guard let transformer = transformerRegistry.transformer(for: step.kind) else {
           throw SessionCoordinator.SessionError.missingTransformer(step.kind)
         }
@@ -136,7 +141,8 @@ struct WorkflowTextExecutor: Sendable {
             workflow: session.workflow,
             contextSnapshot: session.contextSnapshot,
             recognitionResult: recognition,
-            correctionRequest: correctionRequest
+            correctionRequest: correctionRequest,
+            modelSnapshot: session.modelSnapshot
           )
           // Prediction time is not LLM execution time. A skipped request has no LLM duration or trace.
           processingStartedAt = nil
@@ -184,7 +190,7 @@ struct WorkflowTextExecutor: Sendable {
         } catch is CancellationError {
           throw CancellationError()
         } catch let error as any SpeechTextFallbackEligibleError
-          where allowsSpeechTextFallback
+          where step.failurePolicy == .preserveInput
           && step.kind == .llmRewrite
           && error.allowsSpeechTextFallback
         {

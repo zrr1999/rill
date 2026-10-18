@@ -46,6 +46,10 @@ checklist, for example:
 - First and repeated search focus, list selection, keyboard routing, dismissal,
   and exact detail focus when changing shell or AppKit bridges.
 - Keyboard access, VoiceOver labels/order, and announcements for touched UI.
+- Display accommodations when material or type changes: Reduce Motion, Reduce
+  Transparency, Increase Contrast, Differentiate Without Color, and a larger
+  text size.
+- Shortcuts or Spotlight invocation when an App Intent or menu command changes.
 
 Check the failure or interruption that threatens the changed contract rather
 than repeating every checklist item for every patch. Preserve user data and

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 
 @testable import RillCore
@@ -13,10 +14,10 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       .recordPanelHotkey: "unknown",
       .preferredSpeechEngine: "hybrid",
       .localSpeechPrewarm: "later",
-      .builtinPushToTalkOutputMode: "teleport",
       .longRecordingModeEnabled: "occasionally",
     ]
-    let store = UITestSettingsStore(storage: invalidValues)
+    let initialStorage = invalidValues.merging([.languageModelRolesMigrated: "true"]) { _, new in new }
+    let store = UITestSettingsStore(storage: initialStorage)
     let harness = makeHarness(settingsStore: store)
 
     await waitUntil { !harness.model.settings.isLoading }
@@ -31,7 +32,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech))
     XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .input))
     let activity = await store.activitySnapshot()
-    XCTAssertEqual(activity.storage, invalidValues)
+    XCTAssertEqual(activity.storage, initialStorage)
     XCTAssertTrue(activity.setCounts.isEmpty)
     XCTAssertTrue(activity.removeCounts.isEmpty)
   }
@@ -65,11 +66,11 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       .interfaceLanguage: AppLanguage.english.rawValue,
       .systemClipboardCaptureEnabled: "true",
       .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-      .builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.pasteIntoApp.rawValue,
       .longRecordingModeEnabled: "false",
     ]
+    let initialStorage = storedValues.merging([.languageModelRolesMigrated: "true"]) { _, new in new }
     let store = UITestSettingsStore(
-      storage: storedValues,
+      storage: initialStorage,
       unavailableKeys: Set(storedValues.keys)
     )
     let harness = makeHarness(
@@ -81,23 +82,20 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let initialLanguage = harness.model.settings.language
     let initialClipboardCaptureEnabled = harness.model.settings.systemClipboardCaptureEnabled
     let initialEngine = harness.model.settings.preferredSpeechEngine
-    let initialOutputMode = harness.model.settings.builtinPushToTalkOutputMode
     let initialLongRecordingMode = harness.model.settings.longRecordingModeEnabled
 
     XCTAssertFalse(harness.model.setInterfaceLanguage(.simplifiedChinese))
     XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(!initialClipboardCaptureEnabled))
     XCTAssertFalse(harness.model.setPreferredSpeechEngine(.local))
-    XCTAssertFalse(harness.model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
     XCTAssertFalse(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.settings.language, initialLanguage)
     XCTAssertEqual(harness.model.settings.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
     XCTAssertEqual(harness.model.settings.preferredSpeechEngine, initialEngine)
-    XCTAssertEqual(harness.model.settings.builtinPushToTalkOutputMode, initialOutputMode)
     XCTAssertEqual(harness.model.settings.longRecordingModeEnabled, initialLongRecordingMode)
     let activity = await store.activitySnapshot()
-    XCTAssertEqual(activity.storage, storedValues)
+    XCTAssertEqual(activity.storage, initialStorage)
     XCTAssertTrue(activity.setCounts.isEmpty)
     XCTAssertTrue(activity.removeCounts.isEmpty)
   }
@@ -107,7 +105,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       .interfaceLanguage: AppLanguage.english.rawValue,
       .systemClipboardCaptureEnabled: "false",
       .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-      .builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.pasteIntoApp.rawValue,
       .longRecordingModeEnabled: "false",
     ]
     let store = UITestSettingsStore(
@@ -136,31 +133,24 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
     XCTAssertTrue(harness.model.setInterfaceLanguage(.simplifiedChinese))
     XCTAssertTrue(harness.model.setSystemClipboardCaptureEnabled(true))
-    XCTAssertTrue(harness.model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
     XCTAssertTrue(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.settings.language, .simplifiedChinese)
     XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
     XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
-    XCTAssertEqual(harness.model.settings.builtinPushToTalkOutputMode, .saveToVoiceGroup)
     XCTAssertTrue(harness.model.settings.longRecordingModeEnabled)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.interfaceLanguage], AppLanguage.simplifiedChinese.rawValue)
     XCTAssertEqual(activity.storage[.systemClipboardCaptureEnabled], "true")
-    XCTAssertEqual(
-      activity.storage[.builtinPushToTalkOutputMode],
-      BuiltinPushToTalkOutputMode.saveToVoiceGroup.rawValue
-    )
     XCTAssertEqual(activity.storage[.longRecordingModeEnabled], "true")
     XCTAssertEqual(activity.setCounts[.interfaceLanguage], 1)
     XCTAssertEqual(activity.setCounts[.systemClipboardCaptureEnabled], 1)
-    XCTAssertEqual(activity.setCounts[.builtinPushToTalkOutputMode], 1)
     XCTAssertEqual(activity.setCounts[.longRecordingModeEnabled], 1)
   }
 
   func testProductionScalarCommandsRejectAfterApplicationShutdown() async {
-    let store = UITestSettingsStore()
+    let store = UITestSettingsStore(storage: [.languageModelRolesMigrated: "true"])
     let harness = makeHarness(
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
@@ -169,7 +159,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let initialLanguage = harness.model.settings.language
     let initialClipboardCaptureEnabled = harness.model.settings.systemClipboardCaptureEnabled
     let initialEngine = harness.model.settings.preferredSpeechEngine
-    let initialOutputMode = harness.model.settings.builtinPushToTalkOutputMode
     let initialLongRecordingMode = harness.model.settings.longRecordingModeEnabled
 
     await harness.model.stopSettingsReadTasksForApplicationShutdown()
@@ -186,11 +175,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       harness.model.setPreferredSpeechEngine(.local)
     )
     XCTAssertFalse(
-      harness.model.setBuiltinPushToTalkOutputMode(
-        initialOutputMode == .pasteIntoApp ? .saveToVoiceGroup : .pasteIntoApp
-      )
-    )
-    XCTAssertFalse(
       harness.model.setLongRecordingModeEnabled(!initialLongRecordingMode)
     )
     await harness.model.flushPendingPersistenceWrites()
@@ -198,7 +182,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(harness.model.settings.language, initialLanguage)
     XCTAssertEqual(harness.model.settings.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
     XCTAssertEqual(harness.model.settings.preferredSpeechEngine, initialEngine)
-    XCTAssertEqual(harness.model.settings.builtinPushToTalkOutputMode, initialOutputMode)
     XCTAssertEqual(harness.model.settings.longRecordingModeEnabled, initialLongRecordingMode)
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.setCounts.isEmpty)
@@ -234,6 +217,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testLocalSpeechNewNamespaceWinsLegacyConflictWithoutMigrationWrite() async {
     let store = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .localSpeechModel: "qwen3-asr-1.7b-mlx-8bit",
         .legacyWhisperKitModel: "legacy-model",
         .localSpeechPrewarm: "false",
@@ -256,6 +240,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let downloadedModels = "[\"legacy-model\"]"
     let store = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .legacyWhisperKitModel: "legacy-model",
         .legacyWhisperKitDownloadedModels: downloadedModels,
         .legacyWhisperKitPrewarm: "true",
@@ -309,6 +294,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testUnreadableNewLocalSpeechSettingDoesNotFallBackToLegacyValue() async {
     let store = UITestSettingsStore(
       storage: [
+        .languageModelRolesMigrated: "true",
         .localSpeechModel: "protected-new-model",
         .legacyWhisperKitModel: "legacy-model",
       ],
@@ -326,7 +312,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
   func testReadableNewLocalSpeechSettingIgnoresUnreadableLegacyValue() async {
     let store = UITestSettingsStore(
-      storage: [.localSpeechModel: "qwen3-asr-1.7b-mlx-8bit"],
+      storage: [.languageModelRolesMigrated: "true", .localSpeechModel: "qwen3-asr-1.7b-mlx-8bit"],
       unavailableKeys: [.legacyWhisperKitModel]
     )
     let harness = makeHarness(settingsStore: store)
@@ -444,12 +430,12 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(credentialActivity.storage[.openAIAPIKey], "replacement-openai-key")
   }
 
-  func testOpenAIVerificationUsesCurrentCustomSettingsAndRejectsInvalidURL() async {
+  func testOpenAIVerificationUsesCurrentVerifiedSettingsAndRejectsInvalidURL() async {
     let probe = OpenAIVerificationProbe()
     let store = UITestSettingsStore(
       storage: [
-        .openAIBaseURL: "https://gateway.example.com/v1",
-        .openAIModel: "vendor/verification-model",
+        .openAIBaseURL: "https://api.openai.com/v1",
+        .openAIModel: "gpt-5.6-luna",
       ]
     )
     let credentials = UITestSecureCredentialStore(
@@ -477,8 +463,8 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       settings,
       OpenAISettings(
         apiKey: "verification-key",
-        baseURL: "https://gateway.example.com/v1",
-        model: "vendor/verification-model"
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-5.6-luna"
       )
     )
 
@@ -489,8 +475,8 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testOpenAIVerificationPreservesSafeFailureCategoryUntilSettingsChange() async {
     let store = UITestSettingsStore(
       storage: [
-        .openAIBaseURL: "https://gateway.example.com/v1",
-        .openAIModel: "missing-model",
+        .openAIBaseURL: "https://api.openai.com/v1",
+        .openAIModel: "gpt-5.6-luna",
       ]
     )
     let credentials = UITestSecureCredentialStore(
@@ -564,7 +550,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     // Local speech uses the process-wide session source rather than
     // forcing a durable write before every run. The source remains typed
     // unavailable, so shared runtime preflight still blocks capture.
-    try? await harness.model.persistProviderSettingsForRun(whisperWorkflow)
     XCTAssertThrowsError(try harness.model.localSpeechSettingsSource.currentSettings()) {
       XCTAssertEqual($0 as? LocalSpeechSettingsSourceError, .unavailable)
     }
@@ -592,10 +577,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     WorkflowDefinition(
       name: name,
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: recognizerID,
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: recognizerID, actions: [OutputActionReference(id: "system-clipboard.copy")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

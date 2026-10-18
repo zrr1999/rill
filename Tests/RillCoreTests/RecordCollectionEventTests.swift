@@ -36,13 +36,13 @@ final class RecordCollectionEventTests: XCTestCase {
   func testVoiceInputTriggerMatchesUnmarkedRecord() {
     let descriptor = makeDescriptor(captureTags: [])
 
-    XCTAssertTrue(RecordCollectionTrigger.voiceInputPolish.matches(descriptor: descriptor))
+    XCTAssertTrue(rule.matches(descriptor: descriptor))
   }
 
   func testVoiceInputTriggerRejectsGeneratedRecordToPreventLoop() {
     let descriptor = makeDescriptor(captureTags: [.polishGenerated])
 
-    let result = RecordCollectionTrigger.voiceInputPolish.matchResult(for: descriptor)
+    let result = rule.matchResult(for: descriptor)
 
     XCTAssertFalse(result.matched)
     XCTAssertEqual(result.skipReason, .loopPrevented)
@@ -51,11 +51,15 @@ final class RecordCollectionEventTests: XCTestCase {
   func testTriggerExplainsCollectionMismatch() {
     let descriptor = makeDescriptor(collectionID: RecordCollection.inboxID)
 
-    let result = RecordCollectionTrigger.voiceInputPolish.matchResult(for: descriptor)
+    let result = rule.matchResult(for: descriptor)
 
     XCTAssertFalse(result.matched)
     XCTAssertEqual(result.skipReason, .sourceCollectionMismatch)
     XCTAssertEqual(result.skipReason?.workflowRunSkipCode, .sourceCollectionMismatch)
+  }
+
+  private var rule: RecordCollectionTriggerRule {
+    .init(eventKind: .recordCreated, sourceCollectionID: RecordCollection.voiceInputID, conditions: [.excludingTag(.polishGenerated)])
   }
 
   private func makeDescriptor(

@@ -2,60 +2,49 @@ import Foundation
 import RillCore
 
 extension SettingsPersistenceModel {
-  public var canVerifyOpenAIConfiguration: Bool {
-    !hasBegunApplicationShutdown
-      && !self.isLoading
-      && self.openAICredentialAvailability == .available
-      && !hasUnavailableScalarSettings(in: .openAI)
-      && OpenAISettings.isValidBaseURL(self.openAIBaseURL)
-      && OpenAISettings.isValidModelIdentifier(self.openAIModel)
-      && self.openAIConfigurationVerificationState != .verifying
+  public func languageModelSettings() -> OpenAISettings {
+    OpenAISettings(apiKey: openAIAPIKey, baseURL: openAIBaseURL, model: openAIModel)
   }
-
+  public func credentialAvailability() -> OpenAICredentialAvailability { openAICredentialAvailability }
+  func setCredentialAvailability(_ value: OpenAICredentialAvailability) { openAICredentialAvailability = value }
+  public func verificationState() -> OpenAIConfigurationVerificationState { openAIConfigurationVerificationState }
+  public func verificationFailure() -> OpenAIVerificationFailure? { openAIVerificationFailure }
+  func verificationTaskOwner() -> ReplacingTaskOwner { openAIVerificationTaskOwner }
+  func setVerification(_ state: OpenAIConfigurationVerificationState, failure: OpenAIVerificationFailure?) {
+    openAIConfigurationVerificationState = state
+    openAIVerificationFailure = failure
+  }
+  public var canVerifyOpenAIConfiguration: Bool { canVerifyLanguageModel() }
+  public func canVerifyLanguageModel() -> Bool {
+    !hasBegunApplicationShutdown && !isLoading
+      && openAICredentialAvailability == .available && !hasUnavailableScalarSettings(in: .openAI)
+      && (try? LanguageModelConfiguration(migrating: languageModelSettings()).validate()) != nil
+      && !LanguageModelConfiguration(migrating: languageModelSettings()).supportedReasoningLevels.isEmpty
+      && openAIConfigurationVerificationState != .verifying
+  }
   public func verifyOpenAIConfiguration() {
-    guard canVerifyOpenAIConfiguration else { return }
-    self.openAIVerificationTaskOwner.cancel()
-    self.openAIVerificationGeneration &+= 1
-    let generation = self.openAIVerificationGeneration
-    let settings = OpenAISettings(
-      apiKey: self.openAIAPIKey,
-      baseURL: self.openAIBaseURL,
-      model: self.openAIModel
-    )
-    self.openAIVerificationFailure = nil
-    self.openAIConfigurationVerificationState = .verifying
-    let taskID = UUID()
+    guard canVerifyLanguageModel() else { return }
     let owner = openAIVerificationTaskOwner
+    owner.cancel()
+    verificationGeneration &+= 1
+    let generation = verificationGeneration
+    let settings = languageModelSettings()
+    setVerification(.verifying, failure: nil)
+    let taskID = UUID()
     let task = Task { @MainActor [weak self, owner] in
       defer { owner.finish(id: taskID) }
       guard let self else { return }
       do {
         try await self.verifyOpenAIConfigurationAction(settings)
-        guard
-          !Task.isCancelled,
-          !self.hasBegunApplicationShutdown,
-          self.openAIVerificationGeneration == generation
-        else {
-          return
-        }
-        self.openAIVerificationFailure = nil
-        self.openAIConfigurationVerificationState = .verified
+        guard !Task.isCancelled, !self.hasBegunApplicationShutdown, self.verificationGeneration == generation else { return }
+        self.setVerification(.verified, failure: nil)
         self.configurationChanged()
       } catch is CancellationError {
-        guard self.openAIVerificationGeneration == generation else { return }
-        self.openAIVerificationFailure = nil
-        self.openAIConfigurationVerificationState = .idle
+        guard self.verificationGeneration == generation else { return }
+        self.setVerification(.idle, failure: nil)
       } catch {
-        guard
-          !self.hasBegunApplicationShutdown,
-          self.openAIVerificationGeneration == generation
-        else {
-          return
-        }
-        self.openAIVerificationFailure =
-          (error as? any OpenAIVerificationFailureProviding)?.openAIVerificationFailure
-          ?? .unknown
-        self.openAIConfigurationVerificationState = .failed
+        guard !self.hasBegunApplicationShutdown, self.verificationGeneration == generation else { return }
+        self.setVerification(.failed, failure: (error as? any OpenAIVerificationFailureProviding)?.openAIVerificationFailure ?? .unknown)
         self.configurationChanged()
       }
     }

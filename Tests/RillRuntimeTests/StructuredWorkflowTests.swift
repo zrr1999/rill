@@ -83,11 +83,62 @@ struct StructuredWorkflowTests {
     #expect(receipt.stepDetails.first?.result == .failed)
   }
 
+  @Test func allOutputsOffCompletesProcessingWithoutExternalActions() async throws {
+    let (coordinator, probe, receipts) = makeCoordinator()
+    var declared = makeWorkflow()
+    for index in declared.plan.output.actions.indices { declared.plan.output.actions[index].optional = true }
+    let selected = try WorkflowOutputState(workflowID: declared.id, outputs: ["output-1": false, "output-2": false]).applying(to: declared)
+    let result = await coordinator.runReportingOutcome(workflow: selected, contextSnapshot: .empty, preRecognizedText: "match")
+    guard case .completed(let summary) = result else {
+      Issue.record("Expected processing with no outputs to complete")
+      return
+    }
+    #expect(summary.finalText == "match then")
+    #expect(await probe.deliveries.isEmpty)
+    let receipt = try #require(try await receipts.receipts(matching: .all).first)
+    #expect(receipt.termination == .completed)
+    #expect(receipt.actionDetails.isEmpty)
+  }
+
+  @Test func optionalUnconfiguredLLMSkipsTheCallAndKeepsInputText() async throws {
+    let (coordinator, probe, receipts) = makeCoordinator()
+    var value = makeWorkflow()
+    var step = WorkflowProcessStep(kind: .llmRewrite, prompt: " should not execute", reasoning: .some(.none))
+    step.optional = true
+    value.plan.process.steps = [step]
+    value.plan.output.actions = [OutputActionReference(id: "second")]
+    let bindings = try LanguageModelSettingsSource().snapshot(for: value)
+    let result = await coordinator.runReportingOutcome(
+      workflow: value, contextSnapshot: .empty,
+      preRecognizedText: "original", modelSnapshot: bindings)
+    guard case .completed(let summary) = result else {
+      Issue.record("Expected optional skip to continue")
+      return
+    }
+    #expect(summary.finalText == "original")
+    #expect(await probe.deliveries == ["second:original"])
+    let receipt = try #require(try await receipts.receipts(matching: .all).first)
+    #expect(receipt.stepDetails.first?.result == .skipped)
+  }
+
+  @Test func recordInputCannotBeReplacedWithClipboardOrCommandText() async throws {
+    let (coordinator, probe, receipts) = makeCoordinator()
+    var value = makeWorkflow()
+    value.declaredInputKind = .record
+    let context = ContextSnapshot(focus: ContextSnapshot.empty.focus, clipboard: .init(plainText: "match", changeCount: 1))
+    await coordinator.run(authorizedContext: .init(workflow: value, contextSnapshot: context, recognitionOptions: .empty))
+    await coordinator.runRecognizedText("match", authorizedContext: .init(workflow: value, contextSnapshot: context, recognitionOptions: .empty))
+    #expect(await probe.deliveries.isEmpty)
+    let recorded = try await receipts.receipts(matching: .all)
+    #expect(recorded.count == 2)
+    #expect(recorded.allSatisfy { $0.actionDetails.isEmpty && $0.stepDetails.isEmpty })
+  }
+
   private func makeWorkflow() -> WorkflowDefinition {
     var condition = WorkflowProcessStep(kind: .conditional)
     condition.condition = .comparison(field: .text, operation: .equals, value: "match")
-    condition.thenSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: " then")]
-    condition.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: " else")]
+    condition.thenSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: " then", reasoning: .some(.none))]
+    condition.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: " else", reasoning: .some(.none))]
     var skipped = OutputActionReference(id: "first")
     skipped.condition = .comparison(field: .text, operation: .equals, value: "skip")
     return WorkflowDefinition(

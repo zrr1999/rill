@@ -32,7 +32,7 @@ struct JevPolishingSettingsTests {
     #expect(!source.isCurrent(replacement))
     model.setKey("another-valid-key")
     #expect(!model.isPolishingEnabled)
-    let fresh = JevSessionSettingsSource()
+    let fresh = DecisionModelSettingsSource()
     #expect(!fresh.isConfigured && !fresh.isPolishingEnabled)
   }
 }

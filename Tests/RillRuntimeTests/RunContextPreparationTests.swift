@@ -67,9 +67,14 @@ struct RunContextPreparationTests {
       candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus)
     let workflow = WorkflowDefinition(
       name: "Vocabulary receipt",
-      pipeline: .init(
-        recognizerID: "context.test",
-        postProcessSteps: [.init(kind: .llmRewrite, prompt: prompt)], outputActions: [.init(id: "context.output")]),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.test")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([.init(kind: .llmRewrite, prompt: prompt, reasoning: .some(.none), failurePolicy: .preserveInput)]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [.init(id: "context.output")], deliveryPolicy: .init(strategy: .immediate))),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     let audio = try CapturedAudio(
       durationSeconds: 0.3,
@@ -115,10 +120,15 @@ struct RunContextPreparationTests {
       vocabularyCollectionProvider: { vocabulary.collections })
     var workflow = WorkflowDefinition(
       name: "Context selection",
-      pipeline: .init(
-        recognizerID: "context.test",
-        postProcessSteps: [.init(kind: .normalizeWhitespace), .init(kind: .llmRewrite, prompt: "Cleanup")],
-        outputActions: [.init(id: "context.output")], uncertaintyPolicy: .init(mode: .blocking, timeoutSeconds: 2)),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.test")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech),
+            WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init(mode: .blocking, timeoutSeconds: 2)),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([.init(kind: .normalizeWhitespace), .init(kind: .llmRewrite, prompt: "Cleanup", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [.init(id: "context.output")], deliveryPolicy: .init(strategy: .immediate))),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     workflow.plan.setup.vocabularyBindings = vocabulary.bindings
     let stream = await bus.stream()
@@ -321,10 +331,15 @@ struct RunContextPreparationTests {
     let queue = makeTestCapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
     let workflow = WorkflowDefinition(
       name: "Context queue",
-      pipeline: PipelineDeclaration(
-        recognizerID: "context.test", postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Cleanup")],
-        outputActions: [OutputActionReference(id: "context.output")]
-      ), ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"))
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.test")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([PostProcessStep(kind: .llmRewrite, prompt: "Cleanup", reasoning: .some(.none))]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "context.output")], deliveryPolicy: .init(strategy: .immediate))),
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"))
     let audio = try CapturedAudio(
       durationSeconds: 1,
       format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0]))

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import Foundation
@@ -82,8 +83,8 @@ final class WorkflowPlanCompilerTests: XCTestCase {
       plan: WorkflowPlan(
         setup: .init(), process: .init(steps: []),
         output: .init(actions: [
-          .init(id: ExternalOutputActionID.shortcutsRun, configuration: [ExternalOutputActionConfigurationKey.shortcutName: "First"]),
-          .init(id: ExternalOutputActionID.shortcutsRun, configuration: [ExternalOutputActionConfigurationKey.shortcutName: "Second"]),
+          .init(id: ExternalOutputActionID.shortcutsRun, configuration: .init(shortcutName: "First")),
+          .init(id: ExternalOutputActionID.shortcutsRun, configuration: .init(shortcutName: "Second")),
         ])), ui: .init(symbolName: "square", accentColorName: "blue"))
     let compiled = try compiler.compile(workflow: workflow, collections: [], context: .init())
     workflow.plan.output.actions.removeAll()
@@ -272,9 +273,8 @@ struct VocabularyCorrectionCompilationTests {
       })
     var workflow = WorkflowDefinition(
       name: "Voice",
-      pipeline: .init(
-        recognizerID: "recognizer",
-        outputActions: [.init(id: "compiler.action")]), ui: .init(symbolName: "waveform", accentColorName: "blue"))
+      plan: makeTestAudioPlan(recognizerID: "recognizer", actions: [.init(id: "compiler.action")]),
+      ui: .init(symbolName: "waveform", accentColorName: "blue"))
     workflow.plan.setup.vocabularyBindings = [.init(collectionID: collection.id, uses: [.recognitionHints])]
     let compiler = WorkflowPlanCompiler(
       recognizerRegistry: .init(recognizers: [CompilerRecognizer(id: "recognizer", acceptsHotwords: acceptsHotwords)]),

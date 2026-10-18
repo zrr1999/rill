@@ -105,7 +105,6 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   public let recordCount: Int
   public let canDeliverNextRecord: Bool
   public let preferredSpeechEngine: PreferredSpeechEngine
-  public let outputMode: BuiltinPushToTalkOutputMode
   public let longRecordingModeEnabled: Bool
   public let systemClipboardCaptureEnabled: Bool
   public let clipboardSettingsAvailable: Bool
@@ -122,7 +121,6 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     recordCount: Int,
     canDeliverNextRecord: Bool,
     preferredSpeechEngine: PreferredSpeechEngine,
-    outputMode: BuiltinPushToTalkOutputMode,
     longRecordingModeEnabled: Bool = false,
     systemClipboardCaptureEnabled: Bool = true,
     clipboardSettingsAvailable: Bool = true,
@@ -138,7 +136,6 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     self.recordCount = recordCount
     self.canDeliverNextRecord = canDeliverNextRecord
     self.preferredSpeechEngine = preferredSpeechEngine
-    self.outputMode = outputMode
     self.longRecordingModeEnabled = longRecordingModeEnabled
     self.systemClipboardCaptureEnabled = systemClipboardCaptureEnabled
     self.clipboardSettingsAvailable = clipboardSettingsAvailable
@@ -220,15 +217,6 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     }
 
     return RillSystemSymbol.checkmarkCircle.rawValue
-  }
-
-  public var outputModeTitle: String {
-    switch outputMode {
-    case .pasteIntoApp:
-      return L10n.string(.menuPasteIntoApp, language: language)
-    case .saveToVoiceGroup:
-      return L10n.string(.menuSaveToVoiceGroup, language: language)
-    }
   }
 
   public var longRecordingModeTitle: String {
@@ -553,7 +541,6 @@ public struct MenuBarStatusView: View {
       recordCount: model.recordCount,
       canDeliverNextRecord: model.canDeliverNextRecord,
       preferredSpeechEngine: model.settings.preferredSpeechEngine,
-      outputMode: model.settings.builtinPushToTalkOutputMode,
       longRecordingModeEnabled: model.settings.longRecordingModeEnabled,
       systemClipboardCaptureEnabled: model.settings.systemClipboardCaptureEnabled,
       clipboardSettingsAvailable: model.settings.canMutateScalarSettings(in: .systemClipboard),
@@ -606,20 +593,7 @@ private extension MenuBarStatusView {
 
     Divider()
 
-    Picker(
-      L10n.string(.menuTextOutput, language: model.settings.language),
-      selection: Binding(
-        get: { model.settings.builtinPushToTalkOutputMode },
-        set: { model.setBuiltinPushToTalkOutputMode($0) }
-      )
-    ) {
-      Text(L10n.string(.menuPasteIntoApp, language: model.settings.language))
-        .tag(BuiltinPushToTalkOutputMode.pasteIntoApp)
-      Text(L10n.string(.menuSaveToVoiceGroup, language: model.settings.language))
-        .tag(BuiltinPushToTalkOutputMode.saveToVoiceGroup)
-    }
-    .pickerStyle(.inline)
-    .disabled(!model.settings.canMutateScalarSettings(in: .input))
+    if let workflow = model.activeVoiceInputWorkflow { WorkflowOutputChoices(model: model, workflow: workflow) }
 
     Divider()
 

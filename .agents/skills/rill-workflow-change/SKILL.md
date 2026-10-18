@@ -33,7 +33,7 @@ limits, or supported provider lists into new code or instructions.
   effect boundaries when privacy or target identity can change; a frozen plan
   does not freeze permission to perform an effect.
 - Preserve workflow and step identity when editing. Duplication, imports,
-  activation, invalid overrides, and legacy normalization must follow the
+  activation and invalid overrides must follow the
   documented lifecycle. Do not silently repair malformed structure into an
   executable plan or rewrite a user's file merely by reading it.
 - Replay and text-input projection must reuse `WorkflowPlan.acceptingTextInput()`
@@ -48,9 +48,9 @@ capture new context or request permissions merely to evaluate a condition.
 
 Built-in voice input and cleanup store final text before insertion; the voice
 assistant stores its answer before speech. Edit
-[BuiltinWorkflows.toml](../../../Sources/RillApp/Resources/BuiltinWorkflows.toml)
-and regenerate through the commands in
-[CONTRIBUTING.md](../../../CONTRIBUTING.md), never by editing generated output.
+[built-in workflow resources](../../../Sources/RillPlatform/Resources/BuiltinWorkflows/)
+and validate through the commands in
+[CONTRIBUTING.md](../../../CONTRIBUTING.md), using the same new v1 codec as user files.
 General user workflows retain their declared output order; do not inject
 `record.store` into every workflow.
 

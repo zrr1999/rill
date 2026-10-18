@@ -79,8 +79,11 @@ extension AppModel {
       globalInput: globalInputCapability,
       microphone: permissionSnapshot.microphone,
       accessibility: permissionSnapshot.accessibility,
-      accessibilityRequired:
-        self.settings.builtinPushToTalkOutputMode == .pasteIntoApp
+      accessibilityRequired: (activeVoiceInputWorkflow.map { workflow in
+        workflow.plan.output.actions.enumerated().contains { index, action in
+          action.id == RecordActionID.focusedApplicationInsert && isWorkflowOutputEnabled(action, index: index, workflow: workflow)
+        }
+      } ?? false)
         || hasEnabledCursorLivePreview,
       preferredSpeechEngine: self.settings.preferredSpeechEngine,
       provider: voiceSetupProviderReadiness,

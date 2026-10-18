@@ -58,7 +58,7 @@ hotwords after workflow binding and scope filtering. `ResolvedWorkflowPlan` keep
 this complete list separately from the existing 50-candidate ASR projection,
 even when the recognizer does not support hotwords. `PrivacyRunGate` passes the
 admission snapshot to `ContextMemoryController`; no second vocabulary read occurs.
-ASR provider limits, Jev ranking and local mapping rules remain unchanged.
+ASR provider limits, classification ranking and local mapping rules remain unchanged.
 
 `CorrectionVocabularyReference` packs whole terms in existing priority order into
 at most 12,000 UTF-8 bytes, including the encoded glossary object's JSON overhead
@@ -69,7 +69,7 @@ edits during recording apply to the next run. No extra model call is introduced.
 `RunContextPreparation` owns the ready glossary alongside the optional tasks.
 A failed or timed-out screen/memory preparation preserves it. Freezing transfers
 it into `ContextualCorrectionRequest.vocabularyReference`; the shared
-`hasCorrectionReferences` predicate bypasses the Jev polishing gate only when
+`hasCorrectionReferences` predicate bypasses the classification polishing gate only when
 usable references exist. Empty references preserve the normal cleanup path.
 The provider serializes terms under `reference_data.vocabulary`, never as
 instructions or mandatory replacements. The main request retains its 5-second
@@ -236,4 +236,4 @@ Quality and performance summaries are separate schema-2 reports under each run's
 `summaries/` directory. Vocabulary and context results are report-only (`not_assessed`),
 not automatic quality passes. Provider latency is request-scoped and has no regression
 verdict without a comparison policy. [CE](../Evals/README.md) runs these evaluations
-only on explicit request; their scoring and corpus checks remain in ordinary CI.
+weekly or on manual dispatch; their scoring and corpus checks remain in ordinary CI.
