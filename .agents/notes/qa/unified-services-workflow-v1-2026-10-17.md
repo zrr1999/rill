@@ -55,7 +55,7 @@
 - 外部 AX 树回归捕获隐藏页面仍暴露控件的问题；明确包含当前页面子元素、忽略隐藏页面子元素后，中英文四页隔离测试通过。保留真实窗口焦点断言，未删除或放宽桌面先决检查。
 - 仓库包装器构建的 Release App 以 `42c5864` 为父提交，工作树包含本次 UI 修正，源码指纹为 `801e973cc8ae51adfabd7cba322b8291257c47e1bc3aaf8bac26b12f4513e0b3`。签名与独立目录做法同上，实际配置与 SQLite 均位于 `.artifacts/model-service-navigation-native/profile/`。
 - 实际点击四个侧栏入口、助手“配置并验证 LLM”、⌘[ 返回和 ⌘, 重开；英文与中文标签完整。关闭直接输入后，设置与工作流页都显示同一状态，自动保存保持启用且不可关闭；相邻状态文件仅存 `outputs.deliver = false`，TOML 使用单字段 `schema_version = 1`。
-- 新实拍位于 `.github/pr-screenshots/workflow-v1/`：`settings-asr-zh.png`、`settings-decision-zh.png`、`settings-llm-zh.png`、`settings-tts-zh.png`、`settings-tts-en.png`、`settings-output-choices-zh.png` 和 `workflow-detail-zh.png`。七张均包含完整窗口、侧栏、标题和用户当前可见内容，未裁切、未拼接。另有中英文、明暗与紧凑的受控渲染证据；其性质与真实 App 实拍分开记录。
+- 本轮七张实拍均包含完整窗口、侧栏、标题和用户当前可见内容，未裁切、未拼接；这些截图已从仓库移除。另有中英文、明暗与紧凑的受控渲染证据；其性质与真实 App 实拍分开记录。
 - 测试副本和 worker 已退出，原安装版已重新启动并恢复到原模型设置位置。没有安装新产物、变更凭据或系统授权，也没有执行云端验证请求。物理 Fn、IME、跨应用投递、实际 VoiceOver 和可听 TTS 的未验证边界保持不变。
 - 当前代码的完整 `RILL_RECORD_STRESS=1 just ci` 及托管门禁按后续提交的实际结果记录于 PR；此前 head 的绿色检查不作为本次修正的验收。
 
@@ -75,5 +75,5 @@
 - 使用仓库包装器构建 Release 测试副本，父提交 `d8099fae1efc1fe969f8842fd15c91dd9fd322da`，包含本次 UI 修正。构建回执源码指纹 `e99626f3ad08a6f6a6d8fc043671159daf15aee7cc99d767dfa7b3af379b6a20`；签名后 App 可执行文件 SHA-256 为 `1f8abcc6e3e394cfba63d4cf1481719ebf67447b2189f2249083d60af45a0e4f`。此后仅调整测试的交互方式与证据文件，产品代码未改变。
 - macOS 27.0.1（26A434）/ Apple Silicon；测试副本沿用既有本机开发签名，未安装。独立 SQLite、模型缓存和 XDG 文件实际位于 `.artifacts/model-services-modules-native/profile/`。未修改钥匙串凭据或系统授权，未调用云端验证。
 - 实际逐项展开四个模块，以空格收起；中英文切换后仍为同一侧栏入口。助手配置按钮进入同页语言模型模块，⌘[ 返回工作区。关闭直接输入输出后，设置与工作流详情均显示关闭，保存记录继续启用且不可关闭。
-- 六张原始完整窗口实拍位于 `.github/pr-screenshots/workflow-v1/`：`settings-model-services-zh.jpg`、`settings-model-services-en.jpg`、`settings-model-services-llm-zh.jpg`、`settings-model-services-tts-en.jpg`、`settings-output-choices-zh.jpg` 与 `workflow-detail-zh.jpg`。保留工具返回的原始 JPEG 字节（2582×1708），不裁切、不拼接、不编辑；旧的四页截图已移除。
+- 本轮六张完整窗口实拍使用工具返回的原始 JPEG 字节（2582×1708），不裁切、不拼接、不编辑；这些截图已从仓库移除，旧的四页截图亦不再保留。
 - 测试副本与 worker 已退出，原安装版已恢复至原模型设置页，进程核对只剩 `/Applications/Rill.app`。物理 Fn、中文 IME、跨应用投递、实际 VoiceOver 与可听 TTS 仍需人工验收；本地完整预检和托管质量结果按最终 PR head 记录。
