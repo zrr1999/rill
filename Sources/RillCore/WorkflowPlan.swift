@@ -14,22 +14,19 @@ public enum SpeechRouteSelection: String, Codable, Sendable, Equatable {
 public struct WorkflowSpeechRoute: Codable, Sendable, Equatable {
   public var selection: SpeechRouteSelection
   public var recognizerID: String
+  public var livePreviewEnabled = true
+  public var livePreviewPlacement: LivePreviewPlacement = .overlay
+  public var streamingProfile: String?
   public var language: String?
-  public var localModel: String?
-  public var providerModel: String?
 
   public init(
     selection: SpeechRouteSelection = .fixed,
     recognizerID: String,
-    language: String? = nil,
-    localModel: String? = nil,
-    providerModel: String? = nil
+    language: String? = nil
   ) {
     self.selection = selection
     self.recognizerID = recognizerID
     self.language = language
-    self.localModel = localModel
-    self.providerModel = providerModel
   }
 }
 
@@ -96,18 +93,28 @@ public struct VocabularyCollectionBinding: Identifiable, Codable, Sendable, Equa
   public var id: UUID
   public var collectionID: UUID
   public var uses: Set<VocabularyBindingUse>
+  public var optional: Bool
   public var condition: WorkflowBindingCondition
 
   public init(
     id: UUID = UUID(),
     collectionID: UUID,
     uses: Set<VocabularyBindingUse> = Set(VocabularyBindingUse.allCases),
-    condition: WorkflowBindingCondition = .any
+    condition: WorkflowBindingCondition = .any, optional: Bool = false
   ) {
     self.id = id
     self.collectionID = collectionID
     self.uses = uses
     self.condition = condition
+    self.optional = optional
+  }
+  private enum CodingKeys: String, CodingKey { case id, collectionID, uses, condition, optional }
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      id: try values.decode(UUID.self, forKey: .id), collectionID: try values.decode(UUID.self, forKey: .collectionID),
+      uses: try values.decode(Set<VocabularyBindingUse>.self, forKey: .uses), condition: try values.decode(WorkflowBindingCondition.self, forKey: .condition),
+      optional: try values.decodeIfPresent(Bool.self, forKey: .optional) ?? false)
   }
 }
 
@@ -245,6 +252,11 @@ public struct WorkflowProcessStep: Identifiable, Codable, Sendable, Equatable {
   public var prompt: String?
   public var uncertaintyPolicy: UncertaintyPolicy?
   public var recordDuration: Bool?
+  public var optional: Bool = false
+  public var decision: WorkflowServiceRequirement?
+  public var failurePolicy: WorkflowTaskFailurePolicy = .fail
+  public var preservesContent: Bool = false
+  public var reasoning: ReasoningLevel?
 
   public var recordsDuration: Bool {
     recordDuration ?? [.recognizeSpeech, .llmRewrite, .llmAnswer].contains(kind)
@@ -255,26 +267,38 @@ public struct WorkflowProcessStep: Identifiable, Codable, Sendable, Equatable {
     kind: WorkflowProcessStepKind,
     prompt: String? = nil,
     uncertaintyPolicy: UncertaintyPolicy? = nil,
-    recordDuration: Bool? = nil
+    recordDuration: Bool? = nil,
+    reasoning: ReasoningLevel? = nil
   ) {
     self.id = id
     self.kind = kind
     self.prompt = prompt
     self.uncertaintyPolicy = uncertaintyPolicy
     self.recordDuration = recordDuration
+    self.reasoning = reasoning
   }
 
   public init(_ step: PostProcessStep) {
     self.init(
       id: step.id,
       kind: WorkflowProcessStepKind(postProcessKind: step.kind),
-      prompt: step.prompt
+      prompt: step.prompt,
+      reasoning: step.reasoning
     )
+    optional = step.optional
+    decision = step.decision
+    failurePolicy = step.failurePolicy
+    preservesContent = step.preservesContent
   }
 
   public var postProcessStep: PostProcessStep? {
     guard let kind = kind.postProcessKind else { return nil }
-    return PostProcessStep(id: id, kind: kind, prompt: prompt)
+    var step = PostProcessStep(id: id, kind: kind, prompt: prompt, reasoning: reasoning)
+    step.optional = optional
+    step.decision = decision
+    step.failurePolicy = failurePolicy
+    step.preservesContent = preservesContent
+    return step
   }
 }
 
@@ -338,7 +362,6 @@ public enum WorkflowPlanValidationError: Error, LocalizedError, Sendable, Equata
   case duplicateProcessStepID(UUID)
   case duplicateBindingID(UUID)
   case emptyBindingUses(UUID)
-  case missingOutput
 
   public var errorDescription: String? {
     switch self {
@@ -364,8 +387,6 @@ public enum WorkflowPlanValidationError: Error, LocalizedError, Sendable, Equata
       return "Setup contains duplicate vocabulary binding ID \(id.uuidString)."
     case .emptyBindingUses(let id):
       return "Vocabulary binding \(id.uuidString) does not enable any use."
-    case .missingOutput:
-      return "Output must contain at least one action."
     }
   }
 }
@@ -374,6 +395,18 @@ public enum WorkflowPlanValidator {
   private static func validateStructure(_ steps: [WorkflowProcessStep], depth: Int) throws {
     guard depth < 16 else { throw WorkflowDocumentError("process", "Steps exceed the nesting limit of 16.") }
     for step in steps {
+      if [.llmRewrite, .llmAnswer].contains(step.kind), step.reasoning == nil {
+        throw WorkflowDocumentError("process.reasoning", "An explicit reasoning level is required.")
+      }
+      if step.reasoning != nil, ![.llmRewrite, .llmAnswer].contains(step.kind) {
+        throw WorkflowDocumentError("process.reasoning", "Only LLM steps accept reasoning.")
+      }
+      if step.kind != .llmRewrite, step.decision != nil || step.preservesContent || step.failurePolicy != .fail {
+        throw WorkflowDocumentError("process", "Decision, content protection and failure policy belong to rewrite tasks.")
+      }
+      if step.optional, ![.llmRewrite, .llmAnswer].contains(step.kind) {
+        throw WorkflowDocumentError("process.optional", "Only LLM tasks may declare an optional service dependency.")
+      }
       if step.kind == .conditional {
         guard let condition = step.condition, step.prompt == nil, step.uncertaintyPolicy == nil else {
           throw WorkflowDocumentError("process", "An if step requires a condition and cannot have a prompt or recognition policy.")
@@ -400,13 +433,8 @@ public enum WorkflowPlanValidator {
 
   public static func validate(
     _ plan: WorkflowPlan,
-    input: WorkflowInputKind,
-    requireOutput: Bool = true
+    input: WorkflowInputKind
   ) throws {
-    guard !requireOutput || !plan.output.actions.isEmpty else {
-      throw WorkflowPlanValidationError.missingOutput
-    }
-
     var bindingIDs = Set<UUID>()
     for binding in plan.setup.vocabularyBindings {
       guard bindingIDs.insert(binding.id).inserted else {
@@ -423,6 +451,9 @@ public enum WorkflowPlanValidator {
       throw WorkflowDocumentError("workflow", "A workflow supports at most 256 process steps and 256 outputs.")
     }
     for action in plan.output.actions { try action.condition?.validate() }
+    guard plan.output.actions.filter({ $0.configuration.buffer == "speech" }).count <= 1 else {
+      throw WorkflowDocumentError("output.actions", "A workflow can declare at most one speech buffer output.")
+    }
     for step in plan.process.allSteps {
       guard stepIDs.insert(step.id).inserted else {
         throw WorkflowPlanValidationError.duplicateProcessStepID(step.id)

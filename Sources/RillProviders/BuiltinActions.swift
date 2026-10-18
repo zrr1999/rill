@@ -10,11 +10,12 @@ public struct RecordStoreAction: OutputAction {
   }
 
   public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+    guard case .record(let collections, let buffer) = try context.configuration(for: id) else { return .failed("Record output configuration is invalid.") }
     _ = try await ingestion.ingest(
       RecordCaptureEnvelope(
         draft: record,
-        requestedCollectionIDs: context.workflow.targetRecordCollectionIDs,
-        bufferEntryID: context.bufferEntryID,
+        requestedCollectionIDs: collections,
+        bufferEntryID: buffer ? context.bufferEntryID : nil,
         recognitionText: context.bufferEntryID == nil && context.bufferDraftInput == nil ? nil : context.recognitionResult.rawText,
         draftInput: context.bufferDraftInput
       )

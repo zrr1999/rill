@@ -16,6 +16,7 @@ RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 NATIVE_TESTS='RillPlatformTests|RillUITests|RillAppTests'
 DESKTOP_TESTS='/testDesktop'
+BENCHMARK_TESTS='/testBenchmark'
 STORAGE_STRESS_TESTS='RillRuntimeTests.RecordCatalogStressTests'
 PANEL_STRESS_TESTS='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
 REPORT_DIR=""
@@ -236,7 +237,7 @@ check_record_domain_boundary() {
     printf '%s\n' "$legacy_sources" >&2
     error "Legacy Stack/Clipboard source files remain outside the migration boundary"
   fi
-  if git grep -n -E -e "$resource_pattern" -- Sources/RillApp/Resources; then
+  if git grep -n -E -e "$resource_pattern" -- Sources/RillPlatform/Resources/BuiltinWorkflows; then
     error "Built-in workflow resources must emit canonical Record action IDs and strategies"
   fi
   echo "Record domain boundary check passed"
@@ -244,12 +245,12 @@ check_record_domain_boundary() {
 
 run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
+  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|$BENCHMARK_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
 }
 
 run_native_swift_tests() {
   echo 'Running native platform, UI, and app tests without desktop interaction...'
-  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$PANEL_STRESS_TESTS"
+  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$BENCHMARK_TESTS|$PANEL_STRESS_TESTS"
 }
 
 run_performance_swift_tests() {
@@ -262,21 +263,13 @@ run_performance_swift_tests() {
   done
   echo 'Running 10,000-record storage performance tests in a fresh serial process...'
   locked_swift test --skip-build --filter "$STORAGE_STRESS_TESTS"
-  echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
-  if locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
-    return
-  fi
-  info "Native panel stress failed; sampling one diagnostic replay"
-  if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
-    locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
-    info "Diagnostic replay also failed; the original failure remains authoritative"
-  fi
-  error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
+  echo 'Validating 10,000-record native panel presentation in a fresh serial process...'
+  locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"
 }
 
 run_desktop_swift_tests() {
   echo 'Running desktop tests; an unlocked interactive macOS session is required...'
-  locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip RillQualityEvaluations
+  locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip "$BENCHMARK_TESTS|RillQualityEvaluations"
 }
 
 run_swift_tests() {
@@ -291,10 +284,7 @@ run_script_tests() {
   echo 'Testing dependency security policy...'
   uv run --script "$test_dir/dependency_security_test.py"
   echo 'Testing evaluation and performance analysis tools...'
-  uv run --script "$test_dir/asr_analysis_test.py"
-  uv run --script "$test_dir/quality_evaluation_test.py"
-  uv run --script "$test_dir/asr_replay_test.py"
-  uv run --script "$test_dir/product_path_replay_test.py"
+  uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'
@@ -455,8 +445,6 @@ check_repository() {
     locked_swift clean --configuration release
   fi
 
-  info "Checking generated built-in workflow artifacts..."
-  uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
 
   info "Checking performance benchmark workloads..."
   bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only

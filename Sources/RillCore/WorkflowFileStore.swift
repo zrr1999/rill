@@ -9,6 +9,8 @@ public struct WorkflowFileRecord: Sendable, Equatable {
   public var isEnabled: Bool
   public var fileURL: URL
   public var source: String?
+  public var outputState: WorkflowOutputState?
+  public var outputStateSource: String?
 
   public init(
     workflow: WorkflowDefinition,
@@ -31,7 +33,6 @@ public struct WorkflowFileIssue: Sendable, Equatable {
     case duplicateID
     case file(WorkflowFileStoreError)
     case invalidDocument
-    case legacyMigrationIncomplete
   }
 
   public enum Target: Sendable, Equatable {
@@ -46,7 +47,7 @@ public struct WorkflowFileIssue: Sendable, Equatable {
 
   public var target: Target {
     switch reason {
-    case .directoryUnreadable, .fileLimit, .file(.configurationPathIsNotDirectory), .legacyMigrationIncomplete:
+    case .directoryUnreadable, .fileLimit, .file(.configurationPathIsNotDirectory):
       .configurationDirectory
     case .duplicateID, .file, .invalidDocument:
       .file
@@ -108,6 +109,8 @@ public protocol WorkflowFileStore: Sendable {
   func encodeDocument(_ document: WorkflowDocument) throws -> String
   func readSource(at fileURL: URL) async throws -> String
   func saveDocument(_ document: WorkflowDocument, replacing fileURL: URL?, expected: WorkflowFileExpectation) async throws -> WorkflowFileRecord
+  func saveOutputState(_ state: WorkflowOutputState, for fileURL: URL, expected: WorkflowFileExpectation, expectedDocument: String) async throws
+    -> WorkflowFileRecord
   func changes() async -> AsyncStream<Void>
   func versions(for workflowID: UUID) async throws -> [WorkflowFileVersion]
 }
@@ -136,6 +139,11 @@ public struct WorkflowFileVersion: Identifiable, Sendable, Equatable {
 }
 
 public extension WorkflowFileStore {
+  func saveOutputState(_ state: WorkflowOutputState, for fileURL: URL, expected: WorkflowFileExpectation, expectedDocument: String) async throws
+    -> WorkflowFileRecord
+  {
+    throw WorkflowDocumentError("state", "Output state storage is unavailable.")
+  }
   func delete(fileURL: URL, expected: WorkflowFileExpectation) async throws {
     throw WorkflowDocumentError("", "Conflict-aware document deletion is unavailable.")
   }

@@ -6,6 +6,7 @@
 """Assemble and sign the standalone InputMethodKit frontend and its pinned Rime runtime."""
 
 import argparse
+import hashlib
 from pathlib import Path
 import plistlib
 import re
@@ -22,10 +23,14 @@ def assemble(executable: Path, output: Path) -> None:
     executable = executable.resolve(strict=True)
     output = output.resolve()
     runtime = prepare()
+    project_dir = Path(__file__).resolve().parent.parent
     contents = output / "Contents"
     for name in ("MacOS", "Frameworks", "Helpers", "Resources"):
         (contents / name).mkdir(parents=True, exist_ok=True)
     prepare_data(contents / "Resources")
+    icon = project_dir / "Resources/AppIcon/RillInputMethodTemplate.tiff"
+    icon_name = f"RillInputMethod-{hashlib.sha256(icon.read_bytes()).hexdigest()[:16]}.tiff"
+    shutil.copy2(icon, contents / "Resources" / icon_name)
     shutil.copy2(executable, contents / "MacOS/RillInputMethod")
     subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks",
                     str(contents / "MacOS/RillInputMethod")], check=True)
@@ -41,14 +46,19 @@ def assemble(executable: Path, output: Path) -> None:
         "CFBundleIdentifier": identifier, "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",
         "CFBundleDevelopmentRegion": "en",
         "CFBundleExecutable": "RillInputMethod", "CFBundlePackageType": "APPL",
-        "CFBundleVersion": "2", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "26.0",
+        "CFBundleVersion": "3", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "26.0",
+        "CFBundleIconFile": icon_name,
         "LSUIElement": True, "NSPrincipalClass": "NSApplication",
         "InputMethodConnectionName": "RillInputMethodConnection",
         "InputMethodServerControllerClass": "RillInputController",
         "TISInputSourceID": identifier,
+        "TISIconIsTemplate": True, "tsInputMethodIconFileKey": icon_name,
         "ComponentInputModeDict": {
             "tsInputModeListKey": {input_source_id: {
                 "TISInputSourceID": input_source_id, "TISIntendedLanguage": "zh-Hans",
+                "tsInputModeMenuIconFileKey": icon_name,
+                "tsInputModeAlternateMenuIconFileKey": icon_name,
+                "tsInputModePaletteIconFileKey": icon_name,
                 "tsInputModeCharacterRepertoireKey": ["Hans", "Hant", "Latn"],
                 "tsInputModeDefaultStateKey": True, "tsInputModeIsVisibleKey": True,
                 "tsInputModePrimaryInScriptKey": True, "tsInputModeScriptKey": "smUnicodeScript",
@@ -63,7 +73,7 @@ def assemble(executable: Path, output: Path) -> None:
             "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",
             identifier: "Rill", input_source_id: "Rill",
         }))
-    notices = Path(__file__).resolve().parent.parent / "docs/input-method-dependencies.md"
+    notices = project_dir / "docs/input-method-dependencies.md"
     shutil.copy2(notices, contents / "Resources/THIRD_PARTY_NOTICES.md")
     shutil.copytree(notices.parent.parent / "Resources/InputMethodLicenses",
                     contents / "Resources/Licenses", dirs_exist_ok=True)

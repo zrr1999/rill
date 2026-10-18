@@ -31,14 +31,15 @@ public actor RecordCloudRanking {
   private let provider: any RecordRankingProvider
   private let privacy: PrivacyPolicySettingsSource
   private let currentFocus: @Sendable () async -> FocusSnapshot
-  public nonisolated let settings: JevSessionSettingsSource
+  public nonisolated let settings: DecisionModelSettingsSource
+  private var preparedAuthorizationID: UUID?
   private var preparedID: UUID?
   private var active: Task<RecordCloudRankingResult, Error>?
   private var closed = false
 
   public init(
     store: RecordStore, provider: any RecordRankingProvider,
-    settings: JevSessionSettingsSource = JevSessionSettingsSource(),
+    settings: DecisionModelSettingsSource = DecisionModelSettingsSource(),
     privacy: PrivacyPolicySettingsSource, currentFocus: @escaping @Sendable () async -> FocusSnapshot
   ) {
     self.store = store
@@ -88,6 +89,7 @@ public actor RecordCloudRanking {
     try await validate(review)
     guard !closed else { throw CancellationError() }
     preparedID = review.id
+    preparedAuthorizationID = self.settings.rankingAuthorization()?.id
     return review
   }
 
@@ -96,7 +98,7 @@ public actor RecordCloudRanking {
     guard !closed else { throw CancellationError() }
     guard active == nil else { throw RecordRankingError.busy }
     guard let authorization = settings.rankingAuthorization() else { throw RecordRankingError.missingKey }
-    guard preparedID == review.id, review.created.duration(to: .now) < .seconds(600)
+    guard preparedAuthorizationID == authorization.id, preparedID == review.id, review.created.duration(to: .now) < .seconds(600)
     else { throw RecordRankingError.changed }
     preparedID = nil
     let task = Task { [self] in
@@ -104,7 +106,7 @@ public actor RecordCloudRanking {
       try Task.checkCancellation()
       guard settings.isCurrent(authorization) else { throw RecordRankingError.changed }
       let start = ContinuousClock.now
-      let response = try await provider.score(query: review.query, candidates: review.candidates.map(\.text), apiKey: authorization.apiKey)
+      let response = try await provider.score(query: review.query, candidates: review.candidates.map(\.text), authorization: authorization)
       try await validate(review)
       guard settings.isCurrent(authorization) else { throw RecordRankingError.changed }
       guard response.scores.count == review.candidates.count,

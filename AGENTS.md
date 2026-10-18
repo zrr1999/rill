@@ -9,12 +9,16 @@ indexed by `.agents/notes/README.md`; read them on demand and never treat them a
 current truth. Formal docs (`docs/`, README, CONTRIBUTING, site pages) must not
 reference notes; only AGENTS.md, skills, and the notes index may point to them.
 
+## Delivery and reporting
+
+- Wait until every check for the current head commit has finished before
+  reporting CI as passing; never reuse a green result from an older commit.
+
 ## Pull requests
 
-Multiple PRs created in the same conversation must form one linear stack. The
-first targets `main`; each later branch includes the preceding layer and its PR
-targets that layer's branch. Register the members and order as a GitHub native
-stack, including when the individual changes could otherwise be independent.
+Independent changes should be separate PRs targeting `main`, even when created
+in the same conversation. Use a linear GitHub native stack only for real code
+dependencies; each dependent PR targets the branch it needs.
 
 PRs that change UI must include screenshots in the PR body, as specified in
 [CONTRIBUTING.md](CONTRIBUTING.md) and the PR template.
@@ -22,7 +26,7 @@ PRs that change UI must include screenshots in the PR body, as specified in
 ## Repository skills
 
 Load the skill that matches the task. Combine skills only when the work crosses
-their boundaries; an ordinary edit does not require running all five workflows.
+their boundaries; an ordinary edit does not require running all six workflows.
 
 | Task | Skill |
 | --- | --- |
@@ -31,6 +35,7 @@ their boundaries; an ordinary edit does not require running all five workflows.
 | Change Record storage, memberships, routing, capture, or delivery | [rill-record-change](.agents/skills/rill-record-change/SKILL.md) |
 | Diagnose recording, worker, cancellation, or shutdown failures | [rill-runtime-debug](.agents/skills/rill-runtime-debug/SKILL.md) |
 | Verify macOS interaction, permissions, focus, or release artifacts | [rill-macos-qa](.agents/skills/rill-macos-qa/SKILL.md) |
+| Change visual presentation, materials, type, or floating chrome | [rill-ui-change](.agents/skills/rill-ui-change/SKILL.md) |
 
 These skills are maintained with this repository and require no personal skill
 installation. Keep shared project facts in the documents below and link to them

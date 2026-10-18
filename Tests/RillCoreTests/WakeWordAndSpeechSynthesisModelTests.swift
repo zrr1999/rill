@@ -25,23 +25,11 @@ final class WakeWordAndSpeechSynthesisModelTests: XCTestCase {
     }
   }
 
-  func testOldWorkflowSetupDecodesWithoutWakeWordConfiguration() throws {
-    let data = Data(
-      """
-      {
-        "vocabularyBindings": [],
-        "speechRoute": {
-          "selection": "fixed",
-          "recognizerID": "sherpa-onnx.local"
-        }
-      }
-      """.utf8
-    )
-
-    let setup = try JSONDecoder().decode(WorkflowSetupPhase.self, from: data)
-
+  func testWorkflowSetupRoundTripsWithoutWakeWord() throws {
+    let original = WorkflowSetupPhase(speechRoute: .init(recognizerID: "local-speech"))
+    let setup = try JSONDecoder().decode(WorkflowSetupPhase.self, from: JSONEncoder().encode(original))
     XCTAssertNil(setup.wakeWord)
-    XCTAssertEqual(setup.speechRoute?.recognizerID, "sherpa-onnx.local")
+    XCTAssertEqual(setup, original)
   }
 
   func testSpeechRequestDefaultsToAutomaticVivianAndIsBounded() {

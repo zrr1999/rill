@@ -138,7 +138,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 4,
       canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp,
+
       voiceSetupStatus: .incomplete
     )
 
@@ -157,7 +157,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .saveToVoiceGroup,
+
       voiceSetupStatus: .loading
     )
 
@@ -174,7 +174,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp
+
     )
 
     XCTAssertTrue(state.canCopyLastResult)
@@ -191,13 +191,12 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 3,
       canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
-      outputMode: .saveToVoiceGroup
+
     )
 
     XCTAssertEqual(state.statusTitle, "需要处理")
     XCTAssertEqual(state.statusSystemImage, "exclamationmark.triangle.fill")
     XCTAssertEqual(state.statusDetail, "Microphone access is unavailable.")
-    XCTAssertEqual(state.outputModeTitle, "先收进待发区")
   }
 
   func testIdleStatusKeepsTheRecordingHintRegardlessOfRecordCount() {
@@ -207,7 +206,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 2,
       canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp
+
     )
 
     XCTAssertEqual(state.statusTitle, "Rill Ready")
@@ -222,7 +221,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp,
+
       longRecordingModeEnabled: true
     )
 
@@ -237,7 +236,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .saveToVoiceGroup
+
     )
 
     XCTAssertEqual(state.statusTitle, "Voice run active")
@@ -252,7 +251,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp,
+
       systemClipboardCaptureEnabled: false,
       clipboardCaptureState: .paused
     )
@@ -271,7 +270,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp,
+
       clipboardCaptureState: .ignoringNextExternalChange
     )
 
@@ -289,7 +288,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp,
+
       clipboardCaptureState: .pausing
     )
 
@@ -306,7 +305,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       recordCount: 0,
       canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
-      outputMode: .pasteIntoApp,
+
       systemClipboardCaptureEnabled: false,
       clipboardSettingsAvailable: false,
       clipboardCaptureState: .paused

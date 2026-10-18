@@ -5,30 +5,6 @@ import XCTest
 @MainActor
 final class AppModelSettingsDomainRecoveryTests: XCTestCase {
   func testDuplicateStableIdentifiersLeaveCollectionDomainsUnavailable() async throws {
-    let duplicateWorkflow = WorkflowDefinition(
-      name: "Duplicate workflow identity",
-      trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "ui.test.recognizer",
-        outputActions: [OutputActionReference(id: "ui.test.action")]
-      ),
-      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
-    )
-    let duplicateWorkflowPayload = String(
-      decoding: try JSONEncoder().encode([duplicateWorkflow, duplicateWorkflow]),
-      as: UTF8.self
-    )
-    let workflowStore = UITestSettingsStore(storage: [
-      .customWorkflows: duplicateWorkflowPayload
-    ])
-    let workflowHarness = makeHarness(settingsStore: workflowStore)
-    let workflowDomainFailedClosed = await waitUntil {
-      !workflowHarness.model.settings.isLoading
-        && workflowHarness.model.workflowLibrary.workflowLibraryAvailability == .unavailable
-    }
-    XCTAssertTrue(workflowDomainFailedClosed)
-    XCTAssertTrue(workflowHarness.model.workflowLibrary.customWorkflows.isEmpty)
-
     let duplicateModelsPayload = String(
       decoding: try JSONEncoder().encode(["same-model", "same-model"]),
       as: UTF8.self
@@ -71,7 +47,6 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
     XCTAssertTrue(vocabularyHarness.model.vocabulary.vocabularyRules.isEmpty)
 
     for (store, key, expectedPayload) in [
-      (workflowStore, AppSettingKey.customWorkflows, duplicateWorkflowPayload),
       (modelStore, .localSpeechDownloadedModels, duplicateModelsPayload),
       (vocabularyStore, AppModel.vocabularyRulesSettingKey, duplicateVocabularyPayload),
     ] {
@@ -82,92 +57,22 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
     }
   }
 
-  func testWorkflowEnabledStateLoaderRejectsInvalidAndNormalizedDuplicateIdentifiers() throws {
-    XCTAssertThrowsError(
-      try AppSettingsCodec.loadWorkflowEnabledStates(
-        from: "{\"not-a-workflow-id\":false}"
-      )
-    )
-
-    let workflowID = UUID()
-    let uppercase = workflowID.uuidString.uppercased()
-    let lowercase = workflowID.uuidString.lowercased()
-    XCTAssertNotEqual(uppercase, lowercase)
-    XCTAssertThrowsError(
-      try AppSettingsCodec.loadWorkflowEnabledStates(
-        from: "{\"\(uppercase)\":true,\"\(lowercase)\":false}"
-      )
-    )
-  }
-
-  func testCorruptWorkflowCollectionBlocksMutationAndRecoversWithoutOverwriting() async throws {
-    for corruptKey in [AppSettingKey.customWorkflows, .workflowEnabledStates] {
-      let recoveredWorkflow = WorkflowDefinition(
-        name: "Recovered workflow",
-        trigger: .manual,
-        pipeline: PipelineDeclaration(
-          recognizerID: "ui.test.recognizer",
-          outputActions: [OutputActionReference(id: "ui.test.action")]
-        ),
-        ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
-      )
-      let workflowPayload = String(
-        decoding: try JSONEncoder().encode([recoveredWorkflow]),
-        as: UTF8.self
-      )
-      let enabledPayload = String(
-        decoding: try JSONEncoder().encode([recoveredWorkflow.id.uuidString: false]),
-        as: UTF8.self
-      )
-      let corruptPayload = "{not-valid-json"
-      let settingsStore = UITestSettingsStore(storage: [
-        .customWorkflows: corruptKey == .customWorkflows
-          ? corruptPayload
-          : workflowPayload,
-        .workflowEnabledStates: corruptKey == .workflowEnabledStates
-          ? corruptPayload
-          : enabledPayload,
-      ])
-      let harness = makeHarness(settingsStore: settingsStore)
-
-      let didLoadUnavailableWorkflowDomain = await waitUntil {
-        !harness.model.settings.isLoading
-          && harness.model.workflowLibrary.workflowLibraryAvailability == .unavailable
-      }
-      XCTAssertTrue(didLoadUnavailableWorkflowDomain)
-      XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
-      XCTAssertNotNil(harness.model.workflowLibrary.workflowLibraryError)
-
-      var draft = harness.model.defaultWorkflowDraft()
-      draft.name = "Must not overwrite"
-      await harness.model.saveWorkflowDraft(draft)
-      await waitForEventProcessing(harness)
-
-      XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
-      XCTAssertNotNil(harness.model.workflowLibrary.workflowEditorError)
-      var activity = await settingsStore.activitySnapshot()
-      XCTAssertEqual(activity.storage[corruptKey], corruptPayload)
-      XCTAssertNil(activity.setCounts[.customWorkflows])
-      XCTAssertNil(activity.removeCounts[.customWorkflows])
-      XCTAssertNil(activity.setCounts[.workflowEnabledStates])
-      XCTAssertNil(activity.removeCounts[.workflowEnabledStates])
-
-      try await settingsStore.setString(
-        corruptKey == .customWorkflows ? workflowPayload : enabledPayload,
-        forKey: corruptKey
-      )
-      harness.model.retryUnavailableStoredSettingsDomains()
-
-      let didRecoverWorkflowDomain = await waitUntil {
-        harness.model.workflowLibrary.workflowLibraryAvailability == .available
-          && harness.model.workflowLibrary.customWorkflows.map(\.id) == [recoveredWorkflow.id]
-      }
-      XCTAssertTrue(didRecoverWorkflowDomain)
-      XCTAssertNil(harness.model.workflowLibrary.workflowLibraryError)
-      XCTAssertFalse(harness.model.isWorkflowEnabled(recoveredWorkflow))
-      activity = await settingsStore.activitySnapshot()
-      XCTAssertEqual(activity.setCounts[corruptKey], 1)
-      XCTAssertNil(activity.removeCounts[corruptKey])
+  func testRetiredWorkflowSettingsNeverExecuteOrRecoverOnRetry() async throws {
+    for key in [AppSettingKey.workflowLibrary, .customWorkflows, .workflowEnabledStates] {
+      let source = "{not-valid-json"
+      let store = UITestSettingsStore(storage: [key: source])
+      let model = makeHarness(settingsStore: store).model
+      await model.waitForInitialVoiceConfiguration()
+      XCTAssertEqual(model.workflowLibrary.workflowLibraryAvailability, .available)
+      XCTAssertTrue(model.workflowLibrary.customWorkflows.isEmpty)
+      model.retryUnavailableStoredSettingsDomains()
+      await model.waitForInitialVoiceConfiguration()
+      XCTAssertTrue(model.workflowLibrary.customWorkflows.isEmpty)
+      let activity = await store.activitySnapshot()
+      XCTAssertEqual(activity.storage[key], source)
+      XCTAssertNil(activity.setCounts[key])
+      XCTAssertNil(activity.removeCounts[key])
+      await model.stopSettingsReadTasksForApplicationShutdown()
     }
   }
 
@@ -188,6 +93,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
     }
     XCTAssertTrue(didLoadUnavailableVocabularyDomain)
     XCTAssertNotNil(harness.model.vocabulary.error)
+    XCTAssertTrue(source === harness.model.vocabularyRuleSource)
     XCTAssertThrowsError(try source.currentRules())
 
     harness.model.vocabulary.addVocabularyRule(

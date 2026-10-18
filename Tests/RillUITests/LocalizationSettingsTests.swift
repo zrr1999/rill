@@ -38,19 +38,32 @@ final class LocalizationSettingsTests: XCTestCase {
     }
   }
 
-  func testSettingsGroupHeadersMatchMigratedCopy() {
+  func testModelServicesGroupIsLocalized() {
     XCTAssertEqual(
-      L10n.settingsText(.settingsGroupVoiceAndModels, language: .english),
-      "Voice & Models"
+      L10n.workspace(.modelServices, language: .english),
+      "Model services"
     )
     XCTAssertEqual(
-      L10n.settingsText(.settingsGroupVoiceAndModels, language: .simplifiedChinese),
-      "语音与模型"
+      L10n.workspace(.modelServices, language: .simplifiedChinese),
+      "模型服务"
     )
     XCTAssertEqual(
       L10n.settingsText(.settingsRetryLoading, language: .simplifiedChinese),
       "重试加载"
     )
+  }
+
+  func testServiceTitlesUseOnlyTheSelectedLanguage() {
+    let titles: [(SettingsSection, String, String)] = [
+      (.speech, "Speech Recognition", "语音识别"),
+      (.decision, "Classification & Scoring", "分类与评分"),
+      (.llm, "Language Model", "语言模型"),
+      (.tts, "Speech Synthesis", "语音合成"),
+    ]
+    for (section, english, chinese) in titles {
+      XCTAssertEqual(section.title(language: .english), english)
+      XCTAssertEqual(section.title(language: .simplifiedChinese), chinese)
+    }
   }
 
   func testWakeWordAndReadinessHelpersMatchMigratedCopy() {

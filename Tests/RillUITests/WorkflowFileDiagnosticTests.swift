@@ -56,44 +56,6 @@ final class WorkflowFileDiagnosticTests: XCTestCase {
     await model.flushPendingPersistenceWrites()
   }
 
-  func testFileIssueStaysVisibleWithoutDisablingTheActiveLegacyDefinition() async throws {
-    let workflow = makeDefaultWorkflow()
-    let document = WorkflowLibraryDocument(customWorkflows: [workflow])
-    let settings = UITestSettingsStore(storage: [
-      .workflowLibrary: String(decoding: try JSONEncoder().encode(document), as: UTF8.self)
-    ])
-    let issue = WorkflowFileIssue(filename: "legacy.toml", message: "Invalid migrated copy", workflowID: workflow.id)
-    let files = UITestWorkflowFileStore(issues: [issue])
-    let model = makeHarness(workflows: [], settingsStore: settings, workflowFileStore: files).model
-    await model.waitForInitialVoiceConfiguration()
-    for reload in [false, true] {
-      if reload { await model.reloadWorkflowFiles() }
-      XCTAssertFalse(model.workflowLibrary.usesWorkflowFilesAsSource)
-      XCTAssertEqual(model.workflowLibrary.customWorkflows.map(\.id), [workflow.id])
-      XCTAssertTrue(model.isWorkflowEnabled(workflow))
-      XCTAssertTrue(model.workflowLibrary.invalidWorkflowFileIDs.isEmpty)
-      XCTAssertEqual(model.workflowLibrary.workflowFileIssues.filter { $0.target == .file }, [issue])
-      let migrationIssue = try XCTUnwrap(model.workflowLibrary.workflowFileIssues.first { $0.reason == .legacyMigrationIncomplete })
-      XCTAssertEqual(migrationIssue.target, .configurationDirectory)
-      XCTAssertEqual(migrationIssue.resolvedURL(in: files.configurationDirectoryURL), files.configurationDirectoryURL)
-      for language in AppLanguage.allCases {
-        model.setInterfaceLanguage(language)
-        let summary = L10n.catalogString("workflowFile.error.legacyMigrationIncomplete", language: language)
-        XCTAssertTrue(model.workflowLibrary.workflowLibraryError?.contains(summary) == true)
-        if language == .english {
-          XCTAssertEqual(L10n.workflowFileIssue(migrationIssue, language: language), migrationIssue.message)
-        }
-        XCTAssertFalse(
-          L10n.workflowFileIssue(migrationIssue, language: language).contains(
-            L10n.catalogString("workflowFile.error.invalidDocument", language: language)))
-      }
-      XCTAssertEqual(model.workflowLibrary.workflowFileIssues.filter { $0.target == .configurationDirectory }.count, 1)
-      XCTAssertEqual(issue.resolvedURL(in: files.configurationDirectoryURL), files.configurationDirectoryURL.appendingPathComponent("legacy.toml"))
-    }
-    await model.stopSettingsReadTasksForApplicationShutdown()
-    await model.flushPendingPersistenceWrites()
-  }
-
   func testNewMalformedBuiltinOverrideOpensTheReportedFileWithoutCreatingATemplate() async throws {
     let workflow = makeBuiltinPushToTalkWorkflow()
     let files = UITestWorkflowFileStore()

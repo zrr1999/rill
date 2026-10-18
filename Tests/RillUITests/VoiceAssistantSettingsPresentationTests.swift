@@ -165,7 +165,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     XCTAssertEqual(after.plan.setup.wakeWord?.phrases, ["你好 Rill"])
     XCTAssertEqual(after.plan.process, before.plan.process)
     XCTAssertEqual(after.plan.output, before.plan.output)
-    XCTAssertEqual(after.metadata, before.metadata)
+    XCTAssertEqual(after.properties, before.properties)
   }
 
   @MainActor
@@ -193,29 +193,20 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
           WorkflowProcessStep(kind: .normalizeWhitespace),
           WorkflowProcessStep(
             kind: .llmRewrite,
-            prompt: "Answer briefly for speech."
+            prompt: "Answer briefly for speech.", reasoning: .some(.none)
           ),
         ]),
         output: WorkflowOutputPhase(
           actions: [
             OutputActionReference(
               id: SpeechOutputActionID.speak,
-              configuration: [
-                SpeechOutputActionConfigurationKey.provider:
-                  SpeechSynthesisProvider.automatic.rawValue,
-                SpeechOutputActionConfigurationKey.voice:
-                  Qwen3TTSVoice.vivian.rawValue,
-              ]
+              configuration: .init(voice: Qwen3TTSVoice.vivian.rawValue)
             )
           ]
         )
       ),
       ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple"),
-      metadata: [
-        WorkflowMetadataKey.catalog: BuiltinWorkflowRoutingValue.catalog,
-        WorkflowMetadataKey.defaultEnabled: "false",
-      ]
-    )
+      properties: .init(defaultEnabled: false, isBuiltin: true))
     let harness = makeHarness(
       workflows: [builtinAssistant],
       credentialStore: UITestSecureCredentialStore(
@@ -279,6 +270,26 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
   }
 
   @MainActor
+  func testOptionalLLMAndDisabledSpeechOutputDoNotBlockWakeReadiness() async throws {
+    var assistant = makeAssistantWorkflow()
+    for index in assistant.plan.process.steps.indices where assistant.plan.process.steps[index].kind == .llmRewrite {
+      assistant.plan.process.steps[index].optional = true
+    }
+    for index in assistant.plan.output.actions.indices where assistant.plan.output.actions[index].id == SpeechOutputActionID.speak {
+      assistant.plan.output.actions[index].documentID = "speak"
+      assistant.plan.output.actions[index].optional = true
+    }
+    let model = makeHarness(workflows: [assistant], permissionSnapshot: .init(accessibility: .granted, microphone: .granted)).model
+    await model.waitForInitialVoiceConfiguration()
+    model.workflowLibrary.outputStatesByID[assistant.id] = .init(workflowID: assistant.id, outputs: ["speak": false])
+    model.updateWakeWordResourceState(.ready)
+    XCTAssertEqual(model.voiceAssistantReadiness.llm, .notRequired)
+    XCTAssertEqual(model.voiceAssistantReadiness.speechOutput, .notRequired)
+    XCTAssertTrue(model.voiceAssistantReadiness.canEnableListening)
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
+  @MainActor
   func testVoiceAssistantReadinessBlocksKnownInvalidOrFailedLLMConfiguration() async {
     let assistant = makeAssistantWorkflow()
     let harness = makeHarness(
@@ -307,6 +318,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
     harness.model.applyOpenAIBaseURL(OpenAISettings.defaultBaseURL)
     harness.model.setWorkflowEnabled(true, for: assistant.id)
+    await harness.model.flushPendingPersistenceWrites()
     XCTAssertEqual(
       harness.model.enabledWorkflows(for: .wakeWord).map(\.id),
       [assistant.id]
@@ -323,7 +335,9 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     XCTAssertTrue(harness.model.enabledWorkflows(for: .wakeWord).isEmpty)
 
     harness.model.setWorkflowEnabled(false, for: assistant.id)
+    await harness.model.flushPendingPersistenceWrites()
     harness.model.setWorkflowEnabled(true, for: assistant.id)
+    await harness.model.flushPendingPersistenceWrites()
     XCTAssertFalse(harness.model.isWorkflowEnabled(assistant))
     XCTAssertEqual(
       harness.model.workflowLibrary.workflowLibraryError,
@@ -351,6 +365,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     harness.model.applyLanguage(.english)
 
     harness.model.setWorkflowEnabled(true, for: assistant.id)
+    await harness.model.flushPendingPersistenceWrites()
     XCTAssertEqual(
       harness.model.workflowLibrary.workflowLibraryError,
       "Grant microphone access before enabling wake-word listening."
@@ -360,6 +375,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       PermissionSnapshot(accessibility: .granted, microphone: .granted)
     )
     harness.model.setWorkflowEnabled(true, for: assistant.id)
+    await harness.model.flushPendingPersistenceWrites()
     XCTAssertEqual(
       harness.model.workflowLibrary.workflowLibraryError,
       "Prepare the selected local ASR model before enabling wake-word listening."
@@ -367,6 +383,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
     harness.model.updateWakeWordResourceState(.ready)
     harness.model.setWorkflowEnabled(true, for: assistant.id)
+    await harness.model.flushPendingPersistenceWrites()
     XCTAssertTrue(harness.model.isWorkflowEnabled(assistant))
     XCTAssertNil(harness.model.workflowLibrary.workflowLibraryError)
   }
@@ -418,15 +435,14 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
         ),
         process: WorkflowProcessPhase(steps: [
           WorkflowProcessStep(kind: .recognizeSpeech),
-          WorkflowProcessStep(kind: .llmRewrite, prompt: "Answer briefly."),
+          WorkflowProcessStep(kind: .llmRewrite, prompt: "Answer briefly.", reasoning: .some(.none)),
         ]),
         output: WorkflowOutputPhase(actions: [
           OutputActionReference(id: SpeechOutputActionID.speak)
         ])
       ),
       ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple"),
-      metadata: [WorkflowMetadataKey.defaultEnabled: "false"]
-    )
+      properties: .init(defaultEnabled: false))
   }
 }
 

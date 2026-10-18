@@ -66,7 +66,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
     )
     let workflow = makeWorkflow(
       recognizerID: "sherpa-onnx.local",
-      steps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
+      steps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))],
       actions: [OutputActionReference(id: "focused-application.insert")]
     )
 
@@ -101,7 +101,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
     )
     let workflow = makeWorkflow(
       recognizerID: "sherpa-onnx.local",
-      steps: [PostProcessStep(kind: .llmAnswer, prompt: "Answer")],
+      steps: [PostProcessStep(kind: .llmAnswer, prompt: "Answer", reasoning: .some(.high))],
       actions: [OutputActionReference(id: "speech.speak")]
     )
 
@@ -263,50 +263,40 @@ final class WorkflowExplainServiceTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "CANARY-WORKFLOW-NAME",
       trigger: .menuBar,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [
-          PostProcessStep(
-            kind: .normalizeWhitespace,
-            prompt: "CANARY-PROMPT-CONTENT"
-          )
-        ],
-        outputActions: [
-          OutputActionReference(
-            id: ExternalOutputActionID.webhookPost,
-            configuration: [
-              ExternalOutputActionConfigurationKey.webhookURL:
-                "https://CANARY.example.invalid/hook",
-              ExternalOutputActionConfigurationKey.webhookHeadersJSON:
-                #"{"Authorization":"Bearer CANARY-AUTH"}"#,
-            ]
-          ),
-          OutputActionReference(
-            id: ExternalOutputActionID.shortcutsRun,
-            configuration: [
-              ExternalOutputActionConfigurationKey.shortcutName:
-                "CANARY-SHORTCUT-NAME"
-            ]
-          ),
-          OutputActionReference(
-            id: ExternalOutputActionID.markdownAppend,
-            configuration: [
-              ExternalOutputActionConfigurationKey.markdownAppendPath:
-                "/Users/CANARY/private.md"
-            ]
-          ),
-          OutputActionReference(id: "unknown.CANARY-COMPONENT"),
-        ]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]
+            + ([
+              PostProcessStep(
+                kind: .normalizeWhitespace,
+                prompt: "CANARY-PROMPT-CONTENT"
+              )
+            ]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(
+          actions: [
+            OutputActionReference(
+              id: ExternalOutputActionID.webhookPost,
+              configuration: .init(webhookURL: "https://CANARY.example.invalid/hook", webhookHeadersJSON: #"{"Authorization":"Bearer CANARY-AUTH"}"#)
+            ),
+            OutputActionReference(
+              id: ExternalOutputActionID.shortcutsRun,
+              configuration: .init(shortcutName: "CANARY-SHORTCUT-NAME")
+            ),
+            OutputActionReference(
+              id: ExternalOutputActionID.markdownAppend,
+              configuration: .init(markdownPath: "/Users/CANARY/private.md")
+            ),
+            OutputActionReference(id: "unknown.CANARY-COMPONENT"),
+          ], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(
         symbolName: "CANARY-SYMBOL",
         accentColorName: "CANARY-COLOR"
       ),
-      metadata: [
-        "CANARY-METADATA-KEY": "CANARY-METADATA-VALUE",
-        "secret": "Bearer CANARY-METADATA-TOKEN",
-      ]
-    )
+      properties: .init())
 
     let receipt = service.explainResolved(resolvedPlan(for: workflow))
     let json = String(decoding: try JSONEncoder().encode(receipt), as: UTF8.self)
@@ -342,71 +332,13 @@ final class WorkflowExplainServiceTests: XCTestCase {
     await assertProbeWasNotInvoked(probe)
   }
 
-  func testLegacyWorkflowIsBlockedBySharedExecutionPolicy() {
-    var workflow = makeWorkflow(
-      recognizerID: "context.selection",
-      actions: [OutputActionReference(id: "system-clipboard.copy")]
-    )
-    workflow.metadata["eventType"] = "groupItemCreated"
-
-    guard
-      case .blocked(let receipt) = WorkflowExecutionPlanResolver.resolve(
-        workflow,
-        initiatedBy: .hotkey,
-        recognizer: .declared,
-        output: .declared
-      )
-    else {
-      return XCTFail("Legacy workflows must not produce execution plans.")
+  func testOutputDeclarationsArePreservedForEveryInvocation() {
+    var workflow = makeWorkflow(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "system-clipboard.copy")])
+    workflow.properties.gesture = "fn-hold"
+    workflow.properties.isBuiltin = true
+    for trigger in [TriggerBinding.manual, .hotkey] {
+      XCTAssertEqual(resolvedPlan(for: workflow, initiatedBy: trigger).executionWorkflow.plan.output.actions, workflow.plan.output.actions)
     }
-
-    XCTAssertEqual(receipt.status, .blocked)
-    XCTAssertTrue(
-      receipt.issues.contains(
-        WorkflowExplanationIssue(
-          kind: .legacyWorkflowUnsupported,
-          component: .workflow
-        )
-      ))
-    XCTAssertEqual(
-      WorkflowExecutionPolicy.issue(for: workflow),
-      .legacyClipboardAutomationUnsupported
-    )
-  }
-
-  func testOutputModeDoesNotRewriteManualInvocationOrCustomMetadata() {
-    var builtinWorkflow = makeWorkflow(
-      recognizerID: "sherpa-onnx.local",
-      actions: [OutputActionReference(id: "focused-application.insert")]
-    )
-    builtinWorkflow.metadata[WorkflowMetadataKey.catalog] = BuiltinWorkflowRoutingValue.catalog
-    builtinWorkflow.metadata[WorkflowMetadataKey.triggerGesture] =
-      BuiltinWorkflowRoutingValue.pushToTalkGesture
-    builtinWorkflow.metadata[WorkflowMetadataKey.builtinKind] = "push-to-talk.dictation"
-
-    let manuallyInitiated = resolvedPlan(
-      for: builtinWorkflow,
-      initiatedBy: .manual,
-      output: .builtinSaveToVoiceGroup
-    ).executionWorkflow
-    XCTAssertEqual(manuallyInitiated.pipeline.outputActions.map(\.id), ["focused-application.insert"])
-
-    var customWorkflow = makeWorkflow(
-      recognizerID: "sherpa-onnx.local",
-      actions: [OutputActionReference(id: "system-clipboard.copy")]
-    )
-    customWorkflow.metadata[WorkflowMetadataKey.settingsExposeOutputMode] = "true"
-    customWorkflow.metadata[WorkflowMetadataKey.catalog] = "custom"
-    customWorkflow.metadata[WorkflowMetadataKey.triggerGesture] =
-      BuiltinWorkflowRoutingValue.pushToTalkGesture
-    customWorkflow.metadata[WorkflowMetadataKey.builtinKind] = "push-to-talk.custom"
-
-    let customResolved = resolvedPlan(
-      for: customWorkflow,
-      initiatedBy: .hotkey,
-      output: .builtinSaveToVoiceGroup
-    ).executionWorkflow
-    XCTAssertEqual(customResolved.pipeline.outputActions.map(\.id), ["system-clipboard.copy"])
   }
 
   func testManualInvocationOfHotkeyWorkflowControlsResolvedAndBlockedReceiptTrigger() async {
@@ -420,17 +352,14 @@ final class WorkflowExplainServiceTests: XCTestCase {
       recognizerID: "sherpa-onnx.local",
       actions: [OutputActionReference(id: "focused-application.insert")]
     )
-    workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
-    workflow.metadata[WorkflowMetadataKey.catalog] = BuiltinWorkflowRoutingValue.catalog
-    workflow.metadata[WorkflowMetadataKey.triggerGesture] =
-      BuiltinWorkflowRoutingValue.pushToTalkGesture
-    workflow.metadata[WorkflowMetadataKey.builtinKind] = "push-to-talk.dictation"
+    workflow.plan.setup.speechRoute?.selection = .automatic
+    workflow.properties.gesture =
+      "fn-hold"
 
     let resolved = resolvedPlan(
       for: workflow,
       initiatedBy: .manual,
-      recognizer: .localSpeech,
-      output: .builtinSaveToVoiceGroup
+      recognizer: .localSpeech
     )
     XCTAssertEqual(service.explainResolved(resolved).trigger, .manual)
 
@@ -438,8 +367,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
       case .blocked(let blocked) = WorkflowExecutionPlanResolver.resolve(
         workflow,
         initiatedBy: .manual,
-        recognizer: .unresolved,
-        output: .builtinSaveToVoiceGroup
+        recognizer: .unresolved
       )
     else {
       return XCTFail("Unresolved recognizer routing must remain blocked.")
@@ -454,20 +382,15 @@ final class WorkflowExplainServiceTests: XCTestCase {
       actions: [OutputActionReference(id: "focused-application.insert")]
     )
     workflow.name = "CANARY-UNRESOLVED-WORKFLOW"
-    workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
-    workflow.metadata[WorkflowMetadataKey.settingsExposeOutputMode] = "true"
-    workflow.metadata[WorkflowMetadataKey.catalog] = BuiltinWorkflowRoutingValue.catalog
-    workflow.metadata[WorkflowMetadataKey.triggerGesture] =
-      BuiltinWorkflowRoutingValue.pushToTalkGesture
-    workflow.metadata[WorkflowMetadataKey.builtinKind] = "push-to-talk.dictation"
-    workflow.metadata["CANARY-SECRET"] = "Bearer CANARY-TOKEN"
+    workflow.plan.setup.speechRoute?.selection = .automatic
+    workflow.properties.gesture =
+      "fn-hold"
 
     guard
       case .blocked(let receipt) = WorkflowExecutionPlanResolver.resolve(
         workflow,
         initiatedBy: .hotkey,
-        recognizer: .unresolved,
-        output: .unresolved
+        recognizer: .unresolved
       )
     else {
       return XCTFail("Unresolved automatic choices must not produce an execution plan.")
@@ -476,20 +399,13 @@ final class WorkflowExplainServiceTests: XCTestCase {
 
     XCTAssertEqual(receipt.status, .blocked)
     XCTAssertEqual(receipt.inputs.first?.category, .unclassified)
-    XCTAssertEqual(receipt.outputs.first?.effect, .unclassified)
+    XCTAssertTrue(receipt.outputs.isEmpty)
     XCTAssertEqual(receipt.processingDestinations, [.unclassified])
     XCTAssertTrue(
       receipt.issues.contains(
         WorkflowExplanationIssue(
           kind: .executionPlanUnresolved,
           component: .recognizer
-        )
-      ))
-    XCTAssertTrue(
-      receipt.issues.contains(
-        WorkflowExplanationIssue(
-          kind: .executionPlanUnresolved,
-          component: .outputAction
         )
       ))
     XCTAssertFalse(json.contains("CANARY"))
@@ -575,7 +491,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
           cloudConfirmationRequired: false
         )
       },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("Local preview must not request confirmation.")
         return false
       }
@@ -656,7 +572,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
     )
     let workflow = makeWorkflow(
       recognizerID: unknownRecognizerID,
-      steps: [PostProcessStep(kind: .llmRewrite, prompt: "CANARY-PROMPT")],
+      steps: [PostProcessStep(kind: .llmRewrite, prompt: "CANARY-PROMPT", reasoning: .some(.none))],
       actions: [OutputActionReference(id: unknownActionID)]
     )
 
@@ -679,14 +595,12 @@ final class WorkflowExplainServiceTests: XCTestCase {
   private func resolvedPlan(
     for workflow: WorkflowDefinition,
     initiatedBy trigger: TriggerBinding? = nil,
-    recognizer: WorkflowRecognizerResolution = .declared,
-    output: WorkflowOutputResolution = .declared
+    recognizer: WorkflowRecognizerResolution = .declared
   ) -> WorkflowResolvedExecutionPlan {
     switch WorkflowExecutionPlanResolver.resolve(
       workflow,
       initiatedBy: trigger ?? workflow.trigger,
-      recognizer: recognizer,
-      output: output
+      recognizer: recognizer
     ) {
     case .resolved(let plan):
       return plan
@@ -730,11 +644,13 @@ final class WorkflowExplainServiceTests: XCTestCase {
     var workflow = WorkflowDefinition(
       name: "Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: recognizerID,
-        postProcessSteps: steps,
-        outputActions: actions
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizerID)),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + (steps).map(WorkflowProcessStep.init)), output: WorkflowOutputPhase(actions: actions, deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     workflow.plan.setup.vocabularyBindings = [

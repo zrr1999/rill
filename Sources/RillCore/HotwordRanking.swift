@@ -53,7 +53,7 @@ public struct HotwordRankingScore: Sendable, Equatable {
 }
 
 public protocol HotwordRankingProvider: Sendable {
-  func score(_ request: HotwordRankingRequest, apiKey: String) async throws -> [HotwordRankingScore]
+  func score(_ request: HotwordRankingRequest, authorization: DecisionModelSettingsSource.Authorization) async throws -> [HotwordRankingScore]
 }
 
 public enum HotwordRankingError: Error, Sendable, Equatable {

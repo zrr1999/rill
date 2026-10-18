@@ -37,10 +37,10 @@ public actor SessionCoordinator {
         return message
       case .noSpeech:
         return HistoryFailureSanitizer.noSpeechMessage
-      case .unsupportedWorkflow(.legacyClipboardAutomationUnsupported):
-        return "Legacy clipboard event automation is disabled until production actions and execution receipts are available."
-      case .unsupportedWorkflow(.invalidEventType):
-        return "The workflow declares an invalid event type."
+      case .unsupportedWorkflow(.wrongExecutionSurface):
+        return "The workflow is not supported on this execution surface."
+      case .unsupportedWorkflow(.invalidConfiguration):
+        return "The workflow declaration is invalid."
       case .unsupportedWorkflow(.plannedCapabilityUnavailable):
         return "The workflow is planned but unavailable in this build."
       case .privacyAuthorizationRequired:
@@ -267,13 +267,19 @@ private extension SessionCoordinator.State {
 }
 
 public extension SessionCoordinator {
-  /// Pure configuration check: no context capture, authorization, provider calls, or outputs.
+  /// Runs the declared input from one admitted context. Text input uses its authorized clipboard snapshot.
   func run(
     runID providedRunID: UUID? = nil,
     triggerEvent: WorkflowTriggerEvent? = nil,
     capturedAudio: CapturedAudio? = nil,
     authorizedContext: AuthorizedWorkflowRunContext
   ) async {
+    if authorizedContext.workflow.inputKind == .text {
+      await runRecognizedText(
+        authorizedContext.contextSnapshot.clipboard.plainText,
+        runID: providedRunID, triggerEvent: triggerEvent, authorizedContext: authorizedContext)
+      return
+    }
     let runID = providedRunID ?? UUID()
     do {
       try await authorizedContext.consume()
@@ -294,6 +300,12 @@ public extension SessionCoordinator {
       )
       return
     }
+    guard authorizedContext.workflow.inputKind != .record else {
+      await rejectAuthorizedInvocation(
+        runID: runID, workflow: authorizedContext.workflow,
+        trigger: runReceiptTrigger(for: triggerEvent), message: PrivacyRunGate.GateError.recordOperationUnsupported.localizedDescription)
+      return
+    }
     await run(
       workflow: authorizedContext.workflow,
       runID: runID,
@@ -302,7 +314,8 @@ public extension SessionCoordinator {
       contextSnapshot: authorizedContext.contextSnapshot,
       recognitionOptions: authorizedContext.recognitionOptions,
       contextPreparation: authorizedContext.contextPreparation,
-      preparedRecognition: authorizedContext.preparedRecognition
+      preparedRecognition: authorizedContext.preparedRecognition,
+      modelSnapshot: authorizedContext.modelSnapshot
     )
   }
 
@@ -328,7 +341,7 @@ public extension SessionCoordinator {
       )
       return
     }
-    guard case .capture = authorizedContext.invocation else {
+    guard case .capture = authorizedContext.invocation, authorizedContext.workflow.inputKind != .record else {
       await rejectAuthorizedInvocation(
         runID: runID,
         workflow: authorizedContext.workflow,
@@ -343,7 +356,8 @@ public extension SessionCoordinator {
       contextSnapshot: authorizedContext.contextSnapshot,
       recognitionOptions: authorizedContext.recognitionOptions,
       preRecognizedText: text,
-      waitsForAvailability: true
+      waitsForAvailability: true,
+      modelSnapshot: authorizedContext.modelSnapshot
     )
   }
 
@@ -355,7 +369,8 @@ public extension SessionCoordinator {
     contextSnapshot: ContextSnapshot? = nil,
     recognitionOptions: SpeechRecognitionRequestOptions? = nil,
     contextPreparation: RunContextPreparation? = nil,
-    preparedRecognition: PreparedRecognitionContext? = nil
+    preparedRecognition: PreparedRecognitionContext? = nil,
+    modelSnapshot: WorkflowModelSnapshot? = nil
   ) async {
     _ = await runReportingOutcome(
       workflow: workflow,
@@ -365,7 +380,8 @@ public extension SessionCoordinator {
       contextSnapshot: contextSnapshot,
       recognitionOptions: recognitionOptions,
       contextPreparation: contextPreparation,
-      preparedRecognition: preparedRecognition
+      preparedRecognition: preparedRecognition,
+      modelSnapshot: modelSnapshot
     )
   }
 
@@ -381,7 +397,8 @@ public extension SessionCoordinator {
     preRecognizedText: String? = nil,
     waitsForAvailability: Bool = false,
     contextPreparation: RunContextPreparation? = nil,
-    preparedRecognition: PreparedRecognitionContext? = nil
+    preparedRecognition: PreparedRecognitionContext? = nil,
+    modelSnapshot: WorkflowModelSnapshot? = nil
   ) async -> WorkflowRunExecutionResult {
     let runID = providedRunID ?? UUID()
     var completed = false
@@ -510,6 +527,7 @@ public extension SessionCoordinator {
         contextSnapshot: contextSnapshot,
         recognitionOptions: recognitionOptions,
         preparedRecognition: preparedRecognition,
+        modelSnapshot: modelSnapshot,
         compilationInput: preRecognizedText == nil ? nil : .text,
         receiptIsActive: receiptIsActive
       )
@@ -520,6 +538,9 @@ public extension SessionCoordinator {
         else {
           throw SessionError.missingAction(RecordActionID.store)
         }
+      }
+      if session.bufferDraftInput == nil, let reservation = try await observeCollectedSpeech(runID: runID, workflow: workflow) {
+        try await reservation.committed.value
       }
       failureStage = .recognizing
       let recognition: RecognitionResult
@@ -565,9 +586,7 @@ public extension SessionCoordinator {
         from: resolvedRecognition,
         in: session,
         initialSteps: processingSteps,
-        correctionContext: correctionContext,
-        allowsSpeechTextFallback: (capturedAudio != nil || preRecognizedText != nil)
-          && workflow.speechMode != .voiceAssistant
+        correctionContext: correctionContext
       )
       try Task.checkCancellation()
       if correctionContext?.request.authorization?.isValid == false { throw CancellationError() }
@@ -607,9 +626,11 @@ public extension SessionCoordinator {
         correctionSource: correctionSource,
         contextHistoryUpdate: contextPreparation?.historyUpdate
       )
+      await finishCollectedSpeech(runID: runID)
       completed = true
       return .completed(summary)
     } catch {
+      await finishCollectedSpeech(runID: runID)
       contextPreparation?.cancel()
       let failedWorkflow = workflow.presentation
       if failureStage == .recognizing,
@@ -1363,6 +1384,7 @@ private extension SessionCoordinator {
     contextSnapshot: ContextSnapshot,
     recognitionOptions providedRecognitionOptions: SpeechRecognitionRequestOptions? = nil,
     preparedRecognition: PreparedRecognitionContext? = nil,
+    modelSnapshot: WorkflowModelSnapshot? = nil,
     compilationInput: WorkflowInputKind? = nil,
     receiptIsActive: Bool
   ) async throws -> RunSession {
@@ -1402,15 +1424,15 @@ private extension SessionCoordinator {
       return RunSession(
         runID: runID, workflow: workflow, trigger: trigger,
         contextSnapshot: contextSnapshot, recognitionOptions: preparedRecognition.options,
-        resolvedPlan: preparedRecognition.plan, startedAt: startedAt, receiptIsActive: receiptIsActive
+        resolvedPlan: preparedRecognition.plan, startedAt: startedAt, receiptIsActive: receiptIsActive,
+        modelSnapshot: modelSnapshot
       )
     }
     let vocabularyContext = VocabularyRuleContext(
       contextSnapshot: contextSnapshot,
-      recordCollectionID: workflow.legacyTargetRecordCollectionID,
+      recordCollectionID: workflow.targetRecordCollectionIDs.first?.rawValue,
       locale: recognitionOptions.language
         ?? workflow.plan.setup.speechRoute?.language
-        ?? workflow.metadata[WorkflowMetadataKey.languageOverride]
     )
     let collections: [VocabularyCollection]
     if let snapshot = recognitionOptions.vocabulary {
@@ -1448,7 +1470,8 @@ private extension SessionCoordinator {
       recognitionOptions: recognitionOptions,
       resolvedPlan: resolvedPlan,
       startedAt: startedAt,
-      receiptIsActive: receiptIsActive
+      receiptIsActive: receiptIsActive,
+      modelSnapshot: modelSnapshot
     )
   }
 
@@ -1608,9 +1631,9 @@ private extension SessionCoordinator {
   private func vocabularyContext(in session: RunSession) -> VocabularyRuleContext {
     VocabularyRuleContext(
       contextSnapshot: session.contextSnapshot,
-      recordCollectionID: session.workflow.legacyTargetRecordCollectionID,
+      recordCollectionID: session.workflow.targetRecordCollectionIDs.first?.rawValue,
       locale: session.recognitionOptions.language
-        ?? session.workflow.metadata[WorkflowMetadataKey.languageOverride]
+        ?? session.workflow.plan.setup.speechRoute?.language
     )
   }
 
@@ -1727,7 +1750,7 @@ private extension SessionCoordinator.State {
 
 extension SessionCoordinator {
   func observeCollectedSpeech(runID: UUID, workflow: WorkflowDefinition) async throws -> BufferInputReservation? {
-    guard workflow.metadata[WorkflowMetadataKey.collectSpeech] == "true" else { return nil }
+    guard workflow.collectsSpeech else { return nil }
     if let reservation = speechBufferInputs[runID] { return reservation }
     let reservation = try await recordStore.observeBufferInput(in: RecordBuffer.speechID)
     speechBufferInputs[runID] = reservation
