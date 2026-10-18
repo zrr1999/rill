@@ -95,9 +95,13 @@ public struct LiveSubtitleOverlay: View {
       }
     }
     .padding(.horizontal, 12)
-    .frame(
+    .rillScaledFrame(
       width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
-      height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
+      minimumWidth: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+      maximumWidth: LiveSubtitleOverlayMetrics.maximumSurfaceWidth,
+      height: LiveSubtitleOverlayMetrics.compactSurfaceHeight,
+      minimumHeight: LiveSubtitleOverlayMetrics.compactSurfaceHeight,
+      maximumHeight: 64
     )
   }
 
@@ -124,9 +128,13 @@ public struct LiveSubtitleOverlay: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
-    .frame(
+    .rillScaledFrame(
       width: LiveSubtitleOverlayMetrics.expandedSurfaceWidth,
+      minimumWidth: LiveSubtitleOverlayMetrics.expandedSurfaceWidth,
+      maximumWidth: 440,
       height: LiveSubtitleOverlayMetrics.expandedSurfaceHeight,
+      minimumHeight: LiveSubtitleOverlayMetrics.expandedSurfaceHeight,
+      maximumHeight: 128,
       alignment: .topLeading
     )
   }

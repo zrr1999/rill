@@ -1,7 +1,13 @@
 import AppKit
+import RillUI
 
 enum RecordPanelPlacement {
-  static let pageSize = NSSize(width: 668, height: 468)
+  static var pageSize: NSSize {
+    NSSize(
+      width: RillDynamicLength.scaled(668, minimum: 620, maximum: 820),
+      height: RillDynamicLength.scaled(468, minimum: 400, maximum: 640)
+    )
+  }
   static let margin: CGFloat = 12
 
   static func pageFrame(in visibleFrame: NSRect) -> NSRect {

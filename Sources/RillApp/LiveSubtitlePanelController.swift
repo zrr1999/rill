@@ -24,13 +24,29 @@ enum LiveSubtitlePanelGeometry {
   static func preferredSurfaceSize(for snapshot: LiveSubtitleSnapshot, expanded: Bool? = nil) -> NSSize {
     if !(expanded ?? LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)) {
       return NSSize(
-        width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
-        height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
+        width: RillDynamicLength.scaled(
+          LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+          minimum: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+          maximum: LiveSubtitleOverlayMetrics.maximumSurfaceWidth
+        ),
+        height: RillDynamicLength.scaled(
+          LiveSubtitleOverlayMetrics.compactSurfaceHeight,
+          minimum: LiveSubtitleOverlayMetrics.compactSurfaceHeight,
+          maximum: 64
+        )
       )
     }
     return NSSize(
-      width: LiveSubtitleOverlayMetrics.standardSurfaceWidth,
-      height: LiveSubtitleOverlayMetrics.standardSurfaceHeight
+      width: RillDynamicLength.scaled(
+        LiveSubtitleOverlayMetrics.standardSurfaceWidth,
+        minimum: LiveSubtitleOverlayMetrics.standardSurfaceWidth,
+        maximum: 440
+      ),
+      height: RillDynamicLength.scaled(
+        LiveSubtitleOverlayMetrics.standardSurfaceHeight,
+        minimum: LiveSubtitleOverlayMetrics.standardSurfaceHeight,
+        maximum: 128
+      )
     )
   }
 

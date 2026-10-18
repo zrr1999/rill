@@ -73,7 +73,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
           }
           .buttonStyle(.glass)
           .buttonBorderShape(.circle).buttonSizing(.flexible)
-          .font(.system(size: 13)).frame(width: 30, height: 30)
+          .font(.callout).frame(width: 30, height: 30)
           .help(panelText(.closeFloatingWindow))
           .accessibilityLabel(panelText(.closeFloatingWindow))
           .accessibilityIdentifier("record-panel.close")
@@ -145,9 +145,12 @@ public struct UnifiedRecordPanelView<Records: View>: View {
           .animation(reduceMotion ? nil : .snappy, value: buffers.snapshot?.remainingCount ?? 0)
       }
     }
-    .font(.system(size: 12, weight: selected ? .medium : .regular))
+    .font(selected ? .callout.weight(.medium) : .callout)
     .foregroundStyle(selected ? Color.primary : Color.secondary)
-    .frame(width: 92, height: 30)
+    .rillScaledFrame(
+      width: 92, minimumWidth: 92, maximumWidth: 128,
+      height: 30, minimumHeight: 30, maximumHeight: 40
+    )
     .contentShape(Capsule())
   }
 
@@ -156,11 +159,11 @@ public struct UnifiedRecordPanelView<Records: View>: View {
       Image(systemName: needsAttention ? RillSystemSymbol.exclamationmarkCircle.rawValue : RillSystemSymbol.checkmarkCircle.rawValue)
         .symbolEffect(.bounce, value: needsAttention)
         .foregroundStyle(needsAttention ? Color.orange : Color.secondary)
-        .font(.system(size: 13)).frame(width: 16)
-      Text(noticeText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+        .font(.callout).frame(width: 16)
+      Text(noticeText).font(.callout).foregroundStyle(.secondary).lineLimit(1)
       Spacer(minLength: 0)
       Button(panelText(.review)) { showsOutputReview = true }
-        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.accentColor)
+        .buttonStyle(.plain).font(.callout).foregroundStyle(Color.accentColor)
         .frame(width: 48, height: 29)
         .opacity(needsAttention ? 1 : 0)
         .disabled(!needsAttention)
