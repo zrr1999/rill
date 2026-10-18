@@ -11,8 +11,7 @@ enum AppSettingsCodec {
   static let settingsLoadKeys: [AppSettingKey] = [
     .interfaceLanguage,
     .customWorkflows,
-    workflowLibrarySettingKey,
-    .workflowEnabledStates,
+    .workflowLibrary,
     .systemClipboardCaptureEnabled,
     .legacyClipboardCaptureEnabled,
     .recordMergeSimilar,
@@ -41,6 +40,7 @@ enum AppSettingsCodec {
     .legacyWhisperKitPrewarm,
     .openAIBaseURL,
     .openAIModel,
+
     vocabularyRulesSettingKey,
     vocabularyLibrarySettingKey,
     .privacySensitiveAppRules,
@@ -53,15 +53,12 @@ enum AppSettingsCodec {
     .runHistoryRetentionPeriod,
     .failedAudioRecoveryEnabled,
     .corpusRecordingArchiveEnabled,
-    .builtinPushToTalkOutputMode,
     .longRecordingModeEnabled,
     .recordingDurationLimit,
   ]
   static let localSpeechRecognizerID = "local-speech"
   static let sherpaOnnxRecognizerID = "sherpa-onnx.local"
   static let sherpaStreamingRecognizerID = "sherpa-onnx.streaming"
-  static let workflowOriginMetadataKey = "workflow.origin"
-  static let userWorkflowOriginMetadataValue = "user"
   static let privacySettingKeys: Set<AppSettingKey> = [
     .privacySensitiveAppRules,
     .privacyCloudConfirmationRequired,
@@ -74,46 +71,9 @@ enum AppSettingsCodec {
     .openAIModel,
   ]
 
-  static func loadAndMigrateWorkflowFiles(
-    from workflowFileStore: (any WorkflowFileStore)?,
-    legacyWorkflows: [WorkflowDefinition],
-    enabledStates: [UUID: Bool]
-  ) async -> InitialWorkflowFileLoad? {
+  static func loadWorkflowFiles(from workflowFileStore: (any WorkflowFileStore)?) async -> InitialWorkflowFileLoad? {
     guard let workflowFileStore else { return nil }
-    var initial = await workflowFileStore.load()
-    guard !legacyWorkflows.isEmpty else {
-      return InitialWorkflowFileLoad(result: initial, didMigrateLegacyWorkflows: false)
-    }
-    do {
-      guard initial.issues.isEmpty else { throw WorkflowFileMigrationError.verificationFailed }
-      let existingIDs = Set(initial.records.map { $0.workflow.id })
-      for workflow in legacyWorkflows.sorted(by: { $0.id.uuidString < $1.id.uuidString })
-      where !existingIDs.contains(workflow.id) {
-        _ = try await workflowFileStore.saveDocument(
-          WorkflowDocument(
-            workflow: normalizeCustomWorkflow(workflow),
-            isEnabled: enabledStates[workflow.id] ?? true),
-          replacing: nil, expected: .missing)
-      }
-      initial = await workflowFileStore.load()
-      guard initial.issues.isEmpty,
-        Set(legacyWorkflows.map(\.id)).isSubset(of: Set(initial.records.map { $0.workflow.id }))
-      else { throw WorkflowFileMigrationError.verificationFailed }
-      return InitialWorkflowFileLoad(result: initial, didMigrateLegacyWorkflows: true)
-    } catch {
-      // A save may have committed before reporting a later failure.
-      initial = await workflowFileStore.load()
-      initial.issues.append(
-        incompleteWorkflowMigrationIssue(in: workflowFileStore.configurationDirectoryURL))
-      return InitialWorkflowFileLoad(result: initial, didMigrateLegacyWorkflows: false)
-    }
-  }
-
-  static func incompleteWorkflowMigrationIssue(in directory: URL) -> WorkflowFileIssue {
-    WorkflowFileIssue(
-      filename: directory.lastPathComponent,
-      message: "Existing workflows could not be migrated to TOML; the legacy library remains active.",
-      reason: .legacyMigrationIncomplete)
+    return InitialWorkflowFileLoad(result: await workflowFileStore.load())
   }
 
   static func resolveLegacyLocalSpeechSetting(
@@ -206,13 +166,14 @@ enum AppSettingsCodec {
     }
     var loadWarnings: [StoredSettingsLoadWarning] = []
     var unavailableDomains: Set<StoredSettingsDomain> = []
+    if [AppSettingKey.customWorkflows, .workflowLibrary].contains(where: { !(storedSettings[$0] ?? "").isEmpty }) {
+      loadWarnings.append(.legacyWorkflowFormatUnsupported)
+    }
     if !unavailableSettingKeys.isEmpty {
       loadWarnings.append(.storedValuesUnavailable)
     }
     if !unavailableSettingKeys.isDisjoint(with: [
-      .customWorkflows,
-      Self.workflowLibrarySettingKey,
-      .workflowEnabledStates,
+      Self.workflowLibrarySettingKey
     ]) {
       unavailableDomains.insert(.workflowLibrary)
     }
@@ -225,34 +186,8 @@ enum AppSettingsCodec {
       unavailableDomains.insert(.vocabularyRules)
     }
 
-    let customWorkflows: [WorkflowDefinition]
-    let workflowCustomizations: [WorkflowCustomization]
-    do {
-      if let library = try Self.loadWorkflowLibrary(
-        from: storedSettings[Self.workflowLibrarySettingKey]
-      ) {
-        customWorkflows = library.customWorkflows
-        workflowCustomizations = library.customizations
-      } else {
-        customWorkflows = try Self.loadCustomWorkflows(from: storedSettings[.customWorkflows])
-        workflowCustomizations = []
-      }
-    } catch {
-      customWorkflows = []
-      workflowCustomizations = []
-      loadWarnings.append(.customWorkflows)
-      unavailableDomains.insert(.workflowLibrary)
-    }
-
-    let workflowEnabledStates: [UUID: Bool]
-    do {
-      workflowEnabledStates = try Self.loadWorkflowEnabledStates(
-        from: storedSettings[.workflowEnabledStates])
-    } catch {
-      workflowEnabledStates = [:]
-      loadWarnings.append(.workflowEnabledStates)
-      unavailableDomains.insert(.workflowLibrary)
-    }
+    let customWorkflows: [WorkflowDefinition] = []
+    let workflowEnabledStates: [UUID: Bool] = [:]
 
     let downloadedLocalSpeechModels: [String]
     do {
@@ -275,11 +210,7 @@ enum AppSettingsCodec {
       ) {
         vocabularyCollections = library.collections
         vocabularyBindings =
-          library.defaultBindings ?? workflowCustomizations.lazy.compactMap(\.vocabularyBindings)
-          .first
-          ?? customWorkflows.lazy.map(\.plan.setup.vocabularyBindings).first {
-            !$0.isEmpty
-          }
+          library.defaultBindings
           ?? library.collections.map { collection in
             VocabularyCollectionBinding(collectionID: collection.id)
           }
@@ -349,10 +280,7 @@ enum AppSettingsCodec {
       legacyLocalSpeechMigrationValues: legacyLocalSpeechMigrationValues,
       language: storedSettings[.interfaceLanguage],
       customWorkflows: customWorkflows,
-      workflowCustomizations: workflowCustomizations,
-      workflowLibraryNeedsMigration:
-        storedSettings[Self.workflowLibrarySettingKey] == nil
-        && storedSettings[.customWorkflows] != nil,
+      workflowLibraryNeedsMigration: false,
       workflowEnabledStates: workflowEnabledStates,
       systemClipboardCaptureEnabled: storedSettings[.systemClipboardCaptureEnabled]
         ?? storedSettings[.legacyClipboardCaptureEnabled],
@@ -388,7 +316,6 @@ enum AppSettingsCodec {
       runHistoryRetentionPeriod: storedSettings[.runHistoryRetentionPeriod],
       failedAudioRecoveryEnabled: storedSettings[.failedAudioRecoveryEnabled],
       corpusRecordingArchiveEnabled: storedSettings[.corpusRecordingArchiveEnabled],
-      builtinPushToTalkOutputMode: storedSettings[.builtinPushToTalkOutputMode],
       longRecordingModeEnabled: storedSettings[.longRecordingModeEnabled],
       recordingDurationLimit: storedSettings[.recordingDurationLimit],
       loadWarnings: loadWarnings,
@@ -427,16 +354,16 @@ enum AppSettingsCodec {
       .residentSpeechModels,
       .residentSpeechBudgetConfirmation,
       .speechModelMeasuredPeaks,
-      .openAIBaseURL,
-      .openAIModel:
+      .openAIBaseURL, .openAIModel:
       .speech
-    case .builtinPushToTalkOutputMode, .longRecordingModeEnabled, .recordingDurationLimit:
+    case .longRecordingModeEnabled, .recordingDurationLimit:
       .input
     case .vocabularyRules, .vocabularyLibrary:
       .vocabulary
     case .customWorkflows, .workflowLibrary, .workflowEnabledStates:
       .workflows
-    case .contextFeatureSettings, .selectedWorkflowID,
+    case .intelligentBaseURL, .intelligentModel, .intelligentAPIKey, .languageModelRolesMigrated, .builtinPushToTalkOutputMode,
+      .contextFeatureSettings, .selectedWorkflowID,
       .webhookConfigurationProtectionState,
       .legacyWhisperKitModel,
       .legacyWhisperKitDownloadedModels,
@@ -473,24 +400,6 @@ enum AppSettingsCodec {
       .legacyClipboardPanelHotkey:
       nil
     }
-  }
-
-  static func loadWorkflowEnabledStates(
-    from rawValue: String?
-  ) throws -> [UUID: Bool] {
-    guard let rawValue, !rawValue.isEmpty else { return [:] }
-    let data = Data(rawValue.utf8)
-    let decoded = try JSONDecoder().decode([String: Bool].self, from: data)
-    var enabledStates: [UUID: Bool] = [:]
-    for entry in decoded {
-      guard let workflowID = UUID(uuidString: entry.key) else {
-        throw StoredSettingsCollectionValidationError.invalidIdentifier
-      }
-      guard enabledStates.updateValue(entry.value, forKey: workflowID) == nil else {
-        throw StoredSettingsCollectionValidationError.duplicateIdentifier
-      }
-    }
-    return enabledStates
   }
 
   static func loadDownloadedLocalSpeechModels(
@@ -572,8 +481,6 @@ enum AppSettingsCodec {
     workflowFileStore: (any WorkflowFileStore)? = nil
   ) async throws -> RecoverableStoredSettingsDomains {
     let keys: [AppSettingKey] = [
-      .customWorkflows,
-      .workflowEnabledStates,
       .localSpeechDownloadedModels,
       .legacyWhisperKitDownloadedModels,
       vocabularyRulesSettingKey,
@@ -581,36 +488,13 @@ enum AppSettingsCodec {
     let snapshot = try await settingsStore.settingsSnapshot(forKeys: keys)
     let unavailableKeys = snapshot.unavailableKeys
 
-    let workflowDomainIsReadable = unavailableKeys.isDisjoint(with: [
-      .customWorkflows,
-      .workflowEnabledStates,
-    ])
     let workflowFiles = await workflowFileStore?.load()
-    var customWorkflows: [WorkflowDefinition]?
-    var workflowEnabledStates: [UUID: Bool]?
-    if workflowDomainIsReadable {
-      do {
-        customWorkflows =
-          workflowFiles == nil
-          ? try loadCustomWorkflows(from: snapshot.values[.customWorkflows])
-          : nil
-        workflowEnabledStates = try loadWorkflowEnabledStates(
-          from: snapshot.values[.workflowEnabledStates]
-        )
-      } catch {
-        customWorkflows = nil
-        workflowEnabledStates = nil
-      }
-    } else {
-      customWorkflows = nil
-      workflowEnabledStates = nil
-    }
-
     let downloadedResolution = resolveLegacyLocalSpeechSetting(
-      currentKey: .localSpeechDownloadedModels,
-      legacyKey: .legacyWhisperKitDownloadedModels,
-      in: snapshot
+      currentKey: .localSpeechDownloadedModels, legacyKey: .legacyWhisperKitDownloadedModels, in: snapshot
     )
+    let customWorkflows: [WorkflowDefinition]? = []
+    let workflowEnabledStates: [UUID: Bool]? = [:]
+
     let downloadedLocalSpeechModels: [String]?
     if downloadedResolution.isUnavailable {
       downloadedLocalSpeechModels = nil
@@ -657,24 +541,7 @@ enum AppSettingsCodec {
   static func normalizeCustomWorkflow(_ workflow: WorkflowDefinition) -> WorkflowDefinition {
     var workflow = workflow
     workflow.titleKey = nil
-    workflow.metadata[workflowOriginMetadataKey] = userWorkflowOriginMetadataValue
-    if ["whisperkit.local", "auto", sherpaOnnxRecognizerID, sherpaStreamingRecognizerID]
-      .contains(workflow.plan.setup.speechRoute?.recognizerID ?? "")
-    {
-      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
-    }
-    if workflow.plan.setup.speechRoute?.recognizerID == "deepgram.prerecorded" {
-      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
-      workflow.plan.setup.speechRoute?.providerModel = nil
-      workflow.metadata["provider"] = "local-speech"
-      workflow.metadata.removeValue(forKey: "deepgram.model")
-    }
-    if workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] == nil,
-      let legacyModelOverride = workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
-    {
-      workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] = legacyModelOverride
-    }
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
+    workflow.properties.isBuiltin = false
     return workflow
   }
 
@@ -797,11 +664,6 @@ enum AppSettingsCodec {
     {
       invalidKeys.insert(.speechModelMeasuredPeaks)
     }
-    if let value = values[.builtinPushToTalkOutputMode],
-      BuiltinPushToTalkOutputMode(rawValue: value) == nil
-    {
-      invalidKeys.insert(.builtinPushToTalkOutputMode)
-    }
     if let value = values[.longRecordingModeEnabled], storedBooleanIfValid(value) == nil {
       invalidKeys.insert(.longRecordingModeEnabled)
     }
@@ -810,71 +672,22 @@ enum AppSettingsCodec {
     {
       invalidKeys.insert(.recordingDurationLimit)
     }
-    if let value = values[.openAIBaseURL],
-      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      !OpenAISettings.isValidBaseURL(value)
-    {
-      invalidKeys.insert(.openAIBaseURL)
-    }
-    if let value = values[.openAIModel],
-      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      !OpenAISettings.isValidModelIdentifier(value)
-    {
-      invalidKeys.insert(.openAIModel)
+    do {
+      if let value = values[AppSettingKey.openAIBaseURL],
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        !OpenAISettings.isValidBaseURL(value)
+      {
+        invalidKeys.insert(AppSettingKey.openAIBaseURL)
+      }
+      if let value = values[AppSettingKey.openAIModel],
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        !OpenAISettings.isValidModelIdentifier(value)
+      {
+        invalidKeys.insert(AppSettingKey.openAIModel)
+      }
     }
 
     return invalidKeys
-  }
-
-  static func loadCustomWorkflows(
-    from rawValue: String?
-  ) throws -> [WorkflowDefinition] {
-    guard let rawValue, !rawValue.isEmpty else { return [] }
-    let data = Data(rawValue.utf8)
-    let decoded = try JSONDecoder().decode([WorkflowDefinition].self, from: data)
-    guard Set(decoded.map(\.id)).count == decoded.count else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    return decoded.map(Self.normalizeCustomWorkflow)
-  }
-
-  static func loadWorkflowLibrary(
-    from rawValue: String?
-  ) throws -> WorkflowLibraryDocument? {
-    guard let rawValue, !rawValue.isEmpty else { return nil }
-    let document = try JSONDecoder().decode(
-      WorkflowLibraryDocument.self,
-      from: Data(rawValue.utf8)
-    )
-    guard document.schemaVersion == WorkflowLibraryDocument.currentSchemaVersion else {
-      throw StoredSettingsCollectionValidationError.invalidIdentifier
-    }
-    guard
-      Set(document.customWorkflows.map(\.id)).count
-        == document.customWorkflows.count
-    else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    guard
-      Set(document.customizations.map(\.workflowID)).count
-        == document.customizations.count
-    else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    for workflow in document.customWorkflows {
-      let input: WorkflowInputKind =
-        workflow.inputKind
-      try WorkflowPlanValidator.validate(workflow.plan, input: input)
-    }
-    for customization in document.customizations {
-      guard let bindings = customization.vocabularyBindings else { continue }
-      guard Set(bindings.map(\.id)).count == bindings.count else {
-        throw StoredSettingsCollectionValidationError.duplicateIdentifier
-      }
-    }
-    var normalized = document
-    normalized.customWorkflows = normalized.customWorkflows.map(Self.normalizeCustomWorkflow)
-    return normalized
   }
 
 }

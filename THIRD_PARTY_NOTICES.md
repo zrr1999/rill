@@ -16,10 +16,10 @@ rendered text only normalizes line endings and trailing horizontal whitespace.
 | `async-http-client` | source control | 1.35.0 | <https://github.com/swift-server/async-http-client> | `Apache-2.0` | Git revision `4603a8036d921ea999fadb742931546c341f4bd7` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `e5eab628baf9849380ce867d80f65ece8ff98daa48035f994714e6fe7dbdb3ce`) |
 | `eventsource` | source control | 1.4.1 | <https://github.com/mattt/EventSource.git> | `MIT` | Git revision `a3a85a85214caf642abaa96ae664e4c772a59f6e` | `LICENSE.md` (license, `2f9b695627d569a3ce452b2c03fdd34310df78c8ea94edfafd9ce38381e5b502`) |
 | `grdb.swift` | source control | 7.11.1 | <https://github.com/groue/GRDB.swift.git> | `MIT` | Git revision `b83108d10f42680d78f23fe4d4d80fc88dab3212` | `LICENSE` (license, `9853f9dce81365fcc1d9b46004633354450164b8d17904e92e80c444545f7e87`) |
-| `mlx-audio-swift` | source control | 0.1.3 | <https://github.com/Blaizzy/mlx-audio-swift.git> | `MIT` | Git revision `d302a5c6080d2bb97bae38c7418f82abb76013b6` | `LICENSE` (license, `fd330bb5d9adf9e65bfe4d8f6f90c808a4196ef5c98aad018a3344256fcb2374`) |
-| `mlx-swift` | source control | 0.31.4 | <https://github.com/ml-explore/mlx-swift.git> | `MIT` | Git revision `dc43e62d7055353c7f99fa071a4e71d29dfddc44` | `LICENSE` (license, `44326a4ea062241ae6fc26ee2ec90bdc81af7eb7b9d3966181b733fa69d42057`)<br>`Source/Cmlx/json/LICENSE.MIT` (license, `86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14`) |
-| `mlx-swift-lm` | source control | 3.31.4 | <https://github.com/ml-explore/mlx-swift-lm.git> | `MIT` | Git revision `bd4b7434e6bdb588c7ef55706ff8904cb7fd4c57` | `LICENSE` (license, `7b1d86acac816ce8192209d7e01141c129b4d48d474c15cc5fb4af62f497c323`) |
-| `openai` | source control | 0.5.1 | <https://github.com/MacPaw/OpenAI.git> | `MIT` | Git revision `a532be89be9a30ec003e4ba0974a52a88d26fc6d` | `LICENSE` (license, `7ad43d13a029c71f61a1efac5dff82b0dc0b16a58449e7374bffc8a16441f8cf`) |
+| `mlx-audio-swift` | source control | 0.1.5 | <https://github.com/Blaizzy/mlx-audio-swift.git> | `MIT` | Git revision `dbe5eaac964e8257785f9d015c81f819a38016a8` | `LICENSE` (license, `fd330bb5d9adf9e65bfe4d8f6f90c808a4196ef5c98aad018a3344256fcb2374`) |
+| `mlx-swift` | source control | 0.32.3 | <https://github.com/ml-explore/mlx-swift.git> | `MIT` | Git revision `19601207e9a0de51e03ee6ec0c3c5f3784275075` | `LICENSE` (license, `44326a4ea062241ae6fc26ee2ec90bdc81af7eb7b9d3966181b733fa69d42057`)<br>`Source/Cmlx/json/LICENSE.MIT` (license, `86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14`) |
+| `mlx-swift-lm` | source control | 3.32.3 | <https://github.com/ml-explore/mlx-swift-lm.git> | `MIT` | Git revision `3b339ad6e3b3f44c8121ecff5131c7fd55e075e6` | `LICENSE` (license, `7b1d86acac816ce8192209d7e01141c129b4d48d474c15cc5fb4af62f497c323`) |
+| `openai` | source control | 0.5.3 | <https://github.com/MacPaw/OpenAI.git> | `MIT` | Git revision `b66c398c9afd2fb31866d4ac3da4761ce5e3d1c8` | `LICENSE` (license, `df47b25ac5f12c7acfbf3f415e521a9fad9331eb6e2e27c182e2720804f2fff0`) |
 | `swift-algorithms` | source control | 1.2.1 | <https://github.com/apple/swift-algorithms.git> | `Apache-2.0` | Git revision `87e50f483c54e6efd60e885f7f5aa946cee68023` | `LICENSE.txt` (license, `770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55`) |
 | `swift-asn1` | source control | 1.7.1 | <https://github.com/apple/swift-asn1.git> | `Apache-2.0` | Git revision `a9a5efd40eaf558a2bcd48d64b1d1646be686008` | `LICENSE.txt` (license, `8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac`)<br>`NOTICE.txt` (notice, `11dd3b3b783e6ec26098dd38ebc962986ea109b85447e28e62867b83bd0f8c5b`) |
 | `swift-async-algorithms` | source control | 1.1.5 | <https://github.com/apple/swift-async-algorithms.git> | `Apache-2.0` | Git revision `3da39bbc4e687d4192af7c9cf4eab805745a0b9c` | `LICENSE.txt` (license, `770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55`) |
@@ -31,7 +31,7 @@ rendered text only normalizes line endings and trailing horizontal whitespace.
 | `swift-distributed-tracing` | source control | 1.4.1 | <https://github.com/apple/swift-distributed-tracing.git> | `Apache-2.0` | Git revision `dc4030184203ffafbb2ec614352487235d747fe0` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`) |
 | `swift-http-structured-headers` | source control | 1.7.0 | <https://github.com/apple/swift-http-structured-headers.git> | `Apache-2.0` | Git revision `933538faa42c432d385f02e07df0ace7c5ecfc47` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`) |
 | `swift-http-types` | source control | 1.6.0 | <https://github.com/apple/swift-http-types.git> | `Apache-2.0` | Git revision `db774a277f60063a32d854f2980299caf06da041` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `eb79190094094bb6ce2b177a7ba7708f50bf873b9a2c5e6e1936a5f391b5ec0f`) |
-| `swift-huggingface` | source control | 0.8.1 | <https://github.com/huggingface/swift-huggingface.git> | `Apache-2.0` | Git revision `de01c0ab8fd537bbd8216cea7f774275178501a2` | `LICENSE` (license, `4d6ad72952a8329063a71de28329b493de96cf57459e2ac217110d1a6a5f84ae`) |
+| `swift-huggingface` | source control | 0.13.0 | <https://github.com/huggingface/swift-huggingface.git> | `Apache-2.0` | Git revision `f0a0cb43cb1b402d2bbf6fb10d8981328c449c48` | `LICENSE` (license, `4d6ad72952a8329063a71de28329b493de96cf57459e2ac217110d1a6a5f84ae`) |
 | `swift-jinja` | source control | 2.4.2 | <https://github.com/huggingface/swift-jinja.git> | `Apache-2.0` | Git revision `7d0b8880ef8e567dd4e0089f8b99fb354129017c` | `LICENSE` (license, `648b81e6c6f9975c3b6cf6d630229b6c8d6f1ddaef55f5770f576adda19f3495`) |
 | `swift-log` | source control | 1.14.0 | <https://github.com/apple/swift-log.git> | `Apache-2.0` | Git revision `a878e7f8f46cfc0e1125e565b5c08e7d5272dc9a` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `879b241d49b407215a0ad8e1c6a71c358d7b29591b090cf379d37a5f50cff918`) |
 | `swift-nio` | source control | 2.101.3 | <https://github.com/apple/swift-nio.git> | `Apache-2.0` | Git revision `0b18836bd8b0162e7e17a995a3fbee20ed8f3b2b` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `d25ed2452b3476c342082d11e4e8bf5459174d2836124f842b499850bcebc50e`) |
@@ -46,7 +46,7 @@ rendered text only normalizes line endings and trailing horizontal whitespace.
 | `swift-syntax` | source control | 603.0.2 | <https://github.com/swiftlang/swift-syntax.git> | `Apache-2.0` | Git revision `79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1` | `LICENSE.txt` (license, `770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55`) |
 | `swift-system` | source control | 1.7.5 | <https://github.com/apple/swift-system.git> | `Apache-2.0` | Git revision `50688cacbd41d547e9eb9f7a213542340b7c442b` | `LICENSE.txt` (license, `2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3`) |
 | `swift-toml` | source control | 2.0.0 | <https://github.com/mattt/swift-toml.git> | `MIT` | Git revision `827506c90475e82d5a7f191f950fb3025cbdc0d6` | `LICENSE.md` (license, `2f9b695627d569a3ce452b2c03fdd34310df78c8ea94edfafd9ce38381e5b502`)<br>`Sources/CTomlPlusPlus/toml.hpp#L3-L43` (license, `2a20b4a8b1c5842e84c2ad0fef3c5e84e2d8f29ac79ac302345115c05f89ea72`) |
-| `swift-transformers` | source control | 1.2.1 | <https://github.com/huggingface/swift-transformers.git> | `Apache-2.0` | Git revision `58c4bc11963a140358d791f678a60a2745a23146` | `LICENSE` (license, `648b81e6c6f9975c3b6cf6d630229b6c8d6f1ddaef55f5770f576adda19f3495`) |
+| `swift-transformers` | source control | 1.3.5 | <https://github.com/huggingface/swift-transformers.git> | `Apache-2.0` | Git revision `48473106a93b2d8dfb114b82f0628ebbb71734e7` | `LICENSE` (license, `648b81e6c6f9975c3b6cf6d630229b6c8d6f1ddaef55f5770f576adda19f3495`) |
 | `swift-xet` | source control | 0.2.3 | <https://github.com/mattt/swift-xet.git> | `Apache-2.0` | Git revision `341bfd4172f6a57119bfd49bafa11cf5d21fab75` | `LICENSE@b8447cbdf0e798de27bab3c5b0a99da98fae81e9` (license, `66d3de8f54fa087ac001d3fde9221c9c7d220f6856c37fb038fa858d71450f35`) |
 | `yyjson` | source control | 0.12.0 | <https://github.com/ibireme/yyjson.git> | `MIT` | Git revision `8b4a38dc994a110abaec8a400615567bd996105f` | `LICENSE` (license, `45e384d3d52c73cba3a64d6e6c25d47cd738cd8a55c30629e3201046eda62947`) |
 
@@ -1635,34 +1635,6 @@ Applies to: `swift-algorithms/LICENSE.txt` (license), `swift-async-algorithms/LI
     otherwise be required by Sections 4(a), 4(b) and 4(d) of the License.
 ```
 
-### Evidence `7ad43d13a029c71f61a1efac5dff82b0dc0b16a58449e7374bffc8a16441f8cf`
-
-Applies to: `openai/LICENSE` (license).
-
-```text
-MIT License
-
-Copyright (c) 2023 MacPaw Inc.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
 ### Evidence `7b1d86acac816ce8192209d7e01141c129b4d48d474c15cc5fb4af62f497c323`
 
 Applies to: `mlx-swift-lm/LICENSE` (license).
@@ -2413,6 +2385,34 @@ This product contains a derivation of "TokenBucket.swift" from Swift Package Man
     * https://www.apache.org/licenses/LICENSE-2.0
   * HOMEPAGE:
     * https://github.com/swiftlang/swift-package-manager
+```
+
+### Evidence `df47b25ac5f12c7acfbf3f415e521a9fad9331eb6e2e27c182e2720804f2fff0`
+
+Applies to: `openai/LICENSE` (license).
+
+```text
+MIT License
+
+Copyright (c) 2023 MacPaw Way Ltd.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ### Evidence `e0583b716a12a866a2a1d7456c26a17d18e1ec70f0ecaf2c62ed77180d1db043`

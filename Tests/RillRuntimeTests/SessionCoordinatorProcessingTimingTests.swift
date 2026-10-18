@@ -203,7 +203,7 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
   }
 
   func testRecoverableRewriteFallbackRetainsFailedRequestDuration() async throws {
-    let harness = makeProcessingHarness(steps: [.llmRewrite], transformation: .failure)
+    let harness = makeProcessingHarness(steps: [.llmRewrite], transformation: .failure, failurePolicy: .preserveInput)
     let result = await harness.coordinator.runReportingOutcome(
       workflow: harness.workflow, contextSnapshot: .empty, preRecognizedText: "keep this"
     )
@@ -235,7 +235,7 @@ private func makeProcessingHarness(
   steps: [PostProcessStepKind],
   recognition: ProcessingTestOutcome = .success,
   transformation: ProcessingTestOutcome = .success,
-  candidateSets: [CandidateSet] = []
+  candidateSets: [CandidateSet] = [], failurePolicy: WorkflowTaskFailurePolicy = .fail
 ) -> (
   coordinator: SessionCoordinator, workflow: WorkflowDefinition, repository: InMemoryWorkflowRunReceiptRepository, eventBus: EventBus,
   resolver: CandidateResolver, diagnostics: DiagnosticsRecorder
@@ -247,11 +247,19 @@ private func makeProcessingHarness(
   let resolver = CandidateResolver(eventBus: eventBus)
   let workflow = WorkflowDefinition(
     name: "Timed speech",
-    pipeline: PipelineDeclaration(
-      recognizerID: "timed.recognizer",
-      postProcessSteps: steps.map { PostProcessStep(kind: $0, prompt: $0 == .normalizeWhitespace ? nil : "Process") },
-      outputActions: [.init(id: "timed.action")]
-    ),
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "timed.recognizer")),
+      process: WorkflowProcessPhase(
+        steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]
+          + (steps.map {
+            PostProcessStep(
+              kind: $0, prompt: $0 == .normalizeWhitespace ? nil : "Process", reasoning: [.llmRewrite, .llmAnswer].contains($0) ? .some(.none) : nil,
+              failurePolicy: $0 == .llmRewrite ? failurePolicy : .fail)
+          }).map(WorkflowProcessStep.init)),
+      output: WorkflowOutputPhase(actions: [.init(id: "timed.action")], deliveryPolicy: .init(strategy: .immediate))),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
   let coordinator = makeTestSessionCoordinator(
@@ -314,7 +322,7 @@ struct ConfigurableProcessingTimingTests {
     var branch = WorkflowProcessStep(kind: .conditional, recordDuration: true)
     branch.condition = .comparison(field: .text, operation: .contains, value: "recognized")
     branch.thenSteps = [selected]
-    branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Unused", recordDuration: true)]
+    branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Unused", recordDuration: true, reasoning: .some(.none))]
     let index = try #require(harness.workflow.plan.process.steps.firstIndex { $0.kind == .normalizeWhitespace })
     harness.workflow.plan.process.steps[index] = branch
     let runID = UUID()

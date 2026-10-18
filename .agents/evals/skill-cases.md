@@ -167,3 +167,32 @@ Expected: accept the evidence only for what it establishes; leave the named
 native and release checks unverified, with precise missing observations/manual
 steps. Do not reinterpret synthetic keys, screenshots, or development signing
 as those acceptance results.
+
+## rill-ui-change
+
+### UI-1 — Floating panel material
+
+Request: “把悬浮页的模式轨道改成和选中项一样的玻璃，正文编辑区保持不透明。”
+Fixture: the panel still uses the AppKit editor, search field, and hover
+controller.
+
+Expected: change the track material through the shared glass helper, keep the
+editor opaque, and update DESIGN.md and the UI direction together. Preserve
+marked text, undo, and the hover focus contract. Do not replace the editor or
+search field.
+
+### UI-2 — One settings label
+
+Request: “把设置里某一行说明改短，外观和交互不变。”
+
+Expected: edit the catalog string only. Do not load the visual workflow, change
+materials, or rewrite DESIGN.md.
+
+### UI-3 — Screenshot is not VoiceOver
+
+Request: “浅色和深色截图都正常，能确认 VoiceOver 和减少透明度已通过吗？”
+Fixture: only screenshots are available.
+
+Expected: accept the screenshots for the visible states they show. Leave
+VoiceOver and Reduce Transparency unverified, with the missing observation
+named. Do not treat a render as either result.

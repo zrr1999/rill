@@ -41,7 +41,7 @@ locked_swift() {
       exit 1
     fi
   fi
-  if [[ "$filter" == "$PANEL_STRESS_TESTS" && "${FIXTURE_FAIL_PANEL:-}" == true && -z "${RILL_RECORD_PROFILE_DIR:-}" ]]; then
+  if [[ "$filter" == "$PANEL_STRESS_TESTS" && "${FIXTURE_FAIL_PANEL:-}" == true ]]; then
     return 47
   fi
 }
@@ -60,6 +60,7 @@ RillUITests.ShellTests/testDesktopFocus
 RillPlatformTests.NativeTests/testPlatform
 RillRuntimeTests.RecordCatalogStressTests/testTenThousandRecords
 RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords
+RillAppTests.RecordPanelControllerTests/testBenchmarkWarmPanelPresentation
 RillQualityEvaluations.Evaluation/testQuality
 RillQualityEvaluations.Evaluation/testDesktopQuality
 TESTS
@@ -67,12 +68,12 @@ for selection in regular desktop; do
   env FIXTURE_TRACE="$TEST_ROOT/$selection-trace" FIXTURE_TESTS="$TEST_ROOT/test-ids" \
     "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" "$selection" >"$TEST_ROOT/$selection-output" 2>&1
 done
-grep -Ev '/testDesktop|RillQualityEvaluations' "$TEST_ROOT/test-ids" >"$TEST_ROOT/regular-expected"
+grep -Ev '/testDesktop|/testBenchmark|RillQualityEvaluations' "$TEST_ROOT/test-ids" >"$TEST_ROOT/regular-expected"
 grep '/testDesktop' "$TEST_ROOT/test-ids" | grep -v RillQualityEvaluations >"$TEST_ROOT/desktop-expected"
 cmp "$TEST_ROOT/regular-expected" "$TEST_ROOT/regular-trace"
 cmp "$TEST_ROOT/desktop-expected" "$TEST_ROOT/desktop-trace"
 grep -Fq 'Desktop interaction was not tested' "$TEST_ROOT/regular-output"
-echo 'PASS: regular and desktop runners partition tests without losing or duplicating coverage'
+echo 'PASS: regular and desktop runners preserve functional coverage and exclude opt-in benchmarks'
 
 for missing in RecordCatalogStressTests testWarmPanelReadyToSearchWithTenThousandRecords; do
   grep -v "$missing" "$TEST_ROOT/test-ids" >"$TEST_ROOT/missing-test-ids"
@@ -87,12 +88,11 @@ echo 'PASS: both performance suites must be discovered before execution'
 
 if env FIXTURE_FAIL_PANEL=true FIXTURE_TRACE="$TEST_ROOT/failed-panel-trace" FIXTURE_TESTS="$TEST_ROOT/test-ids" \
   "$BASH" "$TEST_ROOT/selection.sh" "$PROJECT_DIR" regular >"$TEST_ROOT/failed-panel-output" 2>&1; then
-  echo 'FAIL: diagnostic replay concealed the original performance failure' >&2
+  echo 'FAIL: panel correctness failure was accepted' >&2
   exit 1
 fi
-[[ "$(grep -c testWarmPanelReadyToSearchWithTenThousandRecords "$TEST_ROOT/failed-panel-trace")" == 2 ]]
-grep -Fq 'Native panel stress failed; diagnostic samples' "$TEST_ROOT/failed-panel-output"
-echo 'PASS: panel diagnostic replay keeps the original performance failure authoritative'
+[[ "$(grep -c testWarmPanelReadyToSearchWithTenThousandRecords "$TEST_ROOT/failed-panel-trace")" == 1 ]]
+echo 'PASS: panel correctness failure remains fatal without a diagnostic replay'
 
 cat >"$TEST_ROOT/fixture.sh" <<'SH'
 #!/usr/bin/env bash

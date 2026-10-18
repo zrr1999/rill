@@ -482,7 +482,8 @@ public actor CapturedAudioProcessingQueue {
           recognitionOptions: authorization.authorizedContext.recognitionOptions,
           waitsForAvailability: true,
           contextPreparation: authorization.authorizedContext.contextPreparation,
-          preparedRecognition: authorization.authorizedContext.preparedRecognition
+          preparedRecognition: authorization.authorizedContext.preparedRecognition,
+          modelSnapshot: authorization.authorizedContext.modelSnapshot
         )
         await preserveCorpusRecordingIfEnabled(
           capturedAudio,

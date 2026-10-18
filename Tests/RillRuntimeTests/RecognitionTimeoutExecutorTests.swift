@@ -484,10 +484,12 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
   ) -> WorkflowDefinition {
     WorkflowDefinition(
       name: name,
-      pipeline: PipelineDeclaration(
-        recognizerID: recognizerID,
-        outputActions: outputActions
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizerID)),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: outputActions, deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

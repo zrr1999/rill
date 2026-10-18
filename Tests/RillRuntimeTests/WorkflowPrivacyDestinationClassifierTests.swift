@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillCore
 @testable import RillWorkflows
 import XCTest
@@ -7,13 +8,17 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
     var workflow = WorkflowDefinition(
       name: "Voice Assistant",
       trigger: .wakeWord,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: [
-          PostProcessStep(kind: .llmRewrite, prompt: "Answer briefly")
-        ],
-        outputActions: [OutputActionReference(id: SpeechOutputActionID.speak)]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]
+            + ([
+              PostProcessStep(kind: .llmRewrite, prompt: "Answer briefly", reasoning: .some(.none))
+            ]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: SpeechOutputActionID.speak)], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple")
     )
     workflow.plan.setup.wakeWord = WakeWordConfiguration(phrases: ["Hey Rill"])
@@ -32,19 +37,13 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
     let offline = WorkflowDefinition(
       name: "Local Dictation",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        outputActions: [OutputActionReference(id: "focused-application.insert")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "sherpa-onnx.local", actions: [OutputActionReference(id: "focused-application.insert")]),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "green")
     )
     let unknown = WorkflowDefinition(
       name: "Unknown Provider",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "unclassified.speech",
-        outputActions: []
-      ),
+      plan: makeTestAudioPlan(recognizerID: "unclassified.speech"),
       ui: WorkflowUIConfig(symbolName: "questionmark", accentColorName: "orange")
     )
 
@@ -62,10 +61,7 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Read Item",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "remote.speech",
-        outputActions: [OutputActionReference(id: SpeechOutputActionID.speak)]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "remote.speech", actions: [OutputActionReference(id: SpeechOutputActionID.speak)]),
       ui: WorkflowUIConfig(symbolName: "speaker.wave.2", accentColorName: "blue")
     )
     let invocation = WorkflowRunInvocation.record(

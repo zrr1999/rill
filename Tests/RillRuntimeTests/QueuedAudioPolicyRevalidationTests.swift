@@ -325,7 +325,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
     let confirmation = QueuedConfirmationProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { try await settings.read() },
-      cloudConfirmationProvider: { workflow, _, destinations in
+      cloudConfirmationProvider: { workflow, _, destinations, _ in
         await confirmation.confirm(workflow: workflow, destinations: destinations)
       }
     )
@@ -544,7 +544,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
   let confirmation = QueuedConfirmationProbe()
   let gate = PrivacyRunGate(
     settingsProvider: { try await settings.read() },
-    cloudConfirmationProvider: { workflow, _, destinations in
+    cloudConfirmationProvider: { workflow, _, destinations, _ in
       await confirmation.confirm(workflow: workflow, destinations: destinations)
     }
   )
@@ -669,13 +669,11 @@ private func queuedWorkflow(name: String, recognizerID: String) -> WorkflowDefin
   var workflow = WorkflowDefinition(
     name: name,
     trigger: .hotkey,
-    pipeline: PipelineDeclaration(
+    plan: makeTestAudioPlan(
       recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID,
       postProcessSteps: usesCloudTextFixture
-        ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")]
-        : [],
-      outputActions: [OutputActionReference(id: "record.store")]
-    ),
+        ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))]
+        : [], actions: [OutputActionReference(id: "record.store")]),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
   workflow.plan.setup.vocabularyBindings = [

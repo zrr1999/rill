@@ -1,3 +1,4 @@
+import RillPlatform
 import Foundation
 import RillCore
 import Testing
@@ -43,7 +44,7 @@ struct TextRewriteEvaluationTests {
     let baseURL = try #require(environment["OPENAI_BASE_URL"])
     let model = try #require(environment["OPENAI_MODEL"])
     let settings = OpenAISettings(apiKey: apiKey, baseURL: baseURL, model: model)
-    let transformer = OpenAITextRewriteTransformer(settingsProvider: { settings })
+    let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings })
     let startedAt = Date()
     let samples = try JSONDecoder().decode(
       [Sample].self,
@@ -59,8 +60,8 @@ struct TextRewriteEvaluationTests {
           !$0.isEmpty && literalCount($0, in: sample.transcript) > 0 && literalCount($0, in: sample.expected) > 0
         })
     }
-    let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.isCanonicalSmartCleanup })
-    let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
+    let workflow = try #require(try BuiltinWorkflowCatalog().manifest().workflows.first { $0.preservesTranscriptContent })
+    let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt, reasoning: .some(.none))
     var observations: [Observation] = []
 
     for repetition in 1...3 {

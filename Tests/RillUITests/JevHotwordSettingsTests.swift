@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import Testing
 import RillWorkflows
@@ -18,7 +19,8 @@ struct JevHotwordSettingsTests {
       privacy: .init(initialSettings: .defaults), currentFocus: { context.focus })
     let settings = JevAPISettingsModel(service: fixture.service, hotwordSelection: service)
     let workflow = WorkflowDefinition(
-      name: "Dictation", pipeline: .init(recognizerID: "local-speech", outputActions: []),
+      name: "Dictation",
+      plan: makeTestAudioPlan(recognizerID: "local-speech"),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     func selection() throws -> HotwordSelection.Selection {
       let id = UUID()
@@ -56,7 +58,7 @@ struct JevHotwordSettingsTests {
 }
 
 private struct NeverHotwordProvider: HotwordRankingProvider {
-  func score(_: HotwordRankingRequest, apiKey _: String) async throws -> [HotwordRankingScore] {
+  func score(_: HotwordRankingRequest, authorization _: DecisionModelSettingsSource.Authorization) async throws -> [HotwordRankingScore] {
     Issue.record("Editing settings must not send requests.")
     throw HotwordRankingError.invalidInput
   }

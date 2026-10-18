@@ -26,7 +26,6 @@ public final class SettingsPersistenceModel {
   public internal(set) var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
   public internal(set) var bufferOutputHotkeyBinding: HotkeyBindingDescriptor = .keyboardShortcut(.outputNext)
   public internal(set) var preferredSpeechEngine: PreferredSpeechEngine = .local
-  public internal(set) var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode = .pasteIntoApp
   public internal(set) var longRecordingModeEnabled: Bool = false
   public internal(set) var recordingDurationLimit: RecordingDurationLimit = .fiveMinutes
   public internal(set) var localSpeechModel: String = LocalSpeechSettings().model
@@ -37,6 +36,7 @@ public final class SettingsPersistenceModel {
   public internal(set) var openAIAPIKey: String = ""
   public internal(set) var openAIBaseURL: String = OpenAISettings().baseURL
   public internal(set) var openAIModel: String = OpenAISettings().model
+
   public internal(set) var ttsModelIdentifier: String = ""
   public internal(set) var recordHistoryVisibility: RecordHistoryVisibility = .remainingOnly
 
@@ -53,8 +53,10 @@ public final class SettingsPersistenceModel {
   var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
   var localSpeechModelMutationGeneration = 0
   let settingsReadTaskOwner = AppModelSettingsReadTaskOwner()
-  var openAICredentialLoadGeneration = 0
-  var openAIVerificationGeneration = 0
+  var credentialLoadGeneration: Int = 0
+
+  var verificationGeneration: Int = 0
+
   let openAIVerificationTaskOwner = ReplacingTaskOwner()
 
   public internal(set) var isLoading = true
@@ -93,19 +95,19 @@ public final class SettingsPersistenceModel {
   }
 
   func invalidateOpenAIVerification() {
-    openAIVerificationTaskOwner.cancel()
-    openAIVerificationGeneration &+= 1
-    openAIVerificationFailure = nil
-    openAIConfigurationVerificationState = .idle
+    verificationTaskOwner().cancel()
+    verificationGeneration &+= 1
+    setVerification(.idle, failure: nil)
   }
 
   func waitForOpenAIVerificationTasks() async {
     await openAIVerificationTaskOwner.waitUntilIdle()
+
   }
 
   func beginShutdown() {
     hasBegunApplicationShutdown = true
-    invalidateOpenAIVerification()
+    do { invalidateOpenAIVerification() }
   }
 
   func submit(

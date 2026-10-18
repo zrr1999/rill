@@ -40,7 +40,7 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
   }
 
   static func infer(from workflow: WorkflowDefinition) -> VoiceTextStyle {
-    if let rawValue = workflow.metadata[WorkflowMetadataKey.textStyle],
+    if let rawValue = workflow.properties.textStyle,
       let style = VoiceTextStyle(rawValue: rawValue)
     {
       return style
@@ -88,24 +88,24 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
     case .cleanInput:
       return [PostProcessStep(kind: .normalizeWhitespace)]
     case .smartCleanup:
-      return [
-        PostProcessStep(kind: .normalizeWhitespace),
-        PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt),
-      ]
+      var rewrite = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt, reasoning: .some(.none), failurePolicy: .preserveInput)
+      rewrite.preservesContent = true
+      rewrite.decision = .init(optional: true)
+      return [PostProcessStep(kind: .normalizeWhitespace), rewrite]
     case .formalWriting:
       return [
         PostProcessStep(kind: .normalizeWhitespace),
-        PostProcessStep(kind: .llmRewrite, prompt: Self.formalWritingPrompt),
+        PostProcessStep(kind: .llmRewrite, prompt: Self.formalWritingPrompt, reasoning: .some(.none)),
       ]
     case .translateInput:
       return [
         PostProcessStep(kind: .normalizeWhitespace),
-        PostProcessStep(kind: .llmRewrite, prompt: Self.translatePrompt),
+        PostProcessStep(kind: .llmRewrite, prompt: Self.translatePrompt, reasoning: .some(.none)),
       ]
     case .commandMode:
       return [
         PostProcessStep(kind: .normalizeWhitespace),
-        PostProcessStep(kind: .llmRewrite, prompt: Self.commandPrompt),
+        PostProcessStep(kind: .llmRewrite, prompt: Self.commandPrompt, reasoning: .some(.none)),
       ]
     case .custom:
       return [PostProcessStep(kind: .normalizeWhitespace)]
@@ -140,7 +140,7 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     trigger = workflow.trigger
     outputActionIDs = workflow.plan.output.actions.map(\.id)
     recognizerID = workflow.plan.setup.speechRoute?.recognizerID ?? ""
-    languageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride]
+    languageOverride = workflow.plan.setup.speechRoute?.language
     usesBuiltinTitle = workflow.titleKey != nil
   }
 

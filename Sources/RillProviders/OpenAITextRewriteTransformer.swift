@@ -74,7 +74,7 @@ struct OpenAIResponsesRequest: Sendable, Equatable {
   let store: Bool
   let stream: Bool
   let maxOutputTokens: Int?
-  var disablesThinking = false
+  var reasoning: ReasoningLevel = .none
   var temperature: Double? = nil
   var timeoutInterval: TimeInterval = 60
   var referenceImage: CorrectionReferenceImage? = nil
@@ -175,6 +175,8 @@ struct MacPawOpenAIResponsesClient: OpenAIResponsesServing {
       )
     }
 
+    try LanguageModelConfiguration(migrating: .init(apiKey: apiKey, baseURL: request.baseURL, model: model)).validate(reasoning: request.reasoning)
+
     let statusRecorder = OpenAIHTTPStatusRecorder()
     let client = OpenAI(
       configuration: .init(
@@ -204,7 +206,7 @@ struct MacPawOpenAIResponsesClient: OpenAIResponsesServing {
       model: model,
       instructions: request.instructions,
       maxOutputTokens: request.maxOutputTokens,
-      reasoning: request.disablesThinking ? .init(effort: .some(.none)) : nil,
+      reasoning: .init(effort: request.reasoning == .none ? .some(.none) : request.reasoning == .low ? .low : .high),
       store: request.store,
       stream: request.stream,
       temperature: request.temperature,
@@ -526,25 +528,39 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
   public let id = Self.transformerID
   public let supportedKinds: [PostProcessStepKind] = [.llmRewrite, .llmAnswer]
 
-  private let settingsProvider: @Sendable () async throws -> OpenAISettings
+  private let settingsProvider: @Sendable (TransformContext) async throws -> OpenAISettings
   private let clientFactory: OpenAIResponsesClientFactory
   private let rewriteTimeout: Duration
   private let diagnosticReporter: @Sendable (DiagnosticEvent) async -> Void
 
   public init(
-    settingsProvider: @escaping @Sendable () async throws -> OpenAISettings,
+    settingsSource: LanguageModelSettingsSource,
+    diagnosticReporter: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }
+  ) {
+    self.init(settingsSource: settingsSource, clientFactory: { MacPawOpenAIResponsesClient() }, diagnosticReporter: diagnosticReporter)
+  }
+
+  init(
+    settingsSource: LanguageModelSettingsSource,
+    clientFactory: @escaping OpenAIResponsesClientFactory,
     diagnosticReporter: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }
   ) {
     self.init(
-      settingsProvider: settingsProvider,
-      clientFactory: { MacPawOpenAIResponsesClient() },
+      settingsProvider: { context in
+        guard let settings = context.modelSnapshot?.languageModel else {
+          throw LanguageModelConfigurationError.unavailable
+        }
+        try settingsSource.validateCredential(settings)
+        return settings
+      },
+      clientFactory: clientFactory,
       diagnosticReporter: diagnosticReporter
     )
   }
 
   init(
-    settingsProvider: @escaping @Sendable () async throws -> OpenAISettings,
-    clientFactory: @escaping OpenAIResponsesClientFactory,
+    settingsProvider: @escaping @Sendable (TransformContext) async throws -> OpenAISettings,
+    clientFactory: @escaping OpenAIResponsesClientFactory = { MacPawOpenAIResponsesClient() },
     rewriteTimeout: Duration = .seconds(LLMTextProcessing.rewriteTimeout),
     diagnosticReporter: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }
   ) {
@@ -578,14 +594,8 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
       throw OpenAITextRewriteError.invalidResponse
     }
 
-    let settings: OpenAISettings
-    do {
-      settings = try await settingsProvider()
-    } catch is CancellationError {
-      throw CancellationError()
-    } catch {
-      throw OpenAITextRewriteError.credentialUnavailable
-    }
+    guard let reasoning = step.reasoning else { throw OpenAITextRewriteError.configurationInvalid }
+    let settings = try await authorizedSettings(context: context)
     let apiKey = settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !apiKey.isEmpty else {
       throw OpenAITextRewriteError.credentialUnavailable
@@ -597,14 +607,15 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
       throw OpenAITextRewriteError.configurationInvalid
     }
 
+    try LanguageModelConfiguration(migrating: settings).validate(reasoning: reasoning)
+
     let usesDeepSeekRewrite =
       LLMTextProcessing.usesDeepSeek(settings)
-      && step.kind == .llmRewrite && context.workflow.speechMode != .voiceAssistant
+      && reasoning == .none && step.kind == .llmRewrite
     let correction = step.kind == .llmRewrite ? context.correctionRequest : nil
     let protectsCleanup =
-      step.kind == .llmRewrite && context.workflow.speechMode != .voiceAssistant
-      && (correction != nil || (context.workflow.isCanonicalSmartCleanup && workflowInstruction == LLMTextProcessing.cleanupPrompt))
-    let usesRewriteBudget = usesDeepSeekRewrite || protectsCleanup
+      step.kind == .llmRewrite && (correction != nil || step.preservesContent)
+    let usesRewriteBudget = step.kind == .llmRewrite
     if let correction {
       guard !correction.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         throw OpenAITextRewriteError.invalidResponse
@@ -624,8 +635,8 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
       model: settings.model,
       store: false,
       stream: false,
-      maxOutputTokens: Self.maximumOutputTokens,
-      disablesThinking: usesDeepSeekRewrite,
+      maxOutputTokens: step.kind == .llmAnswer ? 16_384 : Self.maximumOutputTokens,
+      reasoning: reasoning,
       temperature: usesDeepSeekRewrite ? 0.1 : nil,
       timeoutInterval: usesRewriteBudget ? LLMTextProcessing.rewriteTimeout : 60
     )
@@ -651,6 +662,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
         request: request, apiKey: apiKey, usesRewriteBudget: usesRewriteBudget, authorization: correction?.authorization
       )
       try Task.checkCancellation()
+      _ = try await authorizedSettings(context: context)
       try ContextProviderIdentity.validate(correction?.authorization, settings: settings)
       let output = try Self.acceptedOutput(from: response)
       if protectsCleanup, !CleanupContentGuard.accepts(transcript: request.input, proposed: output) {
@@ -701,6 +713,16 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
 
   private let requestOperations = BoundedOperation(maxConcurrentOperations: 2)
 
+  private func authorizedSettings(context: TransformContext) async throws -> OpenAISettings {
+    do {
+      return try await settingsProvider(context)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      throw OpenAITextRewriteError.credentialUnavailable
+    }
+  }
+
   public func shutdown() async { await requestOperations.shutdown() }
 
   private func createResponse(
@@ -721,7 +743,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
     step: PostProcessStep,
     context: TransformContext
   ) -> String {
-    if step.kind == .llmAnswer || context.workflow.speechMode == .voiceAssistant {
+    if step.kind == .llmAnswer {
       return Self.answerContract
     }
     return Self.rewriteContract
@@ -808,10 +830,12 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
 public enum OpenAIConfigurationVerifier {
   public static func verify(
     settings: OpenAISettings,
+    reasoning: ReasoningLevel? = nil,
     diagnosticReporter: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }
   ) async throws {
     try await verify(
       settings: settings,
+      reasoning: reasoning,
       clientFactory: { MacPawOpenAIResponsesClient() },
       diagnosticReporter: diagnosticReporter
     )
@@ -819,6 +843,7 @@ public enum OpenAIConfigurationVerifier {
 
   static func verify(
     settings: OpenAISettings,
+    reasoning: ReasoningLevel? = nil,
     clientFactory: @escaping OpenAIResponsesClientFactory,
     diagnosticReporter: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }
   ) async throws {
@@ -833,7 +858,12 @@ public enum OpenAIConfigurationVerifier {
       throw OpenAITextRewriteError.configurationInvalid
     }
     let startedAt = ContinuousClock.now
-    let usesDeepSeek = LLMTextProcessing.usesDeepSeek(settings)
+    let capabilities = LanguageModelConfiguration(migrating: settings)
+    guard let reasoning = reasoning ?? ReasoningLevel.allCases.first(where: { capabilities.supportedReasoningLevels.contains($0) }) else {
+      throw LanguageModelConfigurationError.unsupportedReasoning(.none)
+    }
+    try capabilities.validate(reasoning: reasoning)
+    let usesDeepSeek = reasoning == .none && LLMTextProcessing.usesDeepSeek(settings)
     do {
       let response = try await clientFactory().createResponse(
         request: OpenAIResponsesRequest(
@@ -844,7 +874,7 @@ public enum OpenAIConfigurationVerifier {
           store: false,
           stream: false,
           maxOutputTokens: nil,
-          disablesThinking: usesDeepSeek,
+          reasoning: reasoning,
           temperature: usesDeepSeek ? 0.1 : nil,
           timeoutInterval: usesDeepSeek
             ? LLMTextProcessing.rewriteTimeout : 60
