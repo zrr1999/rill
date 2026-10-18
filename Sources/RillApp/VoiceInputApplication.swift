@@ -86,7 +86,6 @@ struct RillApplication: App {
       await recordPanelController.shutdown()
       await shutdown()
     }
-    MenuImageVisibilityPolicy.install()
   }
 
   var body: some Scene {
@@ -122,38 +121,6 @@ struct RillApplication: App {
       clipboardCaptureState: container.model.systemClipboardCaptureControlSnapshot.state,
       recordCount: container.model.recordCount
     )
-  }
-}
-
-@MainActor
-private enum MenuImageVisibilityPolicy {
-  private static let observer = MenuImageVisibilityObserver()
-
-  static func install() {
-    observer.install()
-  }
-}
-
-@MainActor
-private final class MenuImageVisibilityObserver: NSObject {
-  func install() {
-    guard #available(macOS 27, *) else { return }
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(menuDidBeginTracking(_:)),
-      name: NSMenu.didBeginTrackingNotification,
-      object: nil
-    )
-  }
-
-  @objc func menuDidBeginTracking(_ notification: Notification) {
-    guard #available(macOS 27, *),
-      let menu = notification.object as? NSMenu,
-      menu !== NSApp.mainMenu
-    else { return }
-    for item in menu.items {
-      item.preferredImageVisibility = .automatic
-    }
   }
 }
 
