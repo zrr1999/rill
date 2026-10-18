@@ -749,13 +749,9 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Legacy Clipboard Automation",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "remote.recovery-boundary",
-        outputActions: [OutputActionReference(id: "recovery-controller.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "remote.recovery-boundary", actions: [OutputActionReference(id: "recovery-controller.action")]),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-      metadata: ["eventType": "groupItemCreated"]
-    )
+      properties: .init(availability: .planned))
     let receipt = makeReceipt(workflowID: workflow.id)
     let store = RecoveryControllerStoreProbe(receipt: receipt)
     let eventBus = EventBus()
@@ -775,7 +771,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     )
     let privacyGate = PrivacyRunGate(
       settingsProvider: { await probe.readPrivacySettings() },
-      cloudConfirmationProvider: { _, _, _ in await probe.confirmCloudRun() }
+      cloudConfirmationProvider: { _, _, _, _ in await probe.confirmCloudRun() }
     )
     let controller = makeTestFailedAudioRecoveryController(
       store: store,
@@ -796,7 +792,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
       _ = try await controller.retry(id: receipt.id, workflow: workflow)
       XCTFail("Expected legacy clipboard automation to be rejected.")
     } catch let error as SessionCoordinator.SessionError {
-      guard case .unsupportedWorkflow(.legacyClipboardAutomationUnsupported) = error else {
+      guard case .unsupportedWorkflow(.plannedCapabilityUnavailable) = error else {
         return XCTFail("Unexpected session error: \(error)")
       }
     } catch {
@@ -903,7 +899,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
           cloudConfirmationRequired: false
         )
       },
-      cloudConfirmationProvider: { _, _, _ in true },
+      cloudConfirmationProvider: { _, _, _, _ in true },
       destinationClassifier: { _ in .classified([.localSpeech]) }
     )
     let controller = makeTestFailedAudioRecoveryController(
@@ -1128,7 +1124,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let store = RecoveryControllerStoreProbe(receipt: receipt)
     let privacyGate = PrivacyRunGate(
       settingsProvider: { .defaults },
-      cloudConfirmationProvider: { _, _, _ in false },
+      cloudConfirmationProvider: { _, _, _, _ in false },
       destinationClassifier: { _ in .classified([.cloudSpeech]) }
     )
     let controller = makeController(
@@ -1163,10 +1159,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Cloud recovery final authorization",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "remote.recovery-boundary",
-        outputActions: [OutputActionReference(id: "recovery-controller.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "remote.recovery-boundary", actions: [OutputActionReference(id: "recovery-controller.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let receipt = makeReceipt(workflowID: workflow.id)
@@ -1191,7 +1184,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     )
     let privacyGate = PrivacyRunGate(
       settingsProvider: { await settings.read() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         XCTFail("A newly blocked recovery must not request confirmation.")
         return false
       },
@@ -1254,7 +1247,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     let clock = LockedRecoveryDate(Date(timeIntervalSince1970: 199))
     let privacyGate = PrivacyRunGate(
       settingsProvider: { .defaults },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         clock.set(Date(timeIntervalSince1970: 201))
         return true
       },
@@ -1653,7 +1646,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
           cloudConfirmationRequired: false
         )
       },
-      cloudConfirmationProvider: { _, _, _ in true },
+      cloudConfirmationProvider: { _, _, _, _ in true },
       destinationClassifier: { _ in .classified([.localSpeech]) }
     ),
     runPreflight: @escaping RecognitionRunPreflight = { _ in },
@@ -1710,10 +1703,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
   private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Recovery Workflow",
-      pipeline: PipelineDeclaration(
-        recognizerID: "context.selection",
-        outputActions: [OutputActionReference(id: "recovery-controller.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "context.selection", actions: [OutputActionReference(id: "recovery-controller.action")]),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
   }

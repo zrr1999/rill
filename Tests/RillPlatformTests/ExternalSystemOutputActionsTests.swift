@@ -10,7 +10,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
     let action = ShortcutsRunAction(runner: runner)
     let context = makeActionContext(
       actionID: ExternalOutputActionID.shortcutsRun,
-      configuration: [ExternalOutputActionConfigurationKey.shortcutName: "Capture Note"]
+      configuration: .init(shortcutName: "Capture Note")
     )
 
     let result = try await action.execute(text: "shortcut input", context: context)
@@ -32,7 +32,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "hello",
       context: makeActionContext(
         actionID: ExternalOutputActionID.shortcutsRun,
-        configuration: [ExternalOutputActionConfigurationKey.shortcutName: "Missing"]
+        configuration: .init(shortcutName: "Missing")
       )
     )
     assertFailed(failedRun, contains: "shortcut missing")
@@ -46,7 +46,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
         text: "cancelled input",
         context: makeActionContext(
           actionID: ExternalOutputActionID.shortcutsRun,
-          configuration: [ExternalOutputActionConfigurationKey.shortcutName: "Cancelled"]
+          configuration: .init(shortcutName: "Cancelled")
         )
       )
       XCTFail("Expected cancellation to propagate out of the output action.")
@@ -206,7 +206,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
     let action = MarkdownAppendAction()
     let context = makeActionContext(
       actionID: ExternalOutputActionID.markdownAppend,
-      configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+      configuration: .init(markdownPath: fileURL.path)
     )
 
     let first = try await action.execute(text: "First note", context: context)
@@ -241,7 +241,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "appended",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -277,7 +277,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
     )
     let context = makeActionContext(
       actionID: ExternalOutputActionID.markdownAppend,
-      configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+      configuration: .init(markdownPath: fileURL.path)
     )
 
     let firstResult = try await action.execute(text: "appended", context: context)
@@ -301,7 +301,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "hello",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: "/tmp/Capture.txt"]
+        configuration: .init(markdownPath: "/tmp/Capture.txt")
       )
     )
     assertFailed(result, contains: ".md or .markdown")
@@ -315,7 +315,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
         text: "must not be written",
         context: makeActionContext(
           actionID: ExternalOutputActionID.markdownAppend,
-          configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: path]
+          configuration: .init(markdownPath: path)
         )
       )
 
@@ -340,9 +340,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not follow the link",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [
-          ExternalOutputActionConfigurationKey.markdownAppendPath: symbolicLinkURL.path
-        ]
+        configuration: .init(markdownPath: symbolicLinkURL.path)
       )
     )
 
@@ -367,9 +365,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not modify a multiply linked file",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [
-          ExternalOutputActionConfigurationKey.markdownAppendPath: targetURL.path
-        ]
+        configuration: .init(markdownPath: targetURL.path)
       )
     )
 
@@ -395,9 +391,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not follow an ancestor link",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [
-          ExternalOutputActionConfigurationKey.markdownAppendPath: linkedTargetURL.path
-        ]
+        configuration: .init(markdownPath: linkedTargetURL.path)
       )
     )
 
@@ -434,9 +428,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
         text: "must not be written",
         context: makeActionContext(
           actionID: ExternalOutputActionID.markdownAppend,
-          configuration: [
-            ExternalOutputActionConfigurationKey.markdownAppendPath: targetURL.path
-          ]
+          configuration: .init(markdownPath: targetURL.path)
         )
       )
 
@@ -456,7 +448,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not create directories implicitly",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -477,7 +469,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not append to invalid text",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -510,7 +502,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not read an oversized file",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -538,7 +530,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must remain private until the transaction commits",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -572,7 +564,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not replace the competitor",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -617,7 +609,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "private entry",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -668,7 +660,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "possibly published",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -717,7 +709,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not replace the new target",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -766,7 +758,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "possibly committed",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -829,7 +821,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "possibly published",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -873,7 +865,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "must not erase the update",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -923,7 +915,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "committed entry",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -975,7 +967,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "appended",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -1019,7 +1011,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
       text: "possibly committed",
       context: makeActionContext(
         actionID: ExternalOutputActionID.markdownAppend,
-        configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+        configuration: .init(markdownPath: fileURL.path)
       )
     )
 
@@ -1229,7 +1221,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
     )
     let context = makeActionContext(
       actionID: ExternalOutputActionID.markdownAppend,
-      configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+      configuration: .init(markdownPath: fileURL.path)
     )
     let task = Task {
       try await action.execute(text: "cancelled before commit", context: context)
@@ -1265,7 +1257,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
     )
     let context = makeActionContext(
       actionID: ExternalOutputActionID.markdownAppend,
-      configuration: [ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path]
+      configuration: .init(markdownPath: fileURL.path)
     )
     let task = Task {
       try await action.execute(text: "committed", context: context)
@@ -1291,9 +1283,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
             text: entry,
             context: makeActionContext(
               actionID: ExternalOutputActionID.markdownAppend,
-              configuration: [
-                ExternalOutputActionConfigurationKey.markdownAppendPath: fileURL.path
-              ]
+              configuration: .init(markdownPath: fileURL.path)
             )
           )
         }
@@ -1618,13 +1608,16 @@ private enum ShortcutProcessTestError: Error {
 
 private func makeActionContext(
   actionID: String,
-  configuration: [String: String] = [:]
+  configuration: WorkflowOutputParameters = .init()
 ) -> ActionContext {
   let workflow = WorkflowDefinition(
     name: "External Output Test",
-    pipeline: PipelineDeclaration(
-      recognizerID: "test.recognizer",
-      outputActions: [OutputActionReference(id: actionID, configuration: configuration)]
+    plan: WorkflowPlan(
+      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test.recognizer")),
+      process: WorkflowProcessPhase(steps: [
+        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+        WorkflowProcessStep(kind: .applyVocabulary),
+      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: actionID, configuration: configuration)], deliveryPolicy: .init(strategy: .immediate))
     ),
     ui: WorkflowUIConfig(symbolName: "square.and.arrow.up", accentColorName: "green")
   )

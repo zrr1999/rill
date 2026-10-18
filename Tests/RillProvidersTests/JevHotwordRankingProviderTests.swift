@@ -6,13 +6,13 @@ import RillSpeechContracts
 @testable import RillProviders
 
 @Suite(.serialized)
-struct JevHotwordRankingProviderTests {
+struct DecisionHotwordRankingProviderTests {
   @Test func requestContainsOnlyDeclaredContextAndIndexMappedCandidates() async throws {
     let provider = fixture()
     let result = try await provider.score(
       .init(
         application: "Editor", workflow: "Dictation",
-        selectedText: "Spore grammar", candidates: ["Rill", "Spore"]), apiKey: "unit-test-key")
+        selectedText: "Spore grammar", candidates: ["Rill", "Spore"]), authorization: .init(apiKey: "unit-test-key"))
     #expect(result.map(\.score) == [1, 2])
     let requests = HotwordURLProtocol.requests.withLock { $0 }
     let request = try #require(requests.first)
@@ -36,7 +36,7 @@ struct JevHotwordRankingProviderTests {
     let result = try await provider.score(
       .init(
         application: "Editor", workflow: "Dictation",
-        selectedText: String(repeating: "中", count: 600), candidates: terms), apiKey: "unit-test-key")
+        selectedText: String(repeating: "中", count: 600), candidates: terms), authorization: .init(apiKey: "unit-test-key"))
     #expect(result.count == 50)
     #expect(HotwordURLProtocol.requests.withLock { $0.first!.httpBody!.count } <= 30_000)
   }
@@ -47,7 +47,7 @@ struct JevHotwordRankingProviderTests {
       try await fixture(status: status).score(
         .init(
           application: "", workflow: "",
-          selectedText: "", candidates: ["Rill"]), apiKey: "unit-test-key")
+          selectedText: "", candidates: ["Rill"]), authorization: .init(apiKey: "unit-test-key"))
     }
     #expect(HotwordURLProtocol.requests.withLock { $0.count } == 1)
   }
@@ -57,7 +57,7 @@ struct JevHotwordRankingProviderTests {
       try await fixture(malformed: true).score(
         .init(
           application: "", workflow: "",
-          selectedText: "", candidates: ["Rill"]), apiKey: "unit-test-key")
+          selectedText: "", candidates: ["Rill"]), authorization: .init(apiKey: "unit-test-key"))
     }
   }
 
@@ -77,12 +77,12 @@ struct JevHotwordRankingProviderTests {
     #expect(LocalSpeechRecognitionPolicy.sanitizedQwenHotwords((0..<30).map(String.init)).count == 16)
   }
 
-  private func fixture(status: Int = 200, malformed: Bool = false) -> JevHotwordRankingProvider {
+  private func fixture(status: Int = 200, malformed: Bool = false) -> DecisionHotwordRankingProvider {
     HotwordURLProtocol.requests.withLock { $0 = [] }
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [HotwordURLProtocol.self]
     configuration.httpAdditionalHeaders = ["X-Test-Status": String(status), "X-Test-Malformed": String(malformed)]
-    return JevHotwordRankingProvider(session: URLSession(configuration: configuration))
+    return DecisionHotwordRankingProvider(session: URLSession(configuration: configuration))
   }
 }
 

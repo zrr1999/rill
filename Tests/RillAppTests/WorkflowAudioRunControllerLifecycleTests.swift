@@ -80,7 +80,7 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Rejected Queue Cleanup",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+      plan: makeTestAudioPlan(recognizerID: "missing"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
 
@@ -117,7 +117,7 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Manual Audio Cleanup",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+      plan: makeTestAudioPlan(recognizerID: "missing"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
 
@@ -157,7 +157,7 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Cancelled Audio Cleanup",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "missing", outputActions: []),
+      plan: makeTestAudioPlan(recognizerID: "missing"),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
 
@@ -183,7 +183,7 @@ private func makeWorkflowAudioLifecycleTestPrivacyGate() -> PrivacyRunGate {
         cloudConfirmationRequired: false
       )
     },
-    cloudConfirmationProvider: { _, _, _ in true },
+    cloudConfirmationProvider: { _, _, _, _ in true },
     destinationClassifier: { _ in .classified([.localSpeech]) }
   )
 }

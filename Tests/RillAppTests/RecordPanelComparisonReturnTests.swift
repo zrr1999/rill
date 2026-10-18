@@ -52,8 +52,7 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
       requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {})
     let controller = RecordPanelController(
       pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false },
-      reduceMotionProvider: { true },
-      pointerLocationProvider: { NSPoint(x: -100_000, y: -100_000) })
+      reduceMotionProvider: { true })
     addTeardownBlock {
       await controller.shutdown()
       await workspace.shutdown()
@@ -132,7 +131,7 @@ private enum ComparisonReturnTestError: Error { case timedOut }
 
 private actor ComparisonReturnProvider: RecordRankingProvider {
   private(set) var calls = 0
-  func score(query: String, candidates: [String], apiKey: String) async throws -> RecordRankingResponse {
+  func score(query: String, candidates: [String], authorization: DecisionModelSettingsSource.Authorization) async throws -> RecordRankingResponse {
     calls += 1
     return .init(scores: candidates.map { _ in 1 }, model: "test", inputTokens: 0, outputTokens: 0)
   }

@@ -14,6 +14,7 @@ read user clipboard contents, recordings, files, Keychain keys or network servic
 | Stack / Queue enqueue | Insert 10,000 pending entries through `RecordStore` into AES-GCM SQLite | macOS correctness validation |
 | Stack / Queue select | Select the next item 10,000 times with 10,000 entries pending | macOS correctness validation |
 | Stack / Queue output | Begin and commit 10,000 entries, draining the container | macOS correctness validation |
+| Native panel | Open a panel backed by 10,000 summaries | macOS correctness validation; explicit Release measurement |
 
 Every workload checks its results. Buffer validation checks ordering, exact entry
 identity, and restoration of the full and drained catalog. It sends no text to
@@ -23,7 +24,7 @@ memory logs are diagnostics, not evidence of a regression or improvement.
 
 ## Run locally
 
-Build and validate every workload on macOS:
+Build and validate the Record CPU and storage workloads on macOS:
 
 ```sh
 just validate-performance-workloads
@@ -53,6 +54,40 @@ workload. No walltime samples or walltime result JSON are emitted by this suite.
 
 `just validate-performance-workloads` needs neither the download nor a CodSpeed login. `just ci` includes
 fast preview validation and tests buffer behavior through the Runtime tests.
+
+## Native panel measurement
+
+`RILL_RECORD_STRESS=1 just ci` checks the initial panel presentation and two
+reopenings with 10,000 summaries. Each visit must expose 50 results and give the
+search field its internal text responder. The two-second readiness timeout is a
+liveness guard. The build does not apply a percentile latency budget to
+shared-runner samples.
+
+On an otherwise idle Mac with an unlocked desktop, run:
+
+```sh
+just bench-performance panel
+```
+
+This explicitly runs an optimized Release test after 10 warmup visits and records
+100 samples. Each sample covers window presentation, waiting for the first page,
+and laying out that page. The test yields through the main run loop between
+visits. It does not measure a physical hotkey, actual keyboard input or display
+scanout, and is not a release interaction sign-off.
+
+A desktop focus probe must pass before and after sampling. An unavailable
+desktop fails the run without writing samples.
+
+Each invocation saves `samples.json` (raw show, layout and ready times in
+milliseconds), `test.log` (p50/p95), `toolchain.log` (Swift, Xcode, macOS and
+hardware class), and `source.json` (revision, dirty state and source fingerprint)
+under `.artifacts/benchmarks/panel/run.*/`. A failed test, missing samples or source
+change invalidates the run. Ordinary preflight excludes `testBenchmark…` cases.
+
+Compare base and head on the same machine with the same toolchain, data and
+display/session conditions. Alternate their run order and retain every run to
+establish normal variation before choosing a regression budget. The former
+150 ms Debug assertion is not a calibrated Release or shared-runner budget.
 
 ## CI and interpretation
 

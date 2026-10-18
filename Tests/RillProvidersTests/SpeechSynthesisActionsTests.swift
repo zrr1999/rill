@@ -33,6 +33,23 @@ final class SpeechSynthesisActionsTests: XCTestCase {
     XCTAssertEqual(fallbackRequestCount, 1)
   }
 
+  func testFrozenSystemBindingDoesNotTryTheLocalModel() async throws {
+    let asset = try makeAsset()
+    let local = StubSynthesizer(id: "local", outcome: .failure(TestError.failed))
+    let system = StubSynthesizer(id: "system", outcome: .success(asset))
+    let action = SpeakTextAction(
+      synthesizer: AutomaticSpeechSynthesizer(preferred: local, fallback: system),
+      playback: StubPlayback(), removeTemporaryAsset: { _ = try $0.removeManagedTemporaryFile() })
+    var context = makeContext(voice: .vivian)
+    context.modelSnapshot = .init(speechSynthesis: .system)
+    let result = try await action.execute(text: "hello", context: context)
+    XCTAssertEqual(result, .externalOutput("Speech"))
+    let localCalls = await local.requestCount()
+    let systemRequest = await system.lastRequest()
+    XCTAssertEqual(localCalls, 0)
+    XCTAssertEqual(systemRequest?.provider, .system)
+  }
+
   func testSpeakActionOwnsPlaybackStateAndRemovesManagedAsset() async throws {
     let asset = try makeAsset()
     let synthesizer = StubSynthesizer(
@@ -111,19 +128,19 @@ final class SpeechSynthesisActionsTests: XCTestCase {
   private func makeContext(voice: Qwen3TTSVoice) -> ActionContext {
     let workflow = WorkflowDefinition(
       name: "Speak",
-      pipeline: PipelineDeclaration(
-        recognizerID: "test",
-        outputActions: [
-          OutputActionReference(
-            id: SpeechOutputActionID.speak,
-            configuration: [
-              SpeechOutputActionConfigurationKey.provider:
-                SpeechSynthesisProvider.automatic.rawValue,
-              SpeechOutputActionConfigurationKey.voice: voice.rawValue,
-            ]
-          )
-        ]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]),
+        output: WorkflowOutputPhase(
+          actions: [
+            OutputActionReference(
+              id: SpeechOutputActionID.speak,
+              configuration: .init(voice: voice.rawValue)
+            )
+          ], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "speaker.wave.2", accentColorName: "blue")
     )
     return ActionContext(

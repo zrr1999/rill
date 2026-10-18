@@ -35,6 +35,22 @@ struct ContextCorrectionProviderTests {
     }
   }
 
+  @Test(arguments: ["https://api.openai.com/v1", "https://gateway.example/v1"])
+  func auxiliaryTasksRejectUnsupportedCapabilitiesBeforeCallingTheClient(endpoint: String) async throws {
+    let memory = LongTermMemory(
+      scope: .init(workflowID: UUID(), applicationBundleID: nil, language: nil), summary: "Rill", terms: ["Rill"],
+      evidenceKind: .userStatement, sources: [.init(sourceID: UUID(), revision: 1)])
+    let client = SummaryClientProbe(output: "{}")
+    let settings = OpenAISettings(apiKey: "test", baseURL: endpoint, model: "gpt-6-astra")
+    let provider = ContextCorrectionProvider(
+      settingsProvider: { settings },
+      authorization: .init(providerFingerprint: ContextProviderIdentity.fingerprint(settings)), clientFactory: { client })
+    await #expect(throws: LanguageModelConfigurationError.unsupportedReasoning(.none)) {
+      _ = try await provider.summarizeMemories([memory])
+    }
+    #expect(await client.request == nil)
+  }
+
   @Test func memorySummaryRejectsInventedEvidenceAndUnconfirmedCorrections() async throws {
     let memory = LongTermMemory(
       scope: .init(workflowID: UUID(), applicationBundleID: nil, language: nil),

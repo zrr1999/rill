@@ -198,8 +198,9 @@ and `PRIVACY.md` for the model and data boundaries.
 
 ### Optional cloud comparison
 
-`RecordCloudRanking` owns the transient Jev credential and one active operation behind the
-Core `RecordRankingProvider` port. AppBootstrap injects `JevRecordRankingProvider`; the
+`RecordCloudRanking` owns one active comparison and reads the global session classification authorization from
+`DecisionModelSettingsSource` behind the
+Core `RecordRankingProvider` port. AppBootstrap injects `DecisionRecordRankingProvider`; the
 workspace owns service shutdown and panel models own cancelled tasks until drained.
 The ordinary local search path never calls the service. The explicit comparison action
 interleaves the current filtered literal and semantic lists, deduplicates IDs and selects
@@ -211,7 +212,7 @@ Source identity, capture exclusions, current focus policy and catalog revision a
 before sending and after receiving. Query/filter/catalog changes and panel closure invalidate
 the UI review and cancel outstanding work. A provider that ignores cancellation retains the
 single active slot until it settles; late results cannot publish. Privacy changes after send
-cannot retract data already received by TypeSafe. No automatic retries or remote error bodies
+cannot retract data already received by the selected TypeSafe or Cloudflare service. No automatic retries or remote error bodies
 reach UI/diagnostics. The provider refuses redirects and validates bounded JSON, model identity,
 score IDs, ranges and probability consistency. Neither the key nor scores are persisted.
 

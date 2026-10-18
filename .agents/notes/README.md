@@ -6,10 +6,13 @@
 
 ## 计划
 
+- [全局模型配置与工作流模型类别（2026-10-11）](plans/global-model-roles-2026-10-11.md)
 - [Rill 架构、ASR 与产品质量改进](plans/improvement-plan.md)
 - [通用能力复用续接（2026-10-10）](plans/common-capability-reuse-2026-10-10.md)
 
 ## 研究
+
+- [大陆直连云端 ASR 调研（2026-10-11）](research/cloud-asr-mainland-2026-10-11.md)
 
 - [ASR Dogfood Benchmark 计划](research/asr-benchmark-plan.md)
 - [Rill 竞品雷达与持续改进队列](research/competitive-radar.md)
@@ -27,6 +30,9 @@
 - [构建性能实测](validation/build-performance.md)：特定机器与修订的测量；当前命令以贡献指南为准。
 
 ## QA
+
+- [Documentation and code-map acceptance — 2026-10-16](qa/docs-codemap-2026-10-16.md)
+- [统一服务与 Workflow v1 验证（2026-10-17）](qa/unified-services-workflow-v1-2026-10-17.md)
 
 - [Optional Jev clipboard ranking verification](qa/jev-ranking-2026-09-21.md)
 - [Jev hotword selection acceptance](qa/jev-hotwords.md)

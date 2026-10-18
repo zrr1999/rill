@@ -214,7 +214,7 @@ extension SettingsView {
           readiness.llm != .verified
         {
           Button(L10n.settingsText(.settingsConfigureVerifyLLM, language: model.settings.language)) {
-            model.showSettings(.providers)
+            model.showSettings(.llm)
           }
           .accessibilityIdentifier("settings.voice-assistant.configure-llm")
         }

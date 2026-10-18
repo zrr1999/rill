@@ -9,10 +9,15 @@ indexed by `.agents/notes/README.md`; read them on demand and never treat them a
 current truth. Formal docs (`docs/`, README, CONTRIBUTING, site pages) must not
 reference notes; only AGENTS.md, skills, and the notes index may point to them.
 
+## Delivery and reporting
+
+- Wait until every check for the current head commit has finished before
+  reporting CI as passing; never reuse a green result from an older commit.
+
 ## Repository skills
 
 Load the skill that matches the task. Combine skills only when the work crosses
-their boundaries; an ordinary edit does not require running all five workflows.
+their boundaries; an ordinary edit does not require running all six workflows.
 
 | Task | Skill |
 | --- | --- |
@@ -21,6 +26,7 @@ their boundaries; an ordinary edit does not require running all five workflows.
 | Change Record storage, memberships, routing, capture, or delivery | [rill-record-change](.agents/skills/rill-record-change/SKILL.md) |
 | Diagnose recording, worker, cancellation, or shutdown failures | [rill-runtime-debug](.agents/skills/rill-runtime-debug/SKILL.md) |
 | Verify macOS interaction, permissions, focus, or release artifacts | [rill-macos-qa](.agents/skills/rill-macos-qa/SKILL.md) |
+| Change visual presentation, materials, type, or floating chrome | [rill-ui-change](.agents/skills/rill-ui-change/SKILL.md) |
 
 These skills are maintained with this repository and require no personal skill
 installation. Keep shared project facts in the documents below and link to them
