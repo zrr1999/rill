@@ -419,32 +419,45 @@ public struct MainShellView: View {
 }
 
 extension MainShellView {
+  // This back-deployed modifier is first declared by the Xcode 27 SDK.
   @ToolbarContentBuilder
   private var voiceSetupToolbarItem: some ToolbarContent {
-    if #available(macOS 26.1, *) {
+    #if compiler(>=6.4)
+      if #available(macOS 26.1, *) {
+        ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
+          voiceSetupButton
+        }
+        .visibilityPriority(.low)
+      } else {
+        ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
+          voiceSetupButton
+        }
+      }
+    #else
       ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
         voiceSetupButton
       }
-      .visibilityPriority(.low)
-    } else {
-      ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
-        voiceSetupButton
-      }
-    }
+    #endif
   }
 
   @ToolbarContentBuilder
   private var globalSearchToolbarItem: some ToolbarContent {
-    if #available(macOS 26.1, *) {
+    #if compiler(>=6.4)
+      if #available(macOS 26.1, *) {
+        ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
+          globalSearchButton
+        }
+        .visibilityPriority(.high)
+      } else {
+        ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
+          globalSearchButton
+        }
+      }
+    #else
       ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
         globalSearchButton
       }
-      .visibilityPriority(.high)
-    } else {
-      ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
-        globalSearchButton
-      }
-    }
+    #endif
   }
 
   private var voiceSetupButton: some View {
