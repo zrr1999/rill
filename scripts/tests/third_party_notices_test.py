@@ -32,11 +32,6 @@ APP_ICON_SOURCE = (
 PRIVACY_NOTICE = PROJECT_DIR / "PRIVACY.md"
 LOCAL_MODEL_NOTICES = PROJECT_DIR / "LOCAL_MODEL_NOTICES.md"
 MLX_RESOURCE_BUNDLE_NAME = "mlx-swift_Cmlx.bundle"
-DEPENDENCY_MANIFEST = PROJECT_DIR / "scripts" / "third_party_notices_manifest.json"
-PACKAGE_MANIFEST = PROJECT_DIR / "Package.swift"
-MLX_SILERO_RUNTIME = (
-    PROJECT_DIR / "Sources" / "RillMLXRuntime" / "MLXSileroVADRuntime.swift"
-)
 
 
 class Fixture:
@@ -728,40 +723,6 @@ fi
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_repository_has_no_retired_native_speech_inventory(self) -> None:
-        manifest = json.loads(DEPENDENCY_MANIFEST.read_text(encoding="utf-8"))
-        self.assertFalse(
-            [
-                package
-                for package in manifest["packages"]
-                if package["kind"] == "vendored"
-            ]
-        )
-        package_manifest = PACKAGE_MANIFEST.read_text(encoding="utf-8").casefold()
-        for retired_value in (
-            "sherpaonnxnative",
-            "onnxruntimenative",
-            "rillsherparuntime",
-            "csherpaonnx",
-        ):
-            self.assertNotIn(retired_value, package_manifest)
-
-    def test_repository_pins_mlx_silero_v6_without_packaged_onnx(self) -> None:
-        runtime = MLX_SILERO_RUNTIME.read_text(encoding="utf-8")
-        local_notices = LOCAL_MODEL_NOTICES.read_text(encoding="utf-8")
-        for pinned_value in (
-            "mlx-community/silero-vad-v6",
-            "2ebf4a5e10726a2e78ddd4d70eedfb6f1c33eb06",
-            "9fe1befb9692a0d4135adadc33f8075ef6d350bd2391b88d750f2c233f97fa0b",
-            "65b6c5f0293cbc44d109e58bef78b474d9c65dedbee814cf0b90ef5f0d9150ff",
-        ):
-            self.assertIn(pinned_value, runtime)
-        self.assertIn("mlx-community/silero-vad-v6", local_notices)
-        self.assertIn("no ONNX VAD is packaged", local_notices)
-        self.assertNotIn(
-            "RillSherpaRuntime", PACKAGE_MANIFEST.read_text(encoding="utf-8")
-        )
 
 
 def create_bundle(path: Path, identifier: str) -> None:

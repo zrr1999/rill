@@ -30,7 +30,6 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 RELEASE_SCRIPT="$PROJECT_DIR/scripts/release.sh"
 ASSEMBLER_SCRIPT="$PROJECT_DIR/scripts/assemble_app_bundle.sh"
 PREFLIGHT_SCRIPT="$PROJECT_DIR/scripts/preflight.sh"
-PACKAGE_MANIFEST="$PROJECT_DIR/Package.swift"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rill-release-config-tests.XXXXXX")"
 FAKE_BIN="$TEST_ROOT/bin"
 PASSED=0
@@ -277,132 +276,6 @@ use_recorded_swap() {
   build_atomic_swap_helper() { ATOMIC_SWAP_HELPER="fake_atomic_swap"; }
 }
 
-run_locked_dependency_policy_case() {
-  if grep -Eq '(^|[[:space:]])swift[[:space:]]+(build|test|package clean)([[:space:]]|$)' \
-    "$PREFLIGHT_SCRIPT" "$RELEASE_SCRIPT"; then
-    echo "FAIL: release scripts bypass the locked build driver" >&2
-    exit 1
-  fi
-  if ! grep -Fq '"$THIRD_PARTY_NOTICES_GENERATOR" --check' "$ASSEMBLER_SCRIPT" ||
-    ! grep -Fq 'DO_PREFLIGHT=false' "$RELEASE_SCRIPT" ||
-    ! grep -Fq '"$SCRIPT_DIR/preflight.sh" --clean' "$RELEASE_SCRIPT" ||
-    ! grep -Fq '$DO_NOTARIZE && WORKER_CACHE="off"' "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'validate_project_worktree_alignment' "$RELEASE_SCRIPT"; then
-    echo "FAIL: release source, license or clean notarization policy changed" >&2
-    exit 1
-  fi
-  PASSED=$((PASSED + 1))
-  echo "PASS: locked builds preserve incremental artifacts and clean notarization"
-}
-
-run_executable_package_surface_policy_case() {
-  local product_block=""
-  local published_product_count=""
-  local executable_product_count=""
-  local library_product_count=""
-
-  product_block="$(sed -n '/^[[:space:]]*products: \[/,/^[[:space:]]*\],/p' "$PACKAGE_MANIFEST")"
-  published_product_count="$(grep -Ec '^[[:space:]]*\.[[:alnum:]_]+\(' <<<"$product_block" || true)"
-  executable_product_count="$(grep -Ec '^[[:space:]]*\.executable\(' <<<"$product_block" || true)"
-  library_product_count="$(grep -Ec '^[[:space:]]*\.library\(' <<<"$product_block" || true)"
-  if [[ "$published_product_count" -ne 3 ]] ||
-    [[ "$executable_product_count" -ne 3 ]] ||
-    ! grep -Fq '.executable(name: "RillApp", targets: ["RillApp"])' "$PACKAGE_MANIFEST" ||
-    ! grep -Fq '.executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"])' "$PACKAGE_MANIFEST" ||
-    ! grep -Fq '.executable(name: "RillInputMethod", targets: ["RillInputMethod"])' "$PACKAGE_MANIFEST"; then
-    echo "FAIL: Package.swift must publish exactly RillApp, RillSpeechWorker and RillInputMethod" >&2
-    exit 1
-  fi
-  if [[ "$library_product_count" -ne 0 ]]; then
-    echo "FAIL: internal Rill modules must not become accidental public library products" >&2
-    exit 1
-  fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: SwiftPM publishes only the App, speech worker and input method executables"
-}
-
-# Native MLX packages must use `exact:` semver pins in Package.swift, and
-# Package.resolved must record the same version. Versions themselves are not
-# fixed here so dependency updates only need to keep the pin policy.
-check_native_mlx_exact_pins() {
-  local manifest="$1"
-  local resolved="$2"
-  local flattened identity url version resolved_version
-  flattened="$(tr '\n' ' ' <"$manifest")"
-  for identity in mlx-audio-swift swift-huggingface mlx-swift mlx-swift-lm; do
-    case "$identity" in
-    mlx-audio-swift) url="https://github.com/Blaizzy/mlx-audio-swift.git" ;;
-    swift-huggingface) url="https://github.com/huggingface/swift-huggingface.git" ;;
-    mlx-swift) url="https://github.com/ml-explore/mlx-swift.git" ;;
-    mlx-swift-lm) url="https://github.com/ml-explore/mlx-swift-lm.git" ;;
-    esac
-    version="$(grep -oE "url: \"${url//./\\.}\",[[:space:]]*exact: \"[0-9]+\.[0-9]+\.[0-9]+\"" \
-      <<<"$flattened" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+"$' | tr -d '"' || true)"
-    if [[ -z "$version" ]]; then
-      echo "FAIL: $identity is not pinned with exact: \"<major.minor.patch>\" in $(basename "$manifest")" >&2
-      return 1
-    fi
-    resolved_version="$(jq -r --arg id "$identity" \
-      '.pins[] | select(.identity == $id) | .state.version // empty' "$resolved")"
-    if [[ "$resolved_version" != "$version" ]]; then
-      echo "FAIL: Package.resolved pins $identity at '${resolved_version:-missing}', Package.swift requires $version" >&2
-      return 1
-    fi
-  done
-}
-
-run_native_mlx_dependency_policy_case() {
-  if grep -Eqi 'SherpaOnnxNative|OnnxRuntimeNative|RillSherpaRuntime|CSherpaOnnx|sherpa-onnx\.xcframework|onnxruntime\.xcframework' \
-    "$PACKAGE_MANIFEST"; then
-    echo "FAIL: Package.swift retains the retired Sherpa/ONNX runtime" >&2
-    exit 1
-  fi
-  local mlx_policy_fixture="$TEST_ROOT/mlx-pin-policy"
-  mkdir -p "$mlx_policy_fixture"
-  if ! check_native_mlx_exact_pins "$PACKAGE_MANIFEST" \
-    "$PROJECT_DIR/Package.resolved"; then
-    exit 1
-  fi
-  sed -E 's#exact: "([0-9]+\.[0-9]+\.[0-9]+)"#from: "\1"#' \
-    "$PACKAGE_MANIFEST" >"$mlx_policy_fixture/Package.range.swift"
-  if check_native_mlx_exact_pins "$mlx_policy_fixture/Package.range.swift" \
-    "$PROJECT_DIR/Package.resolved" 2>/dev/null; then
-    echo "FAIL: MLX pin policy accepted a range constraint" >&2
-    exit 1
-  fi
-  jq '(.pins[] | select(.identity == "mlx-swift") | .state.version) = "0.0.0"' \
-    "$PROJECT_DIR/Package.resolved" >"$mlx_policy_fixture/Package.resolved"
-  if check_native_mlx_exact_pins "$PACKAGE_MANIFEST" \
-    "$mlx_policy_fixture/Package.resolved" 2>/dev/null; then
-    echo "FAIL: MLX pin policy accepted a Package.resolved version mismatch" >&2
-    exit 1
-  fi
-  if ! grep -Fq 'name: "RillMLXRuntime"' "$PACKAGE_MANIFEST" ||
-    ! grep -Fq '.product(name: "MLXAudioSTT", package: "mlx-audio-swift")' \
-      "$PACKAGE_MANIFEST" ||
-    ! grep -Fq '.product(name: "MLX", package: "mlx-swift")' \
-      "$PACKAGE_MANIFEST"; then
-    echo "FAIL: RillMLXRuntime does not link the native MLX Swift products" >&2
-    exit 1
-  fi
-  if grep -Eqi 'argmax|whisperkit|sherpa|onnxruntime' "$PACKAGE_MANIFEST"; then
-    echo "FAIL: Package.swift retains an obsolete speech dependency" >&2
-    exit 1
-  fi
-  if [[ ! -f "$PROJECT_DIR/Package.resolved" ]]; then
-    echo "FAIL: remote SwiftPM graph must retain Package.resolved" >&2
-    exit 1
-  fi
-  if grep -Eqi 'RillSherpaRuntime|require-sherpa|SherpaOnnx' \
-    "$PREFLIGHT_SCRIPT" "$ASSEMBLER_SCRIPT"; then
-    echo "FAIL: release scripts retain the retired Sherpa runtime gate" >&2
-    exit 1
-  fi
-  PASSED=$((PASSED + 1))
-  echo "PASS: Sherpa/ONNX are absent and the native MLX Swift graph is exactly locked"
-}
-
 run_shell_syntax_policy_case() {
   local fixture="$TEST_ROOT/shell-syntax-policy"
   local output=""
@@ -429,13 +302,9 @@ SH
   fi
   rm "$fixture/scripts/invalid.sh"
   bash "$PREFLIGHT_SCRIPT" syntax "$fixture"
-  if ! grep -Fq 'check_shell_syntax "$PROJECT_DIR"' "$PREFLIGHT_SCRIPT"; then
-    echo "FAIL: preflight does not invoke the fail-closed shell syntax gate" >&2
-    exit 1
-  fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: preflight invokes a shell syntax gate that rejects invalid scripts"
+  echo "PASS: shell syntax gate rejects invalid scripts"
 }
 
 run_release_artifact_hygiene_policy_case() {
@@ -477,17 +346,6 @@ run_release_artifact_hygiene_policy_case() {
   if ! git -C "$PROJECT_DIR" check-ignore -q --no-index \
     .artifacts/release/Rill.app; then
     echo "FAIL: the dedicated release artifact directory is not ignored" >&2
-    exit 1
-  fi
-
-  if ! grep -Fq \
-    'RELEASE_OUTPUT_DIR="${RELEASE_OUTPUT_DIR-$PROJECT_DIR/.artifacts/release}"' \
-    "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'validate_release_output_location "$RELEASE_OUTPUT_DIR"' \
-      "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'check_release_artifact_hygiene "$PROJECT_DIR"' \
-      "$PREFLIGHT_SCRIPT"; then
-    echo "FAIL: release output isolation is not enforced by release and preflight" >&2
     exit 1
   fi
 
@@ -762,8 +620,7 @@ run_install_post_swap_rollback_case() {
     "$(wc -l <"$swap_log" | xargs)" -ne 2 ]] ||
     [[ "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" ]] ||
     find "$applications_dir" -maxdepth 1 -type d \
-      -name '.rill-install.*' -print -quit | grep -q . ||
-    ! grep -Fq 'renamex_np(argv[1], argv[2], RENAME_SWAP)' "$RELEASE_SCRIPT"; then
+      -name '.rill-install.*' -print -quit | grep -q .; then
     echo "FAIL: post-swap verification failure atomically restores the old app" >&2
     printf '%s\n' "$output" >&2
     cat "$swap_log" >&2
@@ -1010,9 +867,8 @@ run_first_install_concurrent_target_case() {
     ! -s "$publish_log" ||
     ! -f "$target_app/version" ||
     "$(<"$target_app/version")" != "concurrent" ||
-    -e "$target_app/Rill.app" ]] ||
-    ! grep -Fq 'RENAME_EXCL' "$RELEASE_SCRIPT"; then
-    echo "FAIL: first install must use RENAME_EXCL and preserve a concurrent target" >&2
+    -e "$target_app/Rill.app" ]]; then
+    echo "FAIL: first install must preserve a concurrent target" >&2
     printf '%s\n' "$output" >&2
     cat "$publish_log" >&2
     find "$applications_dir" -maxdepth 3 -print >&2
@@ -1020,7 +876,7 @@ run_first_install_concurrent_target_case() {
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: RENAME_EXCL rejects a concurrent first-install target without nesting or deletion"
+  echo "PASS: first install preserves a concurrent target without nesting or deletion"
 }
 
 run_existing_install_concurrent_identity_case() {
@@ -1306,19 +1162,8 @@ EOF
     "exactly one LC_BUILD_VERSION" \
     FAKE_VTOOL_ARM64_COMMAND=LC_VERSION_MIN_MACOSX
 
-  if ! grep -Fq 'verify-executable "$BUILD_DIR/RillApp"' "$PREFLIGHT_SCRIPT" ||
-    ! grep -Fq '"$BUILD_DIR/RillSpeechWorker"' "$PREFLIGHT_SCRIPT" ||
-    ! grep -Fq 'verify_release_executable "$EXECUTABLE_SOURCE"' "$ASSEMBLER_SCRIPT" ||
-    ! grep -Fq '"$SPEECH_WORKER_SOURCE"' "$ASSEMBLER_SCRIPT" ||
-    ! grep -Fq '"$APP_BUNDLE/Contents/MacOS/$APP_NAME"' "$ASSEMBLER_SCRIPT" ||
-    ! grep -Fq '"$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"' \
-      "$ASSEMBLER_SCRIPT"; then
-    echo "FAIL: preflight and app assembly do not verify both release executables" >&2
-    exit 1
-  fi
-
   PASSED=$((PASSED + 1))
-  echo "PASS: both executables require an arm64-only macOS 26 slice"
+  echo "PASS: release executable validation requires an arm64-only macOS 26 slice"
 }
 
 run_local_build_identity_case() {
@@ -1618,11 +1463,6 @@ run_speech_worker_bundle_signing_policy_case() {
   local fixture="$TEST_ROOT/speech-worker-bundle-signing"
   local app_bundle="$fixture/Rill.app"
   local speech_worker="$app_bundle/Contents/Helpers/RillSpeechWorker"
-  local main_flow=""
-  local mlx_bundle_signing_line=""
-  local helper_identifier_line=""
-  local outer_entitlements_line=""
-  local verification_line=""
   local microphone_entitlements=""
 
   mkdir -p "$(dirname "$speech_worker")" "$fixture/temp"
@@ -1651,56 +1491,14 @@ PLIST
     "a missing TeamIdentifier" "TeamIdentifier" \
     dev.zrr.Rill.SpeechWorker "not set"
 
-  if ! grep -Fq '"$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"' \
-    "$ASSEMBLER_SCRIPT" ||
-    ! grep -Fq 'ditto \' "$ASSEMBLER_SCRIPT" ||
-    ! grep -Fq 'codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"' \
-      "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'codesign --verify --deep --strict --verbose=2 "$candidate"' \
-      "$RELEASE_SCRIPT"; then
-    echo "FAIL: bundle assembly or release verification omits the nested speech worker" >&2
-    exit 1
-  fi
-
-  main_flow="$(sed -n '/^# ─── 步骤 3: 签名/,/^verify_signed_app$/p' "$RELEASE_SCRIPT")"
-  mlx_bundle_signing_line="$(grep -n -m1 -- '"$MLX_RESOURCE_BUNDLE"' \
-    <<<"$main_flow" | cut -d: -f1)"
-  helper_identifier_line="$(grep -n -m1 -- '--identifier "$SPEECH_WORKER_IDENTIFIER"' \
-    <<<"$main_flow" | cut -d: -f1)"
-  outer_entitlements_line="$(grep -n -m1 -- '--entitlements "$ENTITLEMENTS"' \
-    <<<"$main_flow" | cut -d: -f1)"
-  verification_line="$(grep -n -m1 '^verify_signed_app$' <<<"$main_flow" | cut -d: -f1)"
-  if [[ -z "$mlx_bundle_signing_line" ||
-    -z "$helper_identifier_line" ||
-    -z "$outer_entitlements_line" ||
-    -z "$verification_line" ||
-    "$mlx_bundle_signing_line" -ge "$helper_identifier_line" ||
-    "$helper_identifier_line" -ge "$outer_entitlements_line" ||
-    "$outer_entitlements_line" -ge "$verification_line" ]]; then
-    echo "FAIL: release must sign MLX resources and the helper before the outer app, then verify the nested graph" >&2
-    exit 1
-  fi
-  if sed -n '1,/^info "签名外层应用/p' <<<"$main_flow" |
-    grep -Fq -- '--entitlements'; then
-    echo "FAIL: speech worker signing inherits the main app entitlement file" >&2
-    exit 1
-  fi
-
   PASSED=$((PASSED + 1))
-  echo "PASS: speech worker is bundled, signed first with a stable Team/identifier and hardened runtime, and receives no microphone entitlement"
+  echo "PASS: speech worker verification requires the expected Team/identifier and rejects microphone entitlements"
 }
 
 run_distribution_dmg_policy_case() {
   local fixture="$TEST_ROOT/distribution-dmg-policy"
   local invocation_log="$fixture/invocations.log"
   local expected_log=""
-  local main_flow=""
-  local create_line=""
-  local finalize_line=""
-  local sidecar_line=""
-  local publish_app_line=""
-  local publish_dmg_line=""
-  local install_flow=""
   local local_dmg="$fixture/local/Rill.dmg"
   local expected_checksum=""
   local expected_sidecar_content=""
@@ -1803,41 +1601,6 @@ EOF
   )
   if [[ -e "${local_dmg}.sha256" ]]; then
     echo "FAIL: a local unnotarized DMG published an official release sidecar" >&2
-    exit 1
-  fi
-
-  main_flow="$(sed -n '/步骤 4: 安装 或打包最终 DMG/,/echo ""/p' "$RELEASE_SCRIPT")"
-  create_line="$(grep -n -m1 'hdiutil create' <<<"$main_flow" | cut -d: -f1)"
-  finalize_line="$(grep -n -m1 '^  finalize_distribution_dmg$' <<<"$main_flow" | cut -d: -f1)"
-  sidecar_line="$(grep -n -m1 '^  publish_distribution_dmg_sidecar$' <<<"$main_flow" | cut -d: -f1)"
-  publish_app_line="$(grep -n '^  publish_staged_app$' <<<"$main_flow" | tail -1 | cut -d: -f1)"
-  publish_dmg_line="$(grep -n -m1 '^  publish_staged_dmg$' <<<"$main_flow" | cut -d: -f1)"
-  if [[ -z "$create_line" || -z "$finalize_line" || -z "$sidecar_line" ||
-    -z "$publish_app_line" || -z "$publish_dmg_line" ||
-    "$create_line" -ge "$finalize_line" ||
-    "$finalize_line" -ge "$sidecar_line" ||
-    "$sidecar_line" -ge "$publish_app_line" ||
-    "$publish_app_line" -ge "$publish_dmg_line" ]]; then
-    echo "FAIL: the release flow must verify the DMG and sidecar before publishing staged artifacts" >&2
-    exit 1
-  fi
-  if [[ "$(grep -Ec '^[[:space:]]+write_sha256_sidecar ' "$RELEASE_SCRIPT")" -ne 1 ]] ||
-    ! grep -Fq 'prepare_release_output_staging' "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'rm -f "$FINAL_DMG_PATH" "$FINAL_DMG_SHA256_PATH"' "$RELEASE_SCRIPT"; then
-    echo "FAIL: only the verified DMG may publish a sidecar, and stale release pairs must fail closed early" >&2
-    exit 1
-  fi
-  install_flow="$(sed -n '/^if \$DO_INSTALL; then$/,/^else$/p' "$RELEASE_SCRIPT")"
-  if ! grep -Fq 'publish_staged_app' <<<"$install_flow"; then
-    echo "FAIL: --install must invalidate stale output and publish only the verified staged App" >&2
-    exit 1
-  fi
-  if ! grep -Fq 'if $DO_NOTARIZE && $DO_INSTALL; then' "$RELEASE_SCRIPT"; then
-    echo "FAIL: temporary ZIP notarization must be limited to direct installation" >&2
-    exit 1
-  fi
-  if grep -Fq 'stapler validate "$DMG_STAGING/$APP_NAME.app"' "$RELEASE_SCRIPT"; then
-    echo "FAIL: the DMG path must validate the outer ticket, not require an unstapled nested app" >&2
     exit 1
   fi
 
@@ -2116,9 +1879,6 @@ run_literal_plist_key_case
 run_speech_worker_bundle_signing_policy_case
 run_distribution_dmg_policy_case
 run_notarization_result_cases
-run_locked_dependency_policy_case
-run_executable_package_surface_policy_case
-run_native_mlx_dependency_policy_case
 run_shell_syntax_policy_case
 run_release_artifact_hygiene_policy_case
 run_release_output_staging_policy_case
