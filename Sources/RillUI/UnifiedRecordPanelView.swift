@@ -106,6 +106,8 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   }
 
   private var modeControl: some View {
+    // TabsPickerStyle cannot keep the glass selection's matched geometry or the
+    // fixed draft-count slot, so this stays a glass capsule.
     HStack(spacing: 2) {
       ForEach(RecordPanelPresentation.Mode.allCases, id: \.self) { mode in
         let selected = presentation.mode == mode

@@ -188,7 +188,8 @@ public struct SettingsView: View {
             vocabularySection
             if let memory = model.contextMemory {
               ContextMemorySettingsView(
-                memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.settings.language,
+                memory: memory, workflows: model.workflowLibrary.workflows, language: model.settings.language,
+                openSource: model.showHistoryEntry,
                 isExpanded: settingsDisclosureBinding(for: .contextMemory)
               )
               .id(SettingsSection.contextMemory)

@@ -690,7 +690,10 @@ public struct HistoryTimelineView: View {
       }
 
       if let references = entry.record?.correctionSource?.references {
-        CorrectionReferenceView(receipt: references, language: model.settings.language)
+        CorrectionReferenceView(
+          receipt: references, memories: model.contextMemory?.memories ?? [], workflows: model.workflowLibrary.workflows,
+          previewMode: model.settings.privacyPolicySettings.historyPreviewMode, language: model.settings.language,
+          manageMemories: { model.showSettings(.contextMemory) })
       }
       if let record = entry.record {
         if VocabularyCorrectionDraft.isEligible(

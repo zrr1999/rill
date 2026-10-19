@@ -1025,13 +1025,13 @@ private struct FloatingRecordCollectionsView: View {
       onShowRecord: { id in
         Task { await model.showRecord(id) }
         onShowRecord()
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         openWindow(id: "main")
       }, onClose: onClose,
       onConfigureJev: { request in
         content.onConfigureJev()
         model.showSettings(request.section, item: request.item)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         openWindow(id: "main")
       }
     )

@@ -1,44 +1,14 @@
 # 笔记索引
 
-本目录存放研究、计划、验证和 QA 记录，按需阅读。各文档保留原始日期、版本、限制和
-未完成事项，不能据此推定当前能力、性能或发布通过。当前用户操作见
-[安装指南](../../docs/usage.md)，维护中的技术契约见 [贡献指南](../../CONTRIBUTING.md)。
+只保留独有的决策依据、待决问题和可复核测量。优先精简现有笔记；过时、重复或
+已进入正式文档的内容直接删除，不保留过程流水账、常规检查结果或截图。
+历史记录不代表当前实现或验收状态；开发与验证入口见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 
-## 计划
-
-- [全局模型配置与工作流模型类别（2026-10-11）](plans/global-model-roles-2026-10-11.md)
-- [Rill 架构、ASR 与产品质量改进](plans/improvement-plan.md)
-- [通用能力复用续接（2026-10-10）](plans/common-capability-reuse-2026-10-10.md)
-
-## 研究
-
-- [大陆直连云端 ASR 调研（2026-10-11）](research/cloud-asr-mainland-2026-10-11.md)
-
-- [ASR Dogfood Benchmark 计划](research/asr-benchmark-plan.md)
-- [Rill 竞品雷达与持续改进队列](research/competitive-radar.md)
-- [Rill 同类工具研究与改进方向](research/competitive-research.md)
-- [Rill 改进项目计划](research/improvement-plan.md)
-- [隐私与敏感 App 排除计划](research/privacy-sensitive-apps-plan.md)
-- [工作流可观测性改进计划](research/workflow-observability-plan.md)
-- [Local Model Catalog Review](research/local-model-candidates.md)
-- [技术选型说明](research/technology-selection.md)
-- [词汇管理与 Prompt 变量架构](research/vocabulary-prompt-design.md)
-
-## 验证
-
-- [质量改进验证记录（2026-09-25）](validation/2026-09-25-quality-improvement.md)
-- [构建性能实测](validation/build-performance.md)：特定机器与修订的测量；当前命令以贡献指南为准。
-
-## QA
-
-- [Documentation and code-map acceptance — 2026-10-16](qa/docs-codemap-2026-10-16.md)
-- [统一服务与 Workflow v1 验证（2026-10-17）](qa/unified-services-workflow-v1-2026-10-17.md)
-
-- [Optional Jev clipboard ranking verification](qa/jev-ranking-2026-09-21.md)
-- [Jev hotword selection acceptance](qa/jev-hotwords.md)
-- [Clipboard upgrade — 2026-09-15](qa/clipboard-upgrade-2026-09-15.md)
-- [UI 精修验收记录](qa/ui-refinement-2026-09-12.md)
-- [Rill UI redesign — local verification](qa/ui-redesign-2026-09-21.md)
-- [Clipboard image and file preview verification](qa/clipboard-previews-2026-09-21.md)
-- [Workflow editor v2 verification](qa/workflow-editor-v2/README.md)
-- [Input method verification — 2026-09-21](qa/input-method-2026-09-21.md)
+| 笔记 | 保留价值 |
+| --- | --- |
+| [通用能力复用](plans/common-capability-reuse-2026-10-10.md) | 暂缓替换快捷键录制与预览组件的公开 API 缺口 |
+| [大陆直连 ASR](research/cloud-asr-mainland-2026-10-11.md) | 用户约束、候选协议与未测边界 |
+| [竞品研究](research/competitive-radar.md) | 历史产品取舍与少量来源入口 |
+| [输入法迁移](qa/input-method-2026-09-21.md) | 私有副本的迁移一致性测量 |
+| [ASR 与 Record 测量](validation/2026-09-25-quality-improvement.md) | 固定候选、原始结果位置与测量限制 |
+| [构建性能](validation/build-performance.md) | 特定机器的冷/热构建与缓存测量 |

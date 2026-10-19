@@ -45,6 +45,33 @@ final class UIRenderEvidenceTests: XCTestCase {
     await workspace.shutdown()
   }
 
+  func testRenderMemoryDetailsAndCurrentReferences() async throws {
+    guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+      throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+    }
+    let output = URL(fileURLWithPath: directory, isDirectory: true)
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    let fixture = try await MemoryPresentationFixture.make()
+    for language in AppLanguage.allCases {
+      for dark in [false, true] {
+        let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
+        try await render(
+          MemoryManagementView(model: fixture.model, workflows: [fixture.workflow], language: language, openSource: { _ in })
+            .environment(\.locale, language.formattingLocale),
+          size: NSSize(width: 820, height: 1_000), dark: dark,
+          to: output.appendingPathComponent("memory-management-\(variant).png"))
+        try await render(
+          CorrectionReferenceView(
+            receipt: fixture.receipt, memories: fixture.model.memories, workflows: [fixture.workflow],
+            previewMode: .full, language: language, manageMemories: {}, isExpanded: true
+          ).padding(20).environment(\.locale, language.formattingLocale),
+          size: NSSize(width: 760, height: 720), dark: dark,
+          to: output.appendingPathComponent("memory-references-\(variant).png"))
+      }
+    }
+    await fixture.shutdown()
+  }
+
   func testRenderUnifiedRecordPanel() async throws {
     guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
       throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
