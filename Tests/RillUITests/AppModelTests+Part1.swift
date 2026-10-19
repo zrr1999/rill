@@ -974,20 +974,6 @@ extension AppModelTests {
     XCTAssertEqual(harness.model.settings.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)
   }
 
-  func testRetiredCloudSpeechPreferenceMigratesToLocal() async {
-    let settingsStore = UITestSettingsStore(
-      storage: [
-        .preferredSpeechEngine: "cloud"
-      ]
-    )
-    let harness = makeHarness(settingsStore: settingsStore)
-
-    await harness.model.waitForInitialVoiceConfiguration()
-
-    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
-    XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer, .localSpeech)
-  }
-
   func testLoadsPersistedLongRecordingMode() async {
     let settingsStore = UITestSettingsStore(
       storage: [.longRecordingModeEnabled: "true"]

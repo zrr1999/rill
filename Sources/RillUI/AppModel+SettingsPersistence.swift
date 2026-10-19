@@ -227,30 +227,16 @@ enum StoredSettingsDomain: Sendable, Hashable {
 }
 
 struct StoredAppSettingsSnapshot: Sendable {
+  let values: [AppSettingKey: String]
   let persistentSettingsStoreWasAvailable: Bool
   let unavailableSettingKeys: Set<AppSettingKey>
   let legacyLocalSpeechMigrationValues: [AppSettingKey: String]
-  let language: String?
   let customWorkflows: [WorkflowDefinition]
   let workflowLibraryNeedsMigration: Bool
   let workflowEnabledStates: [UUID: Bool]
-  let systemClipboardCaptureEnabled: String?
-  let recordHistoryVisibility: String?
-  let bufferOutputHotkey: String?
-  let recordPanelHotkey: String?
-  let preferredSpeechEngine: String?
-  let ttsModel: String?
-  let localSpeechModel: String?
   let downloadedLocalSpeechModels: [String]
-  let localSpeechPrewarm: String?
-  let enabledSpeechModels: String?
-  let residentSpeechModels: String?
-  let residentSpeechBudgetConfirmation: String?
-  let speechModelMeasuredPeaks: String?
   let openAIAPIKey: String?
   let openAICredentialAvailability: OpenAICredentialAvailability
-  let openAIBaseURL: String?
-  let openAIModel: String?
 
   let vocabularyRules: [VocabularyRule]
   let vocabularyCollections: [VocabularyCollection]
@@ -258,12 +244,6 @@ struct StoredAppSettingsSnapshot: Sendable {
   let vocabularyLibraryNeedsMigration: Bool
   let privacyPolicySettings: PrivacyPolicySettings
   let privacySettingsWereInvalid: Bool
-  let recordRetentionPeriod: String?
-  let runHistoryRetentionPeriod: String?
-  let failedAudioRecoveryEnabled: String?
-  let corpusRecordingArchiveEnabled: String?
-  let longRecordingModeEnabled: String?
-  let recordingDurationLimit: String?
   let loadWarnings: [StoredSettingsLoadWarning]
   let unavailableDomains: Set<StoredSettingsDomain>
 }
@@ -283,12 +263,6 @@ struct RecoverableStoredSettingsDomains: Sendable {
 enum StoredSettingsCollectionValidationError: Error {
   case invalidIdentifier
   case duplicateIdentifier
-}
-
-struct LegacyLocalSpeechSettingResolution {
-  let value: String?
-  let usedLegacyValue: Bool
-  let isUnavailable: Bool
 }
 
 extension AppModel {
@@ -426,7 +400,7 @@ extension AppModel {
     applyStoredPrivacySettings(settings)
     applyStoredHistoryRetentionSettings(settings)
     applyStoredFailedAudioRecoverySetting(settings)
-    corpusArchive.applyStored(settings.corpusRecordingArchiveEnabled, available: settings.persistentSettingsStoreWasAvailable)
+    corpusArchive.applyStored(settings.values[.corpusRecordingArchiveEnabled], available: settings.persistentSettingsStoreWasAvailable)
     rebuildWorkflowLibrary()
     self.settings.isRestoringSettings = false
     synchronizeLocalSpeechSettingsSource()
@@ -485,7 +459,7 @@ extension AppModel {
     self.history.clipboardHistoryRetentionSettingIsInvalid = false
     self.history.runHistoryRetentionSettingIsInvalid = false
     recordRetentionPeriod = resolvedHistoryRetentionPeriod(
-      settings.recordRetentionPeriod,
+      settings.values[.recordRetentionPeriod],
       isRecordSetting: true,
       settingWasUnavailable: settings.unavailableSettingKeys.contains(
         .recordRetentionPeriod
@@ -493,7 +467,7 @@ extension AppModel {
     )
     history.applyRunHistoryRetentionPeriod(
       resolvedHistoryRetentionPeriod(
-        settings.runHistoryRetentionPeriod,
+        settings.values[.runHistoryRetentionPeriod],
         isRecordSetting: false,
         settingWasUnavailable: settings.unavailableSettingKeys.contains(
           .runHistoryRetentionPeriod
@@ -508,7 +482,7 @@ extension AppModel {
       self.voice.failedAudioRecoveryEnabled = false
       return
     }
-    switch settings.failedAudioRecoveryEnabled {
+    switch settings.values[.failedAudioRecoveryEnabled] {
     case "true":
       self.voice.failedAudioRecoveryEnabled = true
     case nil, "", "false":
@@ -680,7 +654,7 @@ extension AppModel {
 
   func applyStoredInterfaceSettings(_ settings: StoredAppSettingsSnapshot) {
     if shouldApplyStoredSetting(.interfaceLanguage),
-      let storedLanguage = settings.language,
+      let storedLanguage = settings.values[.interfaceLanguage],
       let restoredLanguage = AppLanguage(rawValue: storedLanguage)
     {
       self.applyLanguage(restoredLanguage)
@@ -690,19 +664,19 @@ extension AppModel {
       applyResolvedClipboardCapturePreference(enabled: false)
     } else if shouldApplyStoredSetting(.systemClipboardCaptureEnabled) {
       applyResolvedClipboardCapturePreference(
-        enabled: settings.systemClipboardCaptureEnabled.flatMap(
+        enabled: settings.values[.systemClipboardCaptureEnabled].flatMap(
           AppSettingsCodec.storedBooleanIfValid) ?? false
       )
     }
 
     if shouldApplyStoredSetting(.recordHistoryVisibility),
-      let rawVisibility = settings.recordHistoryVisibility,
+      let rawVisibility = settings.values[.recordHistoryVisibility],
       let visibility = RecordHistoryVisibility(rawValue: rawVisibility)
     {
       applyRecordHistoryVisibility(visibility)
     }
 
-    if shouldApplyStoredSetting(.bufferOutputHotkey), let value = settings.bufferOutputHotkey,
+    if shouldApplyStoredSetting(.bufferOutputHotkey), let value = settings.values[.bufferOutputHotkey],
       case .keyboardShortcut = HotkeyBindingDescriptor(storageString: value)
     {
       applyBufferOutputHotkeyBinding(HotkeyBindingDescriptor(storageString: value))
@@ -710,21 +684,21 @@ extension AppModel {
     if shouldApplyStoredSetting(.recordPanelHotkey) {
       applyRecordPanelHotkeyBinding(
         HotkeyBindingDescriptor(
-          storageString: settings.recordPanelHotkey
+          storageString: settings.values[.recordPanelHotkey]
         ))
     }
   }
 
   func applyStoredSpeechSettings(_ settings: StoredAppSettingsSnapshot) {
     if shouldApplyStoredSetting(.preferredSpeechEngine),
-      let rawEngine = settings.preferredSpeechEngine,
+      let rawEngine = settings.values[.preferredSpeechEngine],
       let engine = PreferredSpeechEngine(rawValue: rawEngine)
     {
       applyPreferredSpeechEngine(engine)
     }
 
     if shouldApplyStoredSetting(.ttsModel) {
-      let storedModel = settings.ttsModel?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let storedModel = settings.values[.ttsModel]?.trimmingCharacters(in: .whitespacesAndNewlines)
       applyTTSModelIdentifier(
         ttsModelOptions.contains(where: { $0.id == storedModel })
           ? (storedModel ?? defaultTTSModelIdentifier)
@@ -732,7 +706,7 @@ extension AppModel {
     }
 
     if shouldApplyStoredSetting(.longRecordingModeEnabled),
-      let rawLongRecordingMode = settings.longRecordingModeEnabled
+      let rawLongRecordingMode = settings.values[.longRecordingModeEnabled]
     {
       applyLongRecordingModeEnabled(
         AppSettingsCodec.storedBoolean(
@@ -740,7 +714,7 @@ extension AppModel {
     }
 
     if shouldApplyStoredSetting(.recordingDurationLimit),
-      let rawDurationLimit = settings.recordingDurationLimit,
+      let rawDurationLimit = settings.values[.recordingDurationLimit],
       let durationLimit = RecordingDurationLimit(rawValue: rawDurationLimit)
     {
       applyRecordingDurationLimit(durationLimit)
@@ -750,7 +724,7 @@ extension AppModel {
   func applyStoredLocalSpeechSettings(_ settings: StoredAppSettingsSnapshot) -> String? {
     let shouldApplyStoredModel = shouldApplyStoredSetting(.localSpeechModel)
     let trustedModelMigration = trustedLocalSpeechModelMigrationTarget(
-      storedModel: settings.localSpeechModel,
+      storedModel: settings.values[.localSpeechModel],
       shouldApplyStoredModel: shouldApplyStoredModel
     )
     if settings.unavailableDomains.contains(.downloadedModelMetadata) {
@@ -762,16 +736,16 @@ extension AppModel {
         trustedLocalSpeechModels.contains(where: { $0.id == modelIdentifier })
       }
     }
-    if shouldApplyStoredModel, let model = settings.localSpeechModel {
+    if shouldApplyStoredModel, let model = settings.values[.localSpeechModel] {
       applyLocalSpeechModel(model)
     }
-    if shouldApplyStoredSetting(.localSpeechPrewarm), let prewarm = settings.localSpeechPrewarm {
+    if shouldApplyStoredSetting(.localSpeechPrewarm), let prewarm = settings.values[.localSpeechPrewarm] {
       applyLocalSpeechPrewarm(
         AppSettingsCodec.storedBoolean(
           prewarm, defaultValue: LocalSpeechSettings().prewarm))
     }
     if shouldApplyStoredSetting(.enabledSpeechModels),
-      let rawValue = settings.enabledSpeechModels,
+      let rawValue = settings.values[.enabledSpeechModels],
       let values = try? AppSettingsCodec.loadDownloadedLocalSpeechModels(from: rawValue)
     {
       applyEnabledSpeechModelIDs(
@@ -780,14 +754,14 @@ extension AppModel {
         ))
     }
     if shouldApplyStoredSetting(.residentSpeechModels),
-      let rawValue = settings.residentSpeechModels,
+      let rawValue = settings.values[.residentSpeechModels],
       let values = try? AppSettingsCodec.loadDownloadedLocalSpeechModels(from: rawValue)
     {
       applyResidentSpeechModelIDs(Set(values).intersection(self.settings.enabledSpeechModelIDs))
     }
     if shouldApplyStoredSetting(.speechModelMeasuredPeaks),
       let values = try? AppSettingsCodec.loadMeasuredSpeechModelPeaks(
-        from: settings.speechModelMeasuredPeaks
+        from: settings.values[.speechModelMeasuredPeaks]
       )
     {
       let catalogIDs = Set(speechModelResourceCatalog.map(\.id))
@@ -795,7 +769,7 @@ extension AppModel {
     }
     if shouldApplyStoredSetting(.residentSpeechBudgetConfirmation) {
       let value =
-        settings.residentSpeechBudgetConfirmation?
+        settings.values[.residentSpeechBudgetConfirmation]?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       applyResidentSpeechBudgetConfirmation(value == residentSpeechModelBudget.confirmationFingerprint ? value : nil)
     }
@@ -840,23 +814,12 @@ extension AppModel {
   }
 
   func applyStoredOpenAISettings(_ snapshot: StoredAppSettingsSnapshot) {
-    do {
-      let key = snapshot.openAIAPIKey
-      let baseURL = snapshot.openAIBaseURL
-      let model = snapshot.openAIModel
-      if shouldApplyStoredSetting(SecureCredentialKey.openAIAPIKey.legacySettingKey) {
-        applyLanguageModelAPIKey(key ?? "")
-        settings.setCredentialAvailability(
-          snapshot.openAICredentialAvailability)
-      }
-      if shouldApplyStoredSetting(AppSettingKey.openAIBaseURL), let baseURL {
-        applyLanguageModelBaseURL(baseURL)
-      }
-      if shouldApplyStoredSetting(AppSettingKey.openAIModel), let model {
-        applyLanguageModelIdentifier(model)
-      }
-      publishLanguageModelSettings()
+    if shouldApplyStoredSetting(SecureCredentialKey.openAIAPIKey.legacySettingKey) {
+      applyLanguageModelAPIKey(snapshot.openAIAPIKey ?? "")
+      settings.setCredentialAvailability(snapshot.openAICredentialAvailability)
     }
+    applyScalarSettings(snapshot.values.filter { shouldApplyStoredSetting($0.key) }, in: .openAI)
+    publishLanguageModelSettings()
   }
 
   public func retryUnavailableScalarSettings(in domain: ScalarSettingsDomain) {
@@ -897,46 +860,11 @@ extension AppModel {
             .legacyWhisperKitPrewarm,
           ]
           : Array(domain.settingKeys)
-        let snapshot = try await settingsStore.settingsSnapshot(
-          forKeys: readKeys
-        )
-        var recoveredValues = snapshot.values
-        var recoveredUnavailableKeys = snapshot.unavailableKeys
-        var legacyMigrationValues: [AppSettingKey: String] = [:]
-        if domain == .localSpeech {
-          let legacyLocalSpeechKeyPairs: [(AppSettingKey, AppSettingKey)] = [
-            (AppSettingKey.localSpeechModel, .legacyWhisperKitModel),
-            (.localSpeechPrewarm, .legacyWhisperKitPrewarm),
-          ]
-          for (currentKey, legacyKey) in legacyLocalSpeechKeyPairs {
-            let resolution = AppSettingsCodec.resolveLegacyLocalSpeechSetting(
-              currentKey: currentKey,
-              legacyKey: legacyKey,
-              in: snapshot
-            )
-            recoveredUnavailableKeys.remove(currentKey)
-            recoveredUnavailableKeys.remove(legacyKey)
-            if resolution.isUnavailable {
-              recoveredValues.removeValue(forKey: currentKey)
-              recoveredUnavailableKeys.insert(currentKey)
-            } else if let value = resolution.value {
-              recoveredValues[currentKey] = value
-              if resolution.usedLegacyValue {
-                legacyMigrationValues[currentKey] = value
-              }
-            } else {
-              recoveredValues.removeValue(forKey: currentKey)
-            }
-          }
-        }
-        let invalidKeys = AppSettingsCodec.invalidScalarSettingKeys(in: recoveredValues)
-        recoveredUnavailableKeys.formUnion(invalidKeys)
-        for key in invalidKeys {
-          legacyMigrationValues.removeValue(forKey: key)
-        }
-        let unavailableKeys =
-          recoveredUnavailableKeys
-          .intersection(domain.settingKeys)
+        let normalized = AppSettingsCodec.normalizeSettings(
+          try await settingsStore.settingsSnapshot(forKeys: readKeys))
+        let recoveredValues = normalized.snapshot.values
+        var legacyMigrationValues = normalized.migrations
+        let unavailableKeys = normalized.snapshot.unavailableKeys.intersection(domain.settingKeys)
         guard unavailableKeys.isEmpty else {
           throw ProviderSettingsPersistenceError.unavailableStoredSettings
         }
@@ -957,7 +885,7 @@ extension AppModel {
             shouldApplyStoredModel: true
           )
           : nil
-        self.applyRecoveredScalarSettings(
+        self.applyScalarSettings(
           recoveredValues,
           in: domain,
           preservingLocalSpeechModel: localSpeechModelWasModifiedDuringRetry
@@ -973,8 +901,8 @@ extension AppModel {
           {
             legacyMigrationValues[.localSpeechModel] = trustedLocalSpeechModelMigration
           }
-          self.persistLocalSpeechSettingMigrations(legacyMigrationValues)
         }
+        self.persistLocalSpeechSettingMigrations(legacyMigrationValues)
         self.settings.unavailableScalarSettingKeys.subtract(domain.settingKeys)
         if domain == .localSpeech {
           self.synchronizeLocalSpeechSettingsSource()
@@ -1037,9 +965,8 @@ extension AppModel {
         async let storedCredential = credentialStore.credential(for: SecureCredentialKey.openAIAPIKey)
         (snapshot, credential) = try await (settingsSnapshot, storedCredential)
 
-        let unavailableKeys = snapshot.unavailableKeys
-          .union(AppSettingsCodec.invalidScalarSettingKeys(in: snapshot.values))
-          .intersection(domain.settingKeys)
+        let normalized = AppSettingsCodec.normalizeSettings(snapshot).snapshot
+        let unavailableKeys = normalized.unavailableKeys.intersection(domain.settingKeys)
         guard unavailableKeys.isEmpty else {
           throw ProviderSettingsPersistenceError.unavailableStoredSettings
         }
@@ -1052,12 +979,7 @@ extension AppModel {
         }
         let wasRestoringSettings = self.settings.isRestoringSettings
         self.settings.isRestoringSettings = true
-        if let baseURL = snapshot.values[AppSettingKey.openAIBaseURL] {
-          self.applyLanguageModelBaseURL(baseURL)
-        }
-        if let model = snapshot.values[AppSettingKey.openAIModel] {
-          self.applyLanguageModelIdentifier(model)
-        }
+        self.applyScalarSettings(normalized.values, in: domain)
         self.applyLanguageModelAPIKey(credential ?? "")
         self.settings.isRestoringSettings = wasRestoringSettings
         self.settings.unavailableScalarSettingKeys.subtract(
@@ -1092,7 +1014,7 @@ extension AppModel {
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
   }
 
-  private func applyRecoveredScalarSettings(
+  private func applyScalarSettings(
     _ values: [AppSettingKey: String],
     in domain: ScalarSettingsDomain,
     preservingLocalSpeechModel: Bool = false
