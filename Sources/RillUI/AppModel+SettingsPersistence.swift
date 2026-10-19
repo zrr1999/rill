@@ -189,8 +189,6 @@ struct RetryableSettingsStoreWrite: Sendable {
 enum StoredSettingsLoadWarning: Sendable {
   case legacyWorkflowFormatUnsupported
   case storedValuesUnavailable
-  case customWorkflows
-  case workflowEnabledStates
   case downloadedModelMetadata
   case vocabularyRules
   case openAICredential
@@ -201,10 +199,6 @@ enum StoredSettingsLoadWarning: Sendable {
       L10n.resource("workflow.legacy.unsupported")
     case .storedValuesUnavailable:
       L10n.resource("AppModel.SettingsPersistence.One.or.more.stored.settings.could.not.be.read.Affected.features.remain")
-    case .customWorkflows:
-      L10n.resource("AppModel.SettingsPersistence.Custom.workflows.could.not.be.loaded.and.were.ignored")
-    case .workflowEnabledStates:
-      L10n.resource("AppModel.SettingsPersistence.Workflow.enabled.states.could.not.be.loaded.and.were.ignored")
     case .downloadedModelMetadata:
       L10n.resource("AppModel.SettingsPersistence.Downloaded.model.metadata.could.not.be.loaded.and.was.ignored")
     case .vocabularyRules:
@@ -231,9 +225,6 @@ struct StoredAppSettingsSnapshot: Sendable {
   let persistentSettingsStoreWasAvailable: Bool
   let unavailableSettingKeys: Set<AppSettingKey>
   let legacyLocalSpeechMigrationValues: [AppSettingKey: String]
-  let customWorkflows: [WorkflowDefinition]
-  let workflowLibraryNeedsMigration: Bool
-  let workflowEnabledStates: [UUID: Bool]
   let downloadedLocalSpeechModels: [String]
   let openAIAPIKey: String?
   let openAICredentialAvailability: OpenAICredentialAvailability
@@ -248,14 +239,8 @@ struct StoredAppSettingsSnapshot: Sendable {
   let unavailableDomains: Set<StoredSettingsDomain>
 }
 
-struct InitialWorkflowFileLoad: Sendable {
-  let result: WorkflowFileLoadResult
-}
-
 struct RecoverableStoredSettingsDomains: Sendable {
-  let customWorkflows: [WorkflowDefinition]?
   let workflowFiles: WorkflowFileLoadResult?
-  let workflowEnabledStates: [UUID: Bool]?
   let downloadedLocalSpeechModels: [String]?
   let vocabularyRules: [VocabularyRule]?
 }
@@ -327,7 +312,7 @@ extension AppModel {
           credentialStore: credentialStore,
           requiresPersistentPrivacySettings: requiresPersistentPrivacySettings
         )
-        let workflowFiles = await AppSettingsCodec.loadWorkflowFiles(from: workflowFileStore)
+        let workflowFiles = await workflowFileStore?.load()
         guard taskOwner.isActive(in: slot, id: taskID),
           !Task.isCancelled,
           !self.hasBegunApplicationShutdown,
@@ -384,7 +369,7 @@ extension AppModel {
 
   func applyStoredSettings(
     _ settings: StoredAppSettingsSnapshot,
-    workflowFiles: InitialWorkflowFileLoad? = nil
+    workflowFiles: WorkflowFileLoadResult? = nil
   ) {
     let shouldPrepareLocalSpeechModel = self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad
     self.settings.unavailableScalarSettingKeys = settings.unavailableSettingKeys.intersection(
@@ -530,7 +515,7 @@ extension AppModel {
 
   func applyStoredWorkflowSettings(
     _ settings: StoredAppSettingsSnapshot,
-    workflowFiles: InitialWorkflowFileLoad?
+    workflowFiles: WorkflowFileLoadResult?
   ) {
     let storedDomainUnavailable = settings.unavailableDomains.contains(.workflowLibrary)
     if storedDomainUnavailable, workflowFiles == nil {
@@ -540,33 +525,7 @@ extension AppModel {
     guard !self.workflowLibrary.hasModifiedWorkflowLibrary else { return }
 
     if let workflowFiles {
-      self.workflowLibrary.customWorkflows = workflowFiles.result.records.map(\.workflow)
-      self.workflowLibrary.installOutputStates(workflowFiles.result.records)
-      self.workflowLibrary.workflowFileSourcesByID = Dictionary(
-        uniqueKeysWithValues: workflowFiles.result.records.compactMap { record in
-          record.source.map { (record.workflow.id, $0) }
-        })
-      self.workflowLibrary.workflowFileIssues = workflowFiles.result.issues
-      self.workflowLibrary.invalidWorkflowFileIDs = Set(self.workflowLibrary.workflowFileIssues.filter { $0.target == .file }.compactMap(\.workflowID))
-      self.workflowLibrary.workflowFileURLsByID = Dictionary(
-        uniqueKeysWithValues: workflowFiles.result.records.map {
-          ($0.workflow.id, $0.fileURL)
-        }
-      )
-      if let directory = workflowFileStore?.configurationDirectoryURL {
-        for issue in self.workflowLibrary.workflowFileIssues where issue.target == .file {
-          if let id = issue.workflowID, self.workflowLibrary.workflowFileURLsByID[id] == nil {
-            self.workflowLibrary.workflowFileURLsByID[id] = issue.resolvedURL(in: directory)
-          }
-        }
-      }
-      self.workflowLibrary.workflowEnabledStates =
-        storedDomainUnavailable
-        ? [:]
-        : settings.workflowEnabledStates
-      for record in workflowFiles.result.records {
-        self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
-      }
+      self.workflowLibrary.installFileLoad(workflowFiles, in: workflowFileStore?.configurationDirectoryURL)
     } else {
       self.workflowLibrary.customWorkflows = []
     }
@@ -578,7 +537,7 @@ extension AppModel {
       self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
         guard let self else { return nil }
         return self.workflowFileIssueMessage(
-          workflowFiles?.result.issues ?? [], language: language)
+          workflowFiles?.issues ?? [], language: language)
       }
     }
     rebuildWorkflowLibrary()
@@ -592,41 +551,8 @@ extension AppModel {
     let result = await workflowFileStore.load()
     guard !hasBegunApplicationShutdown, generation == self.workflowLibrary.workflowFileLoadGeneration else { return }
 
-    let previousCustomIDs = Set(self.workflowLibrary.customWorkflows.map(\.id))
-    let invalidNames = Set(result.issues.filter { $0.target == .file }.map(\.filename))
-    let retainedInvalid = self.workflowLibrary.customWorkflows.filter { workflow in
-      self.workflowLibrary.workflowFileURLsByID[workflow.id].map { invalidNames.contains($0.lastPathComponent) } ?? false
-    }
-    self.workflowLibrary.workflowFileIssues = result.issues
-    self.workflowLibrary.invalidWorkflowFileIDs = Set(result.issues.filter { $0.target == .file }.compactMap(\.workflowID)).union(
-      retainedInvalid.map(\.id))
-    self.workflowLibrary.installOutputStates(result.records)
-    let validIDs = Set(result.records.map { $0.workflow.id })
-    self.workflowLibrary.customWorkflows =
-      result.records.map(\.workflow) + retainedInvalid.filter { !validIDs.contains($0.id) }
-    let invalidURLs = self.workflowLibrary.workflowFileURLsByID.filter { self.workflowLibrary.invalidWorkflowFileIDs.contains($0.key) }
-    self.workflowLibrary.workflowFileSourcesByID = Dictionary(
-      uniqueKeysWithValues: result.records.compactMap { record in
-        record.source.map { (record.workflow.id, $0) }
-      })
-    self.workflowLibrary.workflowFileURLsByID = Dictionary(
-      uniqueKeysWithValues: result.records.map {
-        ($0.workflow.id, $0.fileURL)
-      }
-    )
-    self.workflowLibrary.workflowFileURLsByID.merge(invalidURLs) { current, _ in current }
-    let directory = workflowFileStore.configurationDirectoryURL
-    for issue in result.issues where issue.target == .file {
-      if let id = issue.workflowID, self.workflowLibrary.workflowFileURLsByID[id] == nil {
-        self.workflowLibrary.workflowFileURLsByID[id] = issue.resolvedURL(in: directory)
-      }
-    }
-    for workflowID in previousCustomIDs {
-      self.workflowLibrary.workflowEnabledStates.removeValue(forKey: workflowID)
-    }
-    for record in result.records {
-      self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
-    }
+    self.workflowLibrary.installFileLoad(
+      result, in: workflowFileStore.configurationDirectoryURL, retainingInvalidWorkflows: true)
     if isWorkflowLibraryAvailable {
       self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
         guard let self else { return nil }
@@ -1258,42 +1184,14 @@ extension AppModel {
     }
 
     var recoveredAnyDomain = false
-    if retryWorkflowLibrary,
-      let recoveredEnabledStates = recovered.workflowEnabledStates
-    {
-      if let workflowFiles = recovered.workflowFiles {
-        self.workflowLibrary.customWorkflows = workflowFiles.records.map(\.workflow)
-        self.workflowLibrary.installOutputStates(workflowFiles.records)
-        self.workflowLibrary.workflowFileSourcesByID = Dictionary(
-          uniqueKeysWithValues: workflowFiles.records.compactMap { record in
-            record.source.map { (record.workflow.id, $0) }
-          })
-        self.workflowLibrary.workflowFileIssues = workflowFiles.issues
-        self.workflowLibrary.invalidWorkflowFileIDs = Set(workflowFiles.issues.filter { $0.target == .file }.compactMap(\.workflowID))
-        self.workflowLibrary.workflowFileURLsByID = Dictionary(
-          uniqueKeysWithValues: workflowFiles.records.map {
-            ($0.workflow.id, $0.fileURL)
-          }
-        )
-        if let directory = workflowFileStore?.configurationDirectoryURL {
-          for issue in workflowFiles.issues where issue.target == .file {
-            if let id = issue.workflowID, self.workflowLibrary.workflowFileURLsByID[id] == nil {
-              self.workflowLibrary.workflowFileURLsByID[id] = issue.resolvedURL(in: directory)
-            }
-          }
-        }
-      } else {
-        return
-      }
-      self.workflowLibrary.workflowEnabledStates = recoveredEnabledStates
-      for record in recovered.workflowFiles?.records ?? [] {
-        self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
-      }
+    if retryWorkflowLibrary {
+      guard let workflowFiles = recovered.workflowFiles else { return }
+      self.workflowLibrary.installFileLoad(workflowFiles, in: workflowFileStore?.configurationDirectoryURL)
       self.workflowLibrary.workflowLibraryAvailability = .available
       self.workflowLibrary.workflowLibraryErrorPresentation = { [weak self] language in
         guard let self else { return nil }
         return self.workflowFileIssueMessage(
-          recovered.workflowFiles?.issues ?? [], language: language)
+          workflowFiles.issues, language: language)
       }
       rebuildWorkflowLibrary()
       recoveredAnyDomain = true

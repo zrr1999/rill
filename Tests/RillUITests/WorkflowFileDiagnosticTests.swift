@@ -76,18 +76,24 @@ final class WorkflowFileDiagnosticTests: XCTestCase {
   }
 
   func testProtectedSettingsRecoverySeparatesDirectoryWarningsFromInvalidFiles() async throws {
-    let workflow = makeDefaultWorkflow()
+    var workflow = makeDefaultWorkflow()
+    workflow.plan.output.actions[0].documentID = "copy"
+    workflow.plan.output.actions[0].optional = true
     let invalid = makeDefaultWorkflow()
     let directory = URL(fileURLWithPath: "/tmp/workflows.toml", isDirectory: true)
     let file = directory.appendingPathComponent("workflows.toml")
     let warning = WorkflowFileIssue(filename: "workflows.toml", message: "Directory warning", reason: .directoryUnreadable, workflowID: workflow.id)
     let fileIssue = WorkflowFileIssue(filename: "invalid.toml", message: "Invalid file", workflowID: invalid.id)
+    var record = WorkflowFileRecord(workflow: workflow, isEnabled: true, fileURL: file)
     let files = UITestWorkflowFileStore(
-      records: [.init(workflow: workflow, isEnabled: true, fileURL: file)], issues: [warning, fileIssue], configurationDirectoryURL: directory)
+      records: [record], issues: [warning, fileIssue], configurationDirectoryURL: directory)
     let settings = UITestSettingsStore(unavailableKeys: [.workflowLibrary])
     let model = makeHarness(workflows: [], settingsStore: settings, workflowFileStore: files).model
     await model.waitForInitialVoiceConfiguration()
     XCTAssertEqual(model.workflowLibrary.workflowLibraryAvailability, .unavailable)
+    XCTAssertTrue(model.isWorkflowOutputEnabled(workflow.plan.output.actions[0], index: 0, workflow: workflow))
+    record.outputState = WorkflowOutputState(workflowID: workflow.id, outputs: ["copy": false])
+    await files.replaceLoadResult(records: [record], issues: [warning, fileIssue])
     await settings.setUnavailableKeys([])
     model.retryUnavailableStoredSettingsDomains()
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
@@ -98,6 +104,8 @@ final class WorkflowFileDiagnosticTests: XCTestCase {
     XCTAssertEqual(model.workflowLibrary.workflowFileURLsByID[workflow.id], file)
     XCTAssertEqual(model.workflowLibrary.workflowFileURLsByID[invalid.id], directory.appendingPathComponent("invalid.toml"))
     XCTAssertTrue(model.isWorkflowEnabled(workflow))
+    let execution = try XCTUnwrap(model.executionWorkflows(for: workflow.trigger).first)
+    XCTAssertTrue(execution.plan.output.actions.isEmpty, "Recovery must keep the saved optional output disabled")
     XCTAssertEqual(model.workflowLibrary.workflowFileIssues, [warning, fileIssue])
     await model.stopSettingsReadTasksForApplicationShutdown()
     await model.flushPendingPersistenceWrites()

@@ -494,23 +494,6 @@
         }
       }
     },
-    "AppModel.SettingsPersistence.Custom.workflows.could.not.be.loaded.and.were.ignored": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Custom workflows could not be loaded and were ignored."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自定义工作流无法加载，已忽略。"
-          }
-        }
-      }
-    },
     "AppModel.SettingsPersistence.Downloaded.local.model.metadata.could.not.be.loaded.Rill.will.not.overwrite.it.until": {
       "extractionState": "manual",
       "localizations": {
@@ -643,23 +626,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "词汇规则无法加载，已忽略。"
-          }
-        }
-      }
-    },
-    "AppModel.SettingsPersistence.Workflow.enabled.states.could.not.be.loaded.and.were.ignored": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Workflow enabled states could not be loaded and were ignored."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流启用状态无法加载，已忽略。"
           }
         }
       }

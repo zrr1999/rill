@@ -14,6 +14,8 @@ enum AppSettingsCodec {
     .workflowLibrary,
     .systemClipboardCaptureEnabled,
     .legacyClipboardCaptureEnabled,
+    .recordMergeSimilar,
+    .legacyClipboardMergeSimilarItems,
     .recordHistoryVisibility,
     .legacyClipboardHistoryVisibility,
     .recordPanelHotkey,
@@ -30,6 +32,11 @@ enum AppSettingsCodec {
     .ttsModel,
     .legacyWhisperKitModel,
     .legacyWhisperKitDownloadedModels,
+    .legacyWhisperKitCustomModel,
+    .legacyWhisperKitModelRepo,
+    .legacyWhisperKitModelFolder,
+    .legacyWhisperKitLanguage,
+    .legacyWhisperKitDownloadIfNeeded,
     .legacyWhisperKitPrewarm,
     .openAIBaseURL,
     .openAIModel,
@@ -63,11 +70,6 @@ enum AppSettingsCodec {
     .openAIBaseURL,
     .openAIModel,
   ]
-
-  static func loadWorkflowFiles(from workflowFileStore: (any WorkflowFileStore)?) async -> InitialWorkflowFileLoad? {
-    guard let workflowFileStore else { return nil }
-    return InitialWorkflowFileLoad(result: await workflowFileStore.load())
-  }
 
   static func normalizeSettings(_ snapshot: SettingsStoreReadSnapshot) -> (
     snapshot: SettingsStoreReadSnapshot, migrations: [AppSettingKey: String]
@@ -142,9 +144,6 @@ enum AppSettingsCodec {
     {
       unavailableDomains.insert(.vocabularyRules)
     }
-
-    let customWorkflows: [WorkflowDefinition] = []
-    let workflowEnabledStates: [UUID: Bool] = [:]
 
     let downloadedLocalSpeechModels: [String]
     do {
@@ -240,9 +239,6 @@ enum AppSettingsCodec {
       persistentSettingsStoreWasAvailable: settingsStore != nil,
       unavailableSettingKeys: unavailableSettingKeys,
       legacyLocalSpeechMigrationValues: legacyLocalSpeechMigrationValues,
-      customWorkflows: customWorkflows,
-      workflowLibraryNeedsMigration: false,
-      workflowEnabledStates: workflowEnabledStates,
       downloadedLocalSpeechModels: downloadedLocalSpeechModels,
       openAIAPIKey: openAIAPIKey,
       openAICredentialAvailability: openAICredentialAvailability,
@@ -426,9 +422,6 @@ enum AppSettingsCodec {
     let unavailableKeys = snapshot.unavailableKeys
 
     let workflowFiles = await workflowFileStore?.load()
-    let customWorkflows: [WorkflowDefinition]? = []
-    let workflowEnabledStates: [UUID: Bool]? = [:]
-
     let downloadedLocalSpeechModels: [String]?
     if unavailableKeys.contains(.localSpeechDownloadedModels) {
       downloadedLocalSpeechModels = nil
@@ -455,9 +448,7 @@ enum AppSettingsCodec {
     }
 
     return RecoverableStoredSettingsDomains(
-      customWorkflows: customWorkflows,
       workflowFiles: workflowFiles,
-      workflowEnabledStates: workflowEnabledStates,
       downloadedLocalSpeechModels: downloadedLocalSpeechModels,
       vocabularyRules: vocabularyRules
     )
