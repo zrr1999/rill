@@ -94,9 +94,21 @@ public struct RecordCleanupSheet: View {
 }
 
 public struct RecordQuickPanelView: View {
-  private enum PresentedSheet: String, Identifiable {
-    case filters, comparison
-    var id: Self { self }
+  private enum PresentedSheet: Identifiable {
+    case filters
+    case comparison(RecordQuickPanelModel)
+
+    enum ID: Hashable {
+      case filters
+      case comparison(ObjectIdentifier)
+    }
+
+    var id: ID {
+      switch self {
+      case .filters: .filters
+      case .comparison(let session): .comparison(ObjectIdentifier(session))
+      }
+    }
   }
 
   @State private var showsFilters = false
@@ -202,22 +214,25 @@ public struct RecordQuickPanelView: View {
     .onChange(of: model.selectedID) { _, _ in if !model.isPreviewVisible { model.togglePreview() } }
     .sheet(
       item: Binding(
-        get: {
-          if model.jev?.isPresented == true { return PresentedSheet.comparison }
+        get: { [model] in
+          if model.jev?.isPresented == true { return PresentedSheet.comparison(model) }
           return showsFilters ? PresentedSheet.filters : nil
         },
-        set: {
-          if $0 == nil {
+        set: { [model] in
+          if case nil = $0 {
             showsFilters = false
             model.jev?.invalidate()
           }
         })
     ) { sheet in
-      if sheet == .comparison, let jev = model.jev {
-        RecordJevSheet(
-          model: jev, language: language, onSelect: model.selectJevCandidate,
-          onConfigure: onConfigureJev, onRetry: model.compareWithJev)
-      } else {
+      switch sheet {
+      case .comparison(let session):
+        if let jev = session.jev {
+          RecordJevSheet(
+            model: jev, language: language, onSelect: session.selectJevCandidate,
+            onConfigure: onConfigureJev, onRetry: session.compareWithJev)
+        }
+      case .filters:
         filters
       }
     }
