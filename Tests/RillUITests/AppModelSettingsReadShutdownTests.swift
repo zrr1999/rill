@@ -379,11 +379,6 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
     await shutdownTask.value
 
     XCTAssertEqual(harness.model.settings.openAIAPIKey, "initial-key")
-    XCTAssertFalse(
-      harness.model.history.eventFeed.contains {
-        $0.english == "OpenAI credential access is available again."
-      }
-    )
     XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
     XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
   }
@@ -465,11 +460,6 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
     await shutdownTask.value
 
     XCTAssertEqual(harness.model.vocabulary.availability, .unavailable)
-    XCTAssertFalse(
-      harness.model.history.eventFeed.contains {
-        $0.english == "Protected settings were loaded again without overwriting stored data."
-      }
-    )
     XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
     XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
   }

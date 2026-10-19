@@ -86,6 +86,11 @@ facades have been removed. `AppModel` still connects application events, setting
 commands and lifecycle effects across features. The composition root supplies
 production dependencies explicitly; test factories belong to test-only targets.
 
+History views read terminal bodies and ordered processing steps from run history
+records. Diagnostic views consume diagnostic events, while each feature owns its
+current errors and retry state. Runtime notifications connect these consumers;
+receipts and action results remain the evidence for completed work.
+
 System effects enter through ports or closures. For example,
 `RecordingSessionManager` and `WorkflowAudioRunController` own the validity of
 their `RecordingCueToken` values, while App supplies the shared sound and haptic

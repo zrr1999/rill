@@ -369,7 +369,8 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
     XCTAssertEqual(events.filter(\.isRunFailure).count, 1)
     XCTAssertFalse(events.contains(where: \.isRecognitionCompletion))
     XCTAssertFalse(events.contains(where: \.isRunCompletion))
-    XCTAssertFalse(events.contains(where: \.isActionExecution))
+    let actionsAfterLateResult = await actionProbe.snapshot()
+    XCTAssertTrue(actionsAfterLateResult.isEmpty)
     let timeoutDiagnostic = await diagnostics.snapshot().first {
       $0.event == "session.recognition.timeout"
     }
@@ -589,11 +590,6 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
 extension RillEvent {
   fileprivate var isRecognitionCompletion: Bool {
     if case .recognitionCompleted = self { return true }
-    return false
-  }
-
-  fileprivate var isActionExecution: Bool {
-    if case .actionExecuted = self { return true }
     return false
   }
 

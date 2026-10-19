@@ -117,39 +117,6 @@ public enum LocalSpeechAvailability: String, Sendable, Equatable {
   }
 }
 
-public enum LegacyWhisperModelOption: String, Codable, CaseIterable, Identifiable, Sendable,
-  Equatable
-{
-  case automatic = ""
-  case tiny = "openai_whisper-tiny"
-  case distilLargeV3Compact = "distil-whisper_distil-large-v3_594MB"
-  case largeV320240930Compact = "openai_whisper-large-v3-v20240930_626MB"
-  case custom = "__custom__"
-
-  public var id: String { rawValue }
-
-  public var modelIdentifier: String? {
-    switch self {
-    case .automatic:
-      return nil
-    case .custom:
-      return nil
-    default:
-      return rawValue
-    }
-  }
-
-  public init(storedModelValue: String?) {
-    let trimmed = storedModelValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    switch trimmed.lowercased() {
-    case "":
-      self = .automatic
-    default:
-      self = Self(rawValue: trimmed) ?? .custom
-    }
-  }
-}
-
 /// Release-owned presentation metadata for one exact trusted local model.
 ///
 /// This value is not a trust anchor. Production composition creates it only

@@ -905,7 +905,6 @@ public extension SessionCoordinator {
           result: .storedRecord,
           receiptIsActive: receiptIsActive
         )
-        await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: selectedActionID, result: .storedRecord))
         await runDiagnostics.recordAction(
           runID: runID,
           workflow: workflow.presentation,
@@ -1412,7 +1411,6 @@ private extension SessionCoordinator {
       ]
     )
 
-    await eventBus.publish(.contextCaptured(run: .init(runID: runID, lane: lane), snapshot: contextSnapshot))
     var recognitionOptions: SpeechRecognitionRequestOptions
     if let providedRecognitionOptions {
       recognitionOptions = providedRecognitionOptions

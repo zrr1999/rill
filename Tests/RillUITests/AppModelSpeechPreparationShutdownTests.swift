@@ -177,9 +177,6 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
     XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
     XCTAssertNil(settings.storage[.localSpeechDownloadedModels])
-    XCTAssertFalse(
-      harness.model.history.eventFeed.contains { $0.english.contains("cancelled-late-model") }
-    )
     XCTAssertEqual(harness.model.voice.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
@@ -227,9 +224,6 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
 
     XCTAssertEqual(harness.model.voice.localSpeechPreparedModelIdentifier, "qwen3-asr-0.6b-mlx-8bit")
     XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModels, ["qwen3-asr-0.6b-mlx-8bit"])
-    XCTAssertFalse(
-      harness.model.history.eventFeed.contains { $0.english.contains("retired-model") }
-    )
     XCTAssertEqual(harness.model.voice.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
@@ -328,9 +322,6 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
     XCTAssertNil(settings.storage[.localSpeechDownloadedModels])
     XCTAssertNil(settings.setCounts[.localSpeechDownloadedModels])
-    XCTAssertFalse(
-      harness.model.history.eventFeed.contains { $0.english.contains("late-manual-model") }
-    )
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 

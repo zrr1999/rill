@@ -154,7 +154,6 @@ struct WorkflowOutputExecutor: Sendable {
         result: WorkflowActionResultCode(result),
         receiptIsActive: receiptIsActive
       )
-      await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: actionID, result: result))
       await runDiagnostics.recordAction(
         runID: runID,
         workflow: workflow,
@@ -196,7 +195,6 @@ struct WorkflowOutputExecutor: Sendable {
       result: WorkflowActionResultCode(result),
       receiptIsActive: receiptIsActive
     )
-    await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: actionID, result: result))
     await runDiagnostics.recordAction(
       runID: runID,
       workflow: workflow,

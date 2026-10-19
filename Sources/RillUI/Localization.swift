@@ -61,8 +61,6 @@ extension L10n {
     case deliverNextRecord
     case deliveryStack
     case latestOutput
-    case eventFeed
-    case eventFeedEmpty
     case stackEmpty
     case noCompletedOutput
     case noRecentFailure
@@ -354,33 +352,6 @@ extension L10n {
 
   public static func loadedRunCount(_ count: Int, language: AppLanguage) -> String {
     L10n.pluralString("count.loadedRuns", language: language, count)
-  }
-
-  public static func clipboardDeleteConfirmationTitle(
-    itemCount: Int,
-    language: AppLanguage
-  ) -> String {
-    if itemCount == 1 { return catalogString("clipboard.delete.title.one", language: language) }
-    return resource("clipboard.delete.title.many", defaultValue: "Delete these \(String(itemCount)) merged records?").string(for: language)
-  }
-
-  public static func clipboardDeleteConfirmationDescription(
-    itemCount: Int,
-    language: AppLanguage
-  ) -> String {
-    if itemCount == 1 { return catalogString("clipboard.delete.description.one", language: language) }
-    return resource(
-      "clipboard.delete.description.many",
-      defaultValue: "This permanently removes all \(String(itemCount)) saved records represented by this row. This action can't be undone."
-    ).string(for: language)
-  }
-
-  public static func clipboardEntryAccessibilityValue(
-    copyCount: Int,
-    groupName: String,
-    language: AppLanguage
-  ) -> String {
-    pluralString("clipboard.accessibilityValue", language: language, copyCount, groupName)
   }
 
   public static func clipboardEntryAccessibilityHint(

@@ -80,14 +80,12 @@ public enum L10n {
     case vocabularyCorrectionCancel
     case vocabularyCorrectionConflict
     case vocabularyCorrectionCorrectedText
-    case vocabularyCorrectionCreated
     case vocabularyCorrectionDescription
     case vocabularyCorrectionHotwordOption
     case vocabularyCorrectionMappingOption
     case vocabularyCorrectionNoChange
     case vocabularyCorrectionOpenSettings
     case vocabularyCorrectionOriginalText
-    case vocabularyCorrectionReused
     case vocabularyCorrectionSave
     case vocabularyCorrectionSaveText
     case vocabularyCorrectionSaveFailed
@@ -148,9 +146,7 @@ public enum L10n {
     case historyFailedAudioOutcomeUnknown
     case historyFailedAudioRetry
     case historyFailedAudioRetrying
-    case voiceModeOutputNone
     case workflowAdvancedTextSteps
-    case workflowLanguageAuto
     case workflowLanguageOverride
     case workflowRouteAutomaticHint
     case workflowRouteLocalHint
@@ -285,15 +281,6 @@ public enum L10n {
     case .disabled: return L10n.catalogString("L10n.Disabled", language: language)
     }
   }
-  static func privacySettingsSpeechRouteHint(
-    _ route: WorkflowEditorDraft.RecognizerChoice, language: AppLanguage
-  ) -> String {
-    switch route {
-    case .automatic:
-      return privacyText(PrivacySettingsTextKey.automaticRouteHint, language: language)
-    case .localSpeech: return privacyText(PrivacySettingsTextKey.localRouteHint, language: language)
-    }
-  }
 
   static func historySettingsText(
     _ key: HistorySettingsTextKey,
@@ -328,13 +315,13 @@ public enum L10n {
 
 }
 enum PrivacySettingsTextKey: String, CaseIterable, Sendable {
-  case addRule, applicationNameOptional, automaticRouteHint, bundleIdentifier, cancelEdit
+  case addRule, applicationNameOptional, bundleIdentifier, cancelEdit
   case cloudAlwaysAllowed, cloudAlwaysAllowedDescription, cloudConfirmation
   case cloudConfirmationDescription, deleteRule, description
   case duplicateBundleIdentifier, editRule, historyPreviewDescription, historyPreviewHidden
-  case historyPreviewMode, invalidBundleIdentifier, loading, localRouteHint, missingBundleIdentifier
+  case historyPreviewMode, invalidBundleIdentifier, loading, missingBundleIdentifier
   case recommendedRule, recommendedRuleCannotBeEdited, resetSafeDefaults, restoreRecommended
-  case retryLoad, retrySave, revokeAllAuthorizations, revokeAuthorization, routeDetailLabel
+  case retryLoad, retrySave, revokeAllAuthorizations, revokeAuthorization
   case ruleBlocksClipboard, ruleBlocksCloud, ruleBlocksSelectedText, ruleBlocksWorkflow, ruleEnabled
   case ruleNotFound, saveRule, saving, secureInputConservativeDescription,
     secureInputConservativeMode
@@ -436,10 +423,6 @@ extension L10n {
     }
   }
 
-  public static func workflowDetail(_ workflow: WorkflowDefinition, language: AppLanguage) -> String {
-    VoiceWorkflowPresentation(workflow: workflow).detail(language: language)
-  }
-
   public static func workflowConflict(
     trigger: TriggerBinding,
     names: [String],
@@ -491,15 +474,6 @@ extension L10n {
     }
   }
 
-  public static func recognizerName(_ id: String, language: AppLanguage) -> String {
-    return switch id {
-    case "local-speech": L10n.resource("L10n.Local.Speech").string(for: language)
-    case "sherpa-onnx.local": L10n.resource("L10n.Local.Speech").string(for: language)
-    case "sherpa-onnx.streaming": L10n.resource("L10n.Local.Streaming.Speech").string(for: language)
-    default: id
-    }
-  }
-
   public static func actionName(_ id: String, language: AppLanguage) -> String {
     switch id {
     case "focused-application.insert": return L10n.catalogString("L10n.Paste.into.App", language: language)
@@ -514,58 +488,9 @@ extension L10n {
     }
   }
 
-  public static func editorRecognizer(
-    _ recognizer: WorkflowEditorDraft.RecognizerChoice,
-    language: AppLanguage
-  ) -> String {
-    switch recognizer {
-    case .automatic: return catalogString("editorRecognizer.automatic", language: language)
-    case .localSpeech: return catalogString("editorRecognizer.localSpeech", language: language)
-    }
-  }
-
-  public static func editorDestination(
-    _ destination: WorkflowEditorDraft.DestinationChoice,
-    language: AppLanguage
-  ) -> String {
-    switch destination {
-    case .pasteIntoApp: return L10n.catalogString("L10n.Paste.into.Active.App", language: language)
-    case .copyToClipboard: return L10n.catalogString("L10n.Copy.to.Clipboard", language: language)
-    case .saveToQueue: return L10n.catalogString("L10n.Save.to.Clipboard.Queue", language: language)
-    case .speakOnly: return L10n.catalogString("L10n.Speak.Only", language: language)
-    case .sendToWebhook: return "Webhook"
-    case .runShortcut: return L10n.catalogString("L10n.Run.macOS.Shortcut", language: language)
-    case .appendToMarkdown:
-      return L10n.catalogString("L10n.Append.to.Obsidian.Markdown", language: language)
-    }
-  }
-
   public static func speechEngine(_ engine: PreferredSpeechEngine, language: AppLanguage) -> String {
     switch engine {
     case .local: return catalogString("speechEngine.local", language: language)
-    }
-  }
-
-  public static func localSpeechEngine(
-    _ engine: LocalSpeechEngine,
-    language: AppLanguage
-  ) -> String {
-    switch engine {
-    case .sherpaOnnx: return catalogString("localSpeechEngine.sherpaOnnx", language: language)
-    case .mlxAudioSwift: return catalogString("localSpeechEngine.mlxAudioSwift", language: language)
-    }
-  }
-
-  public static func localSpeechModelOption(
-    _ option: LegacyWhisperModelOption,
-    language: AppLanguage
-  ) -> String {
-    switch option {
-    case .automatic: L10n.resource("L10n.Automatic").string(for: language)
-    case .tiny: L10n.resource("L10n.Fast.Tiny").string(for: language)
-    case .distilLargeV3Compact: L10n.resource("L10n.English.Only.Distilled.Large.v3").string(for: language)
-    case .largeV320240930Compact: L10n.resource("L10n.Best.Quality.Large.v3").string(for: language)
-    case .custom: L10n.resource("L10n.Custom").string(for: language)
     }
   }
 

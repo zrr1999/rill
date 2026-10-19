@@ -576,9 +576,6 @@ extension AppModelTests {
     ]
     harness.model.voice.lastCompletedText = "transcript-before-clear"
     harness.model.lastFailureResource = LocalizedStringResource("failure-before-clear")
-    harness.model.history.eventFeed = [
-      EventFeedEntry("content-before-clear")
-    ]
     harness.model.voice.liveSubtitleSnapshot = LiveSubtitleSnapshot(
       runID: UUID(),
       phase: .processing,
@@ -594,7 +591,6 @@ extension AppModelTests {
     XCTAssertTrue(harness.model.history.diagnosticEvents.isEmpty)
     XCTAssertNil(harness.model.voice.lastCompletedText)
     XCTAssertNil(harness.model.lastFailure)
-    XCTAssertTrue(harness.model.history.eventFeed.isEmpty)
     XCTAssertNil(harness.model.voice.liveSubtitleSnapshot)
   }
 

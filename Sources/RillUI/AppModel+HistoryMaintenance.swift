@@ -280,9 +280,6 @@ extension AppModel {
         guard !self.hasBegunApplicationShutdown else { return }
         self.history.historyRetentionSettingsWriteFailure = L10n.resource("run.retentionSaveFailedRepair")
 
-        self.append(
-          L10n.resource("run.retentionSaveFailedNotice")
-        )
       }
     }
     persistenceWrites.track(task)
@@ -336,15 +333,6 @@ extension AppModel {
       applyLocalHistoryMaintenanceCounts(counts)
       self.history.localHistoryMaintenancePendingReason = nil
       self.history.localHistoryMaintenanceBlockedReason = nil
-      if counts.totalRemovedCount > 0 || counts.preservedActiveRecordCount > 0 {
-        append(
-          L10n.resource(
-            "run.localHistoryUpdatedFormat",
-            defaultValue:
-              "Local history updated: removed \(String(counts.totalRemovedCount)), preserved \(String(counts.preservedActiveRecordCount)) active clipboard item(s)."
-          )
-        )
-      }
     case .pending(let counts, let reason):
       applyLocalHistoryMaintenanceCounts(counts)
       self.history.localHistoryMaintenancePendingReason = localizedPendingReason(reason)

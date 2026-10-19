@@ -10,16 +10,6 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
   case commandMode
   case custom
 
-  static let selectableCases: [VoiceTextStyle] = [
-    .rawInput,
-    .cleanInput,
-    .smartCleanup,
-    .formalWriting,
-    .translateInput,
-    .commandMode,
-    .custom,
-  ]
-
   var id: String { rawValue }
 
   var systemImage: String {
@@ -129,41 +119,11 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
 
 struct VoiceWorkflowPresentation: Equatable, Sendable {
   let textStyle: VoiceTextStyle
-  let trigger: TriggerBinding
-  let outputActionIDs: [String]
-  let recognizerID: String
-  let languageOverride: String?
   let usesBuiltinTitle: Bool
 
   init(workflow: WorkflowDefinition) {
     textStyle = VoiceTextStyle.infer(from: workflow)
-    trigger = workflow.trigger
-    outputActionIDs = workflow.plan.output.actions.map(\.id)
-    recognizerID = workflow.plan.setup.speechRoute?.recognizerID ?? ""
-    languageOverride = workflow.plan.setup.speechRoute?.language
     usesBuiltinTitle = workflow.titleKey != nil
-  }
-
-  func detail(language: AppLanguage) -> String {
-    let style = L10n.voiceTextStyleTitle(textStyle, language: language)
-    let route = speechRouteTitle(language: language)
-    let languageTitle =
-      languageOverride?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-      ? languageOverride ?? ""
-      : L10n.string(.workflowLanguageAuto, language: language)
-    let triggerTitle = L10n.workflowTrigger(trigger, language: language)
-    let output =
-      outputActionIDs.isEmpty
-      ? L10n.string(.voiceModeOutputNone, language: language)
-      : outputActionIDs.map { L10n.actionName($0, language: language) }.joined(separator: " + ")
-    let privacyLabel = L10n.privacyText(PrivacySettingsTextKey.routeDetailLabel, language: language)
-    let privacy = privacyRouteShortValue(language: language)
-
-    return L10n.resource(
-      "VoiceWorkflowPresentation.Mode.Speech.Language.Trigger.Output",
-      defaultValue:
-        "Mode: \(String(describing: style)) · Speech: \(String(describing: route)) · Language: \(String(describing: languageTitle)) · Trigger: \(String(describing: triggerTitle)) · Output: \(String(describing: output)) · \(String(describing: privacyLabel)): \(String(describing: privacy))"
-    ).string(for: language)
   }
 
   func menuTitle(workflowName: String, language: AppLanguage) -> String {
@@ -173,25 +133,6 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     return "\(style) — \(workflowName)"
   }
 
-  private func speechRouteTitle(language: AppLanguage) -> String {
-    if let route = WorkflowEditorDraft.RecognizerChoice(recognizerID: recognizerID) {
-      return L10n.editorRecognizer(route, language: language)
-    }
-    return L10n.recognizerName(recognizerID, language: language)
-  }
-
-  /// Card-list privacy value: a bare value that reads cleanly after the
-  /// "Privacy:" label in the dense detail line (the settings-style hint
-  /// carries its own label and would double-label here).
-  private func privacyRouteShortValue(language: AppLanguage) -> String {
-    let route = WorkflowEditorDraft.RecognizerChoice(recognizerID: recognizerID) ?? .localSpeech
-    switch route {
-    case .automatic:
-      return L10n.workflowText(.workflowPrivacyShortAutomatic, language: language)
-    case .localSpeech:
-      return L10n.workflowText(.workflowPrivacyShortLocal, language: language)
-    }
-  }
 }
 
 /// Duplicate workflow display names are legal (user TOML files are data, not
