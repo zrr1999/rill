@@ -225,10 +225,6 @@ public extension AudioCaptureService {
   }
 }
 
-public protocol ContextProvider: Sendable {
-  func captureContext() async -> ContextSnapshot
-}
-
 public protocol TriggerSource: Sendable {
   var id: String { get }
   var binding: TriggerBinding { get }

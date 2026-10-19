@@ -7,10 +7,6 @@ import XCTest
 @testable import RillCore
 @testable import RillPlatform
 
-private struct RecordingTimingContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private struct RecordingTimingRecognizer: SpeechRecognizer {
   let id = "recording.timing-recognizer"
 

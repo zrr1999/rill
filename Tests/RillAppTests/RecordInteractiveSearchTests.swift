@@ -136,7 +136,3 @@ final class RecordInteractiveSearchTests: XCTestCase {
       requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {})
   }
 }
-
-private struct PublicSearchContext: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}

@@ -1532,9 +1532,6 @@ private enum AppContainerFactory {
           bridge.enabledWorkflows(for: .hotkey)
         }
       },
-      contextProvider: {
-        await platform.contextProvider.captureContext()
-      },
       privacyContextProvider: {
         await platform.contextProvider.capturePrivacyContext()
       },

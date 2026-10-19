@@ -63,10 +63,6 @@ struct BuiltinVoiceOutputTests {
   }
 }
 
-private struct VoiceOutputContext: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private struct VoiceOutputTransformer: TextTransformer {
   let id = "test.voice-output-transformer"
   let supportedKinds: [PostProcessStepKind] = [.normalizeWhitespace, .llmRewrite, .llmAnswer]

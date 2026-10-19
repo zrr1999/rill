@@ -11,10 +11,6 @@ import XCTest
 @testable import RillRecords
 @testable import RillWorkflows
 
-private struct RecordCaptureTestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private enum RecordCaptureTestError: Error {
   case changeCountMismatch
 }

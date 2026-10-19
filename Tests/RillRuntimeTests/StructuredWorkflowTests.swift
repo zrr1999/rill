@@ -27,10 +27,6 @@ private struct StructuredTransformer: TextTransformer {
     text + (step.prompt ?? " clean")
   }
 }
-private struct StructuredContext: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 struct StructuredWorkflowTests {
   @Test func branchesAndSkippedOutputsProduceOrderedReceipts() async throws {
     let (coordinator, probe, receipts) = makeCoordinator()

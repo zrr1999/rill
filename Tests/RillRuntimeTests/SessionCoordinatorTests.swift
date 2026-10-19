@@ -6,10 +6,6 @@ import XCTest
 @testable import RillWorkflows
 import XCTest
 
-private struct MockContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private func makeStoredRecordDraft(_ text: String) -> RecordDraft {
   RecordDraft(
     payload: .text(text),

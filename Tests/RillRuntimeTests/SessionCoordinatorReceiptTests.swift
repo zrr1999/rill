@@ -6,10 +6,6 @@ import RillDomainTestSupport
 import Foundation
 import XCTest
 
-private struct ReceiptContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private struct ReceiptRecognizer: SpeechRecognizer {
   let id = "receipt.recognizer"
 

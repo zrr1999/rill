@@ -108,10 +108,6 @@ struct SessionCoordinatorPolishingGateTests {
   }
 }
 
-private struct PolishingContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor PolishingGateProbe: TextPolishingGate {
   let skip: Bool
   let cancel: Bool

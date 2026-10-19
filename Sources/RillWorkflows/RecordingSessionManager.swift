@@ -178,7 +178,6 @@ public actor RecordingSessionManager {
     diagnostics: DiagnosticsRecorder? = nil,
     privacyRunGate: PrivacyRunGate? = nil,
     workflowProvider: @escaping @Sendable () async -> [WorkflowDefinition],
-    contextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
     privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
     authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
     focusIdentitySampleProvider: @escaping @Sendable () async -> FocusPrivacyIdentitySample = {

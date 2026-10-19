@@ -660,10 +660,6 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
   )
 }
 
-private struct QueuedPolicyContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private func queuedWorkflow(name: String, recognizerID: String) -> WorkflowDefinition {
   let usesCloudTextFixture = recognizerID == "remote.speech"
   var workflow = WorkflowDefinition(
