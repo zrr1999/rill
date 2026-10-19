@@ -38,6 +38,7 @@ RELEASE_ARGUMENTS = [
 STALE_CACHE = re.compile(
     r"clang dependency scanning failure|unable to resolve module dependency|Failed to clone"
 )
+TEST_IDLE_SAMPLE_SECONDS = 300
 
 
 class BuildError(Exception):
@@ -70,6 +71,35 @@ def capture(command: list[str], cwd: Path = PROJECT) -> str:
     if result.returncode:
         raise BuildError(f"{' '.join(command)} failed: {result.stderr.strip()}")
     return result.stdout.strip()
+
+
+def sample_test_processes(root_pid: int) -> str:
+    """Sample only the Swift invocation and descendants owned by this build."""
+    tree = subprocess.run(
+        ["/bin/ps", "-axo", "pid=,ppid="],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=5,
+    )
+    parents = [tuple(map(int, line.split())) for line in tree.stdout.splitlines()]
+    owned = {root_pid}
+    while children := {pid for pid, parent in parents if parent in owned} - owned:
+        owned.update(children)
+    samples = []
+    with tempfile.TemporaryDirectory(prefix="rill-test-sample-") as directory:
+        for pid in sorted(owned):
+            path = Path(directory) / f"{pid}.txt"
+            result = subprocess.run(
+                ["/usr/bin/sample", str(pid), "1", "10", "-file", str(path)],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            samples.append(
+                path.read_text() if path.exists() else result.stdout + result.stderr
+            )
+    return "\n".join(samples)
 
 
 def write_json(path: Path, value: object) -> None:
@@ -402,16 +432,53 @@ class BuildContext:
                 text=True,
                 start_new_session=True,
             )
+            diagnose_tests = (
+                subcommand == "test"
+                and sys.platform == "darwin"
+                and os.environ.get("CI") == "true"
+            )
+            testing_started = False
+            sampled = False
+
+            def report(line: str) -> None:
+                print(line, end="", flush=True)
+                log.write(line)
+
+            def sample_idle_tests(signum, frame):
+                nonlocal sampled
+                sampled = True
+                report(
+                    "\nSwift Testing has produced no output for 5 minutes; "
+                    "sampling owned processes.\n"
+                )
+                try:
+                    report(sample_test_processes(process.pid) + "\n")
+                except (OSError, subprocess.SubprocessError) as error:
+                    report(f"Test process sampling failed: {error}\n")
+
+            previous_alarm = (
+                signal.signal(signal.SIGALRM, sample_idle_tests)
+                if diagnose_tests
+                else None
+            )
             try:
                 assert process.stdout is not None
                 for line in process.stdout:
-                    print(line, end="", flush=True)
-                    log.write(line)
+                    report(line)
+                    testing_started |= "◇ Test run started." in line
+                    if diagnose_tests and testing_started and not sampled:
+                        signal.setitimer(signal.ITIMER_REAL, TEST_IDLE_SAMPLE_SECONDS)
                 status = process.wait()
             except BaseException:
                 os.killpg(process.pid, signal.SIGTERM)
                 process.wait()
                 raise
+            finally:
+                if diagnose_tests:
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                    signal.signal(signal.SIGALRM, previous_alarm)
+                if process.stdout is not None:
+                    process.stdout.close()
             log.seek(0)
             output = log.read()
         if status:
