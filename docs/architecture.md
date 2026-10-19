@@ -115,7 +115,7 @@ drain separately from the clipboard polling lifecycle.
 | Vocabulary | `VocabularyLibraryModel` | Collection mutations and legacy-rule projection update the runtime source together; persisted default bindings retain their scope and uses. |
 | Terminal run body and receipt | `WorkflowRunReceiptRecorder` | Runtime freezes both values and commits them in one generation and one transaction; UI only reloads or displays an explicit session-only result. |
 | Timed-out external work | `BoundedOperation` | A cancelled caller does not free the resource slot until the underlying operation returns. Shutdown seals and drains accepted work. |
-| Workflow files and enabled state | `XDGWorkflowFileStore` and `WorkflowLibraryModel` | External editors own text editing. File writes check the last loaded source before replacement; file observation reloads validated definitions. |
+| Workflow files and enabled state | `XDGWorkflowFileStore` and `WorkflowLibraryModel` | External editors own text editing. The library applies initial, recovered and reloaded file results through one update; reloads retain invalid definitions for diagnosis while blocking new runs. File writes check the last loaded source before replacement. |
 
 `AppModel` receives its production services explicitly; `RillTestSupport` supplies
 only test defaults. Feature models own their observable status and accepted task
