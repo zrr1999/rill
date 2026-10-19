@@ -468,14 +468,19 @@ def make_receipt(
             raise BuildError("A runtime product is missing from the release build")
         if "RillApp" in sources:
             # Keep compiler metadata in the same immutable snapshot as the app.
-            metadata = list(
+            candidates = list(
                 (bin_path.parents[1] / "Intermediates.noindex").glob(
                     f"*/{bin_path.name}/RillApp*.build/Objects-normal/arm64/*.swiftconstvalues"
                 )
             )
-            metadata = [path for path in metadata if "-testable-" not in path.parts[-4]]
+            # SwiftPM 6.3 ends the target name with -testable; 6.4 adds -t.
+            metadata = [path for path in candidates if "-testable" not in path.parts[-4]]
             if not metadata or len({path.parent for path in metadata}) != 1:
-                raise BuildError("Expected App Intents compiler metadata from one release app target")
+                paths = ", ".join(str(path) for path in candidates) or "none"
+                raise BuildError(
+                    "Expected App Intents compiler metadata from one release app target "
+                    f"(products: {bin_path}; candidates: {paths})"
+                )
             for path in metadata:
                 sources[path.name] = path
         for name, path in sources.items():

@@ -283,11 +283,15 @@ package.targets.removeAll { $0.name != "RillCore" }
                 self.context, output, receipt_path, build.source_inputs(self.root)
             )
         metadata_root = self.context.scratch / "out/Intermediates.noindex/RillMacOS.build"
-        metadata_relative = Path("RillApp-p.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues")
+        metadata_relative = Path("RillApp-product.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues")
         metadata = metadata_root / "Release" / metadata_relative
         debug_metadata = metadata_root / "Debug" / metadata_relative
         test_metadata = metadata_root / "Release/RillApp-testable-t.build/Objects-normal/arm64" / metadata.name
-        for path, content in ((metadata, "release"), (debug_metadata, "debug"), (test_metadata, "test")):
+        legacy_test_metadata = metadata_root / "Release/RillApp-1234-testable.build/Objects-normal/arm64" / metadata.name
+        for path, content in (
+            (metadata, "release"), (debug_metadata, "debug"),
+            (test_metadata, "test"), (legacy_test_metadata, "legacy test"),
+        ):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
         extra_metadata = metadata.with_name("Other.swiftconstvalues")
