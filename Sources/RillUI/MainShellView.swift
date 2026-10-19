@@ -541,7 +541,7 @@ extension MainShellView {
           workspace: model.recordWorkspace, language: model.settings.language,
           copySelection: model.copyRecord,
           correctSelection: model.settings.privacyPolicySettings.historyPreviewMode == .disabled
-            ? nil : { recordCorrection = $0 })
+            ? nil : { @MainActor @Sendable request in recordCorrection = request })
       case .diagnostics:
         DiagnosticsView(model: model)
       }
