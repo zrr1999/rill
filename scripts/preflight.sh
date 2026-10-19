@@ -398,8 +398,7 @@ check_commit_messages() {
   while IFS= read -r revision; do
     git show --no-patch --format=%B "$revision" >"$message_file"
     echo "Checking commit $revision"
-    uvx --no-build --from zendev==0.4.0 \
-      --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
+    uvx --no-build --from zendev==0.5.0 \
       zendev message check --profile zendev "$message_file"
   done <<<"$revisions"
   rm -f "$message_file"

@@ -401,8 +401,8 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
 提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev)
 的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
 使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
-当前统一版本是 0.4.0；prek 的上游 revision 和 CI Actions 均固定到 commit，
-本地 hook 使用固定版本的已发布组件，CI 由官方 Actions 安装对应提交的源码。
+当前统一版本是 0.5.0；prek 的上游 revision 和 CI Actions 均固定到同一 commit，
+本地 hook 和 CI 都使用官方校验入口。
 
 - `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
   `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
