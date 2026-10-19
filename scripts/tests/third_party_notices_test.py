@@ -150,6 +150,7 @@ class Fixture:
         executable.parent.mkdir(parents=True, exist_ok=True)
         executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         executable.chmod(0o755)
+        (build_dir / "RillApp-primary.swiftconstvalues").write_text("[]\n", encoding="utf-8")
         speech_worker = build_dir / "RillSpeechWorker"
         speech_worker.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         speech_worker.chmod(0o755)
@@ -205,6 +206,9 @@ class Fixture:
         shutil.copy2(LOCAL_MODEL_NOTICES, self.local_model_notices)
         for document in ("LICENSE", "README.md"):
             shutil.copy2(PROJECT_DIR / document, self.root / document)
+        intents_source = self.root / "Sources" / "RillApp" / "RillAppIntents.swift"
+        intents_source.parent.mkdir(parents=True)
+        shutil.copy2(PROJECT_DIR / "Sources" / "RillApp" / intents_source.name, intents_source)
         self.fake_bin = self.root / "bin"
         self.fake_bin.mkdir()
         fake_lipo = self.fake_bin / "lipo"
@@ -221,6 +225,33 @@ printf '%s\\n' arm64
         fake_xcrun = self.fake_bin / "xcrun"
         fake_xcrun.write_text(
             """#!/bin/sh
+if [ "$1" = "--show-sdk-path" ]; then
+    printf '%s\\n' /fixture/MacOSX.sdk
+    exit 0
+fi
+if [ "$1" = "appintentsmetadataprocessor" ]; then
+    shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --output) output="$2"; shift 2 ;;
+            --source-file-list) source_list="$2"; shift 2 ;;
+            --swift-const-vals-list) const_list="$2"; shift 2 ;;
+            --force) shift ;;
+            *) shift 2 ;;
+        esac
+    done
+    [ "$(cat "$const_list")" = "$RILL_TEST_CONST_VALUES" ] || exit 65
+    [ -s "$RILL_TEST_CONST_VALUES" ] || exit 66
+    [ "$(cat "$source_list")" = "$RILL_TEST_INTENTS_SOURCE" ] || exit 67
+    [ -s "$RILL_TEST_INTENTS_SOURCE" ] || exit 68
+    case "${RILL_TEST_METADATA_RESULT:-success}" in
+        failure) exit 1 ;;
+        missing) exit 0 ;;
+    esac
+    mkdir -p "$output/Metadata.appintents"
+    cp "$RILL_TEST_CONST_VALUES" "$output/Metadata.appintents/fixture.json"
+    exit 0
+fi
 if [ "$#" -ne 5 ] || [ "$1" != "vtool" ] || [ "$2" != "-arch" ] \\
     || [ "$4" != "-show-build" ]; then
     exit 64
@@ -244,7 +275,11 @@ EOF
             encoding="utf-8",
         )
         fake_xcrun.chmod(0o755)
-        self.assembler_env = {"PATH": f"{self.fake_bin}:{os.environ['PATH']}"}
+        self.assembler_env = {
+            "PATH": f"{self.fake_bin}:{os.environ['PATH']}",
+            "RILL_TEST_CONST_VALUES": str((self.root / "build" / "RillApp-primary.swiftconstvalues").resolve()),
+            "RILL_TEST_INTENTS_SOURCE": str(intents_source.resolve()),
+        }
         self.app_bundle = self.root / "output" / "Rill.app"
         self.build_dir: Path | None = None
         self.assembler = scripts / ASSEMBLER.name
@@ -501,6 +536,26 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Required UI resource bundle not found", result.stdout + result.stderr)
 
+    def test_assembler_rejects_missing_or_failed_app_intents_metadata(self) -> None:
+        self.fixture.prepare_packaging()
+        self.fixture.generate()
+        self.fixture.build_dir = self.fixture.create_build_products()
+        metadata = self.fixture.build_dir / "RillApp-primary.swiftconstvalues"
+        metadata.unlink()
+        # An unrelated build must never supply metadata for this app snapshot.
+        (self.fixture.root / ".build" / metadata.name).write_text("stale metadata")
+        self.expect_rejected("App Intents compiler metadata was not produced")
+        metadata.write_text("[]\n")
+        for result, message in (
+            ("failure", "App Intents metadata extraction failed"),
+            ("missing", "App Intents metadata bundle was not written"),
+        ):
+            with self.subTest(result=result):
+                self.expect_rejected(
+                    message,
+                    env={**self.fixture.assembler_env, "RILL_TEST_METADATA_RESULT": result},
+                )
+
     def test_assembler_packages_reviewed_resources_and_rejects_drift(self) -> None:
         project_documents = ("LICENSE", "README.md")
         self.fixture.prepare_packaging()
@@ -510,6 +565,10 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         build_dir = self.fixture.build_dir
         assert build_dir is not None
         self.assertEqual(assembled.returncode, 0, assembled.stderr)
+        self.assertEqual(
+            (app_bundle / "Contents/Resources/Metadata.appintents/fixture.json").read_bytes(),
+            (build_dir / "RillApp-primary.swiftconstvalues").read_bytes(),
+        )
         packaged_speech_worker = (
             app_bundle / "Contents" / "Helpers" / "RillSpeechWorker"
         )

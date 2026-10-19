@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Assemble and validate an unsigned Rill.app from an existing SwiftPM Xcode build.
+# Assemble and validate an unsigned Rill.app from a Release product snapshot.
 # This script intentionally does not build, test, sign, or invoke preflight.
 #
 set -euo pipefail
@@ -256,7 +256,8 @@ usage() {
 Usage: $0 (--build-dir DIR | --build-result JSON) --app-bundle PATH --version VERSION --build-number NUMBER \\
   --build-kind KIND --source-revision REVISION --source-dirty BOOL --version-label LABEL
 
-Assembles an unsigned ${APP_NAME}.app from an existing SwiftPM Xcode release build.
+Assembles an unsigned ${APP_NAME}.app from a Release product snapshot.
+DIR must include the app's .swiftconstvalues files from the same build.
 EOF
 }
 
@@ -569,17 +570,18 @@ done
 
 "$APP_BUNDLE/Contents/MacOS/$APP_NAME" --validate-workflows "$WORKFLOW_DESTINATION"
 
-extract_app_intents_metadata() {
-  local const_file list source_list dependency xcode_version
-  const_file="$(
-    find "$PROJECT_DIR/.build" "$PROJECT_DIR/.artifacts" \
-      -name 'RillAppIntents.swiftconstvalues' -print 2>/dev/null | head -n 1
-  )"
-  [[ -n "$const_file" ]] || error "App Intents compiler metadata was not produced"
-  list="$(mktemp)"
-  source_list="$(mktemp)"
-  dependency="$(mktemp)"
-  printf '%s\n' "$const_file" >"$list"
+extract_app_intents_metadata() (
+  local const_file temporary list source_list dependency xcode_version
+  local const_files=("$BUILD_DIR/"*.swiftconstvalues)
+  for const_file in "${const_files[@]}"; do
+    [[ -s "$const_file" ]] || error "App Intents compiler metadata was not produced"
+  done
+  temporary="$(mktemp -d)"
+  trap 'rm -rf "$temporary"' EXIT
+  list="$temporary/const-values-list"
+  source_list="$temporary/source-list"
+  dependency="$temporary/dependencies"
+  printf '%s\n' "${const_files[@]}" >"$list"
   printf '%s\n' "$PROJECT_DIR/Sources/RillApp/RillAppIntents.swift" >"$source_list"
   xcode_version="$(xcodebuild -version | awk '/Build version/ { print $3 }')"
   xcrun appintentsmetadataprocessor \
@@ -597,7 +599,7 @@ extract_app_intents_metadata() {
     --force || error "App Intents metadata extraction failed"
   [[ -d "$APP_BUNDLE/Contents/Resources/Metadata.appintents" ]] ||
     error "App Intents metadata bundle was not written"
-}
+)
 
 extract_app_intents_metadata
 

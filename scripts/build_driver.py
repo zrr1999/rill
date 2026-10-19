@@ -466,6 +466,18 @@ def make_receipt(
                 sources[path.name] = path
         if products is not None and not set(products).issubset(sources):
             raise BuildError("A runtime product is missing from the release build")
+        if "RillApp" in sources:
+            # Keep compiler metadata in the same immutable snapshot as the app.
+            metadata = list(
+                (bin_path.parents[1] / "Intermediates.noindex").glob(
+                    f"*/{bin_path.name}/RillApp*.build/Objects-normal/arm64/*.swiftconstvalues"
+                )
+            )
+            metadata = [path for path in metadata if "-testable-" not in path.parts[-4]]
+            if not metadata or len({path.parent for path in metadata}) != 1:
+                raise BuildError("Expected App Intents compiler metadata from one release app target")
+            for path in metadata:
+                sources[path.name] = path
         for name, path in sources.items():
             if path.is_symlink():
                 raise BuildError(f"Symlink in build output: {path}")
