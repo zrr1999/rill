@@ -522,13 +522,6 @@ enum AppSettingsCodec {
     }
   }
 
-  static func normalizeCustomWorkflow(_ workflow: WorkflowDefinition) -> WorkflowDefinition {
-    var workflow = workflow
-    workflow.titleKey = nil
-    workflow.properties.isBuiltin = false
-    return workflow
-  }
-
   static func privacySettingsStorageValues(
     for policy: PrivacyPolicySettings
   ) throws -> [AppSettingKey: String] {

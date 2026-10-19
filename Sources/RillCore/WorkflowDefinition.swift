@@ -315,9 +315,3 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
     try container.encode(properties, forKey: .properties)
   }
 }
-
-private extension String {
-  var nilIfEmpty: String? {
-    isEmpty ? nil : self
-  }
-}

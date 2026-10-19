@@ -133,10 +133,3 @@ public struct SpeechAsset: Codable, Sendable, Equatable {
 public enum SpeechOutputActionID {
   public static let speak = "speech.speak"
 }
-
-public enum SpeechOutputActionConfigurationKey {
-  public static let provider = "speech.provider"
-  public static let model = "speech.model"
-  public static let voice = "speech.voice"
-  public static let language = "speech.language"
-}

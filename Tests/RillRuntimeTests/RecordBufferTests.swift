@@ -357,7 +357,4 @@ actor BufferCatalogFake: RecordCatalogPersistenceStore {
   }
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { throw RecordStoreError.persistenceUnavailable }
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    throw RecordStoreError.persistenceUnavailable
-  }
 }

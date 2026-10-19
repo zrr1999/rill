@@ -1454,8 +1454,7 @@ private extension SessionCoordinator {
         workflow: workflow,
         collections: collections,
         context: vocabularyContext,
-        input: compilationInput,
-        allowEmptyOutput: trigger == .failedAudioRecovery
+        input: compilationInput
       )
     } catch {
       throw SessionError.invalidWorkflowPlan(error.localizedDescription)

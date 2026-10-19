@@ -308,18 +308,6 @@ public actor WorkflowRunReceiptRecorder {
     pendingRuns[runID] = run
   }
 
-  public func finishAction(
-    runID: UUID,
-    actionIndex: Int,
-    result: ActionResult
-  ) throws {
-    try finishAction(
-      runID: runID,
-      actionIndex: actionIndex,
-      result: WorkflowActionResultCode(result)
-    )
-  }
-
   @discardableResult
   public func finish(
     runID: UUID,

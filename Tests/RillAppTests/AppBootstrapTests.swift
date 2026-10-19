@@ -60,25 +60,6 @@ private actor AppBootstrapExplanationProbe {
   }
 }
 
-private actor AppBootstrapPrivacyContextSequenceProbe {
-  private let contexts: [ContextSnapshot]
-  private var index = 0
-
-  init(contexts: [ContextSnapshot]) {
-    self.contexts = contexts
-  }
-
-  func next() -> ContextSnapshot {
-    let context = contexts[min(index, contexts.count - 1)]
-    index += 1
-    return context
-  }
-
-  func count() -> Int {
-    index
-  }
-}
-
 private struct AppBootstrapExplanationRecognizer: SpeechRecognizer {
   let id = "sherpa-onnx.local"
 
@@ -215,28 +196,6 @@ private actor AppBootstrapCredentialStore: SecureCredentialStore {
 
   func removalCount(for key: SecureCredentialKey) -> Int {
     removalCounts[key, default: 0]
-  }
-}
-
-private actor AppBootstrapSecureWebhookStore: SecureWebhookConfigurationStore {
-  private var operationCount = 0
-
-  func configuration(
-    for reference: WebhookConfigurationReference
-  ) async throws -> WebhookProtectedConfiguration? {
-    operationCount += 1
-    return nil
-  }
-
-  func setConfiguration(
-    _ configuration: WebhookProtectedConfiguration,
-    for reference: WebhookConfigurationReference
-  ) async throws {
-    operationCount += 1
-  }
-
-  func calls() -> Int {
-    operationCount
   }
 }
 
@@ -379,61 +338,6 @@ private actor AppBootstrapMaintenanceEventRecorder {
 
   func recordedEvents() -> [LocalHistoryMaintenanceEvent] {
     events
-  }
-}
-
-private actor AppBootstrapRichPasteProbe {
-  struct Snapshot: Sendable {
-    var captureCount: Int
-    var deliveredItemIDs: [UUID]
-    var deliveredContexts: [ContextSnapshot]
-    var injectedSnapshot: SystemClipboardSnapshot?
-    var targetFocus: FocusSnapshot?
-    var markedItemIDs: [UUID]
-    var failures: [String]
-  }
-
-  private var captureCount = 0
-  private var deliveredItemIDs: [UUID] = []
-  private var deliveredContexts: [ContextSnapshot] = []
-  private var injectedSnapshot: SystemClipboardSnapshot?
-  private var targetFocus: FocusSnapshot?
-  private var markedItemIDs: [UUID] = []
-  private var failures: [String] = []
-
-  func capture(_ context: ContextSnapshot) -> ContextSnapshot {
-    captureCount += 1
-    return context
-  }
-
-  func deliver(_ itemID: UUID, context: ContextSnapshot) {
-    deliveredItemIDs.append(itemID)
-    deliveredContexts.append(context)
-  }
-
-  func inject(_ snapshot: SystemClipboardSnapshot, targetFocus: FocusSnapshot) {
-    injectedSnapshot = snapshot
-    self.targetFocus = targetFocus
-  }
-
-  func markUsed(_ itemID: UUID) {
-    markedItemIDs.append(itemID)
-  }
-
-  func recordFailure(_ message: String) {
-    failures.append(message)
-  }
-
-  func snapshot() -> Snapshot {
-    Snapshot(
-      captureCount: captureCount,
-      deliveredItemIDs: deliveredItemIDs,
-      deliveredContexts: deliveredContexts,
-      injectedSnapshot: injectedSnapshot,
-      targetFocus: targetFocus,
-      markedItemIDs: markedItemIDs,
-      failures: failures
-    )
   }
 }
 

@@ -364,18 +364,6 @@ actor RecordPanelProbe {
   }
 }
 
-actor ClipboardUseProbe {
-  private(set) var usedItemIDs: [UUID] = []
-
-  func record(itemID: UUID) {
-    usedItemIDs.append(itemID)
-  }
-
-  func snapshot() -> [UUID] {
-    usedItemIDs
-  }
-}
-
 actor LiveSubtitlePanelProbe {
   private(set) var updates: [(snapshot: LiveSubtitleSnapshot?, language: AppLanguage)] = []
 

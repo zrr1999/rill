@@ -37,15 +37,4 @@ public enum WorkflowRunInvocation: Sendable, Equatable {
     return subject
   }
 
-  func authorizesRecord(
-    _ currentSubject: RecordDeliverySubject,
-    requestedOperation: RecordWorkflowOperation
-  ) -> Bool {
-    guard case .record(let authorizedSubject, let authorizedOperation) = self,
-      isSupportedRecordWorkflowOperation
-    else {
-      return false
-    }
-    return authorizedOperation == requestedOperation && authorizedSubject == currentSubject
-  }
 }

@@ -1,11 +1,5 @@
 import Foundation
 
-public enum WorkflowPhaseKind: String, Codable, Sendable, CaseIterable {
-  case setup
-  case process
-  case output
-}
-
 public enum SpeechRouteSelection: String, Codable, Sendable, Equatable {
   case automatic
   case fixed

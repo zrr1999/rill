@@ -457,32 +457,6 @@ struct SQLitePersistenceSession {
     }
   }
 
-  func removeRecordGraph() throws -> RecordGraphRemovalResult {
-    do {
-      try withImmediateTransaction {
-        try execute("DELETE FROM record_catalog_nodes;")
-        try execute("DELETE FROM record_payload_blobs;")
-        try execute("DELETE FROM record_graph_metadata WHERE id = 1;")
-        try execute("DELETE FROM clipboard_image_blobs;")
-        try execute("DELETE FROM clipboard_metadata WHERE id = 1;")
-        try deleteLegacyClipboardRow()
-        try markDataProtectionCleanupPending()
-      }
-    } catch {
-      throw SQLitePersistenceError.clipboardPersistenceUnavailable
-    }
-    do {
-      try ensureSecureDeleteEnabled()
-      try truncateWriteAheadLog()
-      try execute("VACUUM;")
-      try truncateWriteAheadLog()
-      try Self.markDataProtectionCleanupCompleted(on: db)
-      return .removed
-    } catch {
-      return .removedCleanupPending
-    }
-  }
-
   /// Advances one replayable clear transition and deletes only older-generation
   /// rows in the same transaction. A schema-4 bridge first promotes rows whose
   /// timestamps prove that they were written after the legacy intent.
@@ -1183,18 +1157,6 @@ struct SQLitePersistenceSession {
       Self.clipboardStorageLimits.maximumImageByteCount
     case .files:
       Self.clipboardStorageLimits.maximumTotalFileURLUTF8ByteCount
-    }
-  }
-
-  private func markDataProtectionCleanupPending() throws {
-    let statement = try prepare(
-      "UPDATE local_data_protection SET cleanup_pending = 1 WHERE id = 1;"
-    )
-    defer { withExtendedLifetime(statement) {} }
-
-    try step(statement, expecting: SQLITE_DONE)
-    guard sqlite3_changes(db) == 1 else {
-      throw SQLitePersistenceError.clipboardPersistenceUnavailable
     }
   }
 

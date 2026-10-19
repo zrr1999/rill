@@ -383,16 +383,6 @@ extension L10n {
     pluralString("clipboard.accessibilityValue", language: language, copyCount, groupName)
   }
 
-  public static func clipboardEntryAccessibilityHint(
-    supportsDirectPaste: Bool,
-    language: AppLanguage
-  ) -> String {
-    switch supportsDirectPaste {
-    case true: L10n.resource("Localization.Selects.this.item.Press.Return.to.paste.it").string(for: language)
-    case false: L10n.resource("Localization.Selects.this.item.and.opens.its.details").string(for: language)
-    }
-  }
-
   public static func targetedAccessibilityLabel(
     _ key: InterfaceKey,
     target: String,

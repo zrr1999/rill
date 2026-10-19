@@ -189,13 +189,6 @@ public final class RecordWorkspaceModel {
     snapshot.collections.first(where: { $0.id == id })?.name ?? id.description
   }
 
-  public func membership(
-    for record: RecordSummary,
-    in collectionID: RecordCollectionID
-  ) -> RecordMembership? {
-    record.memberships.first { $0.collectionID == collectionID }
-  }
-
   public func refresh() async {
     startObservingIfNeeded()
     isLoading = true

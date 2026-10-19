@@ -482,24 +482,6 @@ public struct RecordProjection: Identifiable, Sendable, Equatable {
   public var id: RecordID { record.id }
 }
 
-public struct RecordCollectionProjection: Identifiable, Sendable, Equatable {
-  public var collection: RecordCollection
-  public var memberships: [RecordMembership]
-  public var recordsByID: [RecordID: Record]
-
-  public init(
-    collection: RecordCollection,
-    memberships: [RecordMembership],
-    recordsByID: [RecordID: Record]
-  ) {
-    self.collection = collection
-    self.memberships = memberships
-    self.recordsByID = recordsByID
-  }
-
-  public var id: RecordCollectionID { collection.id }
-}
-
 /// Exact immutable Record plus Membership CAS coordinate used by previews,
 /// replay, Replace, and delivery authorization.
 public struct RecordDeliverySubject: Codable, Sendable, Equatable, Hashable {
@@ -524,28 +506,6 @@ public struct RecordDeliverySubject: Codable, Sendable, Equatable, Hashable {
     self.collectionID = collectionID
     self.payloadKind = payloadKind
     self.captureTags = captureTags
-  }
-}
-
-public struct RecordRouteProjection: Sendable, Equatable {
-  public var collection: RecordCollection?
-  public var count: Int
-  public var previewText: String?
-  public var previewSubject: RecordDeliverySubject?
-  public var previewPayload: RecordPayload?
-
-  public init(
-    collection: RecordCollection? = nil,
-    count: Int = 0,
-    previewText: String? = nil,
-    previewSubject: RecordDeliverySubject? = nil,
-    previewPayload: RecordPayload? = nil
-  ) {
-    self.collection = collection
-    self.count = count
-    self.previewText = previewText
-    self.previewSubject = previewSubject
-    self.previewPayload = previewPayload
   }
 }
 

@@ -779,5 +779,4 @@ private struct LargePanelCatalogFixture: RecordCatalogPersistenceStore {
   func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 { throw RecordStoreError.persistenceUnavailable }
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { throw RecordStoreError.persistenceUnavailable }
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult { throw RecordStoreError.persistenceUnavailable }
 }

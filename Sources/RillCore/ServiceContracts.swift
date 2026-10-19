@@ -276,14 +276,6 @@ public protocol SpeechTextFallbackEligibleError: Error {
   var allowsSpeechTextFallback: Bool { get }
 }
 
-public protocol WorkflowCatalog: Sendable {
-  func manifest() -> WorkflowManifest
-}
-
-public protocol WorkflowManifestLoader: Sendable {
-  func loadManifest() throws -> WorkflowManifest
-}
-
 public protocol RunHistoryGenerationSource: Sendable {
   /// Captures the current durable generation at the linearization point where
   /// an asynchronous write intent begins.

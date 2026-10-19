@@ -180,14 +180,6 @@ public extension SystemClipboardSnapshot {
     !plainText.isEmpty || imagePNGData?.isEmpty == false || !fileURLs.isEmpty
   }
 
-  func hasEquivalentTransferableContent(as other: SystemClipboardSnapshot) -> Bool {
-    plainText == other.plainText
-      && imagePNGData == other.imagePNGData
-      && fileURLs == other.fileURLs
-      && Set(captureTags) == Set(other.captureTags)
-      && Set(protections) == Set(other.protections)
-  }
-
   var excludesWorkflowCapture: Bool {
     captureTags.contains(.excludeFromWorkflowCapture)
   }
@@ -200,9 +192,4 @@ public extension SystemClipboardSnapshot {
     return snapshot
   }
 
-  func removingCaptureTags(_ tags: [SystemClipboardCaptureTag]) -> SystemClipboardSnapshot {
-    var snapshot = self
-    snapshot.captureTags.removeAll(where: { tags.contains($0) })
-    return snapshot
-  }
 }

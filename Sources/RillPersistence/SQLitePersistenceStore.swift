@@ -112,10 +112,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
     try access { try $0.replaceRecordGraph(with: snapshot) }
   }
 
-  public func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    try access { try $0.removeRecordGraph() }
-  }
-
   public func purgeSensitiveStorageResidue() async throws {
     try access { try $0.purgeSensitiveStorageResidue() }
   }

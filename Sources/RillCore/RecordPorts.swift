@@ -136,5 +136,4 @@ public struct RecordGraphPersistenceWriteSnapshot: Sendable, Equatable {
 public protocol RecordGraphPersistenceStore: Sendable {
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult
 }

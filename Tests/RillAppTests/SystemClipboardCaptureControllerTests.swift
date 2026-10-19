@@ -704,7 +704,6 @@ private actor ClipboardRetryPersistence: RecordCatalogPersistenceStore {
     }
     return (snapshot.expectedRevision ?? 0) + 1
   }
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult { .removed }
   func loadRecordCatalog() async throws -> RecordCatalogRead? { nil }
   func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws -> Data { throw RecordStoreError.recordUnavailable }
   func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
@@ -729,7 +728,6 @@ private actor ClipboardBlockingPersistence: RecordCatalogPersistenceStore {
     }
     return (snapshot.expectedRevision ?? 0) + 1
   }
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult { .removed }
   func waitUntilWriting() async {
     guard !writeStarted else { return }
     await withCheckedContinuation { observers.append($0) }

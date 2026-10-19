@@ -92,19 +92,6 @@ public protocol LocalHistoryMaintaining: Sendable {
   func retryPendingMaintenance() async -> LocalHistoryMaintenanceResult
 }
 
-extension LocalHistoryMaintaining {
-  public func performRetention(
-    recordRetention: HistoryRetentionPeriod,
-    runRetention: HistoryRetentionPeriod
-  ) async -> LocalHistoryMaintenanceResult {
-    await performRetention(
-      recordRetention: recordRetention,
-      runRetention: runRetention,
-      now: Date()
-    )
-  }
-}
-
 public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
   public typealias EventReporter = @Sendable (LocalHistoryMaintenanceEvent) async -> Void
   public typealias WallClock = @Sendable () -> Date

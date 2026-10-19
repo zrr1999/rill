@@ -98,10 +98,9 @@ public struct WorkflowPlanCompiler: Sendable {
     workflow: WorkflowDefinition,
     collections: [VocabularyCollection],
     context: VocabularyRuleContext,
-    input inputOverride: WorkflowInputKind? = nil,
-    allowEmptyOutput: Bool = false
+    input inputOverride: WorkflowInputKind? = nil
   ) throws -> ResolvedWorkflowPlan {
-    let input = try validate(workflow: workflow, input: inputOverride, allowEmptyOutput: allowEmptyOutput)
+    let input = try validate(workflow: workflow, input: inputOverride)
     let recognizer =
       input == .audio
       ? workflow.plan.setup.speechRoute.flatMap { recognizerRegistry.recognizer(for: $0.recognizerID) }
@@ -156,8 +155,7 @@ public struct WorkflowPlanCompiler: Sendable {
   }
   func validate(
     workflow: WorkflowDefinition,
-    input inputOverride: WorkflowInputKind? = nil,
-    allowEmptyOutput: Bool = false
+    input inputOverride: WorkflowInputKind? = nil
   ) throws -> WorkflowInputKind {
     try recognizerRegistry.validate()
     try transformerRegistry.validate()
