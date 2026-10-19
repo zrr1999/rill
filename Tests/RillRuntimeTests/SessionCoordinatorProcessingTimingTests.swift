@@ -110,7 +110,7 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
       let run = Task {
         await harness.coordinator.runReportingOutcome(workflow: harness.workflow, runID: runID, contextSnapshot: .empty)
       }
-      var textStep: WorkflowTextStep?
+      var historyRecord: WorkflowResultRecord?
       for await event in stream {
         if case .candidateResolutionRequested(let request) = event {
           if cancel {
@@ -121,10 +121,10 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
               selections: [candidates.id: selected.id])
           }
         }
-        if case .runTextStepRecorded(_, let step) = event, step.kind == .resolveUncertainty {
-          textStep = step
-          break
+        if case .runHistoryUpdated(.sessionOnly(let record)) = event {
+          historyRecord = record
         }
+        if case .runCancelled = event { break }
         if case .runCompleted = event { break }
         if case .runFailed = event { break }
       }
@@ -132,13 +132,15 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
       let receipts = try await harness.repository.receipts(matching: .init(runID: runID))
       let receiptStep = try XCTUnwrap(receipts.first?.stepDetails.first { $0.kind == .resolveUncertainty })
       XCTAssertEqual(receiptStep.result, cancel ? .cancelled : .completed)
-      XCTAssertEqual(try XCTUnwrap(textStep).result, receiptStep.result)
       if cancel {
         guard case .cancelled = outcome else { return XCTFail("Expected cancellation") }
         XCTAssertTrue(try XCTUnwrap(receipts.first).actionDetails.isEmpty)
+        XCTAssertNil(historyRecord)
       } else {
         guard case .completed(let summary) = outcome else { return XCTFail("Expected completion") }
         XCTAssertEqual(summary.finalText, "corrected")
+        let textStep = try XCTUnwrap(historyRecord?.correctionSource?.processingSteps?.first { $0.kind == .resolveUncertainty })
+        XCTAssertEqual(textStep.result, receiptStep.result)
       }
     }
   }
@@ -188,12 +190,18 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
       XCTAssertEqual(step.kind, .recognizeSpeech)
       XCTAssertEqual(step.result, outcome == .cancelled ? .cancelled : .failed)
       XCTAssertEqual(step.durationMilliseconds, 1_234)
+      var historyRecord: WorkflowResultRecord?
       for await event in stream {
-        if case .runTextStepRecorded(_, let textStep) = event {
-          XCTAssertEqual(textStep.durationMilliseconds, 1_234)
-          XCTAssertNil(textStep.outputText)
-          break
-        }
+        if case .runHistoryUpdated(.sessionOnly(let record)) = event { historyRecord = record }
+        if case .runCancelled = event { break }
+        if case .runFailed = event { break }
+      }
+      if outcome == .cancelled {
+        XCTAssertNil(historyRecord)
+      } else {
+        let textStep = try XCTUnwrap(historyRecord?.correctionSource?.processingSteps?.first)
+        XCTAssertEqual(textStep.durationMilliseconds, 1_234)
+        XCTAssertNil(textStep.outputText)
       }
     }
   }
@@ -265,7 +273,7 @@ private func makeProcessingHarness(
     actionRegistry: OutputActionRegistry(actions: [ProcessingTestAction(clock: clock)]),
     candidateResolver: resolver, eventBus: eventBus,
     diagnostics: diagnostics,
-    runReceiptRecorder: WorkflowRunReceiptRecorder(repository: repository, monotonicClock: { clock.now() }),
+    runReceiptRecorder: WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus, monotonicClock: { clock.now() }),
     processingClock: { clock.now() }
   )
   return (coordinator, workflow, repository, eventBus, resolver, diagnostics)

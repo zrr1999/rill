@@ -32,7 +32,7 @@ final class DiagnosticsViewTests: XCTestCase {
       )
     }
 
-    let visibleEvents = DiagnosticsView.timelineEvents(from: events)
+    let visibleEvents = loadedEntries(from: events).map(\.event)
 
     XCTAssertEqual(visibleEvents.count, 20)
     XCTAssertEqual(visibleEvents.map(\.timestamp), (5..<25).reversed().map { baseTimestamp.addingTimeInterval(TimeInterval($0)) })
@@ -63,21 +63,21 @@ final class DiagnosticsViewTests: XCTestCase {
     )
 
     XCTAssertEqual(
-      DiagnosticsView.timelineEvents(from: [warning, info, debug]).map(\.event),
+      loadedEntries(from: [warning, info, debug]).map(\.event.event),
       ["provider.speech-model.download-failed", "recording.started"]
     )
     XCTAssertEqual(
-      DiagnosticsView.timelineEvents(
+      loadedEntries(
         from: [warning, info, debug],
         filter: .issues
-      ).map(\.event),
+      ).map(\.event.event),
       ["provider.speech-model.download-failed"]
     )
     XCTAssertEqual(
-      DiagnosticsView.timelineEvents(
+      loadedEntries(
         from: [warning, info, debug],
         filter: .all
-      ).map(\.event),
+      ).map(\.event.event),
       ["provider.speech-model.download-failed", "recording.started", "recording.prepare.begin"]
     )
   }
@@ -131,8 +131,8 @@ final class DiagnosticsViewTests: XCTestCase {
         metadata: ["attempt": "\(offset)"]
       )
     }
-    let initialEntries = DiagnosticsView.timelineEntries(from: existingEvents)
-    let refreshedEntries = DiagnosticsView.timelineEntries(from: existingEvents)
+    let initialEntries = loadedEntries(from: existingEvents)
+    let refreshedEntries = loadedEntries(from: existingEvents)
     XCTAssertEqual(initialEntries.map(\.id), refreshedEntries.map(\.id))
 
     let insertedEvent = DiagnosticEvent(
@@ -142,7 +142,7 @@ final class DiagnosticsViewTests: XCTestCase {
       untrustedEvent: "diagnostic.inserted",
       message: "Inserted event"
     )
-    let entriesAfterInsertion = DiagnosticsView.timelineEntries(
+    let entriesAfterInsertion = loadedEntries(
       from: [insertedEvent] + existingEvents
     )
 
@@ -163,7 +163,7 @@ final class DiagnosticsViewTests: XCTestCase {
       message: "Duplicate event"
     )
 
-    let entries = DiagnosticsView.timelineEntries(from: [event, event])
+    let entries = loadedEntries(from: [event, event])
 
     XCTAssertEqual(entries.count, 2)
     XCTAssertEqual(Set(entries.map(\.id)).count, 2)
@@ -193,7 +193,7 @@ final class DiagnosticsViewTests: XCTestCase {
         metadata: ["secret": metadataCanary]
       ),
     ]
-    let entries = DiagnosticsView.timelineEntries(from: events)
+    let entries = loadedEntries(from: events)
 
     let englishLabels = entries.map { $0.copyAccessibilityLabel(language: .english) }
     let chineseLabels = entries.map {
@@ -210,5 +210,22 @@ final class DiagnosticsViewTests: XCTestCase {
       XCTAssertFalse(label.contains(metadataCanary))
       XCTAssertFalse(label.localizedCaseInsensitiveContains(runID.uuidString))
     }
+  }
+
+  private func loadedEntries(
+    from events: [DiagnosticEvent],
+    filter: DiagnosticsTimelineFilter = .activity,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) -> [DiagnosticTimelineEntry] {
+    guard
+      case .events(let entries) = DiagnosticsView.timelineContent(
+        loadState: .loaded, events: events, filter: filter
+      )
+    else {
+      XCTFail("Expected a loaded timeline with visible events.", file: file, line: line)
+      return []
+    }
+    return entries
   }
 }

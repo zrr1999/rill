@@ -6,14 +6,6 @@ extension L10n {
     catalogString("run.\(key.rawValue)", language: language)
   }
 
-  static func runHistoryRetentionReadFailed(isRecordSetting: Bool) -> LocalizedStringResource {
-    resource(isRecordSetting ? "run.historyRetentionReadFailed.clipboard" : "run.historyRetentionReadFailed.runs")
-  }
-
-  static func runHistoryRetentionInvalid(isRecordSetting: Bool) -> LocalizedStringResource {
-    resource(isRecordSetting ? "run.historyRetentionInvalid.clipboard" : "run.historyRetentionInvalid.runs")
-  }
-
   static func runWakeWordWorkflowSaveFailed(
     detail: String,
     language: AppLanguage
@@ -38,36 +30,21 @@ enum RunStatusTextKey: String, CaseIterable, Sendable {
   case corpusStorageUnavailable
   case corpusEnabledStorageUnavailable
   case corpusRetentionUpdateFailed
-  case builtInWakeWorkflowUpdatedFormat
   case builtInWorkflowOverrideRemoveFailedFormat
-  case builtInWorkflowRestoredFormat
   case clearRunHistoryBlockedActiveRun
   case clipboardRetentionDamaged
-  case configurationStorageUnavailable
-  case credentialSaveFailed
-  case diagnosticsRepositoryUnavailable
   case failedRecordingNotRetainedFormat
-  case failedRecoverySettingInvalid
-  case localHistoryUpdatedFormat
   case localSpeechHardwareMemoryRecommendedFormat
   case localSpeechHardwareMemoryRequiredFormat
   case localSpeechHardwareRecommendedFormat
-  case localSpeechModelMemoryReleased
-  case localSpeechModelReadyFormat
   case maintenanceServiceUnavailable
-  case openAISettingsAvailableAgain
-  case openAISettingsStillUnavailable
   case privacyLoadBlocked
   case privacyLoadBlockedRetry
   case privacyLoadFailedRepairStorage
-  case privacySaveFailedRetry
   case privacySaveFailedSessionOnly
   case privacySaveStorageUnavailable
   case privacySettingsDamaged
-  case protectedSettingsReloaded
-  case protectedSettingsStillUnavailable
   case recordDeliveryFocusFailure
-  case recordingStartedAutoStop
   case recoveryCleanupPending
   case recoveryClearFailedFormat
   case recoveryDeleteFailedFormat
@@ -82,7 +59,6 @@ enum RunStatusTextKey: String, CaseIterable, Sendable {
   case retentionCleanupPausedLoadFailed
   case retentionCleanupServiceUnavailable
   case retentionLoadFailedPaused
-  case retentionSaveFailedNotice
   case retentionSaveFailedRepair
   case retentionSaveStorageUnavailable
   case retentionStorageUnavailableDefaults
@@ -94,12 +70,8 @@ enum RunStatusTextKey: String, CaseIterable, Sendable {
   case runActionStoredRecord
   case runRetentionDamaged
   case runWorkflowDisabledNotice
-  case savedSettingsAvailableAgain
-  case savedSettingsStillUnavailable
-  case settingsSaveFailedRetry
   case speechRoutingSettingsUnavailable
   case wakeDictationDraftName
-  case wakePhrasesUpdatedFormat
   case wakeWordSettingsSaveFailedFormat
   case wakeWordWorkflowSaveFailedFormat
   case wakeWorkflowNotFound
@@ -107,9 +79,7 @@ enum RunStatusTextKey: String, CaseIterable, Sendable {
   case workflowLibraryUnavailable
   case workflowMigrationSaveFailed
   case workflowNameRequired
-  case workflowRemovedFormat
   case workflowRoutingUnresolvable
-  case workflowSavedFormat
   case workflowTOMLFileRemoveFailedFormat
   case workflowTOMLFileSaveFailedFormat
   case workflowTOMLIssuesHeading

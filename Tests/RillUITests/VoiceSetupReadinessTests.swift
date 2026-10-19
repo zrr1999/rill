@@ -239,14 +239,12 @@ final class VoiceSetupReadinessTests: XCTestCase {
     )
     XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
     XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
-    let event = harness.model.history.eventFeed.last {
-      $0.english == expected.english && $0.simplifiedChinese == expected.simplifiedChinese
-    }
-    XCTAssertNotNil(event)
-    let exposedText =
-      ([harness.model.voice.localSpeechPreparationError ?? ""]
-      + harness.model.history.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] })
-      .joined(separator: " ")
+    let exposedText = AppLanguage.allCases.map { language in
+      harness.model.settings.language = language
+      let text = harness.model.voice.localSpeechPreparationError ?? ""
+      XCTAssertEqual(text, expected.string(for: language))
+      return text
+    }.joined(separator: " ")
     XCTAssertFalse(exposedText.contains("/Users/private/background-model"))
     XCTAssertFalse(exposedText.contains("background-secret"))
     XCTAssertFalse(exposedText.contains("abcdef0123456789"))

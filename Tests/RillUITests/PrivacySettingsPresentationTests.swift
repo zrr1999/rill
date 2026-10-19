@@ -356,11 +356,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
 
     XCTAssertNil(harness.model.settings.privacySettingsLoadError)
     XCTAssertEqual(try privacySettingsSource.currentSettings(), .defaults)
-    XCTAssertTrue(
-      harness.model.history.eventFeed.contains {
-        $0.english == "The LLM Provider credential could not be read from secure storage."
-      }
-    )
+    XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .inaccessible)
   }
 
   func testMissingPersistentSettingsStoreKeepsRuntimePrivacyClosed() async {
@@ -383,39 +379,13 @@ final class PrivacySettingsPresentationTests: XCTestCase {
     }
   }
 
-  func testPrivacyRouteHintsUseUnifiedLocalization() {
-    XCTAssertEqual(
-      L10n.privacySettingsSpeechRouteHint(.localSpeech, language: .english),
-      "Local route: recognition stays on this Mac."
-    )
+  func testHistoryPreviewModeUsesUnifiedLocalization() {
     XCTAssertEqual(
       L10n.privacySettingsHistoryPreviewMode(.restricted, language: .simplifiedChinese),
       "受限预览"
     )
   }
 
-  func testWorkflowDetailIncludesLocalSpeechPrivacyRouteHint() {
-    let workflow = WorkflowDefinition(
-      name: "Local Dictation with Cloud Text Rewrite",
-      trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(
-          steps: [
-            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-            WorkflowProcessStep(kind: .applyVocabulary),
-          ]
-            + ([
-              PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))
-            ]).map(WorkflowProcessStep.init)),
-        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
-      ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
-    )
-
-    let detail = VoiceWorkflowPresentation(workflow: workflow).detail(language: .english)
-
-    XCTAssertTrue(detail.contains("Privacy: Stays on this Mac"))
-  }
 }
 
 private enum ControlledPrivacySettingsStoreError: Error {

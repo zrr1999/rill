@@ -46,14 +46,6 @@ final class L10nTests: XCTestCase {
       XCTAssertEqual(L10n.itemCount(count, language: .simplifiedChinese), "\(count) 个条目")
       XCTAssertEqual(L10n.loadedRunCount(count, language: .english), "\(count) \(count == 1 ? "run" : "runs") loaded")
       XCTAssertEqual(L10n.recordPanelCharacterCount(count, language: .english), "\(count) \(count == 1 ? "character" : "characters")")
-      XCTAssertEqual(
-        L10n.clipboardEntryAccessibilityValue(copyCount: count, groupName: "50% %@ 集合", language: .english),
-        "50% %@ 集合, \(count) saved \(count == 1 ? "item" : "items")"
-      )
-      XCTAssertEqual(
-        L10n.clipboardEntryAccessibilityValue(copyCount: count, groupName: "50% %@ 集合", language: .simplifiedChinese),
-        "50% %@ 集合，\(count) 个已保存条目"
-      )
     }
   }
 
@@ -274,17 +266,6 @@ final class L10nTests: XCTestCase {
     )
   }
 
-  func testEnglishOnlyWhisperKitPresetIsNotPresentedAsBilingual() {
-    XCTAssertEqual(
-      L10n.localSpeechModelOption(.distilLargeV3Compact, language: .english),
-      "English Only — Distilled Large v3"
-    )
-    XCTAssertEqual(
-      L10n.localSpeechModelOption(.distilLargeV3Compact, language: .simplifiedChinese),
-      "仅英语 — Distilled Large v3"
-    )
-  }
-
   func testLocalSpeechPreparationFailuresHaveFixedBilingualCopy() {
     XCTAssertEqual(
       L10n.text(.localSpeechCancelPreparation, language: .english),
@@ -362,71 +343,6 @@ final class L10nTests: XCTestCase {
     )
   }
 
-  func testClipboardDeletionMakesMergedScopeAndIrreversibilityExplicit() {
-    XCTAssertEqual(
-      L10n.clipboardDeleteConfirmationTitle(
-        itemCount: 1,
-        language: .english
-      ),
-      "Delete this record?"
-    )
-    XCTAssertEqual(
-      L10n.clipboardDeleteConfirmationTitle(
-        itemCount: 1,
-        language: .simplifiedChinese
-      ),
-      "删除这条记录？"
-    )
-    XCTAssertEqual(
-      L10n.clipboardDeleteConfirmationDescription(
-        itemCount: 1,
-        language: .english
-      ),
-      "This permanently removes the saved record. This action can't be undone."
-    )
-    XCTAssertEqual(
-      L10n.clipboardDeleteConfirmationDescription(
-        itemCount: 1,
-        language: .simplifiedChinese
-      ),
-      "这会永久移除已保存的记录，且无法撤销。"
-    )
-    XCTAssertEqual(
-      L10n.clipboardDeleteConfirmationTitle(
-        itemCount: 3,
-        language: .english
-      ),
-      "Delete these 3 merged records?"
-    )
-    XCTAssertEqual(
-      L10n.clipboardDeleteConfirmationTitle(
-        itemCount: 3,
-        language: .simplifiedChinese
-      ),
-      "删除这 3 条已合并的记录？"
-    )
-    XCTAssertTrue(
-      L10n.clipboardDeleteConfirmationDescription(
-        itemCount: 3,
-        language: .english
-      ).contains("can't be undone")
-    )
-    XCTAssertTrue(
-      L10n.clipboardDeleteConfirmationDescription(
-        itemCount: 3,
-        language: .simplifiedChinese
-      ).contains("无法撤销")
-    )
-
-    let copy = [AppLanguage.english, .simplifiedChinese].flatMap { language in
-      [
-        L10n.clipboardDeleteConfirmationTitle(itemCount: 3, language: language),
-        L10n.clipboardDeleteConfirmationDescription(itemCount: 3, language: language),
-      ]
-    }.joined(separator: "\n")
-    XCTAssertFalse(copy.contains("private clipboard payload"))
-  }
-
   func testRecordTextKeysAreExhaustivelyLocalized() {
     for key in RecordTextKey.allCases {
       let english = L10n.recordText(key, language: .english)
@@ -454,8 +370,6 @@ final class L10nTests: XCTestCase {
       L10n.recordText(.collectionPresetList, language: .simplifiedChinese),
       "列表"
     )
-    XCTAssertEqual(L10n.recordCount(3, language: .english), "3 records")
-    XCTAssertEqual(L10n.recordCount(3, language: .simplifiedChinese), "3 条记录")
     XCTAssertEqual(
       L10n.removeFromCollection("Inbox", language: .english),
       "Remove from Inbox"
@@ -510,16 +424,12 @@ final class L10nTests: XCTestCase {
       "唤醒词"
     )
     XCTAssertEqual(
-      L10n.historyRunDurationBucket(.s1To4, language: .english),
-      "1–4 s"
-    )
-    XCTAssertEqual(
       L10n.historyRunStatus(.skipped, language: .english),
       "Skipped"
     )
     XCTAssertEqual(
       L10n.historyRunStatus(.completed, language: .simplifiedChinese),
-      L10n.workflowRunTermination(.completed, language: .simplifiedChinese)
+      "已完成"
     )
   }
 }

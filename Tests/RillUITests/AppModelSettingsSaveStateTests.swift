@@ -209,20 +209,16 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
         )
       )
     )
-    XCTAssertTrue(
-      harness.model.history.eventFeed.contains {
-        $0.english == "Some settings could not be saved. Retry from Settings."
-          && $0.simplifiedChinese == "部分设置无法保存，请在设置页面重试。"
-      }
-    )
-    XCTAssertFalse(
-      harness.model.history.eventFeed.contains {
-        $0.english.contains("DO_NOT_LEAK_SETTINGS_STORE_DETAIL")
-          || $0.simplifiedChinese.contains("DO_NOT_LEAK_SETTINGS_STORE_DETAIL")
-          || $0.english.contains(AppSettingKey.interfaceLanguage.rawValue)
-          || $0.simplifiedChinese.contains(AppSettingKey.interfaceLanguage.rawValue)
-      }
-    )
+
+    guard let summary = harness.model.settingsSaveState.unsavedSummary else {
+      return XCTFail("Expected the visible unsaved-settings summary")
+    }
+    for language in AppLanguage.allCases {
+      let text = L10n.settingsSaveFailureDescription(summary, language: language)
+      XCTAssertFalse(text.isEmpty)
+      XCTAssertFalse(text.contains("DO_NOT_LEAK_SETTINGS_STORE_DETAIL"))
+      XCTAssertFalse(text.contains(AppSettingKey.interfaceLanguage.rawValue))
+    }
 
     harness.model.retryUnsavedSettingsSave()
     XCTAssertTrue(harness.model.settingsSaveState.isRetrying)

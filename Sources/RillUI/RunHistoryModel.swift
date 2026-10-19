@@ -23,7 +23,6 @@ enum RunHistorySearchError: Error, Equatable {
 
 @MainActor @Observable
 public final class RunHistoryModel {
-  public var eventFeed: [EventFeedEntry] = []
   public internal(set) var diagnosticEvents: [DiagnosticEvent] = []
   public internal(set) var diagnosticsLoadState: DiagnosticsLoadState = .loading
   public internal(set) var isUpdatingHistoryRetentionSettings = false
@@ -92,11 +91,6 @@ public final class RunHistoryModel {
     runHistoryBrowser = browser
     library = workflows
   }
-  func append(_ entry: EventFeedEntry) {
-    eventFeed.append(entry)
-    if eventFeed.count > 200 { eventFeed.removeFirst(eventFeed.count - 200) }
-  }
-
   func startPeriodicMaintenance(interval: Duration, perform: @escaping @MainActor () -> Void) {
     guard !hasBegunApplicationShutdown, periodicHistoryRetentionMaintenanceTask == nil,
       interval > .zero

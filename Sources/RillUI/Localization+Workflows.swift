@@ -6,24 +6,8 @@ extension L10n {
     catalogString("workflow.\(key.rawValue)", language: language)
   }
 
-  static func workflowOpenAIModelHint(_ model: String, language: AppLanguage) -> String {
-    String(format: workflowText(.workflowOpenAIModelHintFormat, language: language), model)
-  }
-
   static func workflowUnsupportedStepError(_ stepKind: String, language: AppLanguage) -> String {
     String(format: workflowText(.workflowUnsupportedStepFormat, language: language), stepKind)
-  }
-
-  static func workflowVocabularySummary(
-    hotwordCount: Int,
-    replacementCount: Int,
-    language: AppLanguage
-  ) -> String {
-    String(
-      format: workflowText(.workflowVocabularySummaryFormat, language: language),
-      hotwordCount,
-      replacementCount
-    )
   }
 
   static func workflowVocabularyEntryCount(_ count: Int, language: AppLanguage) -> String {
@@ -80,13 +64,10 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
   case workflowNoVocabularyCollections
   case workflowNotEditableError
   case workflowOnDeviceBadge
-  case workflowOpenAIModelHintFormat
   case workflowOpenFolder
   case workflowOrderedActionsHint
   case workflowOutputPhaseSubtitle
   case workflowPhrasePlaceholder
-  case workflowPrivacyShortAutomatic
-  case workflowPrivacyShortLocal
   case workflowPreviewCursor
   case workflowPreviewLocationLabel
   case workflowPreviewOverlay
@@ -128,7 +109,6 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
   case workflowVocabularyCollectionsLabel
   case workflowVocabularyEntryCountFormat
   case workflowVocabularyLibraryHint
-  case workflowVocabularySummaryFormat
   case workflowVoiceLabel
   case workflowWakePhraseInvalid
   case workflowWakePhrasesHint

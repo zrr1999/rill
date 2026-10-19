@@ -392,17 +392,8 @@ public struct VocabularyCorrectionSheet: View {
     let selectedCollectionID =
       targetCollectionID.flatMap { compatibleIDs.contains($0) ? $0 : nil }
     switch model.vocabulary.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
-    case .created:
+    case .created, .reused:
       recordMemoryCorrection(rule)
-      model.append(
-        L10n.resource("general.vocabularyCorrectionCreated")
-      )
-      dismiss()
-    case .reused:
-      recordMemoryCorrection(rule)
-      model.append(
-        L10n.resource("general.vocabularyCorrectionReused")
-      )
       dismiss()
     case .conflict:
       saveIssue = .conflict
