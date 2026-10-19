@@ -13,10 +13,12 @@ The map distinguishes build dependencies from runtime data flow: RecordStore
 uses Core persistence ports wired to SQLite in AppBootstrap, so a runtime
 RecordStore → SQLite relationship does not mean a RillRecords → RillPersistence import.
 
-`codemap.lock` binds source and test evidence to exact SHA-256 bytes and a Git
-baseline. Run `python3 scripts/codemap.py check` after source changes; rebuild only
-after reviewing changed claims and updating the inventory. Test declarations are
-navigation evidence, not passing tests or a claim of measured coverage.
+`codemap.lock` binds source and test evidence to an immutable Git snapshot and
+checks the current map artifacts. File inventory and test locations come from
+that commit; ordinary source edits do not invalidate the published snapshot.
+Advance `baseline` and review the architectural claims when publishing a new
+snapshot, then run `python3 scripts/codemap.py build` and `check`. Test declarations
+are navigation evidence, not passing tests or a claim of measured coverage.
 
 The four traces cover local-model dictation, clipboard reuse, optional LLM cleanup/receipts,
 and the independently running input method. Model downloads and remote services

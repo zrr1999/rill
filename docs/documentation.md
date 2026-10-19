@@ -157,12 +157,16 @@ PR 预览还应确认正式站点的部署版本未改变。
 
 ## 代码地图维护
 
-`docs/codemap/codemap.json` 是地图结构事实源，`template.html` 只负责展示。
-修改边界、调用关系或流程后，先核对 Package.swift、AppBootstrap 和实际调用点，再更新 JSON。
+`docs/codemap/codemap.json` 维护模块职责、关系、流程和每个测试文件的代表声明，
+`template.html` 只负责展示。文件清单、直接导入模块与测试行号由生成器从 `baseline` 指定的完整 Git 提交推导，
+同一测试声明只维护一次。生成器读取 Git 对象，不依赖当前工作区源码，也不执行 Swift。
+发布新快照时先更新 `baseline`，核对该提交的 Package.swift、AppBootstrap 和实际调用点，再更新职责与流程。
 运行 `python3 scripts/codemap.py build` 生成 HTML 和 SHA-256 lock，随后运行 `check`。
-校验包含完整 Sources 文件归属、证据路径、测试声明位置及生成结果一致性，不下载依赖。
+lock 分别绑定该提交的完整 Sources、Tests 和 Package 文件，以及当前地图数据、模板与文档。
+校验包含源码文件归属、证据路径、测试声明位置及生成结果一致性，不下载依赖；本地仓库必须保有所选提交。
 
 导航页 `docs/codemap/index.md` 解释使用方式；HTML、JSON、lock 由 docs_assets 原样复制。
 地图内嵌全部数据，直接打开 HTML 不需要 fetch。线上源码链接使用锁定 Git commit；
 本地相对链接需要完整仓库，部署后的相对源码链接不构成线上源码托管。
-源码变更后不能只刷新 hash 掩盖失效关系；重新审核四条端到端流程并保留真实应用验收缺口。
+日常源码变更不使历史快照失效。推进快照时不能只刷新 hash 掩盖失效关系；
+重新审核四条端到端流程并保留真实应用验收缺口。

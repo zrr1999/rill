@@ -299,6 +299,8 @@ run_script_tests() {
   bash "$test_dir/release_config_test.sh"
   echo 'Testing CI lane aggregation and cache policy...'
   uv run --quiet --no-project --python ">=3.11" python "$test_dir/ci_workflow_test.py"
+  echo 'Testing code map snapshots...'
+  uv run --script "$test_dir/codemap_test.py"
   echo 'Testing preflight stage reporting...'
   bash "$test_dir/preflight_report_test.sh"
   echo 'Testing GitHub Release drafts...'

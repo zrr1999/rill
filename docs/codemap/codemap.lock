@@ -1,16 +1,16 @@
 {
-  "schemaVersion": 2,
-  "baseline": "3e5038cdda5349a948cc906dd982e3fcbf46675a",
+  "schemaVersion": 3,
+  "baseline": "6e56a4b73bca6b1779195ebeea6dd7e0336a0ab8",
   "algorithm": "sha256",
-  "scope": "Exact source/test evidence, inventory and generated map; not runtime acceptance.",
-  "files": [
+  "scope": "Git snapshot source/test evidence and current map artifacts; not runtime acceptance.",
+  "sourceFiles": [
     {
       "path": "Package.resolved",
-      "sha256": "5e0a05303153190a905e6ebbfc045b167f04af74f400324e71b143dd6d7dad78"
+      "sha256": "73214c1bfc7aa41a3bd1dec7f20d103cabbc738ca9154c4874884ce792cdd60a"
     },
     {
       "path": "Package.swift",
-      "sha256": "bd53e5ebdff42cb3de491f742d1b7cea6f220586e34ed7e293be27105e57869f"
+      "sha256": "96991bcc99598908fa5139c4e73d841fa4efd75139d3c5fedceca69f5ddeb741"
     },
     {
       "path": "Sources/CRime/RillRime.c",
@@ -62,7 +62,7 @@
     },
     {
       "path": "Sources/RillApp/LiveSubtitlePanelController.swift",
-      "sha256": "bd08b81c25f562d56d719f2725871e313a4aae94911aace34d14de92894d6a3f"
+      "sha256": "87987224faa09780b65f0d6065de72d4c7f39522ed5976d08a81ae5d93df5c9a"
     },
     {
       "path": "Sources/RillApp/LocalDataKeyResolution.swift",
@@ -74,11 +74,11 @@
     },
     {
       "path": "Sources/RillApp/RecordPanelController.swift",
-      "sha256": "c40815d54519c47f3225301fc9a12ae25b504884696a15b8aa5a9bcb31c3a492"
+      "sha256": "dd7c26f08096e2eef1d97ee3752a7822ec7aa8a7ad2aee5f78c6480ecc736b5e"
     },
     {
       "path": "Sources/RillApp/RecordPanelPlacement.swift",
-      "sha256": "404b067e6d544fb1015ae0cd6e0d342d77e683f6a51ab9f04d2764f126d1515b"
+      "sha256": "db1063ef7e75f9885e1b26c2f040cf9e11913d596a413f7e772720689dc7e3f2"
     },
     {
       "path": "Sources/RillApp/Resources/RillMenuBarRecordsTemplate.pdf",
@@ -106,7 +106,7 @@
     },
     {
       "path": "Sources/RillApp/VoiceInputApplication.swift",
-      "sha256": "b5e0bbc9e5938ef7019e6151a6f39dd83590aff6cc2d43234a7dead55160a5b9"
+      "sha256": "a5536a4e7b59914976ecc9aecf32e3f721d38cd4369d362a95bf1eacc6b3c33d"
     },
     {
       "path": "Sources/RillApp/WakeWordCoordinator.swift",
@@ -434,7 +434,7 @@
     },
     {
       "path": "Sources/RillCore/WorkflowFileStore.swift",
-      "sha256": "b86e4839d1402f8d8a9faa0980a9be35885772a451da6a52767d5c0919a1bde6"
+      "sha256": "00ccc27bcb8aae188682876201304a4c047d7d0f069824bcfd353c0de02d34dc"
     },
     {
       "path": "Sources/RillCore/WorkflowManifest.swift",
@@ -538,7 +538,7 @@
     },
     {
       "path": "Sources/RillMLXRuntime/Qwen3RecordEmbedder.swift",
-      "sha256": "0c4d9bef0b6fa5fef26146fab8cfeb1b736e4f4e6777a4ca1fda65d104828ff8"
+      "sha256": "8206ac9915c02aa59a395efb91d5e3cae50c0c98db871fab3ebd8b8bb70b4198"
     },
     {
       "path": "Sources/RillMLXRuntime/RecognitionPromptBudget.swift",
@@ -898,7 +898,7 @@
     },
     {
       "path": "Sources/RillRecords/RecordSemanticSearch.swift",
-      "sha256": "5923b7e4fb6e20f8a302ece95a9c839a0006f94038e530db2ec82592e62554e8"
+      "sha256": "264db183b09e736247719fe0b27381c46191495cc7d1a640b0782d1c77468af6"
     },
     {
       "path": "Sources/RillRecords/RecordStore.swift",
@@ -998,7 +998,7 @@
     },
     {
       "path": "Sources/RillUI/AppModel+SettingsPersistence.swift",
-      "sha256": "2f1baa880b7f5dd4d85ccfb035476b1ce77e1c76be99149f804175785e52b9c1"
+      "sha256": "c3e14252701ab061c1f843cc376bc0f66d0fddf0e404d57860016c10ca8ade2b"
     },
     {
       "path": "Sources/RillUI/AppModel+SpeechLifecycle.swift",
@@ -1042,15 +1042,15 @@
     },
     {
       "path": "Sources/RillUI/AppSettingsCodec.swift",
-      "sha256": "9876b59044dba1adf732c164b54651841e487908c8c620955bb206ce3154d757"
+      "sha256": "dbdadd27485c194f44ea8dc0f05e80615abc764323faf4dfdb2853cdb91318d0"
     },
     {
       "path": "Sources/RillUI/BufferDraftTextEditor.swift",
-      "sha256": "c5e133ebeaaf38f31d2d113b88d5da70daaee6b0111d0f17d856f7788e2c3880"
+      "sha256": "60280e91d2694e6655df72a3dc32c8113733388f5669e2aa9adbf71f5eb73c41"
     },
     {
       "path": "Sources/RillUI/CandidatePanelView.swift",
-      "sha256": "fb513b0470670893765da6ee5caa29b4458c5ef8a5b6f3d9ff1015e599834560"
+      "sha256": "d73935e2ecc58631c15e2204f6a028378af972e44d9739e6430255de055eb61b"
     },
     {
       "path": "Sources/RillUI/ContextMemoryModel.swift",
@@ -1058,7 +1058,7 @@
     },
     {
       "path": "Sources/RillUI/ContextMemorySettingsView.swift",
-      "sha256": "2f46a66ecda8bb328c4858c4006d675b0f42b03833016f8c6f1bb48850885d0f"
+      "sha256": "03b586c8921c760f1da1ba660ab44f6cb7119c5e840fefb4cb017b4742865d28"
     },
     {
       "path": "Sources/RillUI/CorpusRecordingArchiveModel.swift",
@@ -1070,7 +1070,7 @@
     },
     {
       "path": "Sources/RillUI/CorrectionReferenceView.swift",
-      "sha256": "891884927669d4a0603fcb68fd01c333689f4b89b912b4e8c73b796298a89899"
+      "sha256": "f0a71064f2d54e7cefb7b94144b77f0eb128ba017083e57804cb1fc49de1d091"
     },
     {
       "path": "Sources/RillUI/DiagnosticEventRow.swift",
@@ -1130,7 +1130,7 @@
     },
     {
       "path": "Sources/RillUI/HistoryTimelineView.swift",
-      "sha256": "3a50313d0fe97d9fe94db7013940c2b1b542ea47f6c8a2ae5307d7ae2db97c99"
+      "sha256": "3ff4c26d05c417a8e622613cda08e5add109b3c6436bd343a0b8eb78f358914c"
     },
     {
       "path": "Sources/RillUI/HotkeyRecorderView.swift",
@@ -1162,7 +1162,7 @@
     },
     {
       "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
-      "sha256": "b84f7add451d5ea0d6a268e94e4c4a8acaed8f181d264c40e73cd61321d18de5"
+      "sha256": "46dccc4240deac9b7ecbddce487bd7edf4ab23e5b97c00da03736fc27ccbd963"
     },
     {
       "path": "Sources/RillUI/LocalPersistenceStatusPresentation.swift",
@@ -1254,11 +1254,11 @@
     },
     {
       "path": "Sources/RillUI/Localization+Surface.swift",
-      "sha256": "d1701374560af7c42503159738a1ec12fc0129b1a769407f2555fc9420542f98"
+      "sha256": "bd75cb40468cef7749559f3b7c1cab6d63efdc6788348b2725aff2e1225e6e72"
     },
     {
       "path": "Sources/RillUI/Localization+WorkflowDocuments.swift",
-      "sha256": "d1da25ebf210358bf6b7c16221c87bf9bd69680b47dfea578298adbcf92e655b"
+      "sha256": "2de8d5e268903fe692d5313f29329188b0cb62a25943c96aeab6e92c50435f63"
     },
     {
       "path": "Sources/RillUI/Localization+WorkflowExplanation.swift",
@@ -1266,7 +1266,7 @@
     },
     {
       "path": "Sources/RillUI/Localization+WorkflowFileFailure.swift",
-      "sha256": "53d513ff7d2c98c1a1afc3a7e2496a8cc49f518b426a1699f9f73aae92679e8f"
+      "sha256": "3c14322c275bc9fde71821e18a799937c26a24d394be6c4480e728a72946f379"
     },
     {
       "path": "Sources/RillUI/Localization+Workflows.swift",
@@ -1286,7 +1286,7 @@
     },
     {
       "path": "Sources/RillUI/MainShellView.swift",
-      "sha256": "8c6e1b2ad1b889b90087d9e83cb9c3afc156363aa067a0326b8451ea79158cbe"
+      "sha256": "416e73498565063f0d54098c9225b04a777a804c5750aa6df2a5b128fdd5d69c"
     },
     {
       "path": "Sources/RillUI/MainWindowRouting.swift",
@@ -1314,7 +1314,7 @@
     },
     {
       "path": "Sources/RillUI/RecordBufferDraftView.swift",
-      "sha256": "efd2ea5520fd3b4497e7ef854d2098f1ecf07cb09a916be47ef3afeeb2cc2dcf"
+      "sha256": "6eb8f989547e9249cb1fb3d630d022d029446538b15b4a3c53f533ae7dd751c1"
     },
     {
       "path": "Sources/RillUI/RecordBufferModel.swift",
@@ -1322,7 +1322,7 @@
     },
     {
       "path": "Sources/RillUI/RecordBufferStatusView.swift",
-      "sha256": "0cf971d4cc6ec3986045757618b4adab411f64f8319794c53712ad2d8ad647f2"
+      "sha256": "d4b4157cebd2c733cb570c5e8b6dc5773f6727efe75f9c9cca011361a1523fe2"
     },
     {
       "path": "Sources/RillUI/RecordComparisonReturn.swift",
@@ -1346,7 +1346,7 @@
     },
     {
       "path": "Sources/RillUI/RecordJevSheet.swift",
-      "sha256": "500f6976f28c52b8b3fc109f0b0befb0f92da2f1e1905865dbaf372dbc56b435"
+      "sha256": "465d9673a05a5883d0529bf0836e548bd1262de502eb3be549775ded0257138c"
     },
     {
       "path": "Sources/RillUI/RecordPanelAppearance.swift",
@@ -1362,7 +1362,7 @@
     },
     {
       "path": "Sources/RillUI/RecordQuickPanelView.swift",
-      "sha256": "ed3eb1c48ef06180f44948a9e013932d8018cc21a459d2d1c72b7007f43625eb"
+      "sha256": "1f6f7ff27b818cd98d2b224786c9da42e0ba28c363f0347cee9417d124a24821"
     },
     {
       "path": "Sources/RillUI/RecordRouteEditorView.swift",
@@ -1374,7 +1374,7 @@
     },
     {
       "path": "Sources/RillUI/RecordWorkspaceView.swift",
-      "sha256": "789e0f97ab05f217340e12ed41dba753f27d31567636871be98cd9257d376ee5"
+      "sha256": "8ce6aaaf4337311524716c3f7c531550d029acb8a1dc024943c45361913e98e2"
     },
     {
       "path": "Sources/RillUI/ReplacingTaskOwner.swift",
@@ -1382,11 +1382,15 @@
     },
     {
       "path": "Sources/RillUI/Resources/Localizable.xcstrings",
-      "sha256": "f83c5ac5bba824d1d45509af76ddd670876f36e5443d75b11f51f6ed39082f26"
+      "sha256": "e08405fd91ce19278bacfc80697aa72824004b35a5d10c78a7c24f02e8806aab"
     },
     {
       "path": "Sources/RillUI/RillCard.swift",
-      "sha256": "ea6bd96d66e0ac52a83b5804c24949e095331c056e355f9a0588d90c23e9a3af"
+      "sha256": "4574188793625789639d7041ccdfb6091b60ea31bb261753788196611520268c"
+    },
+    {
+      "path": "Sources/RillUI/RillDynamicLength.swift",
+      "sha256": "d9350b556a268a2268b8ee2fc3f29890da976d33676f1a0b12d26676c58c416a"
     },
     {
       "path": "Sources/RillUI/RillGlass.swift",
@@ -1442,7 +1446,7 @@
     },
     {
       "path": "Sources/RillUI/SettingsView.swift",
-      "sha256": "81c979810b2c3e57de4b4d11a5a6deb56853803800cda35f26962a8e09e6f4d3"
+      "sha256": "8a715d20f991f022e27944ae529b458d207c44f2d24526e56bd263f666c695ec"
     },
     {
       "path": "Sources/RillUI/SettingsWindowView.swift",
@@ -1458,7 +1462,7 @@
     },
     {
       "path": "Sources/RillUI/UnifiedRecordPanelView.swift",
-      "sha256": "0c069c22a153677b946349f670957e786f49b192d3b3b60b8c79a6ecb52fe372"
+      "sha256": "212b381050a12b0682a784bc2ec78b19f6e9fff36b4a8cbe54e01feb57df28dc"
     },
     {
       "path": "Sources/RillUI/UserFacingRuntimePresentation.swift",
@@ -1470,7 +1474,7 @@
     },
     {
       "path": "Sources/RillUI/VocabularyCorrectionSheet.swift",
-      "sha256": "562ceb107ae7928c93e4d3690eea6b6b7af9e72643b7272aa7264e4b389691f1"
+      "sha256": "b6aa4b1270bff0ecb13a307ac08312dbf63850ebfc2555227a2a46213abc3041"
     },
     {
       "path": "Sources/RillUI/VocabularyLibraryModel.swift",
@@ -1522,7 +1526,7 @@
     },
     {
       "path": "Sources/RillUI/WorkflowDocumentLibraryView.swift",
-      "sha256": "4368dd27976eb0f25738cde7a5f084fde699a046f7e192f4802ca5194267780b"
+      "sha256": "d8bf7795f35635bcd8af4b43b119b1babeb66100405f63877ff7b48002781824"
     },
     {
       "path": "Sources/RillUI/WorkflowEditorModels.swift",
@@ -1550,7 +1554,7 @@
     },
     {
       "path": "Sources/RillUI/WorkflowLibraryModel.swift",
-      "sha256": "e48b5f9b1719fd65c4ef0c0be96e6810ae734267c30c15159ebf1e5855328d1e"
+      "sha256": "bad4f7590bb7ec534910bdb0448b78ca334fa7d73172b2a875eb16af0d35b80e"
     },
     {
       "path": "Sources/RillUI/WorkflowOutputChoices.swift",
@@ -1998,7 +2002,7 @@
     },
     {
       "path": "Tests/RillMLXRuntimeTests/Qwen3RecordEmbedderTests.swift",
-      "sha256": "651dde31e21a23d2e1f88819a41fdef8dba4de6c8344ecb3b1ccc67d14f3ac28"
+      "sha256": "68977969288f7d2ee4b6463c18a7afa85f799d3b4f5ee2f75577968d742af7b7"
     },
     {
       "path": "Tests/RillMLXRuntimeTests/RecognitionPromptBudgetTests.swift",
@@ -2170,7 +2174,7 @@
     },
     {
       "path": "Tests/RillPlatformTests/XDGWorkflowFileStoreTests.swift",
-      "sha256": "11844f6caaad062b196fead4e260836e10734b2a5b6c21abb7f156108a569507"
+      "sha256": "40c91d060e9e68f169c2bbd23fb585b8fb9e9094d2999fea0f7f221f8138ae0b"
     },
     {
       "path": "Tests/RillProvidersTests/BuiltinActionReplacementTests.swift",
@@ -2222,7 +2226,7 @@
     },
     {
       "path": "Tests/RillProvidersTests/OpenAITextRewriteTransformerTests.swift",
-      "sha256": "fa3e34bd90daafdd63c805e0c0aaa73c7fbe62f80bac084ed3b7aa76e8f2983b"
+      "sha256": "c4dec6ba798ac7285eab149ccde1bacf0b2133881c4387236315866199bf9ecc"
     },
     {
       "path": "Tests/RillProvidersTests/QwenStreamingTextTests.swift",
@@ -2406,7 +2410,7 @@
     },
     {
       "path": "Tests/RillRuntimeTests/RecordSemanticSearchTests.swift",
-      "sha256": "6481e4d2fdbfd29fce8b55dd588abae5bfb17c1b877110d6bdee44fd2672bf4b"
+      "sha256": "d78cfbe68169a0308d050bf6cdd7b42d85c5cdebcb5e5a8e85a16720e0f462ea"
     },
     {
       "path": "Tests/RillRuntimeTests/RecordStoreTests.swift",
@@ -2562,7 +2566,7 @@
     },
     {
       "path": "Tests/RillUITests/AppModelTestSupport.swift",
-      "sha256": "83317a1739117ff5303501e9157fea0c8e48aa23b92abb1c30acc3263433261c"
+      "sha256": "55a64b390db1dcda0c372b0fff8a7324631c2d72f3a68bad76419cdf5e0e509b"
     },
     {
       "path": "Tests/RillUITests/AppModelTests+Part1.swift",
@@ -2578,7 +2582,7 @@
     },
     {
       "path": "Tests/RillUITests/AppModelWorkflowExplanationTests.swift",
-      "sha256": "863cfe1dffd8c89f6bd92f354654d7182a3e43920713b216b13367c4debd014c"
+      "sha256": "dcf6dbc333277e40ef438ab755e9bb304b9f1dde77d40173a236fe37118b3fef"
     },
     {
       "path": "Tests/RillUITests/BufferDictationWorkflowTests.swift",
@@ -2590,7 +2594,11 @@
     },
     {
       "path": "Tests/RillUITests/ContextMemoryModelTests.swift",
-      "sha256": "3f58e129bd0df29e610095a29bc6dc13ce152d2ff639e739c45e0e42cccc5db6"
+      "sha256": "cc2459d6d6a83ed76b66fe643d1b2d1fccde07db2cc9f464a2a9d2e9e9ffd7f2"
+    },
+    {
+      "path": "Tests/RillUITests/ContextMemoryPresentationTests.swift",
+      "sha256": "d7338263e4c2e9cdb98c0802d1b7c4fd15637e316d9db19aa1efd25961ff2359"
     },
     {
       "path": "Tests/RillUITests/CorpusArchiveRenderTests.swift",
@@ -2674,7 +2682,7 @@
     },
     {
       "path": "Tests/RillUITests/L10nTests.swift",
-      "sha256": "2f7962d507de6f8d00860e5c01751d013d67e3b2656cebb047937d00ae12f7f9"
+      "sha256": "e4e35080c74104fcd5b48c246c43abfa644bc151d8ed08d8863ef97d3fece4e0"
     },
     {
       "path": "Tests/RillUITests/LLMProviderSettingsTests.swift",
@@ -2838,7 +2846,7 @@
     },
     {
       "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-      "sha256": "2ede59303cf51a31c436e6847488739b907d52ce76ada41b006368b1ca0a2644"
+      "sha256": "d127afdc32461c39092541c97de14a2e530f7e2368cbbb914b4d6cccc7f9a9c4"
     },
     {
       "path": "Tests/RillUITests/UnifiedWorkspaceTests.swift",
@@ -2889,28 +2897,42 @@
       "sha256": "e3463ad57bfbba0598b8af0666b065348a830175b6fe56026991cb0c8c6bca68"
     },
     {
+      "path": "Tests/RillUITests/WorkflowDocumentPresentationFixture.swift",
+      "sha256": "09488557eeda27e5901c7cb6ca6a611285eda1457cd0fab31bf40218fbbd89cd"
+    },
+    {
+      "path": "Tests/RillUITests/WorkflowDocumentPresentationTests.swift",
+      "sha256": "0716ae336c262b5e4cdea14e994a702dc1dc61a2920ec4a35a14222ccc6ba8b8"
+    },
+    {
+      "path": "Tests/RillUITests/WorkflowFileDiagnosticTests.swift",
+      "sha256": "705198510dc074a5dcfeb0a19b9f2f6c57f0e2b0e3b514cc1ff0e88aab38d391"
+    },
+    {
       "path": "Tests/RillUITests/WorkflowOutputAccessibilityTests.swift",
       "sha256": "58b35479c22fab3f8ee8abe6db9d1144fd2647a3c45296b38277c3d32c69f7e2"
     },
     {
       "path": "Tests/RillUITests/WorkflowTextFileTests.swift",
       "sha256": "57277962f2dbd28fea29092a74c1cbf68a4247a552ad3dafcc1b2369bd33098b"
-    },
+    }
+  ],
+  "artifacts": [
     {
       "path": "docs/architecture.md",
-      "sha256": "7121e094ca4e453b88328fd49d974fd27012b79b1f7f170358da90cf5399d979"
+      "sha256": "221362d54dfa2a69da629c101fdca85e42aa952a78592e4202cd8747a830aac3"
     },
     {
       "path": "docs/codemap/codemap.html",
-      "sha256": "ac9b429045830b1b7a9a70b7e463a52a35dbe103be86207154954ea5f106f59e"
+      "sha256": "c93fe10e8bc5b97901890d8bba0638cd3babbf0cfcfeb82b72366c23e597a01d"
     },
     {
       "path": "docs/codemap/codemap.json",
-      "sha256": "c56af3a40f4eb86f0272dd1bbb72db8d7840b07ae7d3dbdab2c246db5beb34a7"
+      "sha256": "7952cf8d0e682283710dd0cc7c588e8e1010f424b94a767413f7341db5eb1587"
     },
     {
       "path": "docs/codemap/index.md",
-      "sha256": "868f9fe9e88048132915838a61787a9b53dd79a2b80a7ace914cfb6b7100ebaa"
+      "sha256": "05842e1e8fde225327ec545bd43108464bd35bfbb131aaa0a9590e6857ef1fee"
     },
     {
       "path": "docs/codemap/template.html",
@@ -2918,11 +2940,11 @@
     },
     {
       "path": "docs/documentation.md",
-      "sha256": "08d18e167a3631f4e5f06899953d6414b314dc8298e08cde41908f92ade203e6"
+      "sha256": "a117dd33ef2501d06f7fc94cc795c923b7950a0f8cbfecea07bc387a90d124a0"
     },
     {
       "path": "scripts/codemap.py",
-      "sha256": "1e74e6de6bb093e7c79282a86ac5fcf15671851db92ecb3f2ca88ffc90d45fc1"
+      "sha256": "bda7c53a6104d900b6704daff22dc974402d6dfdc6a7efc5ac3b9af4c90653d8"
     },
     {
       "path": "zensical.toml",
