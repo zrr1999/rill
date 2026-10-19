@@ -300,9 +300,19 @@ tracked + untracked(nonignored) 当前源码快照。当前源码扫描拒绝 sy
 `just ci-clean` / `scripts/preflight.sh --clean` 在编译前分别清理 Debug 和 Release；
 GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可恢复由工具链、依赖
 和构建驱动分键的 SwiftPM 缓存，并经过相同的构建指纹及完整门禁验证。只有 main
-保存完整 SwiftPM 构建缓存；PR 只恢复缓存，避免多个 PR 的大体积快照挤占默认分支
-的共享基线。预检不能替代在 macOS 26 的 Apple Silicon 真机上验证最终公证包，也
+保存成功 lane 的 SwiftPM 构建缓存；PR 只恢复缓存，避免多个 PR 的大体积快照挤占默认分支
+的共享基线。Debug 与 Release 使用独立缓存键和目录；main / 手动 clean 构建不先恢复
+随后会被清理的 arena。缓存诊断记录请求键、实际匹配键、是否精确命中和 checkout SHA。
+恢复缓存不等于免编译，真实耗时仍以各 lane 的阶段日志为准。预检不能替代在 macOS 26 的 Apple Silicon 真机上验证最终公证包，也
 不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
+
+CI 在独立 runner 上并行执行 `scripts/preflight.sh --lane tests` 和
+`scripts/preflight.sh --lane release`。两条 lane 都保留工具链、仓库策略和源码前后
+一致性检查；tests 按原顺序执行领域、原生、压力和桌面测试，Release 保留完整构建、
+许可证、装配、签名、worker smoke 和源码回执验证。`--clean` 仅清理所选 lane 的
+构建目录；不传 `--lane`（或指定 `all`）仍串行执行原有完整门禁，并清理两个配置。
+worker 产物缓存继续在 CI 关闭。并行化可能增加 runner 用量，不能把预计缩短的
+墙钟时间当成已测得的加速；需要在同一提交的实际 CI 中核对。
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 
@@ -338,12 +348,14 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [ce-quality.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ce-quality.yml) | CE - Quality | 每周一北京时间 09:30 运行三套固定合成语料的 LLM 质量评测，也支持手动选择，不作为 PR 检查 |
 | [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
 
-job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
-不额外设置汇总 job。
+job ID 使用小写 kebab-case，检查名称描述具体职责。`CI - Tests` 保留稳定的
+`Release preflight` 汇总检查：文档门禁成功，应用 tests / release 两条 lane 和
+按范围要求的 Record workload validation 均成功后才通过。只接受范围判定明确
+不需要执行的 skipped；失败、取消或缺少范围输出均阻断。
 
 `CI - Tests` 的 Linux job 负责文档、通用质量检查和改动范围判定。仅修改
-`docs/*.md`、`CONTRIBUTING.md` 或 `zensical.toml` 的 PR 在 Linux 完成秘密扫描，
-跳过整个 macOS job。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
+`docs/*.md`、`CONTRIBUTING.md`、`zensical.toml` 或 `wrangler.toml` 的 PR 在 Linux 完成秘密扫描，
+跳过 macOS jobs。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
 `README.md` 随 App 分发，因此仍走应用预检。
 
 `Policy - PR` 独立响应 `pull_request` 事件，只有读取权限。它用 `actions/checkout`
@@ -389,8 +401,8 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
 提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev)
 的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
 使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
-当前统一版本是 0.4.0；prek 的上游 revision 和 CI Actions 均固定到 commit，
-本地 hook 使用固定版本的已发布组件，CI 由官方 Actions 安装对应提交的源码。
+当前统一版本是 0.5.0；prek 的上游 revision 和 CI Actions 均固定到同一 commit，
+本地 hook 和 CI 都使用官方校验入口。
 
 - `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
   `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
@@ -420,6 +432,7 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
 - “后续工作”只写超出当前 PR 范围的 roadmap 级未来方向，说明下一阶段要解决的问题
   和预期形成的产品能力或架构演进；没有具体方向时省略该章节，不为填模板编造计划。
   “继续验证”“等待 CI”“补人工验收”等当前交付事项不得作为后续工作。
+- PR 截图和录屏作为 PR 附件提供；本地验收产物放在已忽略的 `.artifacts/`，不要提交到仓库。
 - 依赖 PR 从底层修复、验证，再按依赖顺序向上传播；同一根因在上层重复失败时，
   先定位拥有该改动的底层 PR。更新 base 或 head 后重新确认检查对应的提交，并重新
   运行受影响验证，不沿用旧提交的绿色结果。每层 PR 描述只演示本层改动，未完成的原生验收

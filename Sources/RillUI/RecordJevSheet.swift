@@ -85,7 +85,9 @@ struct RecordJevSheet: View {
         }
       }
     }
-    .padding(RillSpacing.panel).frame(width: 540)
+    .padding(RillSpacing.panel)
+    .frame(maxWidth: 640)
+    .presentationSizing(.fitted)
     .background(Color(nsColor: .windowBackgroundColor))
     .onDisappear { model.invalidate() }
   }

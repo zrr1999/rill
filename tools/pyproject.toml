@@ -17,7 +17,7 @@ rill-replay-product = "rill_dev.evaluation.product_replay:main"
 dev = ["pytest>=8", "ruff>=0.17", "ty>=0.0.69"]
 
 [build-system]
-requires = ["uv_build>=0.12.10,<0.13"]
+requires = ["uv_build>=0.13.1,<0.14"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]

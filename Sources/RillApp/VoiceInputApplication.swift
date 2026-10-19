@@ -139,7 +139,7 @@ private struct MenuBarContent: View {
   }
 
   private func openMainWindowFromMenu() {
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activate()
 
     if let existingWindow = NSApp.windows.first(where: { window in
       window.title == model.localizedWindowTitle && window.isVisible
@@ -152,7 +152,7 @@ private struct MenuBarContent: View {
   }
 
   private func openAboutFromMenu() {
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activate()
     NSApp.orderFrontStandardAboutPanel(nil)
   }
 

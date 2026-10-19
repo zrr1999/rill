@@ -345,8 +345,10 @@ public struct MainShellView: View {
           }.keyboardShortcut(.cancelAction)
         }
       }
-      .padding(20).frame(width: 540)
+      .padding(20)
+      .frame(maxWidth: 640)
       .fixedSize(horizontal: false, vertical: true)
+      .presentationSizing(.fitted)
       .accessibilityIdentifier("voice-setup.initial")
     }
     .onChange(of: model.isShowingSettings) { _, isShowing in
@@ -378,36 +380,10 @@ public struct MainShellView: View {
     }
     .toolbar {
       if !model.voiceSetupReadiness.isComplete, model.voiceSetupPresentation != .waiting {
-        ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
-          Button {
-            model.voiceSetupPresentation = .presented
-          } label: {
-            Label(L10n.surface(.finishSetup, language: model.settings.language), systemImage: RillSystemSymbol.checklist.rawValue)
-          }
-          .labelStyle(.titleAndIcon)
-          .accessibilityIdentifier("voice-setup.resume")
-        }
+        voiceSetupToolbarItem
       }
       ToolbarSpacer(.fixed, placement: .primaryAction)
-      ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
-        Button(action: presentGlobalSearch) {
-          Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
-        }
-        .help(GlobalSearchText.searchCommand(language: model.settings.language))
-        .accessibilityLabel(GlobalSearchText.searchCommand(language: model.settings.language))
-        .accessibilityIdentifier("global-search.open")
-        .disabled(
-          !MainShellInteractionPolicy.allowsToolbarInteraction(
-            isGlobalSearchPresented: isGlobalSearchPresented
-          )
-        )
-        .accessibilityHidden(
-          !MainShellInteractionPolicy.allowsToolbarInteraction(
-            isGlobalSearchPresented: isGlobalSearchPresented
-          )
-        )
-      }
-
+      globalSearchToolbarItem
     }
     .onAppear {
       model.refreshPermissions()
@@ -443,6 +419,79 @@ public struct MainShellView: View {
 }
 
 extension MainShellView {
+  // This back-deployed modifier is first declared by the Xcode 27 SDK.
+  @ToolbarContentBuilder
+  private var voiceSetupToolbarItem: some ToolbarContent {
+    #if compiler(>=6.4)
+      if #available(macOS 26.1, *) {
+        ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
+          voiceSetupButton
+        }
+        .visibilityPriority(.low)
+      } else {
+        ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
+          voiceSetupButton
+        }
+      }
+    #else
+      ToolbarItem(id: "rill.voice-setup", placement: .primaryAction) {
+        voiceSetupButton
+      }
+    #endif
+  }
+
+  @ToolbarContentBuilder
+  private var globalSearchToolbarItem: some ToolbarContent {
+    #if compiler(>=6.4)
+      if #available(macOS 26.1, *) {
+        ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
+          globalSearchButton
+        }
+        .visibilityPriority(.high)
+      } else {
+        ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
+          globalSearchButton
+        }
+      }
+    #else
+      ToolbarItem(id: "rill.global-search", placement: .primaryAction) {
+        globalSearchButton
+      }
+    #endif
+  }
+
+  private var voiceSetupButton: some View {
+    Button {
+      model.voiceSetupPresentation = .presented
+    } label: {
+      Label(
+        L10n.surface(.finishSetup, language: model.settings.language),
+        systemImage: RillSystemSymbol.checklist.rawValue
+      )
+    }
+    .labelStyle(.titleAndIcon)
+    .accessibilityIdentifier("voice-setup.resume")
+  }
+
+  private var globalSearchButton: some View {
+    Button(action: presentGlobalSearch) {
+      Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
+    }
+    .help(GlobalSearchText.searchCommand(language: model.settings.language))
+    .accessibilityLabel(GlobalSearchText.searchCommand(language: model.settings.language))
+    .accessibilityIdentifier("global-search.open")
+    .disabled(
+      !MainShellInteractionPolicy.allowsToolbarInteraction(
+        isGlobalSearchPresented: isGlobalSearchPresented
+      )
+    )
+    .accessibilityHidden(
+      !MainShellInteractionPolicy.allowsToolbarInteraction(
+        isGlobalSearchPresented: isGlobalSearchPresented
+      )
+    )
+  }
+
   @ViewBuilder
   private var contentSidebar: some View {
     List(selection: sidebarSelection) {
@@ -468,6 +517,7 @@ extension MainShellView {
       sidebarSettingsFooter
     }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .listStyle(.sidebar)
     .navigationSplitViewColumnWidth(
       min: MainShellLayoutMetrics.sidebarColumnMinWidth,
       ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
@@ -500,6 +550,7 @@ extension MainShellView {
         settingsPaneRows(SettingsPane.allCases)
       }
     }
+    .listStyle(.sidebar)
     .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
   }
 

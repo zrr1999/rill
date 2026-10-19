@@ -318,7 +318,9 @@ private struct MemoryEditor: View {
           }
         }.disabled(!memory.isValid || isSaving)
       }
-    }.padding(20).frame(width: 540)
+    }.padding(20)
+      .frame(maxWidth: 640)
+      .presentationSizing(.fitted)
       .interactiveDismissDisabled(isSaving)
   }
 }
