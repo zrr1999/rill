@@ -167,12 +167,18 @@ struct ContextMemoryModelTests {
   }
 }
 
-private actor ContextUIRepository: ContextMemoryRepository {
+actor ContextUIRepository: ContextMemoryRepository {
   private(set) var entered = false
   private(set) var writeCount = 0
   private var continuation: CheckedContinuation<Void, Never>?
   private let failsWrites: Bool
-  init(failsWrites: Bool = false) { self.failsWrites = failsWrites }
+  private var storedMemories: [LongTermMemory]
+  private(set) var memoryReadCount = 0
+  init(failsWrites: Bool = false, memories: [LongTermMemory] = []) {
+    self.failsWrites = failsWrites
+    storedMemories = memories
+  }
+  func replaceMemories(_ memories: [LongTermMemory]) { storedMemories = memories }
   private func pause() async {
     entered = true
     writeCount += 1
@@ -184,7 +190,10 @@ private actor ContextUIRepository: ContextMemoryRepository {
   }
   func setContextAuthorization(_ id: UUID?) async throws {}
   func recordForegroundContextRequest(authorization: ContextReferenceAuthorization, now: Date) async throws {}
-  func memories() async throws -> [LongTermMemory] { [] }
+  func memories() async throws -> [LongTermMemory] {
+    memoryReadCount += 1
+    return storedMemories
+  }
   func saveMemory(_ memory: LongTermMemory, expectedRevision: Int64) async throws {
     if failsWrites { throw ContextCorrectionError.authorizationChanged }
     await pause()
