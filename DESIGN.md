@@ -24,7 +24,7 @@ typography:
     fontWeight: 500
   draft-editor:
     fontFamily: "system-ui"
-    fontSize: "14pt"
+    fontSize: "body"
 rounded:
   chip: "6pt"
   badge: "8pt"
@@ -158,10 +158,13 @@ the recording waveform.
 ## Typography
 
 Use the macOS system font and platform Chinese fallback. There is no separate
-display face. The floating workspace is a local exception to default control
-metrics: its approved B preview uses 17pt document headings, 14pt body text with
-7pt added line spacing, 12pt actions and list titles, and 11pt supporting text.
-These values belong to this compact surface, not an application-wide type scale.
+display face. Floating workspace text uses semantic styles: `.title3` for
+document headings, `.body` for previews and the native editor, `.callout` for
+actions and list titles, and `.caption` for supporting text. Panel, recorder,
+mode, and sidebar frames use `RillDynamicLength` so they follow the body text
+size between a control minimum and a screen-safe maximum. The 668×468 page and
+194pt sidebar are preferred sizes; available screen space can still shrink the
+page.
 
 | Token role | Source role | Use |
 | --- | --- | --- |
@@ -172,7 +175,7 @@ These values belong to this compact surface, not an application-wide type scale.
 | `subtitle` | `.callout.weight(.medium)` | Live recognition text |
 | `timer` | `.caption.monospacedDigit().weight(.semibold)` | Stable recording time and countdown |
 | `key-hint` | `.caption2.monospaced().weight(.medium)` | Recorder Esc key hint |
-| `draft-editor` | `NSFont.systemFont(ofSize:)` | Native `NSTextView`; explicit size is in frontmatter |
+| `draft-editor` | `NSFont.preferredFont(forTextStyle: .body)` | Native `NSTextView` |
 
 The editor's exact font and text insets come from
 [BufferDraftTextEditor](Sources/RillUI/BufferDraftTextEditor.swift). SwiftUI
@@ -199,7 +202,7 @@ insets and the native editor's padding, remain local to their owners.
 | Unified panel | Default and compact verification sizes in frontmatter; geometry is selected before opening and stays fixed during interaction | [RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Collections preview | Fixed 194pt list column beside an opaque content preview | [RecordQuickPanelView](Sources/RillUI/RecordQuickPanelView.swift) |
 | Drafts | Fixed 194pt native list with single-line titles and metadata beside the native editor | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
-| Pending strip | Fixed capsule, separate from the page; drag, hover, accessible open, and close | [RecordPanelCapsuleView](Sources/RillUI/RecordPanelCapsuleView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
+| Unified panel | Centered on the pointer screen; preferred size scales with body text and shrinks to the visible frame | [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
 Settings has six sidebar pages: General, Input, Model services, Vocabulary &
@@ -221,10 +224,12 @@ exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
 
-Native window and panel depth carries the hierarchy. The unified panel uses a
-standard material backdrop, with Liquid Glass on the pending capsule, navigation
-sidebar, selected mode, and action buttons. Each mounted mode owns a separate
-`GlassEffectContainer` so hidden effects cannot join the visible pane. The header
+Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, navigation
+sidebar, mode track, selected mode, and action buttons. Reading surfaces, record
+previews, and draft editing stay opaque. Reduce Transparency or Increase
+Contrast selects an opaque control background through `RillGlass`. Each mounted
+mode owns a separate `GlassEffectContainer` so hidden effects cannot join the
+visible pane. The header
 has its own container. Custom effects apply directly to their content;
 native `.glass` and `.glassProminent` button styles own pointer, pressed, and
 disabled feedback. The primary action uses the system accent color. Reading
@@ -242,13 +247,13 @@ Apply translucent material to navigation and controls without lowering the
 opacity of their text or icons.
 
 The recorder and floating workspace share [RillGlass](Sources/RillUI/RillGlass.swift).
-It applies native regular Liquid Glass directly to the custom surface. Reduce
-Transparency or Increase Contrast selects an opaque control background. Glass
-buttons retain the system's accessibility adaptations. The recorder retains its
-fixed compact and expanded frames, waveform, network disclosure, countdown,
-continue action, and Esc hint. System glass supplies its depth; no custom tint,
-outline, or additional shadow is layered over the surface. The native floating
-panels use `NSPanel.hasShadow`.
+It applies native regular Liquid Glass directly to the custom surface, including
+the recorder's Esc hint. Reduce Transparency or Increase Contrast selects an
+opaque control background. Glass buttons retain the system's accessibility
+adaptations. The recorder retains its fixed compact and expanded frames,
+waveform, network disclosure, countdown, continue action, and Esc hint. System
+glass supplies its depth; no custom tint, outline, or additional shadow is
+layered over the surface. The native floating panels use `NSPanel.hasShadow`.
 
 Main-window Drafts, Copy, Settings, and workflow actions use native glass button
 styles. Primary workflow and explicit output actions use `.glassProminent`.
@@ -360,8 +365,9 @@ button, and content changes never move its controls. These behaviors are owned b
 `rillCard` uses the frontmatter padding and radius by default, with prominent,
 regular, and subdued quaternary fills. Use it for existing grouped or actionable
 content. Native lists and forms do not need additional card wrappers.
-`RillCardButtonStyle` supplies a hover border and a small press response for
-interactive cards, with reduced-motion behavior.
+`RillHoverButtonStyle` supplies the shared hover cue: a border and small press
+response for cards, a stroke for chips, a quiet fill for settings rows, and a
+tint for compact navigation labels. Reduce Motion disables those transitions.
 
 Record bodies and Copy lead the detail view; collection membership and metadata
 use disclosure. Activity emphasizes current work, pending choices, and recovery,

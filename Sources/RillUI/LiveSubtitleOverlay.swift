@@ -39,7 +39,7 @@ private enum LiveSubtitleWaveformMetrics {
 }
 
 public struct LiveSubtitleOverlay: View {
-  @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+  @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
   public let snapshot: LiveSubtitleSnapshot
   public let language: AppLanguage
@@ -95,9 +95,13 @@ public struct LiveSubtitleOverlay: View {
       }
     }
     .padding(.horizontal, 12)
-    .frame(
+    .rillScaledFrame(
       width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
-      height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
+      minimumWidth: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+      maximumWidth: LiveSubtitleOverlayMetrics.maximumSurfaceWidth,
+      height: LiveSubtitleOverlayMetrics.compactSurfaceHeight,
+      minimumHeight: LiveSubtitleOverlayMetrics.compactSurfaceHeight,
+      maximumHeight: 64
     )
   }
 
@@ -124,9 +128,13 @@ public struct LiveSubtitleOverlay: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
-    .frame(
+    .rillScaledFrame(
       width: LiveSubtitleOverlayMetrics.expandedSurfaceWidth,
+      minimumWidth: LiveSubtitleOverlayMetrics.expandedSurfaceWidth,
+      maximumWidth: 440,
       height: LiveSubtitleOverlayMetrics.expandedSurfaceHeight,
+      minimumHeight: LiveSubtitleOverlayMetrics.expandedSurfaceHeight,
+      maximumHeight: 128,
       alignment: .topLeading
     )
   }
@@ -219,6 +227,12 @@ public struct LiveSubtitleOverlay: View {
           now: context.date
         )
         HStack(spacing: 5) {
+          if differentiateWithoutColor, let marker = timerMarker(state) {
+            Image(systemName: marker.rawValue)
+              .font(.caption2.weight(.semibold))
+              .foregroundStyle(timerColor(state))
+              .accessibilityHidden(true)
+          }
           Text(recordingTimerTitle(state))
             .font(.caption.monospacedDigit().weight(.semibold))
             .foregroundStyle(timerColor(state))
@@ -295,21 +309,27 @@ public struct LiveSubtitleOverlay: View {
     // localized; the spoken label below is.
     Text("esc")
       .font(.caption2.monospaced().weight(.medium))
-      .foregroundStyle(secondaryTextColor)
+      .foregroundStyle(.secondary)
       .fixedSize(horizontal: true, vertical: false)
       .padding(.horizontal, 6)
       .frame(height: 20)
-      .background(
-        Color(nsColor: .controlBackgroundColor).opacity(0.42),
-        in: RoundedRectangle(cornerRadius: RillRadius.chip)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: RillRadius.chip)
-          .strokeBorder(borderColor.opacity(0.55), lineWidth: 0.75)
-      )
+      .rillGlass(in: RoundedRectangle(cornerRadius: RillRadius.chip, style: .continuous))
       .accessibilityLabel(
         Text(L10n.overlayText(.liveSubtitleEscapeHint, language: language))
       )
+  }
+
+  private func timerMarker(
+    _ state: LiveSubtitlePresentationPolicy.RecordingTimerState?
+  ) -> RillSystemSymbol? {
+    switch state?.warningLevel ?? .normal {
+    case .normal:
+      nil
+    case .warning:
+      .exclamationmarkTriangle
+    case .critical:
+      .exclamationmarkOctagon
+    }
   }
 
   private func requestUnlimitedRecording() {
@@ -329,9 +349,6 @@ public struct LiveSubtitleOverlay: View {
 
   private var primaryTextColor: Color { Color(nsColor: .labelColor) }
   private var secondaryTextColor: Color { Color(nsColor: .secondaryLabelColor) }
-  private var borderColor: Color {
-    Color(nsColor: .separatorColor).opacity(colorSchemeContrast == .increased ? 0.9 : 0.55)
-  }
   private var cornerRadius: CGFloat {
     expandedLayout
       ? LiveSubtitleOverlayMetrics.standardCornerRadius

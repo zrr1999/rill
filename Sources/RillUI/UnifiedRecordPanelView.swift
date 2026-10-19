@@ -39,7 +39,10 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   public var body: some View {
     panel
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(.ultraThinMaterial)
+      .rillGlass(
+        in: RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous),
+        interactive: false
+      )
       .containerShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
       .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
       .accessibilityIdentifier("record-panel.unified")
@@ -53,7 +56,9 @@ public struct UnifiedRecordPanelView<Records: View>: View {
             Spacer()
             Button(panelText(.done)) { showsOutputReview = false }
           }
-        }.padding(20).frame(width: 420)
+        }.padding(20)
+          .frame(maxWidth: 640)
+          .presentationSizing(.fitted)
       }
   }
 
@@ -68,7 +73,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
           }
           .buttonStyle(.glass)
           .buttonBorderShape(.circle).buttonSizing(.flexible)
-          .font(.system(size: 13)).frame(width: 30, height: 30)
+          .font(.callout).frame(width: 30, height: 30)
           .help(panelText(.closeFloatingWindow))
           .accessibilityLabel(panelText(.closeFloatingWindow))
           .accessibilityIdentifier("record-panel.close")
@@ -101,6 +106,8 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   }
 
   private var modeControl: some View {
+    // TabsPickerStyle cannot keep the glass selection's matched geometry or the
+    // fixed draft-count slot, so this stays a glass capsule.
     HStack(spacing: 2) {
       ForEach(RecordPanelPresentation.Mode.allCases, id: \.self) { mode in
         let selected = presentation.mode == mode
@@ -121,7 +128,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
       }
     }
     .padding(3)
-    .background(.thinMaterial, in: Capsule())
+    .rillGlass(in: Capsule(), interactive: false)
     .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: presentation.mode)
     .disabled(buffers.editor.session?.hasMarkedText == true)
     .accessibilityElement(children: .contain)
@@ -134,25 +141,31 @@ public struct UnifiedRecordPanelView<Records: View>: View {
       Text(panelText(mode == .drafts ? .drafts : .collections))
       if mode == .drafts {
         Text("\(buffers.snapshot?.remainingCount ?? 0)")
+          .contentTransition(.numericText())
           .monospacedDigit().foregroundStyle(.secondary)
           .frame(width: 30).lineLimit(1).minimumScaleFactor(0.7)
+          .animation(reduceMotion ? nil : .snappy, value: buffers.snapshot?.remainingCount ?? 0)
       }
     }
-    .font(.system(size: 12, weight: selected ? .medium : .regular))
+    .font(selected ? .callout.weight(.medium) : .callout)
     .foregroundStyle(selected ? Color.primary : Color.secondary)
-    .frame(width: 92, height: 30)
+    .rillScaledFrame(
+      width: 92, minimumWidth: 92, maximumWidth: 128,
+      height: 30, minimumHeight: 30, maximumHeight: 40
+    )
     .contentShape(Capsule())
   }
 
   private var notice: some View {
     HStack(spacing: 8) {
       Image(systemName: needsAttention ? RillSystemSymbol.exclamationmarkCircle.rawValue : RillSystemSymbol.checkmarkCircle.rawValue)
+        .symbolEffect(.bounce, value: needsAttention)
         .foregroundStyle(needsAttention ? Color.orange : Color.secondary)
-        .font(.system(size: 13)).frame(width: 16)
-      Text(noticeText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+        .font(.callout).frame(width: 16)
+      Text(noticeText).font(.callout).foregroundStyle(.secondary).lineLimit(1)
       Spacer(minLength: 0)
       Button(panelText(.review)) { showsOutputReview = true }
-        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.accentColor)
+        .buttonStyle(.plain).font(.callout).foregroundStyle(Color.accentColor)
         .frame(width: 48, height: 29)
         .opacity(needsAttention ? 1 : 0)
         .disabled(!needsAttention)

@@ -23,14 +23,10 @@ struct BufferDraftTextEditor: NSViewRepresentable {
     view.isAutomaticQuoteSubstitutionEnabled = false
     view.isAutomaticDashSubstitutionEnabled = false
     view.isAutomaticTextReplacementEnabled = false
-    view.font = .systemFont(ofSize: 14)
+    view.font = .preferredFont(forTextStyle: .body)
     view.textColor = .textColor
     view.drawsBackground = false
     view.textContainerInset = NSSize(width: 22, height: 4)
-    let paragraph = NSMutableParagraphStyle()
-    paragraph.lineSpacing = 7
-    view.defaultParagraphStyle = paragraph
-    view.typingAttributes[.paragraphStyle] = paragraph
     view.isVerticallyResizable = true
     view.isHorizontallyResizable = false
     view.autoresizingMask = [.width]
@@ -40,9 +36,6 @@ struct BufferDraftTextEditor: NSViewRepresentable {
     view.setAccessibilityIdentifier("record-buffer.editor")
     view.setAccessibilityLabel(accessibilityLabel)
     view.string = session.text
-    view.textStorage?.addAttribute(
-      .paragraphStyle, value: paragraph,
-      range: NSRange(location: 0, length: view.string.utf16.count))
     view.delegate = context.coordinator
     view.onSubmit = { [weak model] in model?.send() }
     view.onFocusChanged = { [weak session] focused in session?.isFocused = focused }
