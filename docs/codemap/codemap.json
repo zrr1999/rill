@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "74d3766c80b9f28c08ecd57ec496f70e1adfaa26",
+  "baseline": "53c76e189e342bf5f31d8fd066d9c77447722190",
   "nodes": [
     {
       "id": "RillApp",
@@ -406,7 +406,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelFailedAudioRecoveryTests.swift",
-          "line": 184,
+          "line": 153,
           "symbol": "testFailedAudioRecoveryMutationIsRejectedDuringInitialSettingsRead",
           "framework": "XCTest"
         },
@@ -478,7 +478,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelSpeechPreparationShutdownTests.swift",
-          "line": 117,
+          "line": 111,
           "symbol": "testUserCancelBeforeScheduledPreparationDoesNotStartProvider",
           "framework": "XCTest"
         },
@@ -1158,7 +1158,7 @@
         {
           "path": "Tests/RillCoreTests/AudioCaptureLifetimeTests.swift",
           "line": 6,
-          "symbol": "testPermitAcquisitionAndRevocationAreLinearized",
+          "symbol": "testRevocationRejectsLaterTransitions",
           "framework": "XCTest"
         },
         {
@@ -1732,12 +1732,6 @@
           "framework": "Swift Testing"
         },
         {
-          "path": "Tests/RillProvidersTests/WakePhraseTokenizerTests.swift",
-          "line": 27,
-          "symbol": "testEncodesEnglishAndMixedMandarinUsingModelTokens",
-          "framework": "XCTest"
-        },
-        {
           "path": "Tests/RillRuntimeTests/AuthorizedLiveAudioSessionTests.swift",
           "line": 67,
           "symbol": "testCaptureCannotSealBeforePrivacyMonitorStarts",
@@ -1775,7 +1769,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/DiagnosticsRecorderPrivacyTests.swift",
-          "line": 137,
+          "line": 135,
           "symbol": "testRecordSanitizesMemoryRepositoryAndPublishedEvent",
           "framework": "XCTest"
         },
@@ -1919,8 +1913,8 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordRoutingTests.swift",
-          "line": 9,
-          "symbol": "testCaptureSourceCreatesOneRecordInStableUnionOfCollections",
+          "line": 10,
+          "symbol": "testCaptureCreatesOneRecordInStableUnionOfCollections",
           "framework": "XCTest"
         },
         {
@@ -2087,7 +2081,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelFailedAudioRecoveryTests.swift",
-          "line": 184,
+          "line": 153,
           "symbol": "testFailedAudioRecoveryMutationIsRejectedDuringInitialSettingsRead",
           "framework": "XCTest"
         },
@@ -2159,7 +2153,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelSpeechPreparationShutdownTests.swift",
-          "line": 117,
+          "line": 111,
           "symbol": "testUserCancelBeforeScheduledPreparationDoesNotStartProvider",
           "framework": "XCTest"
         },
@@ -2744,8 +2738,8 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordRoutingTests.swift",
-          "line": 9,
-          "symbol": "testCaptureSourceCreatesOneRecordInStableUnionOfCollections",
+          "line": 10,
+          "symbol": "testCaptureCreatesOneRecordInStableUnionOfCollections",
           "framework": "XCTest"
         },
         {
@@ -3131,7 +3125,6 @@
         "Sources/RillWorkflows/SealedCaptureHandoff.swift",
         "Sources/RillWorkflows/SelectionCaptureRecognizer.swift",
         "Sources/RillWorkflows/SessionCoordinator.swift",
-        "Sources/RillWorkflows/SpeechWorkflowAdapters.swift",
         "Sources/RillWorkflows/WorkflowAudioRunController.swift",
         "Sources/RillWorkflows/WorkflowExecutionPolicy.swift",
         "Sources/RillWorkflows/WorkflowExplainService.swift",
@@ -3273,7 +3266,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/DiagnosticsRecorderPrivacyTests.swift",
-          "line": 137,
+          "line": 135,
           "symbol": "testRecordSanitizesMemoryRepositoryAndPublishedEvent",
           "framework": "XCTest"
         },
@@ -3399,8 +3392,8 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordRoutingTests.swift",
-          "line": 9,
-          "symbol": "testCaptureSourceCreatesOneRecordInStableUnionOfCollections",
+          "line": 10,
+          "symbol": "testCaptureCreatesOneRecordInStableUnionOfCollections",
           "framework": "XCTest"
         },
         {
@@ -3543,7 +3536,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelFailedAudioRecoveryTests.swift",
-          "line": 184,
+          "line": 153,
           "symbol": "testFailedAudioRecoveryMutationIsRejectedDuringInitialSettingsRead",
           "framework": "XCTest"
         },
@@ -4314,12 +4307,6 @@
           "framework": "Swift Testing"
         },
         {
-          "path": "Tests/RillProvidersTests/WakePhraseTokenizerTests.swift",
-          "line": 27,
-          "symbol": "testEncodesEnglishAndMixedMandarinUsingModelTokens",
-          "framework": "XCTest"
-        },
-        {
           "path": "Tests/RillRuntimeTests/CleanupProtectionFallbackTests.swift",
           "line": 12,
           "symbol": "failedCleanupIsSkippedAndDeliversOriginalOnce",
@@ -4477,8 +4464,7 @@
         "Sources/RillSpeech/QwenStreamingText.swift",
         "Sources/RillSpeech/RoutedLocalSpeechRecognizer.swift",
         "Sources/RillSpeech/SpeechWorkerStreamingPreviewService.swift",
-        "Sources/RillSpeech/SpeechWorkerSupervisor.swift",
-        "Sources/RillSpeech/WakePhraseTokenizer.swift"
+        "Sources/RillSpeech/SpeechWorkerSupervisor.swift"
       ],
       "evidence": [
         "Package.swift",
@@ -4531,12 +4517,6 @@
           "path": "Tests/RillProvidersTests/SpeechWorkerTTSProtocolTests.swift",
           "line": 10,
           "symbol": "testTTSModelCatalogOffersPinnedPrecisionsAndDefaultsToInt8",
-          "framework": "XCTest"
-        },
-        {
-          "path": "Tests/RillProvidersTests/WakePhraseTokenizerTests.swift",
-          "line": 27,
-          "symbol": "testEncodesEnglishAndMixedMandarinUsingModelTokens",
           "framework": "XCTest"
         },
         {
