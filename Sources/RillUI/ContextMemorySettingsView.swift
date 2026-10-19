@@ -5,12 +5,14 @@ struct ContextMemorySettingsView: View {
   @Bindable var memory: ContextMemoryModel
   let workflows: [WorkflowDefinition]
   let language: AppLanguage
+  let openSource: (UUID) -> Void
   @Binding var isExpanded: Bool
   @State private var pendingScreen = false
   @State private var pendingMemory = false
   @State private var pendingVocabulary = false
   @State private var showConsent = false
   @State private var showMemories = false
+  @State private var pendingSourceID: UUID?
 
   private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
@@ -53,6 +55,7 @@ struct ContextMemorySettingsView: View {
       }
       HStack {
         Button(text(.manageMemories)) { showMemories = true }
+          .accessibilityIdentifier("settings.context.manage-memories")
         Button(text(.organizeWhenIdle)) { memory.scheduleMaintenance() }
           .disabled(!memory.isAuthorized || !memory.settings.memoryEnabled)
         Text("\(memory.status.requestsToday)/8 " + text(.backgroundRequestsToday))
@@ -71,12 +74,26 @@ struct ContextMemorySettingsView: View {
     } message: {
       Text(consentMessage)
     }
-    .sheet(isPresented: $showMemories) { MemoryManagementView(model: memory, language: language) }
+    .sheet(
+      isPresented: $showMemories,
+      onDismiss: {
+        guard let sourceID = pendingSourceID else { return }
+        pendingSourceID = nil
+        scheduleOnMainRunLoopDefaultMode {
+          openSource(sourceID)
+        }
+      }
+    ) {
+      MemoryManagementView(model: memory, workflows: workflows, language: language) { sourceID in
+        pendingSourceID = sourceID
+        showMemories = false
+      }
+    }
     .task { await memory.refresh() }
   }
 
   private var consentWorkflows: [WorkflowDefinition] {
-    pendingScreen || pendingMemory ? workflows : workflows.filter(\.supportsVocabularyCorrection)
+    pendingScreen || pendingMemory ? workflows.filter(\.supportsContextualCorrection) : workflows.filter(\.supportsVocabularyCorrection)
   }
 
   private var consentMessage: String {
@@ -112,12 +129,15 @@ struct ContextMemorySettingsView: View {
   }
 }
 
-private struct MemoryManagementView: View {
+struct MemoryManagementView: View {
   @Bindable var model: ContextMemoryModel
+  let workflows: [WorkflowDefinition]
   let language: AppLanguage
+  let openSource: (UUID) -> Void
   @Environment(\.dismiss) private var dismiss
   @State private var editing: LongTermMemory?
   @State private var deleting: LongTermMemory?
+  @State private var currentDate = Date()
   private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   private func evidenceLabel(_ kind: MemoryEvidenceKind) -> String {
@@ -136,21 +156,47 @@ private struct MemoryManagementView: View {
   }
 
   var body: some View {
+    let expiryDates = model.memories.compactMap(\.expiresAt).sorted()
     VStack(alignment: .leading) {
       HStack {
         Text(text(.longTermMemories)).font(.title2)
         Spacer()
         Button(text(.refresh)) { Task { await model.refresh() } }
         Button(text(.done)) { dismiss() }
+          .accessibilityIdentifier("memory.management.done")
       }
       List(model.memories) { memory in
         VStack(alignment: .leading, spacing: 8) {
           Text(memory.summary).textSelection(.enabled)
+          let expired = memory.expiresAt.map { $0 <= currentDate } ?? false
           Text(
-            "\(evidenceLabel(memory.evidenceKind)) · \(stateLabel(memory.state)) · \(memory.sources.count) "
-              + text(.sources) + (memory.sourceHistoryDeleted ? text(.historyDeletedSuffix) : "")
+            "\(evidenceLabel(memory.evidenceKind)) · \(expired ? text(.memoryExpiredNotSelected) : stateLabel(memory.state)) · \(memory.sources.count) "
+              + text(.sources)
           )
           .font(.caption).foregroundStyle(.secondary)
+          MemoryScopeView(scope: memory.scope, workflows: workflows, language: language)
+          if !memory.terms.isEmpty {
+            LabeledContent(text(.memoryTerms), value: memory.terms.joined(separator: " · "))
+          }
+          LabeledContent(text(.memoryExpiry)) {
+            if let expiresAt = memory.expiresAt {
+              Text(expiresAt, format: .dateTime.year().month().day().hour().minute())
+            } else {
+              Text(text(.memoryNoExpiry))
+            }
+          }
+          ForEach(memory.sources, id: \.self) { source in
+            VStack(alignment: .leading, spacing: 4) {
+              Text(source.sourceID.uuidString).font(.caption.monospaced()).textSelection(.enabled)
+              LabeledContent(text(.memoryEvidenceRevision), value: String(source.revision))
+              Button(text(.memoryViewCurrentSource)) { openSource(source.sourceID) }
+                .accessibilityIdentifier("memory.source.\(source.sourceID.uuidString)")
+            }
+          }
+          Text(text(.memorySourceVersionNotice)).font(.caption).foregroundStyle(.secondary)
+          if memory.sourceHistoryDeleted {
+            Text(text(.memoryAllSourceBodiesDeleted)).font(.caption).foregroundStyle(.secondary)
+          }
           ForEach(memory.corrections, id: \.self) { correction in
             Text(correction.original + " → " + correction.corrected).font(.callout.monospaced())
           }
@@ -181,7 +227,17 @@ private struct MemoryManagementView: View {
       }
       if let error = model.error { Text(L10n.contextMemoryFailure(error).string(for: language)).foregroundStyle(.red) }
     }.padding(20).frame(minWidth: 660, minHeight: 440)
+      .accessibilityIdentifier("memory.management")
       .task { await model.refresh() }
+      .task(id: expiryDates) {
+        currentDate = Date()
+        for expiry in expiryDates where expiry > currentDate {
+          do {
+            try await Task.sleep(for: .seconds(expiry.timeIntervalSinceNow))
+          } catch { return }
+          currentDate = Date()
+        }
+      }
       .sheet(item: $editing) { memory in
         MemoryEditor(memory: memory, language: language) { edited in
           await model.save(edited)
@@ -196,6 +252,24 @@ private struct MemoryManagementView: View {
           deleting = nil
         }
       }
+  }
+}
+
+struct MemoryScopeView: View {
+  let scope: ContextMemoryScope
+  let workflows: [WorkflowDefinition]
+  let language: AppLanguage
+
+  var body: some View {
+    LabeledContent(
+      L10n.surface(.memoryWorkflow, language: language),
+      value: workflows.first { $0.id == scope.workflowID }.map { L10n.workflowName($0.presentation, language: language) } ?? scope.workflowID.uuidString)
+    LabeledContent(
+      L10n.surface(.memoryApplication, language: language),
+      value: scope.applicationBundleID ?? L10n.surface(.memoryNotRecorded, language: language))
+    LabeledContent(
+      L10n.surface(.memoryLanguage, language: language),
+      value: scope.language ?? L10n.surface(.memoryNotSpecified, language: language))
   }
 }
 

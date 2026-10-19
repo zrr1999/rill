@@ -401,8 +401,8 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
 提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev)
 的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
 使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
-当前统一版本是 0.4.0；prek 的上游 revision 和 CI Actions 均固定到 commit，
-本地 hook 使用固定版本的已发布组件，CI 由官方 Actions 安装对应提交的源码。
+当前统一版本是 0.5.0；prek 的上游 revision 和 CI Actions 均固定到同一 commit，
+本地 hook 和 CI 都使用官方校验入口。
 
 - `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
   `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
@@ -415,6 +415,7 @@ Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两�
 - PR 描述不重复 CI 已验证的内容，如命令、工具链、测试数量和 CI 链接；重点写实机演示：
   在实际运行的 Rill 上操作了什么、看到了什么，附截图、录屏或操作步骤，并列出 CI 未覆盖的
   人工验收和已知限制。
+- PR 截图和录屏作为 PR 附件提供；本地验收产物放在已忽略的 `.artifacts/`，不要提交到仓库。
 - 依赖 PR 从底层修复、验证，再按依赖顺序向上传播；同一根因在上层重复失败时，
   先定位拥有该改动的底层 PR。更新 base 或 head 后重新确认检查对应的提交，并重新
   运行受影响验证，不沿用旧提交的绿色结果。每层 PR 描述只演示本层改动，未完成的原生验收

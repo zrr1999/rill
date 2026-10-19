@@ -116,7 +116,6 @@ public enum SurfaceText: String, CaseIterable, Sendable {
   case refresh
   case done
   case sources
-  case historyDeletedSuffix
   case proposedReplacement
   case edit
   case confirmed
@@ -140,6 +139,21 @@ public enum SurfaceText: String, CaseIterable, Sendable {
   case screenObservationNotAPersonal
   case thisSummaryArrivedAfterInputs
   case relatedMemories
+  case memoryWorkflow
+  case memoryApplication
+  case memoryLanguage
+  case memoryNotRecorded
+  case memoryNotSpecified
+  case memoryTerms
+  case memoryExpiry
+  case memoryNoExpiry
+  case memoryExpiredNotSelected
+  case memoryEvidenceRevision
+  case memoryViewCurrentSource
+  case memorySourceVersionNotice
+  case memoryAllSourceBodiesDeleted
+  case memoryCurrentContentNotice
+  case memoryCurrentUnavailable
   case off
   case unavailableSkipped
   case timedOutSkipped
