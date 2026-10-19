@@ -160,7 +160,7 @@ generate_app_icon() {
   local source_png="${1-}"
   local output_icns="${2-}"
   local rendition_renderer="$SCRIPT_DIR/render_app_icon_renditions.swift"
-  local expected_source_sha256="c6c6bd3647ca2cc2ae860c27832d2f8150c5832320ed7b4b7b95eae902fe2642"
+  local expected_source_sha256="4ad22514f382e1a0ffed41e6e20f529f6b940d216cb2144873e5282bfca84aa3"
   local max_source_bytes=$((500 * 1024))
   local temporary_directory=""
   local iconset=""
