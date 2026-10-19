@@ -207,11 +207,15 @@ private struct HostPipeline {
         })
     var declaration = WorkflowDefinition(
       name: "Private host replay",
-      pipeline: .init(
-        recognizerID: recognizer.id,
-        postProcessSteps: [.init(kind: .normalizeWhitespace)],
-        outputActions: [.init(id: RecordActionID.store), .init(id: "system-clipboard.copy")],
-        uncertaintyPolicy: .init(mode: .off)),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: recognizer.id)),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init(mode: .off)),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([.init(kind: .normalizeWhitespace)]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(
+          actions: [.init(id: RecordActionID.store), .init(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     declaration.plan.setup.vocabularyBindings = [.init(collectionID: collection.id)]
     workflow = declaration

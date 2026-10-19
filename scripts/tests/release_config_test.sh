@@ -322,27 +322,68 @@ run_executable_package_surface_policy_case() {
   echo "PASS: SwiftPM publishes only the App, speech worker and input method executables"
 }
 
+# Native MLX packages must use `exact:` semver pins in Package.swift, and
+# Package.resolved must record the same version. Versions themselves are not
+# fixed here so dependency updates only need to keep the pin policy.
+check_native_mlx_exact_pins() {
+  local manifest="$1"
+  local resolved="$2"
+  local flattened identity url version resolved_version
+  flattened="$(tr '\n' ' ' <"$manifest")"
+  for identity in mlx-audio-swift swift-huggingface mlx-swift mlx-swift-lm; do
+    case "$identity" in
+    mlx-audio-swift) url="https://github.com/Blaizzy/mlx-audio-swift.git" ;;
+    swift-huggingface) url="https://github.com/huggingface/swift-huggingface.git" ;;
+    mlx-swift) url="https://github.com/ml-explore/mlx-swift.git" ;;
+    mlx-swift-lm) url="https://github.com/ml-explore/mlx-swift-lm.git" ;;
+    esac
+    version="$(grep -oE "url: \"${url//./\\.}\",[[:space:]]*exact: \"[0-9]+\.[0-9]+\.[0-9]+\"" \
+      <<<"$flattened" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+"$' | tr -d '"' || true)"
+    if [[ -z "$version" ]]; then
+      echo "FAIL: $identity is not pinned with exact: \"<major.minor.patch>\" in $(basename "$manifest")" >&2
+      return 1
+    fi
+    resolved_version="$(jq -r --arg id "$identity" \
+      '.pins[] | select(.identity == $id) | .state.version // empty' "$resolved")"
+    if [[ "$resolved_version" != "$version" ]]; then
+      echo "FAIL: Package.resolved pins $identity at '${resolved_version:-missing}', Package.swift requires $version" >&2
+      return 1
+    fi
+  done
+}
+
 run_native_mlx_dependency_policy_case() {
   if grep -Eqi 'SherpaOnnxNative|OnnxRuntimeNative|RillSherpaRuntime|CSherpaOnnx|sherpa-onnx\.xcframework|onnxruntime\.xcframework' \
     "$PACKAGE_MANIFEST"; then
     echo "FAIL: Package.swift retains the retired Sherpa/ONNX runtime" >&2
     exit 1
   fi
-  if ! grep -Fq 'url: "https://github.com/Blaizzy/mlx-audio-swift.git"' \
-    "$PACKAGE_MANIFEST" ||
-    ! grep -Fq 'exact: "0.1.3"' "$PACKAGE_MANIFEST" ||
-    ! grep -Fq 'url: "https://github.com/huggingface/swift-huggingface.git"' \
-      "$PACKAGE_MANIFEST" ||
-    ! grep -Fq 'exact: "0.8.1"' "$PACKAGE_MANIFEST" ||
-    ! grep -Fq 'url: "https://github.com/ml-explore/mlx-swift.git"' \
-      "$PACKAGE_MANIFEST" ||
-    ! grep -Fq 'exact: "0.31.4"' "$PACKAGE_MANIFEST" ||
-    ! grep -Fq 'name: "RillMLXRuntime"' "$PACKAGE_MANIFEST" ||
+  local mlx_policy_fixture="$TEST_ROOT/mlx-pin-policy"
+  mkdir -p "$mlx_policy_fixture"
+  if ! check_native_mlx_exact_pins "$PACKAGE_MANIFEST" \
+    "$PROJECT_DIR/Package.resolved"; then
+    exit 1
+  fi
+  sed -E 's#exact: "([0-9]+\.[0-9]+\.[0-9]+)"#from: "\1"#' \
+    "$PACKAGE_MANIFEST" >"$mlx_policy_fixture/Package.range.swift"
+  if check_native_mlx_exact_pins "$mlx_policy_fixture/Package.range.swift" \
+    "$PROJECT_DIR/Package.resolved" 2>/dev/null; then
+    echo "FAIL: MLX pin policy accepted a range constraint" >&2
+    exit 1
+  fi
+  jq '(.pins[] | select(.identity == "mlx-swift") | .state.version) = "0.0.0"' \
+    "$PROJECT_DIR/Package.resolved" >"$mlx_policy_fixture/Package.resolved"
+  if check_native_mlx_exact_pins "$PACKAGE_MANIFEST" \
+    "$mlx_policy_fixture/Package.resolved" 2>/dev/null; then
+    echo "FAIL: MLX pin policy accepted a Package.resolved version mismatch" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'name: "RillMLXRuntime"' "$PACKAGE_MANIFEST" ||
     ! grep -Fq '.product(name: "MLXAudioSTT", package: "mlx-audio-swift")' \
       "$PACKAGE_MANIFEST" ||
     ! grep -Fq '.product(name: "MLX", package: "mlx-swift")' \
       "$PACKAGE_MANIFEST"; then
-    echo "FAIL: native MLX Swift dependencies are not exactly constrained" >&2
+    echo "FAIL: RillMLXRuntime does not link the native MLX Swift products" >&2
     exit 1
   fi
   if grep -Eqi 'argmax|whisperkit|sherpa|onnxruntime' "$PACKAGE_MANIFEST"; then

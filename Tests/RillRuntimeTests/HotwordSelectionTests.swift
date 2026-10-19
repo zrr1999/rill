@@ -31,14 +31,14 @@ struct HotwordSelectionTests {
       collections: { try vocabulary.currentCollections() }, selection: fixture.selection, sanitize: { $0 })
     var gate = PrivacyRunGate(
       settingsProvider: { .init(cloudConfirmationRequired: false) },
-      cloudConfirmationProvider: { _, _, _ in false })
+      cloudConfirmationProvider: { _, _, _, _ in false })
     gate.prepareLiveRecognition = { runID, workflow, context, options, lifetime in
       try await resolver.prepare(
         runID: runID, workflow: workflow, context: context,
         options: options, lifetime: lifetime)
     }
     let correctionTerms = OSAllocatedUnfairLock(initialState: [String]())
-    gate.prepareCorrectionContext = { _, _, _, _, candidates, _ in
+    gate.prepareCorrectionContext = { _, _, _, _, candidates, _, _ in
       correctionTerms.withLock { $0 = candidates.map(\.term) }
       return nil
     }
@@ -136,12 +136,12 @@ struct HotwordSelectionTests {
     let called = OSAllocatedUnfairLock(initialState: false)
     var gate = PrivacyRunGate(
       settingsProvider: { .init(cloudConfirmationRequired: false) },
-      cloudConfirmationProvider: { _, _, _ in false })
+      cloudConfirmationProvider: { _, _, _, _ in false })
     gate.prepareLiveRecognition = { _, _, _, _, _ in
       called.withLock { $0 = true }
       return nil
     }
-    gate.prepareCorrectionContext = { _, _, _, _, _, _ in
+    gate.prepareCorrectionContext = { _, _, _, _, _, _, _ in
       Issue.record("Historical audio must not prepare vocabulary correction")
       return nil
     }
@@ -366,7 +366,7 @@ private final class HotwordFocus {
 @MainActor
 private final class HotwordFixture {
   let provider = HotwordRankingProbe()
-  let credentials = JevSessionSettingsSource()
+  let credentials = DecisionModelSettingsSource()
   let privacy = PrivacyPolicySettingsSource(initialSettings: .init(cloudConfirmationRequired: true))
   let clock = OSAllocatedUnfairLock(initialState: 0.0)
   let events = OSAllocatedUnfairLock(initialState: [DiagnosticEvent]())
@@ -427,7 +427,7 @@ private actor HotwordRankingProbe: HotwordRankingProvider {
   private var continuation: CheckedContinuation<[HotwordRankingScore], Error>?
   private var observers: [CheckedContinuation<Void, Never>] = []
 
-  func score(_ request: HotwordRankingRequest, apiKey _: String) async throws -> [HotwordRankingScore] {
+  func score(_ request: HotwordRankingRequest, authorization _: DecisionModelSettingsSource.Authorization) async throws -> [HotwordRankingScore] {
     requests.append(request)
     return try await withCheckedThrowingContinuation { continuation in
       self.continuation = continuation

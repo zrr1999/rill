@@ -346,8 +346,10 @@ public struct MainShellView: View {
           }.keyboardShortcut(.cancelAction)
         }
       }
-      .padding(20).frame(width: 540)
+      .padding(20)
+      .frame(maxWidth: 640)
       .fixedSize(horizontal: false, vertical: true)
+      .presentationSizing(.fitted)
       .accessibilityIdentifier("voice-setup.initial")
     }
     .sheet(item: $recordCorrection) { request in
@@ -472,6 +474,7 @@ extension MainShellView {
       sidebarSettingsFooter
     }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .listStyle(.sidebar)
     .navigationSplitViewColumnWidth(
       min: MainShellLayoutMetrics.sidebarColumnMinWidth,
       ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
@@ -501,20 +504,25 @@ extension MainShellView {
         .accessibilityIdentifier("settings.back")
       }
       Section {
-        ForEach(SettingsPane.allCases) { pane in
-          Label {
-            Text(pane.title(language: model.settings.language))
-              .lineLimit(2)
-              .fixedSize(horizontal: false, vertical: true)
-          } icon: {
-            Image(systemName: pane.symbolName)
-          }
-          .tag(pane)
-          .accessibilityIdentifier("settings.pane.\(pane.rawValue)")
-        }
+        settingsPaneRows(SettingsPane.allCases)
       }
     }
+    .listStyle(.sidebar)
     .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
+  }
+
+  private func settingsPaneRows(_ panes: [SettingsPane]) -> some View {
+    ForEach(panes) { pane in
+      Label {
+        Text(pane.title(language: model.settings.language))
+          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
+      } icon: {
+        Image(systemName: pane.symbolName)
+      }
+      .tag(pane)
+      .accessibilityIdentifier("settings.pane.\(pane.rawValue)")
+    }
   }
 
   private var settingsPaneSelection: Binding<SettingsPane?> {
@@ -824,7 +832,7 @@ extension MainShellView {
 
   private func sidebarCollectionRow(_ collection: RecordCollection) -> some View {
     HStack(spacing: RillSpacing.dense) {
-      Label(collection.name, systemImage: RillSystemSymbol.squareStack3dUp.rawValue)
+      Label(L10n.collectionName(collection, language: model.settings.language), systemImage: RillSystemSymbol.squareStack3dUp.rawValue)
       Spacer(minLength: 8)
       Text("\(collectionRecordCount(collection.id))")
         .font(.caption2.monospacedDigit())
@@ -837,7 +845,7 @@ extension MainShellView {
           in: Capsule()
         )
     }
-    .accessibilityLabel(collection.name)
+    .accessibilityLabel(L10n.collectionName(collection, language: model.settings.language))
     .accessibilityIdentifier("sidebar.record-collection.\(collection.id.rawValue.uuidString)")
   }
 

@@ -20,21 +20,21 @@ extension AppModel {
     guard !hasBegunApplicationShutdown, !self.settings.isLoading, isWorkflowLibraryAvailable,
       let workflowFileStore
     else { return nil }
+    return await materializeWorkflowFile(workflow, duplicate: duplicate, store: workflowFileStore)
+  }
+
+  private func materializeWorkflowFile(_ workflow: WorkflowDefinition, duplicate: Bool = false, store workflowFileStore: any WorkflowFileStore) async -> URL? {
     if !duplicate, let fileURL = self.workflowLibrary.workflowFileURLsByID[workflow.id] { return fileURL }
-    guard self.workflowLibrary.usesWorkflowFilesAsSource || self.workflowLibrary.customWorkflows.isEmpty else {
-      self.workflowLibrary.workflowLibraryError = L10n.surface(.theLegacyWorkflowLibraryHas, language: self.settings.language)
-      return nil
-    }
     var definition = workflow
     definition.name = localizedWorkflowName(for: workflow)
     definition.titleKey = nil
-    definition.metadata.removeValue(forKey: WorkflowMetadataKey.catalog)
-    definition.metadata["workflow.origin"] = "user"
+    definition.properties.isBuiltin = false
+
     if duplicate {
       definition.id = UUID()
       definition.name += L10n.surface(.duplicateNameSuffix, language: self.settings.language)
-      definition.metadata.removeValue(forKey: WorkflowMetadataKey.builtinKind)
-      definition.metadata.removeValue(forKey: WorkflowMetadataKey.exclusiveGroup)
+
+      definition.properties.exclusiveGroup = nil
     }
     do {
       let document = WorkflowDocument(
@@ -42,15 +42,66 @@ extension AppModel {
         isEnabled: duplicate ? false : isWorkflowEnabled(workflow)
       )
       let record = try await workflowFileStore.saveDocument(document, replacing: nil, expected: .missing)
-      self.workflowLibrary.usesWorkflowFilesAsSource = true
+      self.workflowLibrary.workflowFileURLsByID[definition.id] = record.fileURL
+      self.workflowLibrary.workflowFileSourcesByID[definition.id] = record.source
+      self.workflowLibrary.outputStatesByID[definition.id] = record.outputState
+      self.workflowLibrary.outputStateSourcesByID[definition.id] = record.outputStateSource
       self.workflowLibrary.hasModifiedWorkflowLibrary = true
       await reloadWorkflowFiles()
       persistCustomWorkflows()
       return record.fileURL
     } catch {
-      self.workflowLibrary.workflowLibraryError = error.localizedDescription
+      self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+        return L10n.workflowFileFailureDetail(error, language: language)
+      }
       return nil
     }
+  }
+
+  public func isWorkflowOutputEnabled(_ action: OutputActionReference, index: Int, workflow: WorkflowDefinition) -> Bool {
+    (workflowLibrary.outputStatesByID[workflow.id] ?? WorkflowOutputState(workflowID: workflow.id)).isEnabled(action, index: index)
+  }
+
+  public func setWorkflowOutputEnabled(_ enabled: Bool, action: OutputActionReference, index: Int, workflow: WorkflowDefinition) {
+    guard action.optional, !hasBegunApplicationShutdown, let workflowFileStore,
+      !workflowLibrary.savingOutputStates.contains(workflow.id),
+      !workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id)
+    else { return }
+    workflowLibrary.savingOutputStates.insert(workflow.id)
+    let task = Task { [self] in
+      await saveWorkflowOutputEnabled(enabled, action: action, index: index, workflow: workflow, store: workflowFileStore)
+    }
+    persistenceWrites.track(task)
+  }
+
+  private func saveWorkflowOutputEnabled(
+    _ enabled: Bool, action: OutputActionReference, index: Int,
+    workflow: WorkflowDefinition, store workflowFileStore: any WorkflowFileStore
+  ) async {
+    defer { workflowLibrary.savingOutputStates.remove(workflow.id) }
+    guard let url = await materializeWorkflowFile(workflow, store: workflowFileStore) else { return }
+    var state = workflowLibrary.outputStatesByID[workflow.id] ?? WorkflowOutputState(workflowID: workflow.id)
+    state.outputs[action.documentID ?? "output-\(index + 1)"] = enabled
+    do {
+      let expected = workflowLibrary.outputStateSourcesByID[workflow.id].map(WorkflowFileExpectation.source) ?? .missing
+      let documentSource: String
+      if let source = workflowLibrary.workflowFileSourcesByID[workflow.id] {
+        documentSource = source
+      } else {
+        documentSource = try await workflowFileStore.readSource(at: url)
+      }
+      _ = try await workflowFileStore.saveOutputState(state, for: url, expected: expected, expectedDocument: documentSource)
+      await reloadWorkflowFiles()
+    } catch {
+      workflowLibrary.workflowLibraryErrorPresentation = { language in L10n.workflowFileFailureDetail(error, language: language) }
+    }
+  }
+
+  func workflowApplyingOutputState(_ workflow: WorkflowDefinition) throws -> WorkflowDefinition {
+    guard !workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id) else {
+      throw WorkflowDocumentError("state", "The workflow or output state is invalid.")
+    }
+    return try (workflowLibrary.outputStatesByID[workflow.id] ?? WorkflowOutputState(workflowID: workflow.id)).applying(to: workflow)
   }
 
   public func newWorkflowFile() async -> URL? {
@@ -60,7 +111,7 @@ extension AppModel {
       plan: WorkflowPlan(
         setup: WorkflowSetupPhase(),
         process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
+          WorkflowProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt, reasoning: .some(.none))
         ]),
         output: WorkflowOutputPhase(actions: [OutputActionReference(id: RecordActionID.systemClipboardCopy)])
       ),
@@ -74,26 +125,28 @@ extension AppModel {
     guard let workflowFileStore else { return nil }
     do {
       let properties = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
-      guard properties.isRegularFile == true, properties.isSymbolicLink != true,
-        properties.fileSize ?? 0 <= 1_048_576
+      guard properties.isRegularFile == true, properties.isSymbolicLink != true
       else {
-        throw WorkflowDocumentError("import", "Choose a regular TOML file of at most 1 MiB.")
+        throw WorkflowFileStoreError.unsupportedFile
       }
+      guard properties.fileSize ?? 0 <= 1_048_576 else { throw WorkflowFileStoreError.fileTooLarge }
       let document = try workflowFileStore.decodeDocument(String(contentsOf: url, encoding: .utf8))
       return await workflowFileForEditing(document.workflow, duplicate: true)
     } catch {
-      self.workflowLibrary.workflowLibraryError = error.localizedDescription
+      self.workflowLibrary.workflowLibraryErrorPresentation = { language in
+        return L10n.workflowFileFailureDetail(error, language: language)
+      }
       return nil
     }
   }
 
   public func runWorkflowText(_ text: String, workflow saved: WorkflowDefinition) {
-    guard !hasBegunApplicationShutdown, !self.settings.isLoading, !self.voice.isRunning,
+    guard !hasBegunApplicationShutdown, !self.settings.isLoading, !self.voice.isRunning, saved.inputKind != .record,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       isWorkflowEnabled(saved), !self.workflowLibrary.invalidWorkflowFileIDs.contains(saved.id),
       isWorkflowExecutionSupported(saved)
     else { return }
-    var workflow = saved
+    guard var workflow = try? workflowApplyingOutputState(saved) else { return }
     workflow.declaredInputKind = .text
     workflow.plan = workflow.plan.acceptingTextInput()
     self.voice.isRunning = true
@@ -104,7 +157,6 @@ extension AppModel {
       defer { self.finishInteractiveWorkflowTask(generation: generation) }
       do {
         try Task.checkCancellation()
-        try await self.persistProviderSettingsForRun(workflow)
         let authorization = try await self.authorizeWorkflowRunAction(workflow)
         try Task.checkCancellation()
         await self.sessionCoordinator.runRecognizedText(text, authorizedContext: authorization)
@@ -112,7 +164,7 @@ extension AppModel {
         self.voice.isRunning = false
       } catch {
         self.voice.isRunning = false
-        self.lastFailure = L10n.surface(.theWorkflowCouldNotFinish, language: self.settings.language)
+        self.lastFailureResource = L10n.modelServiceFailure(error) ?? L10n.resource("surface.theWorkflowCouldNotFinish")
       }
     }
   }

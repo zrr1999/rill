@@ -6,7 +6,7 @@ import RillInputMethodIPC
 extension AppModel {
   public func installInputMethodFeature(
     privacy: @escaping () throws -> PrivacyPolicySettings,
-    install: @escaping (URL?) async throws -> String,
+    install: @escaping (URL?) async throws -> Void,
     inspectInstallation: @escaping () -> InputMethodInstallationState = { .notInstalled },
     bridgeDirectory: String = LocalInputMethodChannel.directory
   ) {

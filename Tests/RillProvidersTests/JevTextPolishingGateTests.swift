@@ -6,10 +6,10 @@ import Testing
 @testable import RillProviders
 
 @Suite(.serialized)
-struct JevTextPolishingGateTests {
+struct DecisionTextPolishingGateTests {
   @Test func vocabularyReferencesBypassPredictionButEmptyVocabularyDoesNot() async throws {
     let fixture = fixture()
-    var referenced = context()
+    var referenced = context(fixture.settings)
     referenced.correctionRequest = .init(transcript: "text", vocabularyReference: try .init(terms: ["Rill"]))
     #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: referenced))
     #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
@@ -20,7 +20,7 @@ struct JevTextPolishingGateTests {
 
   @Test func cleanTextSkipsAndOnlyTranscriptAndInstructionsAreSent() async throws {
     let fixture = fixture()
-    #expect(try await fixture.gate.shouldSkip(text: "请明天 10:30 开会。", step: step, context: context()))
+    #expect(try await fixture.gate.shouldSkip(text: "请明天 10:30 开会。", step: step, context: context(fixture.settings)))
     let requests = PolishingURLProtocol.state.withLock { $0.requests }
     let request = try #require(requests.first)
     #expect(requests.count == 1)
@@ -43,7 +43,7 @@ struct JevTextPolishingGateTests {
   ])
   func neededUncertainAndLowConfidenceContinuePolishing(probabilities: (Double, Double, Double, Double)) async throws {
     let fixture = fixture(response: Self.response(probabilities))
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)))
     #expect(PolishingURLProtocol.state.withLock { $0.requests.count } == 1)
     await fixture.gate.shutdown()
   }
@@ -51,7 +51,7 @@ struct JevTextPolishingGateTests {
   @Test(arguments: [401, 403, 429, 529, 500, 302])
   func serviceFailuresFallBackWithoutRetry(status: Int) async throws {
     let fixture = fixture(status: status)
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)))
     #expect(PolishingURLProtocol.state.withLock { $0.requests.count } == 1)
     await fixture.gate.shutdown()
   }
@@ -64,35 +64,38 @@ struct JevTextPolishingGateTests {
   ])
   func invalidPredictionsNeverSkip(response: String) async throws {
     let fixture = fixture(response: response)
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)))
     await fixture.gate.shutdown()
   }
 
   @Test func disabledMissingKeysAndOversizedTextMakeNoRequest() async throws {
     let fixture = fixture()
     fixture.settings.setPolishingEnabled(false)
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)))
     fixture.settings.clear()
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)))
     try fixture.settings.setKey("unit-test-key")
     fixture.settings.setPolishingEnabled(true)
-    #expect(try await !fixture.gate.shouldSkip(text: String(repeating: "中", count: 601), step: step, context: context()))
-    #expect(try await !fixture.gate.shouldSkip(text: "  ", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: String(repeating: "中", count: 601), step: step, context: context(fixture.settings)))
+    #expect(try await !fixture.gate.shouldSkip(text: "  ", step: step, context: context(fixture.settings)))
     #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
     await fixture.gate.shutdown()
   }
 
   @Test func unrelatedWorkflowsAnswersAndContextualReferencesAreNotPredicted() async throws {
     let fixture = fixture()
-    var custom = context()
-    custom.workflow.metadata = [:]
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: custom))
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: .init(kind: .llmAnswer, prompt: "Answer"), context: context()))
-    var referenced = context()
+    var custom = context(fixture.settings)
+    var ungated = step
+    ungated.decision = nil
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: ungated, context: custom))
+    #expect(
+      try await !fixture.gate.shouldSkip(
+        text: "text", step: .init(kind: .llmAnswer, prompt: "Answer", reasoning: .some(.high)), context: context(fixture.settings)))
+    var referenced = context(fixture.settings)
     referenced.correctionRequest = .init(transcript: "text", imageSummary: .init(terms: ["term"], observations: []))
     #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: referenced))
     #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
-    custom.workflow.metadata["text.polishing-gate"] = "jev"
+    custom.workflow.properties.isBuiltin = false
     #expect(try await fixture.gate.shouldSkip(text: "text", step: step, context: custom))
     await fixture.gate.shutdown()
   }
@@ -102,7 +105,7 @@ struct JevTextPolishingGateTests {
       let fixture = fixture()
       fixture.privacy.update(.init(sensitiveAppRules: [.init(bundleIdentifier: bundle, blocksCloudProcessing: true)]))
       await #expect(throws: CancellationError.self) {
-        try await fixture.gate.shouldSkip(text: "text", step: step, context: context())
+        try await fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings))
       }
       #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
       await fixture.gate.shutdown()
@@ -114,7 +117,7 @@ struct JevTextPolishingGateTests {
     PolishingURLProtocol.state.withLock {
       $0.onRequest = { fixture.settings.clear() }
     }
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)))
     await fixture.gate.shutdown()
   }
 
@@ -129,17 +132,17 @@ struct JevTextPolishingGateTests {
       }
     }
     await #expect(throws: CancellationError.self) {
-      try await fixture.gate.shouldSkip(text: "text", step: step, context: context())
+      try await fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings))
     }
     await fixture.gate.shutdown()
   }
 
   @Test func timeoutFallsBackAndCancellationDoesNot() async throws {
     let fixture = fixture(timeout: .milliseconds(100), stalls: true)
-    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)))
     let cancelled = Task {
       withUnsafeCurrentTask { $0?.cancel() }
-      return try await fixture.gate.shouldSkip(text: "text", step: step, context: context())
+      return try await fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings))
     }
     await #expect(throws: CancellationError.self) { try await cancelled.value }
     await fixture.gate.shutdown()
@@ -149,7 +152,7 @@ struct JevTextPolishingGateTests {
     let fixture = fixture(stalls: true)
     let started = AsyncStream<Void>.makeStream()
     PolishingURLProtocol.state.withLock { $0.onRequest = { started.continuation.yield() } }
-    let task = Task { try await fixture.gate.shouldSkip(text: "text", step: step, context: context()) }
+    let task = Task { try await fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings)) }
     for await _ in started.stream { break }
     task.cancel()
     await #expect(throws: CancellationError.self) { try await task.value }
@@ -160,33 +163,45 @@ struct JevTextPolishingGateTests {
 
   @Test func unavailablePrivacyAndSecureInputMakeNoRequest() async throws {
     let fixture = fixture()
-    var secure = context()
+    var secure = context(fixture.settings)
     secure.contextSnapshot.focus.secureInput = true
     await #expect(throws: CancellationError.self) {
       try await fixture.gate.shouldSkip(text: "text", step: step, context: secure)
     }
     fixture.privacy.markUnavailable(reason: "test unavailable")
     await #expect(throws: CancellationError.self) {
-      try await fixture.gate.shouldSkip(text: "text", step: step, context: context())
+      try await fixture.gate.shouldSkip(text: "text", step: step, context: context(fixture.settings))
     }
     #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
     await fixture.gate.shutdown()
   }
 
-  private var step: PostProcessStep { .init(kind: .llmRewrite, prompt: "Correct clear errors; preserve meaning and language.") }
+  private var step: PostProcessStep {
+    var step = PostProcessStep(kind: .llmRewrite, prompt: "Correct clear errors; preserve meaning and language.", reasoning: .some(.none))
+    step.decision = .init(optional: true)
+    return step
+  }
 
-  private func context() -> TransformContext {
+  private func context(_ settings: DecisionModelSettingsSource) -> TransformContext {
     let workflow = WorkflowDefinition(
       name: "Cleanup",
-      pipeline: .init(recognizerID: "local-speech", postProcessSteps: [step], outputActions: [.init(id: "record.store")]),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + ([step]).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [.init(id: "record.store")], deliveryPolicy: .init(strategy: .immediate))),
       ui: .init(symbolName: "sparkles", accentColorName: "purple"),
-      metadata: [WorkflowMetadataKey.builtinKind: "push-to-talk.polish"])
+      properties: .init())
     return .init(
       runID: UUID(), workflow: workflow,
       contextSnapshot: .init(
         focus: Self.focus("example.source"),
         clipboard: .init(plainText: "private-clipboard", changeCount: 0)),
-      recognitionResult: .init(rawText: "text", bestText: "text"))
+      recognitionResult: .init(rawText: "text", bestText: "text"),
+      modelSnapshot: .init(decisionAuthorization: settings.currentAuthorization()))
   }
 
   private static func focus(_ bundle: String) -> FocusSnapshot {
@@ -198,15 +213,15 @@ struct JevTextPolishingGateTests {
   private func fixture(
     response: String = response((0.01, 0.01, 0.98, 0.99)), status: Int = 200,
     timeout: Duration = .seconds(2), stalls: Bool = false
-  ) -> (gate: JevTextPolishingGate, settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource) {
+  ) -> (gate: DecisionTextPolishingGate, settings: DecisionModelSettingsSource, privacy: PrivacyPolicySettingsSource) {
     PolishingURLProtocol.state.withLock { $0 = .init(response: response, status: status, stalls: stalls) }
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [PolishingURLProtocol.self]
-    let settings = JevSessionSettingsSource()
+    let settings = DecisionModelSettingsSource()
     try! settings.setKey("unit-test-key")
     settings.setPolishingEnabled(true)
     let privacy = PrivacyPolicySettingsSource(initialSettings: .defaults)
-    let gate = JevTextPolishingGate(
+    let gate = DecisionTextPolishingGate(
       settings: settings, privacy: privacy,
       currentFocus: { Self.focus("example.target") }, client: .init(session: URLSession(configuration: configuration)),
       timeout: timeout)

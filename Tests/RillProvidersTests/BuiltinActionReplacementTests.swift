@@ -28,8 +28,7 @@ final class BuiltinActionReplacementTests: XCTestCase {
     let ingestion = RecordIngestionSpy()
     let action = RecordStoreAction(ingestion: ingestion)
     var context = makeContext()
-    context.workflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
-      "\(first.rawValue.uuidString),\(second.rawValue.uuidString)"
+    context.actionConfiguration = .record(collections: [first, second], buffer: false)
     let draft = RecordDraft(
       payload: .text("stored text"),
       provenance: RecordProvenance(
@@ -85,10 +84,12 @@ private func makeContext() -> ActionContext {
     runID: UUID(),
     workflow: WorkflowDefinition(
       name: "Store Record",
-      pipeline: PipelineDeclaration(
-        recognizerID: "test.recognizer",
-        outputActions: [OutputActionReference(id: RecordActionID.store)]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "test.recognizer")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: RecordActionID.store)], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "tray.full", accentColorName: "blue")
     ),
     contextSnapshot: .empty,

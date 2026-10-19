@@ -15,7 +15,7 @@ final class UnifiedWorkspaceTests: XCTestCase {
     model.voice.activeRunID = activeRunID
     model.voice.isRunning = true
     var messages: [String] = []
-    model.recordWorkspace.buffers.showMessageAction = { messages.append($0) }
+    model.recordWorkspace.buffers.showMessageAction = { messages.append($0.string(for: .english)) }
 
     model.handle(.recordBufferInputFailed(recordID: RecordID()))
 
@@ -59,8 +59,8 @@ final class UnifiedWorkspaceTests: XCTestCase {
     let model = makeHarness().model
     for item in SettingsItem.allCases {
       model.showSettings(.privacy, item: item)
-      XCTAssertEqual(model.selectedSettingsPane, .voice)
-      XCTAssertEqual(model.settingsNavigationRequest?.section, .providers)
+      XCTAssertEqual(model.selectedSettingsPane, .models)
+      XCTAssertEqual(model.settingsNavigationRequest?.section, .decision)
       XCTAssertEqual(model.settingsNavigationRequest?.item, item)
     }
     let results = GlobalSearchIndex.makeStaticResults(language: .english, workflows: [])

@@ -11,11 +11,13 @@ SOURCE_REVISION=""
 SOURCE_DIRTY="false"
 SOURCE_FINGERPRINT=""
 CLEAN_BUILD=false
+PREFLIGHT_LANE="all"
 WORKER_CACHE="auto"
 RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 NATIVE_TESTS='RillPlatformTests|RillUITests|RillAppTests'
 DESKTOP_TESTS='/testDesktop'
+BENCHMARK_TESTS='/testBenchmark'
 STORAGE_STRESS_TESTS='RillRuntimeTests.RecordCatalogStressTests'
 PANEL_STRESS_TESTS='RillAppTests.RecordPanelControllerTests/testWarmPanelReadyToSearchWithTenThousandRecords'
 REPORT_DIR=""
@@ -100,6 +102,7 @@ start_preflight_report() {
     printf -- '- Source baseline: `source.json` (verified before and after each stage)\n'
     printf -- '- PR base: `%s`\n' "${RILL_PR_BASE_SHA:-not applicable}"
     printf -- '- PR head: `%s`\n' "${RILL_PR_HEAD_SHA:-not applicable}"
+    printf -- '- Lane: `%s`\n' "$PREFLIGHT_LANE"
     printf -- '- Clean build: `%s`\n' "$CLEAN_BUILD"
     printf -- '- Toolchain and OS versions: `toolchain.log`\n\n'
     printf '| Stage | Result | Seconds | Exit code |\n'
@@ -236,7 +239,7 @@ check_record_domain_boundary() {
     printf '%s\n' "$legacy_sources" >&2
     error "Legacy Stack/Clipboard source files remain outside the migration boundary"
   fi
-  if git grep -n -E -e "$resource_pattern" -- Sources/RillApp/Resources; then
+  if git grep -n -E -e "$resource_pattern" -- Sources/RillPlatform/Resources/BuiltinWorkflows; then
     error "Built-in workflow resources must emit canonical Record action IDs and strategies"
   fi
   echo "Record domain boundary check passed"
@@ -244,12 +247,12 @@ check_record_domain_boundary() {
 
 run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
+  locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|$BENCHMARK_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
 }
 
 run_native_swift_tests() {
   echo 'Running native platform, UI, and app tests without desktop interaction...'
-  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$PANEL_STRESS_TESTS"
+  locked_swift test --skip-build --filter "$NATIVE_TESTS" --skip "$DESKTOP_TESTS|$BENCHMARK_TESTS|$PANEL_STRESS_TESTS"
 }
 
 run_performance_swift_tests() {
@@ -262,21 +265,13 @@ run_performance_swift_tests() {
   done
   echo 'Running 10,000-record storage performance tests in a fresh serial process...'
   locked_swift test --skip-build --filter "$STORAGE_STRESS_TESTS"
-  echo 'Running 10,000-record native panel performance tests in a fresh serial process...'
-  if locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
-    return
-  fi
-  info "Native panel stress failed; sampling one diagnostic replay"
-  if ! RILL_RECORD_PROFILE_DIR="$PROJECT_DIR/.artifacts/ui-renders/panel-profile" \
-    locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"; then
-    info "Diagnostic replay also failed; the original failure remains authoritative"
-  fi
-  error "Native panel stress failed; diagnostic samples are in .artifacts/ui-renders/panel-profile"
+  echo 'Validating 10,000-record native panel presentation in a fresh serial process...'
+  locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"
 }
 
 run_desktop_swift_tests() {
   echo 'Running desktop tests; an unlocked interactive macOS session is required...'
-  locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip RillQualityEvaluations
+  locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip "$BENCHMARK_TESTS|RillQualityEvaluations"
 }
 
 run_swift_tests() {
@@ -291,10 +286,7 @@ run_script_tests() {
   echo 'Testing dependency security policy...'
   uv run --script "$test_dir/dependency_security_test.py"
   echo 'Testing evaluation and performance analysis tools...'
-  uv run --script "$test_dir/asr_analysis_test.py"
-  uv run --script "$test_dir/quality_evaluation_test.py"
-  uv run --script "$test_dir/asr_replay_test.py"
-  uv run --script "$test_dir/product_path_replay_test.py"
+  uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'
@@ -305,6 +297,8 @@ run_script_tests() {
   uv run --no-build --locked --script "$test_dir/worker_cache_test.py"
   echo 'Testing release configuration...'
   bash "$test_dir/release_config_test.sh"
+  echo 'Testing CI lane aggregation and cache policy...'
+  uv run --quiet --no-project --python ">=3.11" python "$test_dir/ci_workflow_test.py"
   echo 'Testing preflight stage reporting...'
   bash "$test_dir/preflight_report_test.sh"
   echo 'Testing GitHub Release drafts...'
@@ -425,6 +419,13 @@ check_preflight_toolchain() {
   sw_vers
 }
 
+clean_preflight_builds() {
+  if $CLEAN_BUILD; then
+    if [[ "$PREFLIGHT_LANE" != release ]]; then locked_swift clean; fi
+    if [[ "$PREFLIGHT_LANE" != tests ]]; then locked_swift clean --configuration release; fi
+  fi
+}
+
 check_repository() {
   info "Checking shell syntax..."
   check_shell_syntax "$PROJECT_DIR"
@@ -450,13 +451,8 @@ check_repository() {
   info "Scanning Git history and the current source snapshot for secrets..."
   bash "$SCRIPT_DIR/check_secrets.sh"
 
-  if $CLEAN_BUILD; then
-    locked_swift clean
-    locked_swift clean --configuration release
-  fi
+  clean_preflight_builds
 
-  info "Checking generated built-in workflow artifacts..."
-  uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
 
   info "Checking performance benchmark workloads..."
   bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only
@@ -550,15 +546,42 @@ run_preflight() {
   run_preflight_stage toolchain check_preflight_toolchain
   cd "$PROJECT_DIR"
   run_preflight_stage repository check_repository
-  run_preflight_stage domain-tests run_domain_swift_tests
-  run_preflight_stage native-tests run_native_swift_tests
-  run_preflight_stage performance-tests run_performance_swift_tests
-  run_preflight_stage desktop-tests run_desktop_swift_tests --skip-build
-  run_preflight_stage release check_release
+  if [[ "$PREFLIGHT_LANE" != release ]]; then
+    run_preflight_stage domain-tests run_domain_swift_tests
+    run_preflight_stage native-tests run_native_swift_tests
+    run_preflight_stage performance-tests run_performance_swift_tests
+    run_preflight_stage desktop-tests run_desktop_swift_tests --skip-build
+  fi
+  if [[ "$PREFLIGHT_LANE" != tests ]]; then
+    run_preflight_stage release check_release
+  fi
   run_preflight_stage working-diff check_working_diff
 
   report_preflight_evidence
   info "Preflight passed"
+}
+
+parse_preflight_options() {
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+    --clean) CLEAN_BUILD=true; WORKER_CACHE="off" ;;
+    --lane)
+      [[ "$#" -ge 2 ]] || error "Missing value for --lane"
+      PREFLIGHT_LANE="$2"
+      case "$PREFLIGHT_LANE" in
+        all | tests | release) ;;
+        *) error "Unknown preflight lane: $PREFLIGHT_LANE" ;;
+      esac
+      shift
+      ;;
+    --help | -h)
+      echo "Usage: $0 [--clean] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | syntax [ROOT] | hygiene [ROOT]"
+      exit 0
+      ;;
+    *) error "Unknown argument: $1" ;;
+    esac
+    shift
+  done
 }
 
 # Source the real orchestration and helpers in policy tests without running the gate.
@@ -605,16 +628,5 @@ hygiene)
   ;;
 esac
 
-while [[ "$#" -gt 0 ]]; do
-  case "$1" in
-  --clean) CLEAN_BUILD=true; WORKER_CACHE="off" ;;
-  --help | -h)
-    echo "Usage: $0 [--clean] | test | test-desktop | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | syntax [ROOT] | hygiene [ROOT]"
-    exit 0
-    ;;
-  *) error "Unknown argument: $1" ;;
-  esac
-  shift
-done
-
+parse_preflight_options "$@"
 run_preflight

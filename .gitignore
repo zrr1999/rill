@@ -22,6 +22,9 @@ xcuserdata/
 # Python tooling caches
 __pycache__/
 *.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
 
 # Cloudflare local state and credentials
 /.wrangler/
@@ -37,7 +40,6 @@ __pycache__/
 .spark/
 .learnings/
 /.impeccable/
-/SPARK.md
 
 # Isolated development worktrees
 /.agents/worktrees/

@@ -54,4 +54,7 @@ hooks = [
 repo = "local"
 hooks = [
   { id = "swift-format", name = "swift format", entry = "swift format lint --strict --configuration .swift-format --", language = "system", types = ["swift"], stages = ["pre-commit"] },
+  { id = "ruff-check", name = "Ruff lint", entry = "uv run --locked --project tools ruff check --config tools/pyproject.toml", language = "system", files = "^tools/.*\\.py$", stages = ["pre-commit"] },
+  { id = "ruff-format", name = "Ruff format", entry = "uv run --locked --project tools ruff format --check --config tools/pyproject.toml", language = "system", files = "^tools/.*\\.py$", stages = ["pre-commit"] },
+  { id = "ty", name = "ty", entry = "uv run --locked --project tools ty check --project tools", language = "system", files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", pass_filenames = false, stages = ["pre-commit"] },
 ]

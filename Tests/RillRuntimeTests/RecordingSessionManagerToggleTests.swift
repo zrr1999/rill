@@ -128,10 +128,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Toggle Long Recording Workflow",
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "toggle.recognizer",
-        outputActions: [OutputActionReference(id: "toggle.action")]
-      ),
+      plan: makeTestAudioPlan(recognizerID: "toggle.recognizer", actions: [OutputActionReference(id: "toggle.action")]),
       ui: WorkflowUIConfig(symbolName: "record.circle", accentColorName: "red")
     )
     let audio = try CapturedAudio(
@@ -172,7 +169,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
             cloudConfirmationRequired: false
           )
         },
-        cloudConfirmationProvider: { _, _, _ in true },
+        cloudConfirmationProvider: { _, _, _, _ in true },
         destinationClassifier: { _ in .classified([.localSpeech]) }
       ),
       workflowProvider: { [workflow] },
@@ -235,7 +232,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
     XCTAssertEqual(actionValues, ["recorded"])
     XCTAssertEqual(
       cueOrder,
-      [.captureStarted, .cue(.started), .captureFinished, .cue(.stopped)],
+      [.cue(.started), .captureStarted, .captureFinished, .cue(.stopped)],
       "Start feedback must follow confirmed capture readiness, and stop feedback must follow input shutdown."
     )
     XCTAssertTrue(

@@ -19,8 +19,8 @@ public struct RecordBufferSummaryView: View {
           .accessibilityLabel(text(.remainingCount))
       }
       if let header = model.snapshot?.nextHeader {
-        Text(header.preview.isEmpty ? header.kind.rawValue : header.preview).lineLimit(2)
-        Text(header.provenance.sourceApplicationName ?? "Rill").font(.caption).foregroundStyle(
+        Text(L10n.recordPreview(header, language: language)).lineLimit(2)
+        Text(L10n.recordSource(header.provenance, language: language)).font(.caption).foregroundStyle(
           .secondary)
       } else {
         Text(
@@ -61,7 +61,7 @@ public struct RecordBufferStatusView: View {
           Button(text(.retrySaving), action: model.confirmAction)
         }
       }
-      if let message = model.message { Text(message).font(.caption) }
+      if let message = model.message { Text(message.string(for: language)).font(.caption) }
       HStack {
         Button(text(.openDrafts), action: model.openEditorAction)
         if model.snapshot?.active == nil {
@@ -100,7 +100,7 @@ struct RecordBufferToolbar: View {
         .controlSize(.large)
         .accessibilityIdentifier("records.open-drafts")
         Text(
-          workspace.buffers.snapshot?.nextHeader?.preview
+          workspace.buffers.snapshot?.nextHeader.map { L10n.recordPreview($0, language: language) }
             ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processingStatus))
         )
         .font(.callout).foregroundStyle(.secondary).lineLimit(1)
@@ -108,7 +108,7 @@ struct RecordBufferToolbar: View {
         Menu {
           ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
             if summary.buffer.policy == .set {
-              Button("{} \(summary.buffer.name) (\(summary.count))") {
+              Button("{} \(L10n.bufferName(summary.buffer, language: language)) (\(summary.count))") {
                 setEntries = []
                 selectedSet = summary.id
                 Task {
@@ -119,7 +119,7 @@ struct RecordBufferToolbar: View {
               }
             } else {
               Toggle(
-                "\(summary.buffer.policy == .stack ? "()" : "[]") \(summary.buffer.name) (\(summary.count))",
+                "\(summary.buffer.policy == .stack ? "()" : "[]") \(L10n.bufferName(summary.buffer, language: language)) (\(summary.count))",
                 isOn: Binding(
                   get: { summary.buffer.isEnabled },
                   set: { workspace.buffers.setEnabled($0, buffer: summary.buffer) }))
@@ -128,7 +128,7 @@ struct RecordBufferToolbar: View {
           Divider()
           if let recordID = workspace.selectedRecordID {
             ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
-              Button(text(.addTo) + summary.buffer.name) {
+              Button(text(.addTo) + L10n.bufferName(summary.buffer, language: language)) {
                 workspace.buffers.enqueue(recordID, bufferID: summary.id)
               }
             }
@@ -160,13 +160,17 @@ struct RecordBufferToolbar: View {
           ForEach(setEntries) { entry in
             let header = entry.recordID.flatMap { headers[$0] }
             Button(
-              header?.preview.isEmpty == false ? header!.preview : header?.kind.rawValue ?? "Record"
+              header.map { L10n.recordPreview($0, language: language) } ?? L10n.catalogString("record.recordFallback", language: language)
             ) {
               selectedSet = nil
               workspace.buffers.outputAction(entry.id)
             }.lineLimit(2)
           }
-          if setEntries.isEmpty { RillEmptyState(title: text(.noItems), symbol: .tray) }
+          if setEntries.isEmpty {
+            ContentUnavailableView {
+              Label(text(.noItems), systemImage: RillSystemSymbol.tray.rawValue)
+            }
+          }
         }
       }.padding().frame(width: 320, height: 320)
     }

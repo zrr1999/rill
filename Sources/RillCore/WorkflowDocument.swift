@@ -2,7 +2,7 @@ import Foundation
 
 /// The complete editable configuration. File and visual editors share this value.
 public struct WorkflowDocument: Sendable, Equatable {
-  public static let schemaVersion = 2
+  public static let schemaVersion = 1
   public var workflow: WorkflowDefinition
   public var isEnabled: Bool
 
@@ -120,4 +120,9 @@ extension WorkflowDefinition {
   public var inputKind: WorkflowInputKind {
     declaredInputKind ?? (plan.setup.speechRoute == nil ? .text : .audio)
   }
+}
+
+public struct WorkflowServiceRequirement: Codable, Sendable, Equatable {
+  public var optional: Bool
+  public init(optional: Bool = false) { self.optional = optional }
 }

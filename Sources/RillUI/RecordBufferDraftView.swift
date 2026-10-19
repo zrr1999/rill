@@ -5,7 +5,6 @@ public struct RecordBufferDraftView: View {
   @Bindable private var model: RecordBufferDraftModel
   @Bindable private var voice: VoiceRunModel
   @Bindable private var settings: SettingsPersistenceModel
-  private let setVoiceCollection: (Bool) -> Void
   private let setClipboardCollection: (Bool) -> Void
   private let onFinishEditing: () -> Void
   private let copyText: (String) -> Void
@@ -16,6 +15,8 @@ public struct RecordBufferDraftView: View {
   @State private var showsCollectionControls = false
   @State private var showsDetails = false
   @State private var showsFailure = false
+  @State private var copyFeedback = 0
+  @State private var sendFeedback = 0
 
   public init(model: AppModel, onFinishEditing: @escaping () -> Void = {}) {
     self.model = model.recordWorkspace.buffers.editor
@@ -23,9 +24,6 @@ public struct RecordBufferDraftView: View {
     self.settings = model.settings
     self.onFinishEditing = onFinishEditing
     copyText = { [weak model] in model?.copyTextToClipboard($0) }
-    setVoiceCollection = { [weak model] enabled in
-      model?.setBuiltinPushToTalkOutputMode(enabled ? .saveToVoiceGroup : .pasteIntoApp)
-    }
     setClipboardCollection = { [weak model] enabled in
       model?.setSystemClipboardCaptureEnabled(enabled)
     }
@@ -88,13 +86,13 @@ public struct RecordBufferDraftView: View {
       HStack(spacing: RecordPanelAppearance.paneInset) {
         VStack(spacing: 9) {
           HStack(spacing: 4) {
-            Text(panelText(.draftList)).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(panelText(.draftList)).font(.caption).foregroundStyle(.secondary)
             Spacer(minLength: 0)
             Button {
               model.newItem()
             } label: {
               Label(panelText(.newItem), systemImage: RillSystemSymbol.plus.rawValue)
-                .font(.system(size: 11))
+                .font(.caption)
             }
             .buttonStyle(.plain).foregroundStyle(.secondary)
             .help(panelText(.newDraft))
@@ -120,14 +118,14 @@ public struct RecordBufferDraftView: View {
           }.controlSize(.small).frame(height: 25).padding(.horizontal, 13).padding(.top, 10)
           HStack(spacing: 5) {
             Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
-              .font(.system(size: 12)).foregroundStyle(.secondary)
+              .font(.callout).foregroundStyle(.secondary)
             TextField(panelText(.searchDrafts), text: $query)
-              .textFieldStyle(.plain).font(.system(size: 12))
+              .textFieldStyle(.plain).font(.callout)
               .accessibilityIdentifier("record-buffer.search")
           }
           .padding(.horizontal, 8).recordPanelSearchSurface().padding(.horizontal, 9)
           itemList
-        }.frame(width: RecordPanelAppearance.sidebarWidth)
+        }.rillScaledWidth(RecordPanelAppearance.sidebarWidth, minimum: 180, maximum: 240)
           .rillGlass(in: RecordPanelAppearance.paneShape)
         editor.frame(maxWidth: .infinity, maxHeight: .infinity)
           .background(RecordPanelAppearance.paper)
@@ -152,7 +150,7 @@ public struct RecordBufferDraftView: View {
           model.targetName.map { text(.sendTo) + $0 }
             ?? panelText(.sendWhenReady)
         )
-        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
       }
       Spacer(minLength: 0)
       Button(panelText(.doneEditing), action: onFinishEditing)
@@ -160,19 +158,28 @@ public struct RecordBufferDraftView: View {
         .frame(width: 88, height: 32)
         .disabled(model.session == nil || model.session?.hasMarkedText == true)
         .accessibilityIdentifier("record-buffer.finish-editing")
-      Button(panelText(.copy)) { if let session = model.session { copyText(session.text) } }
-        .buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
-        .frame(width: 60, height: 32)
-        .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
-        .accessibilityIdentifier("record-buffer.copy")
-      Button(panelText(.send), action: model.send)
-        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
-        .tint(.accentColor).frame(width: 84, height: 32)
-        .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
-        .help(text(.returnSendsWhileEditingReturn))
-        .accessibilityIdentifier("record-buffer.send")
+      Button(panelText(.copy)) {
+        guard let session = model.session else { return }
+        copyFeedback &+= 1
+        copyText(session.text)
+      }
+      .buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
+      .frame(width: 60, height: 32)
+      .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
+      .sensoryFeedback(.success, trigger: copyFeedback)
+      .accessibilityIdentifier("record-buffer.copy")
+      Button(panelText(.send)) {
+        sendFeedback &+= 1
+        model.send()
+      }
+      .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
+      .tint(.accentColor).frame(width: 84, height: 32)
+      .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
+      .sensoryFeedback(.impact, trigger: sendFeedback)
+      .help(text(.returnSendsWhileEditingReturn))
+      .accessibilityIdentifier("record-buffer.send")
     }
-    .font(.system(size: 12)).controlSize(.large)
+    .font(.callout).controlSize(.large)
     .padding(.horizontal, 15).frame(height: 56)
     .accessibilityIdentifier("record-buffer.actions")
   }
@@ -180,15 +187,6 @@ public struct RecordBufferDraftView: View {
   private var collectionControls: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 24) {
-        Toggle(
-          text(.collectVoiceInDrafts),
-          isOn: Binding(
-            get: { settings.builtinPushToTalkOutputMode == .saveToVoiceGroup },
-            set: { setVoiceCollection($0) })
-        )
-        .disabled(!settings.canMutateScalarSettings(in: .input))
-        .help(text(.whenOffFnDictationTypes))
-        .accessibilityIdentifier("record-buffer.collect-voice")
         Toggle(
           text(.collectClipboardInDrafts),
           isOn: Binding(
@@ -215,7 +213,7 @@ public struct RecordBufferDraftView: View {
           ForEach(summary.buffer.policy == .stack ? entries.reversed() : entries) { item in
             VStack(alignment: .leading, spacing: 5) {
               Text(item.state == .preparing ? text(.recognizing) : preview(item))
-                .font(.system(size: 12, weight: .medium)).lineLimit(1)
+                .font(.callout.weight(.medium)).lineLimit(1)
               Text(
                 bufferName(summary.buffer) + " · "
                   + (item.suggestionCount > 0
@@ -225,7 +223,7 @@ public struct RecordBufferDraftView: View {
                       : item.state != .ready ? text(.inProgress) : policyName(summary.buffer.policy))
                   + (summary.buffer.isEnabled ? "" : text(.disabledSuffix))
               )
-              .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+              .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 43, alignment: .leading)
             .padding(.vertical, 5)
@@ -263,18 +261,18 @@ public struct RecordBufferDraftView: View {
       VStack(alignment: .leading, spacing: 0) {
         HStack(alignment: .top, spacing: 12) {
           VStack(alignment: .leading, spacing: 4) {
-            Text(text(.editText)).font(.system(size: 17, weight: .medium)).lineLimit(1)
+            Text(text(.editText)).font(.title3.weight(.medium)).lineLimit(1)
             Text(
               model.buffers.first(where: { $0.id == session.entryID.bufferID }).map {
                 bufferName($0.buffer) + " · " + policyName($0.buffer.policy)
               } ?? panelText(.drafts)
             )
-            .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
           }
           Spacer(minLength: 0)
           Button(action: model.dictateHere) {
             Label(text(.dictateHere), systemImage: RillSystemSymbol.micBadgePlus.rawValue)
-              .font(.system(size: 11))
+              .font(.caption)
           }
           .buttonStyle(.plain).foregroundStyle(.secondary).padding(.top, 4)
           .disabled(model.isBusy || voice.isRunning || session.hasMarkedText)
@@ -289,11 +287,11 @@ public struct RecordBufferDraftView: View {
           saveState(session)
           Spacer(minLength: 8)
           Text(L10n.recordPanelCharacterCount(session.text.count, language: language))
-            .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
           Button(session.saved.suggestions.isEmpty ? panelText(.reviewEdits) : panelText(.reviewResults)) {
             model.showsChanges = true
             showsDetails = true
-          }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+          }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
         }.padding(.horizontal, 22).frame(height: 36)
       }
     } else {
@@ -314,7 +312,7 @@ public struct RecordBufferDraftView: View {
         model.isSaving
           ? text(.saving)
           : session.hasUnsavedChanges ? text(.unsaved) : text(.saved))
-    }.font(.system(size: 11)).foregroundStyle(.secondary)
+    }.font(.caption).foregroundStyle(.secondary)
   }
 
   @ViewBuilder private func failureActions(_ failure: RecordBufferDraftModel.Failure) -> some View {
@@ -372,9 +370,7 @@ public struct RecordBufferDraftView: View {
   }
 
   private func bufferName(_ buffer: RecordBuffer) -> String {
-    if buffer.id == RecordBuffer.speechID { return text(.speech) }
-    if buffer.id == RecordBuffer.clipboardID { return text(.clipboard) }
-    return buffer.name
+    L10n.bufferName(buffer, language: language)
   }
   private func preview(_ item: BufferItemSummary) -> String {
     let preview =

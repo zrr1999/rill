@@ -123,16 +123,8 @@ struct SettingsPermissionPresentation: Equatable {
 
 public struct SettingsView: View {
   @Bindable var model: AppModel
+  @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
   let privacyNoticeDocument: PrivacyNoticeDocument?
-  @State var vocabularyKind: VocabularyRuleKind = .mapping
-  @State var vocabularyPattern = ""
-  @State var vocabularyReplacement = ""
-  @State var vocabularyMatchMode: VocabularyMatchMode = .exactPhrase
-  @State var vocabularyCaseSensitive = false
-  @State var vocabularyBundleIdentifier = ""
-  @State var vocabularyGroupID: UUID?
-  @State var vocabularyLocale = ""
-  @State var vocabularyPriority = 0
   @State var sensitiveAppBundleIdentifier = ""
   @State var sensitiveAppApplicationName = ""
   @State var editingSensitiveAppRuleID: UUID?
@@ -145,7 +137,7 @@ public struct SettingsView: View {
   @State var wakePhrasesText: String
   @State var wakeListeningDraftEnabled: Bool
   @State var isApplyingWakeWordSettings = false
-  @State var wakeWordSettingsError: String?
+  @State var wakeWordSettingsError: WakeWordSettingsUpdateResult?
   @FocusState var focusedSettingsItem: SettingsItem?
   @AccessibilityFocusState var accessibilityFocusedSettingsItem: SettingsItem?
   @FocusState private var focusedSettingsSection: SettingsSection?
@@ -161,7 +153,7 @@ public struct SettingsView: View {
   ) {
     self.model = model
     self.pane = pane
-    _expandedSettingsSections = State(initialValue: Set(pane.sections))
+    _expandedSettingsSections = State(initialValue: pane == .models ? [] : Set(pane.sections))
     self.privacyNoticeDocument = privacyNoticeDocument
     let wakeWordSettings = model.wakeWordSettingsSnapshot
     _wakePhrasesText = State(
@@ -182,15 +174,15 @@ public struct SettingsView: View {
         case .general:
           Section { languageSection }
         case .input:
-          Section {
-            builtinPushToTalkSection
-            recordPanelSection
-          }
-          if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
-        case .voice:
-          Section { speechEngineSection }
-          Section { apiProviderSettingsSection }
+          Section { builtinPushToTalkSection }
           Section { voiceAssistantResourcesSection }
+          Section { recordPanelSection }
+          if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
+        case .models:
+          Section { speechEngineSection }
+          Section { decisionProviderSettingsSection }
+          Section { llmProviderSettingsSection }
+          Section { ttsServiceSettingsSection }
         case .vocabulary:
           Section {
             vocabularySection
@@ -272,6 +264,7 @@ public struct SettingsView: View {
     } message: { confirmation in
       Text(destructiveConfirmationDetail(confirmation))
     }
+    .environment(\.locale, model.settings.language.formattingLocale)
   }
 
   private var permissionsSection: some View {
@@ -451,7 +444,7 @@ extension SettingsView {
       }
       .contentShape(Rectangle())
     }
-    .buttonStyle(SettingsNavigationRowButtonStyle())
+    .buttonStyle(RillHoverButtonStyle(kind: .fill(cornerRadius: RillRadius.row)))
     .accessibilityIdentifier("settings.diagnostics.open")
     .id(SettingsSection.diagnostics)
     .focused($focusedSettingsSection, equals: .diagnostics)
@@ -512,7 +505,7 @@ extension SettingsView {
         ? L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language)
         : L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language) + " · " + name
     case .input:
-      return L10n.builtinPushToTalkOutputMode(model.settings.builtinPushToTalkOutputMode, language: model.settings.language)
+      return L10n.workflowExplanationCopy(.outputs, language: model.settings.language)
     case .language:
       return model.settings.language.displayName
     case .storage:
@@ -660,9 +653,15 @@ extension SettingsView {
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
           .font(.subheadline.weight(.medium))
-        Text(presentation.detail)
-          .font(.caption)
-          .foregroundStyle(permissionColor(presentation.tone))
+        HStack(spacing: 4) {
+          if differentiateWithoutColor {
+            Image(systemName: permissionSymbol(presentation.tone).rawValue)
+              .accessibilityHidden(true)
+          }
+          Text(presentation.detail)
+        }
+        .font(.caption)
+        .foregroundStyle(permissionColor(presentation.tone))
       }
       Spacer()
       switch presentation.action {
@@ -845,22 +844,19 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      Picker(
-        L10n.text(.builtinPushToTalkOutputMode, language: model.settings.language),
-        selection: Binding(
-          get: { model.settings.builtinPushToTalkOutputMode },
-          set: { model.setBuiltinPushToTalkOutputMode($0) }
-        )
-      ) {
-        ForEach(BuiltinPushToTalkOutputMode.allCases) { mode in
-          Text(L10n.builtinPushToTalkOutputMode(mode, language: model.settings.language)).tag(mode)
-        }
-      }
-      .pickerStyle(.segmented)
-      .disabled(!model.settings.canMutateScalarSettings(in: .input))
+      if let workflow = model.activeVoiceInputWorkflow { WorkflowOutputChoices(model: model, workflow: workflow) }
       Text(L10n.text(.settingsBuiltinPushToTalkDescription, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
+    }
+  }
+
+  private func permissionSymbol(_ tone: SettingsPermissionTone) -> RillSystemSymbol {
+    switch tone {
+    case .success: .checkmarkCircle
+    case .secondary: .infoCircle
+    case .warning: .exclamationmarkTriangle
+    case .error: .exclamationmarkCircle
     }
   }
 
@@ -918,36 +914,5 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
         .padding(.top, 8)
       }
     }
-  }
-}
-
-/// Hover feedback for plain navigation rows in settings, mirroring
-/// RillCardButtonStyle's pointer acknowledgement as a quiet fill instead of
-/// a stroke so the row's layout inside the grouped form stays untouched.
-private struct SettingsNavigationRowButtonStyle: ButtonStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    SettingsNavigationRowButtonBody(configuration: configuration)
-  }
-}
-
-private struct SettingsNavigationRowButtonBody: View {
-  let configuration: ButtonStyleConfiguration
-
-  @State private var isHovering = false
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  var body: some View {
-    configuration.label
-      .background {
-        RoundedRectangle(cornerRadius: RillRadius.row, style: .continuous)
-          .fill(
-            .quaternary.opacity(isHovering ? RillCardProminence.regular.fillOpacity : 0)
-          )
-      }
-      .animation(
-        reduceMotion ? nil : .easeInOut(duration: 0.15),
-        value: isHovering
-      )
-      .onHover { isHovering = $0 }
   }
 }

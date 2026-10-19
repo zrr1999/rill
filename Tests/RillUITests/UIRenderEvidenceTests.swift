@@ -1,5 +1,4 @@
 import AppKit
-import ScreenCaptureKit
 import SwiftUI
 import XCTest
 @testable import RillCore
@@ -105,7 +104,6 @@ final class UIRenderEvidenceTests: XCTestCase {
                 : [Color(red: 0.77, green: 0.85, blue: 0.91), Color(red: 0.89, green: 0.83, blue: 0.83)],
               startPoint: .topTrailing, endPoint: .bottomLeading)
             VStack(spacing: 14) {
-              RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {})
               view.frame(width: 668, height: 468)
                 .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
             }
@@ -115,10 +113,6 @@ final class UIRenderEvidenceTests: XCTestCase {
             focusWindow: true, floating: true,
             to: output.appendingPathComponent("floating-scene-\(mode.rawValue)-\(variant).png"))
         }
-        try await render(
-          RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {}),
-          size: NSSize(width: 260, height: 48), dark: dark, floating: true,
-          to: output.appendingPathComponent("pending-capsule-\(variant).png"))
         try await render(
           VoiceSetupView(model: model), size: NSSize(width: 500, height: 360), dark: dark,
           to: output.appendingPathComponent("setup-\(variant).png"))
@@ -387,7 +381,7 @@ final class UIRenderEvidenceTests: XCTestCase {
     await workspace.shutdown()
   }
 
-  func testRenderAPIProviderSettings() async throws {
+  func testRenderModelServiceSettings() async throws {
     guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
       throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
     }
@@ -399,10 +393,17 @@ final class UIRenderEvidenceTests: XCTestCase {
     for language in AppLanguage.allCases {
       model.setInterfaceLanguage(language)
       for dark in [false, true] {
-        model.showSettings(.providers)
-        try await render(
-          SettingsView(model: model, pane: .voice), size: NSSize(width: 760, height: 1100),
-          dark: dark, to: output.appendingPathComponent("api-providers-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+        for size in [NSSize(width: 960, height: 720), NSSize(width: 760, height: 640)] {
+          for section in [nil, SettingsSection.speech, .decision, .llm, .tts] {
+            model.selectedSettingsPane = .models
+            model.presentSettings()
+            if let section { model.showSettings(section) }
+            let name = section?.rawValue ?? "overview"
+            try await render(
+              MainShellView(model: model), size: size,
+              dark: dark, to: output.appendingPathComponent("model-services-\(name)-\(Int(size.width))-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+          }
+        }
       }
     }
     await workspace.shutdown()
@@ -517,29 +518,7 @@ final class UIRenderEvidenceTests: XCTestCase {
       try rows.joined(separator: "\n").write(to: url.deletingPathExtension().appendingPathExtension("layout.txt"), atomically: true, encoding: .utf8)
     }
     if ProcessInfo.processInfo.environment["RILL_UI_COMPOSITOR_CAPTURE"] == "1" {
-      guard CGPreflightScreenCaptureAccess() else {
-        throw XCTSkip("Compositor evidence requires existing Screen Recording permission; no prompt was requested.")
-      }
-      let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
-      let ownWindow = try XCTUnwrap(
-        content.windows.first {
-          $0.windowID == CGWindowID(window.windowNumber)
-            && $0.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier
-        })
-      let configuration = SCStreamConfiguration()
-      let scale =
-        ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_SCALE"].flatMap(Double.init)
-        ?? window.backingScaleFactor
-      configuration.width = Int(window.frame.width * scale)
-      configuration.height = Int(window.frame.height * scale)
-      configuration.showsCursor = false
-      configuration.capturesAudio = false
-      configuration.ignoreShadowsSingleWindow = true
-      configuration.includeChildWindows = true
-      let image = try await SCScreenshotManager.captureImage(
-        contentFilter: SCContentFilter(desktopIndependentWindow: ownWindow), configuration: configuration)
-      let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-      try png.write(to: url)
+      try await captureNativeWindow(window, to: url)
       return
     }
     let representation = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))

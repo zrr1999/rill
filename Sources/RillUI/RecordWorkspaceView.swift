@@ -93,7 +93,7 @@ public struct RecordWorkspaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .layoutPriority(1)
     }
-    .navigationTitle(workspace.selectedCollection?.name ?? L10n.workspace(.allRecords, language: language))
+    .navigationTitle(workspace.selectedCollection.map { L10n.collectionName($0, language: language) } ?? L10n.workspace(.allRecords, language: language))
     .toolbar { ToolbarItem(placement: .primaryAction) { recordActionsMenu } }
     .sheet(isPresented: $showsCollectionSettings) {
       VStack(alignment: .leading, spacing: RillSpacing.panel) {
@@ -249,12 +249,12 @@ public struct RecordWorkspaceView: View {
           showsCompactList = true
         } label: {
           Label(
-            workspace.selectedCollection?.name
+            workspace.selectedCollection.map { L10n.collectionName($0, language: language) }
               ?? L10n.workspace(.allRecords, language: language),
             systemImage: RillSystemSymbol.chevronLeft.rawValue
           )
         }
-        .buttonStyle(RecordWorkspaceHoverButtonStyle())
+        .buttonStyle(RillHoverButtonStyle(kind: .tint))
         .accessibilityIdentifier("records.back")
         Spacer(minLength: 0)
       }
@@ -705,7 +705,7 @@ public struct RecordWorkspaceView: View {
     VStack(alignment: .leading, spacing: 12) {
       Text(L10n.recordText(.addToCollections, language: language)).font(.title2.weight(.semibold))
       List(workspace.snapshot.collections, selection: $collectionIDsToAdd) { collection in
-        Text(collection.name).tag(collection.id)
+        Text(L10n.collectionName(collection, language: language)).tag(collection.id)
       }
       .frame(height: RecordWorkspaceViewMetrics.membershipListHeight)
       HStack {
@@ -738,8 +738,8 @@ public struct RecordWorkspaceView: View {
       Text(L10n.recordText(.replaceDescription, language: language))
         .font(.caption)
         .foregroundStyle(.secondary)
-      if let error = workspace.errorMessage {
-        Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+      if let error = workspace.errorPresentation {
+        Text(error.string(for: language)).font(.callout).foregroundStyle(.red).textSelection(.enabled)
       }
       HStack {
         Spacer()
@@ -768,7 +768,7 @@ public struct RecordWorkspaceView: View {
       Text(L10n.quickRecord(.collectionDeletion, language: language)).foregroundStyle(.secondary)
       if impact.hasRouteReferences {
         ForEach(workspace.snapshot.collections.filter { $0.id != impact.collectionID }) { collection in
-          Button(L10n.replaceWithCollection(collection.name, language: language)) {
+          Button(L10n.replaceWithCollection(L10n.collectionName(collection, language: language), language: language)) {
             Task {
               await workspace.confirmCollectionDeletion(
                 impact.collectionID,
@@ -871,9 +871,7 @@ public struct RecordWorkspaceView: View {
   }
 
   private func sourceName(_ provenance: RecordProvenance) -> String {
-    provenance.sourceApplicationName
-      ?? provenance.workflow?.fallbackName
-      ?? provenance.source.kind.rawValue
+    L10n.recordSource(provenance, language: language)
   }
 
   private var membershipSheetIsPresented: Binding<Bool> {
@@ -920,20 +918,5 @@ public struct RecordWorkspaceView: View {
   private func dismissError() {
     workspace.dismissError()
     if workspace.cleanup.plan == nil { workspace.cleanup.cancel() }
-  }
-}
-
-/// Plain label buttons still need a pointer acknowledgement; this style tints
-/// the label on hover and follows RillCardButtonStyle's Reduce Motion rule.
-private struct RecordWorkspaceHoverButtonStyle: ButtonStyle {
-  @State private var isHovering = false
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .foregroundStyle(isHovering ? Color.accentColor : Color.primary)
-      .opacity(configuration.isPressed ? 0.7 : 1)
-      .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovering)
-      .onHover { isHovering = $0 }
   }
 }

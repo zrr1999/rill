@@ -1,3 +1,4 @@
+import RillPlatform
 @testable import RillSpeechContracts
 @testable import RillSpeech
 import Darwin
@@ -375,7 +376,7 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     XCTAssertNil(activePID)
   }
 
-  func testBuiltinSpeechWorkflowsUseEnabledModelsAndReportDisabledOverrides() async throws {
+  func testBuiltinSpeechWorkflowsUseGlobalModelAndRejectDisabledSelection() async throws {
     let selectedModel = MLXAudioModelID.qwen3ASR17BInt8.rawValue
     let disabledModel = MLXAudioModelID.qwen3ASR06BInt8.rawValue
     let response = makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1)
@@ -403,7 +404,7 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
       fileURL: audioURL,
       fileOwnership: .managedTemporary
     )
-    let workflows = BuiltinWorkflowCatalog().manifest().workflows
+    let workflows = try BuiltinWorkflowCatalog().manifest().workflows
     do {
       for workflow in workflows {
         let result = try await recognizer.recognize(
@@ -422,18 +423,17 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     try await recognizer.stopRuntime()
     XCTAssertTrue(diagnostics.snapshot().isEmpty)
 
-    var workflow = try XCTUnwrap(workflows.first { $0.titleKey == .smartCleanup })
-    workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] = disabledModel
+    let workflow = try XCTUnwrap(workflows.first { $0.titleKey == .smartCleanup })
     let failedRunID = UUID()
     do {
       _ = try await recognizer.recognize(
         RecognitionRequest(
           runID: failedRunID, contextSnapshot: .empty, capturedAudio: audio,
           options: LocalSpeechModelCatalog.recognitionOptions(
-            settings: LocalSpeechSettings(model: selectedModel, enabledModelIDs: [selectedModel]), workflow: workflow)
+            settings: LocalSpeechSettings(model: disabledModel, enabledModelIDs: [selectedModel]), workflow: workflow)
         )
       )
-      XCTFail("An explicit disabled model must fail before starting the worker.")
+      XCTFail("The disabled global model must fail before starting the worker.")
     } catch {
       XCTAssertEqual(error as? LocalSpeechModelSelectionError, .modelNotEnabled(disabledModel))
     }
@@ -890,10 +890,12 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
   private func makeWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
       name: "Worker Adapter Test",
-      pipeline: PipelineDeclaration(
-        recognizerID: "local-speech",
-        outputActions: []
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent")
     )
   }

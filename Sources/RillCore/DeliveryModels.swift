@@ -10,6 +10,7 @@ public enum ActionResult: Sendable, Equatable {
 }
 
 public struct ActionContext: Sendable, Equatable {
+  public var modelSnapshot: WorkflowModelSnapshot?
   public var actionConfiguration: WorkflowActionConfiguration?
   public var runID: UUID
   public var workflow: WorkflowDefinition
@@ -36,8 +37,10 @@ public struct ActionContext: Sendable, Equatable {
     bufferEntryID: BufferEntryID? = nil,
     bufferDraftInput: BufferDraftInputIntent? = nil,
     startedAt: Date,
-    finishedAt: Date
+    finishedAt: Date,
+    modelSnapshot: WorkflowModelSnapshot? = nil
   ) {
+    self.modelSnapshot = modelSnapshot
     self.actionConfiguration = nil
     self.bufferEntryID = bufferEntryID
     self.bufferDraftInput = bufferDraftInput

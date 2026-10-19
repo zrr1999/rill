@@ -1,0 +1,649 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rill workflow v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "description": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "trigger": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "manual",
+            "hotkey",
+            "menu-bar",
+            "wake-word"
+          ]
+        },
+        "gesture": {
+          "type": "string"
+        },
+        "exclusive_group": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "audio",
+            "text",
+            "record"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "symbol": {
+          "type": "string"
+        },
+        "accent": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "setup": {
+      "type": "object",
+      "properties": {
+        "speech": {
+          "type": "object",
+          "properties": {
+            "language": {
+              "type": "string"
+            },
+            "live_preview": {
+              "type": "boolean"
+            },
+            "live_preview_placement": {
+              "enum": [
+                "overlay",
+                "cursor"
+              ]
+            },
+            "streaming_profile": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "wake_word": {
+          "type": "object",
+          "properties": {
+            "phrases": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "maxItems": 4
+            }
+          },
+          "required": [
+            "phrases"
+          ],
+          "additionalProperties": false
+        },
+        "vocabulary": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "collection": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "uses": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "recognition-hints",
+                    "text-replacement"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "when": {
+                "type": "object",
+                "properties": {
+                  "app_bundle_id": {
+                    "type": "string"
+                  },
+                  "record_collection": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "locale": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "optional": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "collection",
+              "uses"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "process": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      },
+      "maxItems": 256
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "enum": [
+            "immediate",
+            "collection-first",
+            "system-clipboard-only"
+          ]
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "trigger",
+    "input",
+    "output"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "enum": [
+                "text",
+                "context.app_bundle_id",
+                "context.selected_text",
+                "context.clipboard_text"
+              ]
+            },
+            "op": {
+              "enum": [
+                "equals",
+                "contains"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "op",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "enum": [
+                "text",
+                "context.app_bundle_id",
+                "context.selected_text",
+                "context.clipboard_text"
+              ]
+            },
+            "op": {
+              "const": "exists"
+            }
+          },
+          "required": [
+            "field",
+            "op"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              },
+              "minItems": 1,
+              "maxItems": 64
+            }
+          },
+          "required": [
+            "all"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "any": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              },
+              "minItems": 1,
+              "maxItems": 64
+            }
+          },
+          "required": [
+            "any"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "not": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "kind": {
+          "enum": [
+            "recognize-speech",
+            "resolve-uncertainty",
+            "apply-vocabulary",
+            "normalize-whitespace",
+            "llm-rewrite",
+            "llm-answer",
+            "snippet-replacement",
+            "if"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "reasoning": {
+          "enum": [
+            "none",
+            "low",
+            "high"
+          ]
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "decision": {
+          "type": "object",
+          "properties": {
+            "optional": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "optional"
+          ],
+          "additionalProperties": false
+        },
+        "preserve_content": {
+          "type": "boolean"
+        },
+        "record_duration": {
+          "type": "boolean"
+        },
+        "uncertainty": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "off",
+                "non-blocking",
+                "blocking"
+              ]
+            },
+            "confidence_threshold": {
+              "type": "number"
+            },
+            "timeout_seconds": {
+              "type": "number"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        },
+        "then": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "on_failure": {
+          "enum": [
+            "fail",
+            "preserve-input"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "llm-rewrite",
+                  "llm-answer"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reasoning"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reasoning"
+                  ]
+                },
+                {
+                  "required": [
+                    "optional"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "llm-rewrite"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "decision"
+                  ]
+                },
+                {
+                  "required": [
+                    "preserve_content"
+                  ]
+                },
+                {
+                  "required": [
+                    "on_failure"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "kind": {
+          "enum": [
+            "record.store",
+            "system-clipboard.copy",
+            "focused-application.insert",
+            "speech.speak",
+            "external.shortcuts.run",
+            "external.markdown.append",
+            "external.webhook.post"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "collections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
+        },
+        "buffer": {
+          "const": "speech"
+        },
+        "exclude_from_capture": {
+          "type": "boolean"
+        },
+        "voice": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "shortcut": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "webhook_reference": {
+          "type": "string"
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "collections"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "record.store"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "buffer"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "record.store"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "voice"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "speech.speak"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "language"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "speech.speak"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "shortcut"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "external.shortcuts.run"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "external.markdown.append"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "webhook_reference"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "external.webhook.post"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

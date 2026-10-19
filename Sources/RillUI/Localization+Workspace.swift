@@ -6,7 +6,7 @@ enum WorkspaceText: CaseIterable {
   case recordRules
   case general
   case input
-  case voiceModels
+  case modelServices
   case vocabularyMemory
   case privacy
   case data
@@ -38,7 +38,7 @@ extension L10n {
     case .recordRules: return catalogString("workspace.recordRules", language: language)
     case .general: return catalogString("workspace.general", language: language)
     case .input: return catalogString("workspace.input", language: language)
-    case .voiceModels: return catalogString("workspace.voiceModels", language: language)
+    case .modelServices: return catalogString("workspace.modelServices", language: language)
     case .vocabularyMemory: return catalogString("workspace.vocabularyMemory", language: language)
     case .privacy: return catalogString("workspace.privacy", language: language)
     case .data: return catalogString("workspace.data", language: language)

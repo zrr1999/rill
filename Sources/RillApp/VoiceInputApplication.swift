@@ -1,8 +1,26 @@
 import AppKit
 import RillUI
+import RillPlatform
 import SwiftUI
 
 @main
+private enum RillEntryPoint {
+  @MainActor static func main() {
+    let arguments = CommandLine.arguments
+    if arguments.dropFirst().first == "--validate-workflows" {
+      guard arguments.count == 3 else { exit(2) }
+      do {
+        _ = try BuiltinWorkflowCatalog(directory: URL(fileURLWithPath: arguments[2])).manifest()
+        exit(0)
+      } catch {
+        FileHandle.standardError.write(Data("Invalid workflow resources: \(error.localizedDescription)\n".utf8))
+        exit(1)
+      }
+    }
+    RillApplication.main()
+  }
+}
+
 struct RillApplication: App {
   fileprivate static let mainWindowID = "main"
 
@@ -21,14 +39,14 @@ struct RillApplication: App {
     recordPanelController.configureDrafts(
       model: container.model, output: container.bufferOutput,
       editingActivity: container.setDraftEditorActive)
-    let showPanel: (RecordPanelPresentation.Mode, Bool, Bool) -> Void = {
+    let showPanel: (RecordPanelPresentation.Mode?, Bool) -> Void = {
       [
         weak recordPanelController, weak model = container.model,
         delivery = container.systemClipboardCaptureController.recordDelivery
-      ] mode, toggle, activate in
+      ] mode, toggle in
       guard let recordPanelController, let model else { return }
       recordPanelController.show(
-        model: model, mode: mode, toggle: toggle, activate: activate,
+        model: model, mode: mode, toggle: toggle,
         deliverSelection: { subject, target in
           await delivery.reuseRecord(
             subject,
@@ -44,10 +62,8 @@ struct RillApplication: App {
         }
       )
     }
-    container.model.installRecordPanelAction { showPanel(.collections, true, true) }
-    container.model.recordWorkspace.buffers.openEditorAction = { showPanel(.drafts, false, true) }
-    container.bufferOutput.presentStatus = { showPanel(.drafts, false, false) }
-    recordPanelController.startCollectionObservation { showPanel(.drafts, false, false) }
+    container.model.installRecordPanelAction { showPanel(nil, true) }
+    container.model.recordWorkspace.buffers.openEditorAction = { showPanel(.drafts, false) }
     container.model.voice.installLiveSubtitlePanelAction {
       [liveSubtitlePanelController] snapshot, language in
       liveSubtitlePanelController.update(snapshot: snapshot, language: language)
@@ -75,6 +91,7 @@ struct RillApplication: App {
   var body: some Scene {
     Window(container.model.localizedWindowTitle, id: Self.mainWindowID) {
       MainShellView(model: container.model)
+        .environment(\.locale, container.model.settings.language.formattingLocale)
     }
     .defaultSize(width: 960, height: 720)
     .commands {
@@ -84,6 +101,7 @@ struct RillApplication: App {
 
     MenuBarExtra {
       MenuBarContent(model: container.model)
+        .environment(\.locale, container.model.settings.language.formattingLocale)
     } label: {
       Label {
         Text(container.model.localizedMenuBarTitle)

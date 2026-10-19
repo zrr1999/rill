@@ -28,15 +28,14 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       name: "Custom Rewrite",
       postProcessSteps: [
         .init(kind: .normalizeWhitespace),
-        .init(kind: .llmRewrite, prompt: "Rewrite as a concise release note."),
+        .init(kind: .llmRewrite, prompt: "Rewrite as a concise release note.", reasoning: .some(.none)),
       ]
     )
     XCTAssertNil(draft.outputValidationError(language: .english))
 
     draft.postProcessSteps[1] = .init(
       kind: .llmAnswer,
-      prompt: "Answer the request directly."
-    )
+      prompt: "Answer the request directly.", reasoning: .some(.high))
     XCTAssertNil(draft.outputValidationError(language: .english))
 
     draft.postProcessSteps[1].prompt = "  "
@@ -59,16 +58,16 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
     XCTAssertEqual(
       VoiceTextStyle.infer(from: [
         PostProcessStep(kind: .normalizeWhitespace),
-        PostProcessStep(kind: .llmRewrite, prompt: VoiceTextStyle.formalWritingPrompt),
+        PostProcessStep(kind: .llmRewrite, prompt: VoiceTextStyle.formalWritingPrompt, reasoning: .some(.none)),
       ]),
       .formalWriting
     )
     XCTAssertEqual(
-      VoiceTextStyle.infer(from: [PostProcessStep(kind: .llmRewrite, prompt: VoiceTextStyle.translatePrompt)]),
+      VoiceTextStyle.infer(from: [PostProcessStep(kind: .llmRewrite, prompt: VoiceTextStyle.translatePrompt, reasoning: .some(.none))]),
       .translateInput
     )
     XCTAssertEqual(
-      VoiceTextStyle.infer(from: [PostProcessStep(kind: .llmRewrite, prompt: VoiceTextStyle.commandPrompt)]),
+      VoiceTextStyle.infer(from: [PostProcessStep(kind: .llmRewrite, prompt: VoiceTextStyle.commandPrompt, reasoning: .some(.none))]),
       .commandMode
     )
   }
@@ -82,7 +81,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
 
     let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
 
-    XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.textStyle], VoiceTextStyle.commandMode.rawValue)
+    XCTAssertEqual(workflow.properties.textStyle, VoiceTextStyle.commandMode.rawValue)
     XCTAssertEqual(VoiceTextStyle.infer(from: workflow), .commandMode)
   }
 
@@ -91,15 +90,16 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       name: "Translate Input",
       titleKey: .translateInput,
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: VoiceTextStyle.translateInput.workflowSteps,
-        outputActions: [OutputActionReference(id: "record.store")],
-        deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst)
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + (VoiceTextStyle.translateInput.workflowSteps).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst))),
       ui: WorkflowUIConfig(symbolName: "globe", accentColorName: "blue"),
-      metadata: [WorkflowMetadataKey.textStyle: VoiceTextStyle.translateInput.rawValue]
-    )
+      properties: .init(textStyle: VoiceTextStyle.translateInput.rawValue))
 
     let englishDetail = L10n.workflowDetail(workflow, language: .english)
 
@@ -116,29 +116,24 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       name: "Local Meeting",
       recognizer: .automatic,
       speechLanguageOverride: "zh-CN",
-      localSpeechModelOverride: "distil-large-v3",
       destination: .saveToQueue
     )
 
     let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
 
-    XCTAssertEqual(workflow.pipeline.recognizerID, "local-speech")
-    XCTAssertEqual(workflow.plan.setup.speechRoute?.selection, .fixed)
-    XCTAssertNil(workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode])
-    XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.languageOverride], "zh-CN")
-    XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride], "distil-large-v3")
-    XCTAssertNil(workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
+    XCTAssertEqual(workflow.plan.setup.speechRoute?.recognizerID, "local-speech")
+    XCTAssertEqual(workflow.plan.setup.speechRoute?.selection, .automatic)
+
+    XCTAssertEqual(workflow.plan.setup.speechRoute?.language, "zh-CN")
 
     let roundTrip = WorkflowEditorDraft(workflow: workflow)
     XCTAssertEqual(roundTrip?.recognizer, .localSpeech)
     XCTAssertEqual(roundTrip?.speechLanguageOverride, "zh-CN")
-    XCTAssertEqual(roundTrip?.localSpeechModelOverride, "distil-large-v3")
   }
 
   func testLivePreviewPlacementDefaultsToOverlayAndRoundTripsCursor() throws {
-    var legacyWorkflow = WorkflowEditorDraft(name: "Legacy")
+    let legacyWorkflow = WorkflowEditorDraft(name: "Legacy")
       .makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
-    legacyWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.livePreviewPlacement)
     XCTAssertEqual(
       WorkflowEditorDraft(workflow: legacyWorkflow)?.livePreviewPlacement,
       .overlay
@@ -152,7 +147,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
     let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
 
     XCTAssertEqual(
-      workflow.metadata[WorkflowMetadataKey.livePreviewPlacement],
+      workflow.plan.setup.speechRoute?.livePreviewPlacement.rawValue,
       LivePreviewPlacement.cursor.rawValue
     )
     XCTAssertEqual(
@@ -166,22 +161,27 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       name: "Speech to Text",
       titleKey: .pushToTalkCapture,
       trigger: .hotkey,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: VoiceTextStyle.cleanInput.workflowSteps,
-        outputActions: [OutputActionReference(id: "focused-application.insert")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + (VoiceTextStyle.cleanInput.workflowSteps).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "focused-application.insert")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red"),
-      metadata: [WorkflowMetadataKey.textStyle: VoiceTextStyle.cleanInput.rawValue]
-    )
+      properties: .init(textStyle: VoiceTextStyle.cleanInput.rawValue))
     let customWorkflow = WorkflowDefinition(
       name: "Meeting Note Draft",
       trigger: .manual,
-      pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
-        postProcessSteps: VoiceTextStyle.formalWriting.workflowSteps,
-        outputActions: [OutputActionReference(id: "record.store")]
-      ),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+        process: WorkflowProcessPhase(
+          steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ] + (VoiceTextStyle.formalWriting.workflowSteps).map(WorkflowProcessStep.init)),
+        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple")
     )
 
@@ -208,10 +208,10 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       shortcutName: " Capture Note "
     )
     let shortcutWorkflow = shortcutDraft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
-    let shortcutAction = shortcutWorkflow.pipeline.outputActions.first
+    let shortcutAction = shortcutWorkflow.plan.output.actions.first
     XCTAssertEqual(shortcutAction?.id, ExternalOutputActionID.shortcutsRun)
     XCTAssertEqual(
-      shortcutAction?.configuration[ExternalOutputActionConfigurationKey.shortcutName],
+      shortcutAction?.configuration.shortcutName,
       "Capture Note"
     )
     XCTAssertEqual(WorkflowEditorDraft(workflow: shortcutWorkflow)?.shortcutName, "Capture Note")
@@ -222,10 +222,10 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       markdownAppendPath: " ~/Notes/Capture.md "
     )
     let markdownWorkflow = markdownDraft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
-    let markdownAction = markdownWorkflow.pipeline.outputActions.first
+    let markdownAction = markdownWorkflow.plan.output.actions.first
     XCTAssertEqual(markdownAction?.id, ExternalOutputActionID.markdownAppend)
     XCTAssertEqual(
-      markdownAction?.configuration[ExternalOutputActionConfigurationKey.markdownAppendPath],
+      markdownAction?.configuration.markdownPath,
       "~/Notes/Capture.md"
     )
     XCTAssertEqual(WorkflowEditorDraft(workflow: markdownWorkflow)?.markdownAppendPath, "~/Notes/Capture.md")
@@ -255,18 +255,12 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
           WorkflowProcessStep(kind: .normalizeWhitespace),
           WorkflowProcessStep(
             kind: .llmRewrite,
-            prompt: "Answer briefly for speech."
-          ),
+            prompt: "Answer briefly for speech.", reasoning: .some(.none)),
         ]),
         output: WorkflowOutputPhase(actions: [
           OutputActionReference(
             id: SpeechOutputActionID.speak,
-            configuration: [
-              SpeechOutputActionConfigurationKey.provider:
-                SpeechSynthesisProvider.automatic.rawValue,
-              SpeechOutputActionConfigurationKey.voice:
-                Qwen3TTSVoice.ryan.rawValue,
-            ]
+            configuration: .init(voice: Qwen3TTSVoice.ryan.rawValue)
           )
         ])
       ),
@@ -286,7 +280,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
     XCTAssertEqual(saved.plan.output.actions.first?.id, SpeechOutputActionID.speak)
     XCTAssertEqual(
       saved.plan.output.actions.first?
-        .configuration[SpeechOutputActionConfigurationKey.voice],
+        .configuration.voice,
       Qwen3TTSVoice.ryan.rawValue
     )
     XCTAssertEqual(saved.plan.process.steps.map(\.kind), assistant.plan.process.steps.map(\.kind))

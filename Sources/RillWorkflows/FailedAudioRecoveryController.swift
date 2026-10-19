@@ -371,7 +371,8 @@ public actor FailedAudioRecoveryController {
       capturedAudio: capturedAudio,
       contextSnapshot: authorization.authorizedContext.contextSnapshot,
       recognitionOptions: authorization.authorizedContext.recognitionOptions,
-      receiptTrigger: .failedAudioRecovery
+      receiptTrigger: .failedAudioRecovery,
+      modelSnapshot: authorization.authorizedContext.modelSnapshot
     )
 
     let plaintextCleanupPending = await removeRecoveryPlaintext(

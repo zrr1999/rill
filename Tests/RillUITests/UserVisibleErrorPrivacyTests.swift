@@ -155,7 +155,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     )
     await harness.model.waitForInitialVoiceConfiguration()
 
-    harness.model.runWorkflow(harness.workflow)
+    harness.model.runWorkflowText("hello", workflow: harness.workflow)
     await harness.model.waitForInteractiveWorkflowRun()
     XCTAssertNotNil(harness.model.lastFailure)
     XCTAssertFalse(harness.model.voice.isRunning)

@@ -12,12 +12,13 @@ struct RecordJevSheet: View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
       Text(text(.title)).font(.title2.weight(.semibold))
       Text(text(.disclosure)).font(.callout).foregroundStyle(.secondary)
+      Text(verbatim: model.settings.configuration.model.displayName).font(.caption.weight(.medium))
       HStack {
         Text(text(model.isConfigured ? .keyReady : .configureNotice))
           .font(.caption).foregroundStyle(.secondary)
         Spacer()
         Button(text(.openSettings)) {
-          onConfigure(.init(section: .providers, item: .jevCredential))
+          onConfigure(.init(section: .decision, item: .jevCredential))
         }
         .disabled(model.isWorking)
         .accessibilityIdentifier("records.jev-settings")
@@ -65,7 +66,7 @@ struct RecordJevSheet: View {
         if error == .privacyBlocked {
           Button(text(.privacySettings)) { onConfigure(.init(section: .privacy)) }
         } else if error == .missingKey || error == .unauthorized {
-          Button(text(.openSettings)) { onConfigure(.init(section: .providers, item: .jevCredential)) }
+          Button(text(.openSettings)) { onConfigure(.init(section: .decision, item: .jevCredential)) }
         }
         Button(text(.retryPreview), action: onRetry)
           .accessibilityIdentifier("records.jev-retry")
@@ -84,7 +85,9 @@ struct RecordJevSheet: View {
         }
       }
     }
-    .padding(RillSpacing.panel).frame(width: 540)
+    .padding(RillSpacing.panel)
+    .frame(maxWidth: 640)
+    .presentationSizing(.fitted)
     .background(Color(nsColor: .windowBackgroundColor))
     .onDisappear { model.invalidate() }
   }

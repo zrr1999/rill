@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 @testable import RillSpeech
 
 @testable import RillCore
@@ -259,7 +260,7 @@ final class AuthorizedLiveAudioSessionTests: XCTestCase {
     let revocations = LiveRevocationProbe()
     let gate = PrivacyRunGate(
       settingsProvider: { try await settings.read() },
-      cloudConfirmationProvider: { _, _, _ in
+      cloudConfirmationProvider: { _, _, _, _ in
         await confirmations.record()
         return true
       }
@@ -318,13 +319,11 @@ private func makeLiveWorkflow() -> WorkflowDefinition {
   WorkflowDefinition(
     name: "Live Cloud Text Test",
     trigger: .manual,
-    pipeline: PipelineDeclaration(
+    plan: makeTestAudioPlan(
       recognizerID: "sherpa-onnx.local",
       postProcessSteps: [
-        PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
-      ],
-      outputActions: []
-    ),
+        PostProcessStep(kind: .llmRewrite, prompt: "Rewrite", reasoning: .some(.none))
+      ]),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
 }

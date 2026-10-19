@@ -52,6 +52,7 @@ public final class VocabularyLibraryModel {
   }
 
   func commit() {
+    guard availability == .available else { return }
     source.updateCollections(vocabularyCollections)
     didChange(vocabularyCollectionBindings)
     guard !settings.isRestoringSettings, !settings.hasBegunApplicationShutdown,
@@ -123,28 +124,53 @@ public final class VocabularyLibraryModel {
     pattern: String,
     replacement: String = ""
   ) {
-    guard canEdit else { return }
-    guard
-      let index = vocabularyCollections.firstIndex(where: {
-        $0.id == collectionID
-      })
-    else { return }
-    let pattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !pattern.isEmpty else { return }
     let content: VocabularyEntryContent =
       kind == .hotword
       ? .hotword(phrase: pattern)
-      : .replacement(
-        pattern: pattern,
-        replacement: replacement.trimmingCharacters(in: .whitespacesAndNewlines),
-        matchMode: .exactPhrase,
-        caseSensitive: false
-      )
-    vocabularyCollections[index].entries.append(
-      VocabularyEntry(content: content)
-    )
+      : .replacement(pattern: pattern, replacement: replacement, matchMode: .exactPhrase, caseSensitive: false)
+    addVocabularyEntry(VocabularyEntry(content: content), to: collectionID)
+  }
+
+  @discardableResult
+  func addVocabularyEntry(_ entry: VocabularyEntry, to collectionID: UUID) -> Bool {
+    guard canEdit, let entry = validatedEntry(entry),
+      let index = vocabularyCollections.firstIndex(where: { $0.id == collectionID }),
+      !vocabularyCollections.contains(where: { $0.entries.contains(where: { $0.id == entry.id }) })
+    else { return false }
+    vocabularyCollections[index].entries.append(entry)
     vocabularyCollections[index].updatedAt = Date()
     commit()
+    return true
+  }
+
+  @discardableResult
+  func updateVocabularyEntry(_ proposed: VocabularyEntry, in collectionID: UUID) -> Bool {
+    guard canEdit, let proposed = validatedEntry(proposed),
+      let index = vocabularyCollections.firstIndex(where: { $0.id == collectionID }),
+      let entryIndex = vocabularyCollections[index].entries.firstIndex(where: { $0.id == proposed.id })
+    else { return false }
+    var updated = vocabularyCollections[index].entries[entryIndex]
+    updated.content = proposed.content
+    updated.priority = proposed.priority
+    guard updated != vocabularyCollections[index].entries[entryIndex] else { return true }
+    vocabularyCollections[index].entries[entryIndex] = updated
+    vocabularyCollections[index].updatedAt = Date()
+    commit()
+    return true
+  }
+
+  private func validatedEntry(_ entry: VocabularyEntry) -> VocabularyEntry? {
+    var rule = entry.legacyRule()
+    rule.pattern = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !rule.pattern.isEmpty else { return nil }
+    if rule.kind == .mapping {
+      rule.replacement = rule.replacement.trimmingCharacters(in: .whitespacesAndNewlines)
+      var validation = rule
+      validation.enabled = true
+      guard VocabularyRuleApplicator.apply(text: "", rules: [validation], context: .init()).issues.isEmpty
+      else { return nil }
+    }
+    return VocabularyEntry(rule: rule)
   }
 
   func deleteVocabularyEntry(_ entryID: UUID, from collectionID: UUID) {

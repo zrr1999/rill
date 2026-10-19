@@ -14,18 +14,14 @@ extension AppModel {
       return
     }
     guard !settings.hasUnavailableScalarSettings(in: .localSpeech) else {
-      self.voice.localSpeechPreparationError = ProviderSettingsPersistenceError.unavailableStoredSettings
-        .message(language: self.settings.language)
+      self.voice.localSpeechPreparationFailure = ProviderSettingsPersistenceError.unavailableStoredSettings.presentation
       return
     }
     guard localSpeechTrustMaterialAvailable else {
       self.voice.localSpeechPreparationState = .idle
       self.voice.localSpeechPreparationProgress = 0
       self.voice.localSpeechPreparedModelIdentifier = nil
-      self.voice.localSpeechPreparationError = L10n.localSpeechAvailabilityDescription(
-        localSpeechAvailability,
-        language: self.settings.language
-      )
+      self.voice.localSpeechPreparationFailure = L10n.localSpeechAvailabilityResource(localSpeechAvailability)
       return
     }
     if !trustedLocalSpeechModels.isEmpty {
@@ -34,10 +30,7 @@ extension AppModel {
         self.voice.localSpeechPreparationState = .idle
         self.voice.localSpeechPreparationProgress = 0
         self.voice.localSpeechPreparedModelIdentifier = nil
-        self.voice.localSpeechPreparationError = L10n.text(
-          L10n.InterfaceKey.localSpeechTrustMaterialUnavailable,
-          language: self.settings.language
-        )
+        self.voice.localSpeechPreparationFailure = L10n.resource("interface.localSpeechTrustMaterialUnavailable")
         return
       }
       if self.settings.localSpeechModel != selectedModel {

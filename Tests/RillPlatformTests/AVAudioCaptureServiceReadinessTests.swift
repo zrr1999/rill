@@ -437,10 +437,12 @@ final class AVAudioCaptureServiceReadinessTests: XCTestCase {
       workflow: WorkflowDefinition(
         name: "AVAudio readiness",
         trigger: .manual,
-        pipeline: PipelineDeclaration(
-          recognizerID: "sherpa-onnx.local",
-          outputActions: []
-        ),
+        plan: WorkflowPlan(
+          setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
+          process: WorkflowProcessPhase(steps: [
+            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
         ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
       )
     )

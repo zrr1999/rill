@@ -2,20 +2,6 @@ import Carbon
 import Foundation
 import RillInputMethodContracts
 
-enum InputMethodRegistrationError: LocalizedError {
-  case registrationFailed(OSStatus)
-  case unavailable
-
-  var errorDescription: String? {
-    switch self {
-    case .registrationFailed(let status):
-      "组件已保存，但系统注册失败（\(status)）。请重试修复安装。"
-    case .unavailable:
-      "组件已安装，但本次登录尚未识别 Rill 输入源。请注销并重新登录，再到系统输入法设置中添加 Rill。无需再次安装。"
-    }
-  }
-}
-
 @MainActor
 enum InputMethodRegistration {
   static func state() -> InputMethodInstallationState {

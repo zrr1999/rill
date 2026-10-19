@@ -2,17 +2,15 @@ import Foundation
 
 public extension WorkflowDefinition {
   var supportsVocabularyCorrection: Bool {
-    id.uuidString == "D3E19A88-F9FB-4AB3-8444-CDBF7E215A88"
-      && metadata[WorkflowMetadataKey.catalog] == BuiltinWorkflowRoutingValue.catalog
-      && metadata[WorkflowMetadataKey.builtinKind] == "push-to-talk.polish"
-      && supportsContextualCorrection
-      && plan.process.allSteps.first { $0.kind == .llmRewrite }?.prompt?
-        .trimmingCharacters(in: .whitespacesAndNewlines) == LLMTextProcessing.cleanupPrompt
+    preservesTranscriptContent
+  }
+
+  var preservesTranscriptContent: Bool {
+    plan.process.allSteps.contains { $0.kind == .llmRewrite && $0.preservesContent }
   }
 
   var supportsContextualCorrection: Bool {
-    speechMode != .voiceAssistant
-      && !plan.process.allSteps.contains { $0.kind == .snippetReplacement }
+    !plan.process.allSteps.contains { $0.kind == .snippetReplacement }
       && plan.process.allSteps.filter { $0.kind == .llmRewrite || $0.kind == .llmAnswer }.map(\.kind) == [.llmRewrite]
   }
 }

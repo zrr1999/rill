@@ -3,12 +3,17 @@
 Quality evaluations measure whether model output meets expectations. Performance
 benchmarks measure time and resources; their workloads live in
 [Benchmarks](../Benchmarks/README.md). Deterministic implementation tests stay in
-`Tests` and `scripts/tests`, including corpus validation and scorer regression tests.
+`Tests` and `tools/tests`, including corpus validation and scorer regression tests.
+
+The replay and analysis implementation is the internal `rill_dev.evaluation`
+package in `tools/`. `just test-tools` runs its offline tests using the locked
+Python environment; it neither loads models nor calls providers. The existing
+`just` commands below are the supported entry points.
 
 | Suite | Corpus | Quality rule | Execution |
 | --- | --- | --- | --- |
 | `asr` | Authorized local recordings; `ASR/collection-plan.json` is an unfilled collection plan | CER/WER, critical content, silence hallucination, paired noninferiority | Local replay and comparison |
-| `text-rewrite` | `TextRewrite/cases.json` | All expected-content matches; ignores punctuation and whitespace, preserves case | Explicit provider calls, three repetitions |
+| `text-rewrite` | `TextRewrite/cases.json` | All expected-content matches; ignores punctuation and whitespace, preserves case; protected literals match exactly | Explicit provider calls, three repetitions |
 | `vocabulary-correction` | `VocabularyCorrection/cases.json` | Report exact matches after trimming surrounding whitespace, preservation mismatches and fallbacks | Explicit DeepSeek calls, three repetitions |
 | `context-correction` | `ContextCorrection/cases.json` | Report content matches ignoring punctuation, whitespace and case, plus fallbacks | Explicit DeepSeek calls; fixed synthetic reference images |
 
@@ -17,6 +22,14 @@ completed reports say `not_assessed`; they do not manufacture a quality pass.
 Text rewrite retains its all-matches requirement. A failed request cannot be
 replaced by an expected answer. Small synthetic corpora are regression signals,
 not estimates of production accuracy.
+
+Text rewrite includes Chinese quantities, units, negation, conditions and natural
+word repetitions. Optional `protected_literals` preserve URL, identifier, command
+and filename spelling, including punctuation, case and Unicode composition. Each
+literal must occur in both the input and expectation; its nonoverlapping occurrence
+count in the output must match the expectation. Swift checks this during execution,
+and the Python reporter independently checks the raw output against the corpus.
+Other content retains the existing normalization rule.
 
 ## Run explicitly
 
@@ -45,8 +58,26 @@ Each invocation creates a fresh private directory under
 Existing run directories are never overwritten. Raw `observations.json` remains
 private. The `summaries/quality-report.json` and `summaries/performance-report.json`
 contain no input, reference or output bodies. They record the suite, source and
-corpus identity, configured model, counts, scopes and incomplete evidence. Files use
+corpus identity, configured model and provider fingerprint, counts, scopes and incomplete evidence. Files use
 0600 permissions and the run directory uses 0700.
+
+`quality_by_category` groups the existing quality counts by the corpus's known
+category names; custom categories become `other`. `paired_comparisons` compares
+reference modes within one invocation using the same case and repetition: ordinary
+versus contextual rewrite, text versus references, or text versus vocabulary.
+Only complete ASR term evidence admits the additional ASR-vocabulary comparison.
+Pairs report improved, regressed, both-matched and neither-matched outcomes, with
+unrequested and incomplete pairs counted separately. These counts do not compare
+source revisions or establish production accuracy or statistical significance.
+
+Only unique expected observations contribute scores or timing. Missing, duplicate,
+unknown or asymmetric-request observations make evidence incomplete; duplicate
+coordinates never select a preferred result. A runner failure keeps `run_status`
+incomplete even when observed quality already fails. Summary keys never repeat raw
+sample IDs or arbitrary mode/category names. Vocabulary reports contain the integer
+`skipped_asr_comparison_count`, derived from corpus eligibility, replacing the former
+list of skipped sample IDs. Input, expected/output bodies and protected literals
+remain in the private corpus or raw observations.
 
 Quality and request latency use the same provider observations. The performance
 summary has no comparison baseline and says `not_assessed`; it is not an
@@ -55,10 +86,12 @@ missing, and empty input that makes no request contributes no timing sample.
 
 ## Continuous Evaluation (CE)
 
-`CE - Quality` is a manual GitHub Actions workflow, with a single-suite or all-suite
-selector. It has no PR, push or scheduled trigger and is not a required merge check.
-It runs the three LLM suites on hosted macOS runners. Configure these repository
-settings before dispatch:
+`CE - Quality` runs all three LLM suites every Monday at 09:30 Asia/Shanghai
+(01:30 UTC) on hosted macOS runners. Scheduled runs use the latest commit on the
+default branch, so the schedule takes effect after the workflow is merged there.
+Manual dispatch still supports a single-suite or all-suite selector. It has no PR
+or push trigger and is not a required merge check. Configure these repository
+settings before the first run:
 
 - Secrets: `DEEPSEEK_API_KEY` for vocabulary/context; `OPENAI_API_KEY` for rewrite.
 - Actions variables: `OPENAI_BASE_URL` and `OPENAI_MODEL` for rewrite.

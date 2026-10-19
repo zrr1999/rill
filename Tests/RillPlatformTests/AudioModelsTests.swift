@@ -9,7 +9,12 @@ final class AudioModelsTests: XCTestCase {
     let lifetime = AudioCaptureLifetime(runID: runID)
     let workflow = WorkflowDefinition(
       name: "Audio equality",
-      pipeline: PipelineDeclaration(recognizerID: "local", outputActions: []),
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local")),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
+          WorkflowProcessStep(kind: .applyVocabulary),
+        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let request = AudioCaptureRequest(

@@ -173,9 +173,15 @@ The validated 1,024-dimension vectors are scored with Swift SIMD, keeping platfo
 SDKs out of Runtime.
 
 Qwen3-Embedding-0.6B runs in the helper via the existing locked MLX graph. Queries have a
-256-token limit; document windows are 248 tokens with stride 192 and a maximum of 16
-(first 15 plus last). Large UTF-8/JSON inputs are bounded before IPC. Partial coverage is
-reported rather than presented as exhaustive. The 128 MiB logical vector cache is transient,
+256-token limit; document windows are 248 tokens with stride 192 and a maximum of 16.
+When there are more windows, starts are sampled evenly across the document, including
+both endpoints. Before IPC, long documents contribute head, center and tail segments
+within a total 40 KiB UTF-8 budget, including separators. Segment boundaries preserve
+Unicode scalars, even when one combining grapheme exceeds the budget. If JSON escaping
+exceeds 48 KiB, all three segments are resampled from the complete document within
+8,191 total UTF-8 bytes and the encoded size is checked again. Partial coverage from
+either input sampling or model windows is reported and retained in the cache rather
+than presented as exhaustive. The 128 MiB logical vector cache is transient,
 observes committed catalog changes for deletion/tag invalidation, and is cleared at shutdown.
 Resident vectors are scored before admitting missing records, so crossing the cache budget
 does not turn every warm query into a full re-encode. Failed or cancelled searches reconcile
@@ -192,8 +198,9 @@ and `PRIVACY.md` for the model and data boundaries.
 
 ### Optional cloud comparison
 
-`RecordCloudRanking` owns the transient Jev credential and one active operation behind the
-Core `RecordRankingProvider` port. AppBootstrap injects `JevRecordRankingProvider`; the
+`RecordCloudRanking` owns one active comparison and reads the global session classification authorization from
+`DecisionModelSettingsSource` behind the
+Core `RecordRankingProvider` port. AppBootstrap injects `DecisionRecordRankingProvider`; the
 workspace owns service shutdown and panel models own cancelled tasks until drained.
 The ordinary local search path never calls the service. The explicit comparison action
 interleaves the current filtered literal and semantic lists, deduplicates IDs and selects
@@ -205,7 +212,7 @@ Source identity, capture exclusions, current focus policy and catalog revision a
 before sending and after receiving. Query/filter/catalog changes and panel closure invalidate
 the UI review and cancel outstanding work. A provider that ignores cancellation retains the
 single active slot until it settles; late results cannot publish. Privacy changes after send
-cannot retract data already received by TypeSafe. No automatic retries or remote error bodies
+cannot retract data already received by the selected TypeSafe or Cloudflare service. No automatic retries or remote error bodies
 reach UI/diagnostics. The provider refuses redirects and validates bounded JSON, model identity,
 score IDs, ranges and probability consistency. Neither the key nor scores are persisted.
 
