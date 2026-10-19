@@ -23,6 +23,14 @@ and open questions; omit task diaries, transcripts, and full logs.
 
 ## Delivery and reporting
 
+- Keep each PR focused on one independently verifiable purpose. Include its
+  necessary tests and docs; split unrelated fixes, refactors, and CI maintenance.
+  Independent PRs target `main`; stack only changes with a real code dependency.
+- Prefer the smallest complete change. Reuse existing owners and helpers; retain
+  the checks and failure handling needed by the affected contract.
+- Keep PR descriptions concise and follow the template: explain the problem,
+  final behavior, and relevant manual evidence or limitations. Omit task diaries,
+  discarded approaches, and results already reported by CI.
 - Wait until every check for the current head commit has finished before
   reporting CI as passing; never reuse a green result from an older commit.
 
