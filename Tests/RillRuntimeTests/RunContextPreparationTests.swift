@@ -458,9 +458,6 @@ private actor ContextLateSummaryProbe {
   }
 }
 
-private struct ContextQueueContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
 private struct ContextQueueRecognizer: SpeechRecognizer {
   let id = "context.test"
   var result = RecognitionResult(rawText: "预算 500", bestText: "预算 500")

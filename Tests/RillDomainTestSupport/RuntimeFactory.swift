@@ -65,7 +65,6 @@ public func makeTestRecordingSessionManager(
   diagnostics: DiagnosticsRecorder? = nil,
   privacyRunGate: PrivacyRunGate? = nil,
   workflowProvider: @escaping @Sendable () async -> [WorkflowDefinition],
-  contextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
   privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
   authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
   focusIdentitySampleProvider: @escaping @Sendable () async -> FocusPrivacyIdentitySample = {
@@ -106,7 +105,6 @@ public func makeTestRecordingSessionManager(
     diagnostics: diagnostics,
     privacyRunGate: privacyRunGate,
     workflowProvider: workflowProvider,
-    contextProvider: contextProvider,
     privacyContextProvider: privacyContextProvider,
     authorizedContextProvider: authorizedContextProvider,
     focusIdentitySampleProvider: focusIdentitySampleProvider,

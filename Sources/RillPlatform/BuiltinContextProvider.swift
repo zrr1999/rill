@@ -1,20 +1,12 @@
 import RillCore
 
-public struct BuiltinContextProvider: ContextProvider {
+public struct BuiltinContextProvider: Sendable {
   private let focusTracker: FocusTracker
   private let pasteboard: SystemClipboardPort
 
   public init(focusTracker: FocusTracker, pasteboard: SystemClipboardPort) {
     self.focusTracker = focusTracker
     self.pasteboard = pasteboard
-  }
-
-  public func captureContext() async -> ContextSnapshot {
-    let focus = await MainActor.run {
-      focusTracker.captureCurrent()
-    }
-    let clipboard = await pasteboard.privacySafeSnapshot()
-    return ContextSnapshot(focus: focus, clipboard: clipboard)
   }
 
   public func capturePrivacyContext() async -> ContextSnapshot {

@@ -164,10 +164,6 @@ struct ContextMemoryControllerTests {
   }
 }
 
-private struct EmptyContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor ContextSettingsGate {
   private var blocked = false
   private var waiter: CheckedContinuation<Void, Never>?

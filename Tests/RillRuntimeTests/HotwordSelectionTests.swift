@@ -494,10 +494,6 @@ private struct HotwordOutputProbe: OutputAction {
   func execute(record _: RecordDraft, context _: ActionContext) async throws -> ActionResult { .copiedToClipboard }
 }
 
-private struct HotwordContextProbe: ContextProvider {
-  func captureContext() async -> ContextSnapshot { hotwordContext() }
-}
-
 private actor HotwordCaptureProbe: AudioCaptureService {
   let ranking: HotwordRankingProbe
   var startedBeforeCloud = false
