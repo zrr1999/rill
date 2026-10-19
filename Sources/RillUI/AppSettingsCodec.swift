@@ -71,11 +71,6 @@ enum AppSettingsCodec {
     .openAIModel,
   ]
 
-  static func loadWorkflowFiles(from workflowFileStore: (any WorkflowFileStore)?) async -> InitialWorkflowFileLoad? {
-    guard let workflowFileStore else { return nil }
-    return InitialWorkflowFileLoad(result: await workflowFileStore.load())
-  }
-
   static func resolveLegacyLocalSpeechSetting(
     currentKey: AppSettingKey,
     legacyKey: AppSettingKey,
@@ -186,9 +181,6 @@ enum AppSettingsCodec {
       unavailableDomains.insert(.vocabularyRules)
     }
 
-    let customWorkflows: [WorkflowDefinition] = []
-    let workflowEnabledStates: [UUID: Bool] = [:]
-
     let downloadedLocalSpeechModels: [String]
     do {
       downloadedLocalSpeechModels = try Self.loadDownloadedLocalSpeechModels(
@@ -279,9 +271,6 @@ enum AppSettingsCodec {
       unavailableSettingKeys: unavailableSettingKeys,
       legacyLocalSpeechMigrationValues: legacyLocalSpeechMigrationValues,
       language: storedSettings[.interfaceLanguage],
-      customWorkflows: customWorkflows,
-      workflowLibraryNeedsMigration: false,
-      workflowEnabledStates: workflowEnabledStates,
       systemClipboardCaptureEnabled: storedSettings[.systemClipboardCaptureEnabled]
         ?? storedSettings[.legacyClipboardCaptureEnabled],
       recordHistoryVisibility: storedSettings[.recordHistoryVisibility]
@@ -492,9 +481,6 @@ enum AppSettingsCodec {
     let downloadedResolution = resolveLegacyLocalSpeechSetting(
       currentKey: .localSpeechDownloadedModels, legacyKey: .legacyWhisperKitDownloadedModels, in: snapshot
     )
-    let customWorkflows: [WorkflowDefinition]? = []
-    let workflowEnabledStates: [UUID: Bool]? = [:]
-
     let downloadedLocalSpeechModels: [String]?
     if downloadedResolution.isUnavailable {
       downloadedLocalSpeechModels = nil
@@ -522,9 +508,7 @@ enum AppSettingsCodec {
     }
 
     return RecoverableStoredSettingsDomains(
-      customWorkflows: customWorkflows,
       workflowFiles: workflowFiles,
-      workflowEnabledStates: workflowEnabledStates,
       downloadedLocalSpeechModels: downloadedLocalSpeechModels,
       vocabularyRules: vocabularyRules
     )
