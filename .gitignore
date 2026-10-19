@@ -19,6 +19,9 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+# Pull request screenshots
+/.github/pr-screenshots/
+
 # Python tooling caches
 __pycache__/
 *.py[cod]
