@@ -28,7 +28,7 @@ extension L10n {
     case .fileLimit(let count):
       summary = resource("workflowFile.error.fileLimit", defaultValue: "Only the first \(String(count)) TOML files were loaded.").string(for: language)
     }
-    return "\(summary)\n\(issue.message)"
+    return summary == issue.message ? summary : "\(summary)\n\(issue.message)"
   }
 
   static func workflowFileFailureDetail(_ error: Error, language: AppLanguage) -> String {

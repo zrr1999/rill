@@ -17,7 +17,8 @@ final class L10nTests: XCTestCase {
   }
 
   func testCatalogCoversEveryTypedTableKey() {
-    var keys = L10n.Key.allCases.map { "general.\($0.rawValue)" }
+    var keys = L10n.WorkflowDocumentKey.allCases.map { "workflowDocument.\($0.rawValue)" }
+    keys += L10n.Key.allCases.map { "general.\($0.rawValue)" }
     keys += L10n.InterfaceKey.allCases.map { "interface.\($0.rawValue)" }
     keys += SurfaceText.allCases.map { "surface.\($0.rawValue)" }
     keys += RecordTextKey.allCases.map { "record.\($0.rawValue)" }

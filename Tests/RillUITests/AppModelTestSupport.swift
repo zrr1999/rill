@@ -475,15 +475,19 @@ private enum UITestWorkflowFileStoreError: Error {
 }
 
 actor UITestWorkflowFileStore: WorkflowFileStore {
-  nonisolated let configurationDirectoryURL = URL(
-    fileURLWithPath: "/tmp/rill-ui-test-workflows",
-    isDirectory: true
-  )
+  nonisolated let configurationDirectoryURL: URL
 
+  private var issues: [WorkflowFileIssue]
   private var recordsByID: [UUID: WorkflowFileRecord]
   private let rejectsSaves: Bool
 
-  init(records: [WorkflowFileRecord] = [], rejectsSaves: Bool = false) {
+  init(
+    records: [WorkflowFileRecord] = [], rejectsSaves: Bool = false,
+    issues: [WorkflowFileIssue] = [],
+    configurationDirectoryURL: URL = URL(fileURLWithPath: "/tmp/rill-ui-test-workflows", isDirectory: true)
+  ) {
+    self.configurationDirectoryURL = configurationDirectoryURL
+    self.issues = issues
     recordsByID = Dictionary(
       uniqueKeysWithValues: records.map {
         ($0.workflow.id, $0)
@@ -497,8 +501,14 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
     }
     return WorkflowFileLoadResult(
       discoveredFileCount: records.count,
-      records: records
+      records: records,
+      issues: issues
     )
+  }
+
+  func replaceLoadResult(records: [WorkflowFileRecord], issues: [WorkflowFileIssue]) {
+    recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.workflow.id, $0) })
+    self.issues = issues
   }
 
   func save(

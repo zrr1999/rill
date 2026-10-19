@@ -37,6 +37,39 @@ final class UIRenderEvidenceTests: XCTestCase {
     await fixture.shutdown()
   }
 
+  func testRenderWorkflowDiscoveryAndDiagnostics() async throws {
+    guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+      throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+    }
+    let output = URL(fileURLWithPath: directory, isDirectory: true)
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    for language in AppLanguage.allCases {
+      for dark in [false, true] {
+        let fixture = await WorkflowDocumentPresentationFixture.make()
+        let model = fixture.harness.model
+        model.setInterfaceLanguage(language)
+        let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
+        try await render(
+          WorkflowDocumentLibraryView(model: model), size: NSSize(width: 500, height: 700), dark: dark, focusWindow: true,
+          to: output.appendingPathComponent("workflow-diagnostics-\(variant).png"))
+        model.showWorkflow(fixture.workflow.id)
+        try await render(
+          WorkflowDocumentLibraryView(model: model), size: NSSize(width: 500, height: 600), dark: dark, focusWindow: true,
+          to: output.appendingPathComponent("workflow-detail-\(variant).png"))
+        model.showWorkflow(fixture.workflow.id)
+        try await render(
+          MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark, focusWindow: true,
+          to: output.appendingPathComponent("workflow-window-\(variant).png"))
+        model.workflowLibrary.explainWorkflowBeforeRun(fixture.workflow)
+        await model.workflowLibrary.waitForWorkflowExplanationTasks()
+        try await render(
+          WorkflowExplanationSheet(model: model, workflowID: fixture.workflow.id), size: NSSize(width: 520, height: 600), dark: dark, focusWindow: true,
+          to: output.appendingPathComponent("workflow-explanation-\(variant).png"))
+        await fixture.shutdown()
+      }
+    }
+  }
+
   func testRenderUnifiedRecordPanel() async throws {
     guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
       throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")

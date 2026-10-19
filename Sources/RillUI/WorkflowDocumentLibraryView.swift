@@ -109,14 +109,29 @@ struct WorkflowDocumentLibraryView: View {
         }.padding(.vertical, RillSpacing.row).tag(workflow.id)
       }
       ForEach(Array(model.workflowLibrary.workflowFileIssues.enumerated()), id: \.offset) { _, issue in
-        Button {
-          if let directory = model.workflowConfigurationDirectoryURL { openFile(directory.appendingPathComponent(issue.filename)) }
-        } label: {
+        VStack(alignment: .leading, spacing: RillSpacing.row) {
           Label(issue.filename, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
-            .foregroundStyle(.orange)
-        }.help(L10n.workflowFileIssue(issue, language: model.settings.language))
+            .font(.headline).foregroundStyle(.orange)
+          Text(L10n.workflowFileIssue(issue, language: model.settings.language))
+            .font(.callout).textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+          if let directory = model.workflowConfigurationDirectoryURL {
+            Button(L10n.workflowDocument(issue.target == .file ? .labelOpenFile : .labelShowConfigurationLocation, language: model.settings.language)) {
+              let url = issue.resolvedURL(in: directory)
+              if issue.target == .file { openFile(url) } else { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+          }
+        }
+        .padding(.vertical, RillSpacing.row)
+        .accessibilityIdentifier("workflow.document.issue.\(issue.filename)")
       }
     }.listStyle(.inset(alternatesRowBackgrounds: false))
+      .safeAreaInset(edge: .bottom, spacing: 0) {
+        Text(L10n.workflowDocument(.newWorkflowReviewHint, language: model.settings.language))
+          .font(.caption).foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(RillSpacing.panel)
+      }
   }
 
   @ViewBuilder private var workflowDetail: some View {
@@ -179,49 +194,75 @@ struct WorkflowDocumentLibraryView: View {
   }
 
   private func workflowActions(_ workflow: WorkflowDefinition) -> some View {
-    HStack {
-      Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.settings.language)) {
-        if workflow.inputKind == .audio {
-          model.runWorkflow(workflow)
-        } else if workflow.inputKind == .text, let text = NSPasteboard.general.string(forType: .string) {
-          model.runWorkflowText(text, workflow: workflow)
-        }
-      }.disabled(
-        workflow.inputKind == .record || !model.isWorkflowEnabled(workflow) || model.voice.isRunning
-          || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id)
-      )
-      .buttonStyle(.glassProminent)
-      Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
-        .buttonStyle(.glass)
-        .accessibilityIdentifier("workflow.document.open.\(workflow.id)")
-      Menu {
-        Button(L10n.workflowExplanationCopy(.button, language: model.settings.language)) {
-          model.workflowLibrary.explainWorkflowBeforeRun(workflow)
-          explanation = .init(workflowID: workflow.id)
-        }
-        Button(L10n.workflowDocument(.labelDuplicate, language: model.settings.language)) { open(workflow, duplicate: true) }
-        Button(
-          L10n.workflowDocument(
-            model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete,
-            language: model.settings.language), role: .destructive
-        ) { pendingDeletion = workflow }
-      } label: {
-        Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
+    ViewThatFits(in: .horizontal) {
+      HStack {
+        runButton(workflow)
+        fileAndExplanationActions(workflow)
       }
-      .help(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
-      .accessibilityLabel(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
-      .buttonStyle(.glass)
-      .menuIndicator(.hidden)
-      .buttonBorderShape(.circle)
+      VStack(alignment: .leading, spacing: RillSpacing.row) {
+        runButton(workflow)
+        HStack { fileAndExplanationActions(workflow) }
+      }
     }
   }
 
+  private func runButton(_ workflow: WorkflowDefinition) -> some View {
+    Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.settings.language)) {
+      if workflow.inputKind == .audio {
+        model.runWorkflow(workflow)
+      } else if workflow.inputKind == .text, let text = NSPasteboard.general.string(forType: .string) {
+        model.runWorkflowText(text, workflow: workflow)
+      }
+    }.disabled(
+      workflow.inputKind == .record || !model.isWorkflowEnabled(workflow) || model.voice.isRunning
+        || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id)
+    )
+    .buttonStyle(.glassProminent)
+  }
+
+  @ViewBuilder private func fileAndExplanationActions(_ workflow: WorkflowDefinition) -> some View {
+    Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
+      .buttonStyle(.glass)
+      .accessibilityIdentifier("workflow.document.open.\(workflow.id)")
+    Button(L10n.workflowExplanationCopy(.button, language: model.settings.language)) {
+      model.workflowLibrary.explainWorkflowBeforeRun(workflow)
+      explanation = .init(workflowID: workflow.id)
+    }
+    .buttonStyle(.glass)
+    .accessibilityIdentifier("workflow.document.explain.\(workflow.id)")
+    Menu {
+      Button(L10n.workflowDocument(.labelDuplicate, language: model.settings.language)) { open(workflow, duplicate: true) }
+      Button(
+        L10n.workflowDocument(
+          model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete,
+          language: model.settings.language), role: .destructive
+      ) { pendingDeletion = workflow }
+    } label: {
+      Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
+    }
+    .help(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
+    .accessibilityLabel(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
+    .buttonStyle(.glass)
+    .menuIndicator(.hidden)
+    .buttonBorderShape(.circle)
+  }
+
   @ViewBuilder private var libraryActions: some View {
-    Button {
-      Task { if let url = await model.newWorkflowFile() { openFile(url) } }
+    Menu {
+      Button(L10n.workflowDocument(.labelGeneralTemplate, language: model.settings.language)) {
+        Task { if let url = await model.newWorkflowFile() { openFile(url) } }
+      }
+      Divider()
+      ForEach(model.workflowLibrary.builtInWorkflows) { workflow in
+        Button(L10n.workflowDocument(.labelNewFrom, language: model.settings.language) + model.localizedWorkflowName(for: workflow)) {
+          open(workflow, duplicate: true)
+        }
+      }
     } label: {
       Label(L10n.workflowDocument(.labelNewWorkflow, language: model.settings.language), systemImage: RillSystemSymbol.plus.rawValue)
     }
+    .labelStyle(.titleAndIcon)
+    .accessibilityIdentifier("workflow.document.new")
     .disabled(model.settings.isLoading || !model.isWorkflowLibraryAvailable)
     Menu {
       Button(L10n.workflowDocument(.labelImportTOML, language: model.settings.language), action: importFile)
@@ -231,12 +272,6 @@ struct WorkflowDocumentLibraryView: View {
         }
       }
       Button(L10n.workflowDocument(.labelReloadFiles, language: model.settings.language)) { Task { await model.reloadWorkflowFiles() } }
-      Divider()
-      ForEach(model.workflowLibrary.builtInWorkflows) { workflow in
-        Button(L10n.workflowDocument(.labelNewFrom, language: model.settings.language) + model.localizedWorkflowName(for: workflow)) {
-          open(workflow, duplicate: true)
-        }
-      }
     } label: {
       Label(L10n.workflowDocument(.labelMoreActions, language: model.settings.language), systemImage: RillSystemSymbol.ellipsisCircle.rawValue)
     }
