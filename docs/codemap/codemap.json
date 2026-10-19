@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "3e5038cdda5349a948cc906dd982e3fcbf46675a",
+  "baseline": "7f096644fb5c9f2ff746ab42ac1233742e2edfd9",
   "nodes": [
     {
       "id": "RillApp",
@@ -191,7 +191,6 @@
         "Sources/RillUI/DiagnosticTimelineEntry.swift",
         "Sources/RillUI/DiagnosticsLoadState.swift",
         "Sources/RillUI/DiagnosticsView.swift",
-        "Sources/RillUI/EventFeedEntry.swift",
         "Sources/RillUI/GlobalSearchModel.swift",
         "Sources/RillUI/GlobalSearchModels.swift",
         "Sources/RillUI/GlobalSearchView.swift",
@@ -266,6 +265,7 @@
         "Sources/RillUI/ReplacingTaskOwner.swift",
         "Sources/RillUI/Resources/Localizable.xcstrings",
         "Sources/RillUI/RillCard.swift",
+        "Sources/RillUI/RillDynamicLength.swift",
         "Sources/RillUI/RillGlass.swift",
         "Sources/RillUI/RillSelection.swift",
         "Sources/RillUI/RillSystemSymbol.swift",
@@ -536,9 +536,9 @@
           "framework": "XCTest"
         },
         {
-          "path": "Tests/RillUITests/EventFeedPrivacyPresentationTests.swift",
-          "line": 7,
-          "symbol": "testEventResourcesPreserveArgumentsAcrossLanguageChanges",
+          "path": "Tests/RillUITests/HistoryTextStepPresentationTests.swift",
+          "line": 23,
+          "symbol": "testFailedVoiceRunRetainsHistorySteps",
           "framework": "XCTest"
         },
         {
@@ -837,8 +837,8 @@
         },
         {
           "path": "Tests/RillUITests/SpeechEngineSelectionTests.swift",
-          "line": 8,
-          "symbol": "testEngineLabelsIdentifyExactLocalBackends",
+          "line": 9,
+          "symbol": "testSelectingExactLocalEngineUpdatesRouteAndModelTogether",
           "framework": "XCTest"
         },
         {
@@ -867,7 +867,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 13,
+          "line": 73,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -933,8 +933,8 @@
         },
         {
           "path": "Tests/RillUITests/VoiceWorkflowPresentationTests.swift",
-          "line": 6,
-          "symbol": "testDetailIncludesBothRecordAndTextOutputs",
+          "line": 8,
+          "symbol": "testLegacyDraftValidatesLLMRewriteSteps",
           "framework": "XCTest"
         },
         {
@@ -1402,7 +1402,7 @@
         },
         {
           "path": "Tests/RillMLXRuntimeTests/Qwen3RecordEmbedderTests.swift",
-          "line": 8,
+          "line": 34,
           "symbol": "testRejectsEmptyAndOversizeInputBeforeLoadingModel",
           "framework": "XCTest"
         },
@@ -2217,9 +2217,9 @@
           "framework": "XCTest"
         },
         {
-          "path": "Tests/RillUITests/EventFeedPrivacyPresentationTests.swift",
-          "line": 7,
-          "symbol": "testEventResourcesPreserveArgumentsAcrossLanguageChanges",
+          "path": "Tests/RillUITests/HistoryTextStepPresentationTests.swift",
+          "line": 23,
+          "symbol": "testFailedVoiceRunRetainsHistorySteps",
           "framework": "XCTest"
         },
         {
@@ -2452,8 +2452,8 @@
         },
         {
           "path": "Tests/RillUITests/SpeechEngineSelectionTests.swift",
-          "line": 8,
-          "symbol": "testEngineLabelsIdentifyExactLocalBackends",
+          "line": 9,
+          "symbol": "testSelectingExactLocalEngineUpdatesRouteAndModelTogether",
           "framework": "XCTest"
         },
         {
@@ -2482,7 +2482,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 13,
+          "line": 73,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -2542,8 +2542,8 @@
         },
         {
           "path": "Tests/RillUITests/VoiceWorkflowPresentationTests.swift",
-          "line": 6,
-          "symbol": "testDetailIncludesBothRecordAndTextOutputs",
+          "line": 8,
+          "symbol": "testLegacyDraftValidatesLLMRewriteSteps",
           "framework": "XCTest"
         },
         {
@@ -2905,7 +2905,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 13,
+          "line": 73,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -3086,7 +3086,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 13,
+          "line": 73,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -3626,7 +3626,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 13,
+          "line": 73,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -4612,7 +4612,7 @@
         },
         {
           "path": "Tests/RillMLXRuntimeTests/Qwen3RecordEmbedderTests.swift",
-          "line": 8,
+          "line": 34,
           "symbol": "testRejectsEmptyAndOversizeInputBeforeLoadingModel",
           "framework": "XCTest"
         },
@@ -4721,7 +4721,7 @@
         },
         {
           "path": "Tests/RillMLXRuntimeTests/Qwen3RecordEmbedderTests.swift",
-          "line": 8,
+          "line": 34,
           "symbol": "testRejectsEmptyAndOversizeInputBeforeLoadingModel",
           "framework": "XCTest"
         },
