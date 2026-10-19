@@ -26,6 +26,15 @@ and open questions; omit task diaries, transcripts, and full logs.
 - Wait until every check for the current head commit has finished before
   reporting CI as passing; never reuse a green result from an older commit.
 
+## Pull requests
+
+Independent changes should be separate PRs targeting `main`, even when created
+in the same conversation. Use a linear GitHub native stack only for real code
+dependencies; each dependent PR targets the branch it needs.
+
+PRs that change UI must include screenshots in the PR body, as specified in
+[CONTRIBUTING.md](CONTRIBUTING.md) and the PR template.
+
 ## Repository skills
 
 Load the skill that matches the task. Combine skills only when the work crosses
