@@ -3,27 +3,15 @@ import XCTest
 @testable import RillCore
 
 final class AudioCaptureLifetimeTests: XCTestCase {
-  func testPermitAcquisitionAndRevocationAreLinearized() async {
-    let runID = UUID()
-    let lifetime = AudioCaptureLifetime(runID: runID)
+  func testRevocationRejectsLaterTransitions() {
+    let lifetime = AudioCaptureLifetime(runID: UUID())
 
     XCTAssertEqual(lifetime.state, .active)
-    XCTAssertEqual(lifetime.acquireTransmissionPermit()?.runID, runID)
+    XCTAssertTrue(lifetime.isActive)
     XCTAssertTrue(lifetime.revoke(.authorizationInvalidated))
     XCTAssertEqual(lifetime.state, .revoked(.authorizationInvalidated))
-    XCTAssertNil(lifetime.acquireTransmissionPermit())
+    XCTAssertFalse(lifetime.isActive)
     XCTAssertFalse(lifetime.revoke(.serviceFailure), "The first terminal transition must win.")
-
-    let postRevocationPermits = await withTaskGroup(
-      of: AudioCaptureLifetime.TransmissionPermit?.self,
-      returning: [AudioCaptureLifetime.TransmissionPermit?].self
-    ) { group in
-      for _ in 0..<32 {
-        group.addTask { lifetime.acquireTransmissionPermit() }
-      }
-      return await group.reduce(into: []) { $0.append($1) }
-    }
-    XCTAssertTrue(postRevocationPermits.allSatisfy { $0 == nil })
   }
 
   func testCompletionIsIdempotentAndTerminal() {
@@ -33,7 +21,7 @@ final class AudioCaptureLifetimeTests: XCTestCase {
     XCTAssertEqual(lifetime.state, .completed)
     XCTAssertFalse(lifetime.complete())
     XCTAssertFalse(lifetime.cancel())
-    XCTAssertNil(lifetime.acquireTransmissionPermit())
+    XCTAssertFalse(lifetime.isActive)
   }
 
   func testCancellationIsIdempotentAndPreservesFirstReason() {

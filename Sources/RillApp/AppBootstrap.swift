@@ -689,7 +689,6 @@ private enum AppContainerFactory {
     ) async throws -> SpeechRecognitionRequestOptions
 
   private static let keychainServiceIdentifier = "dev.zrr.Rill.credentials"
-  private static let webhookKeychainServiceIdentifier = "dev.zrr.Rill.webhook-configuration"
   private static let localDataKeychainServiceIdentifier = "dev.zrr.Rill.local-data-protection"
 
   static func makeContainer() -> AppContainer {
@@ -796,7 +795,6 @@ private enum AppContainerFactory {
   ) -> CoreServices {
     let eventBus = EventBus()
     let persistence = AppPersistence.makeBackends(
-      webhookKeychainServiceIdentifier: webhookKeychainServiceIdentifier,
       localDataKeychainServiceIdentifier: localDataKeychainServiceIdentifier
     )
     let diagnostics = DiagnosticsRecorder(
@@ -2372,7 +2370,6 @@ private enum AppModelFactory {
 
 private enum AppPersistence {
   static func makeBackends(
-    webhookKeychainServiceIdentifier: String,
     localDataKeychainServiceIdentifier: String
   ) -> PersistenceBackends {
     let temporaryFileCleanupService = RillTemporaryFileCleanupService()
@@ -2656,7 +2653,7 @@ enum WorkflowManifestResource {
     actionRegistry: OutputActionRegistry
   ) -> LoadResult {
     load(
-      manifestURL: url(),
+      manifestURL: nil,
       recognizerRegistry: recognizerRegistry,
       transformerRegistry: transformerRegistry,
       actionRegistry: actionRegistry
@@ -2682,8 +2679,6 @@ enum WorkflowManifestResource {
           message: "Built-in workflow resources are invalid. No built-in workflows were activated.", metadata: [:]))
     }
   }
-
-  private nonisolated static func url(fileManager: FileManager = .default) -> URL? { nil }
 
   private static func manifestDiagnostic(
     event: DiagnosticEventName,

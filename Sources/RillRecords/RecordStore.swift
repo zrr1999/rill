@@ -978,12 +978,11 @@ public actor RecordStore {
 
   public func completeDelivery(
     leaseID: UUID,
-    receipt: RecordDeliveryReceipt? = nil,
     deliveredAt: Date = Date()
   ) async throws -> RecordDeliveryReceipt {
     try await ensureInitialized()
     if let reuse = reuseLeases[leaseID] {
-      guard receipt == nil, settlingLeaseIDs.insert(leaseID).inserted else { throw RecordStoreError.invalidDeliveryReceipt }
+      guard settlingLeaseIDs.insert(leaseID).inserted else { throw RecordStoreError.invalidDeliveryReceipt }
       defer { settlingLeaseIDs.remove(leaseID) }
       guard var activity = graphState.activityByRecordID[reuse.record.id] else { throw RecordStoreError.recordUnavailable }
       recordSuccessfulOutput(&activity, sink: reuse.sink, at: deliveredAt)
@@ -1001,12 +1000,6 @@ public actor RecordStore {
       throw RecordStoreError.membershipAlreadyInUse
     }
     defer { settlingLeaseIDs.remove(leaseID) }
-    if let receipt {
-      guard receipt.recordID == membership.recordID,
-        receipt.membershipID == membership.id,
-        receipt.sink == lease.sink
-      else { throw RecordStoreError.invalidDeliveryReceipt }
-    }
     guard membership.revision == lease.expectedRevision else {
       throw RecordStoreError.membershipChanged
     }
@@ -1018,20 +1011,18 @@ public actor RecordStore {
       markCatalogChange(.membership, id: membership.id)
       graphState.membershipsByID[membership.id] = membership
     }
-    let completedAt = receipt?.deliveredAt ?? deliveredAt
-    recordSuccessfulOutput(&activity, sink: lease.sink, at: completedAt)
+    recordSuccessfulOutput(&activity, sink: lease.sink, at: deliveredAt)
     markCatalogChange(.activity, id: membership.recordID)
     graphState.activityByRecordID[membership.recordID] = activity
     noteMutation()
     try await persistCurrentGraph()
     releaseDeliveryLease(leaseID, lease: lease)
-    return receipt
-      ?? RecordDeliveryReceipt(
-        recordID: membership.recordID,
-        membershipID: membership.id,
-        sink: lease.sink,
-        deliveredAt: completedAt
-      )
+    return RecordDeliveryReceipt(
+      recordID: membership.recordID,
+      membershipID: membership.id,
+      sink: lease.sink,
+      deliveredAt: deliveredAt
+    )
   }
 
   public func failDelivery(

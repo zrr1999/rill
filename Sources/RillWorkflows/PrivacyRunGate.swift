@@ -457,7 +457,6 @@ public struct PrivacyRunGate: Sendable {
     )
     return AuthorizedLiveAudioSession(
       runID: runID,
-      workflow: workflow,
       audioLifetime: audioLifetime,
       processingLease: lease,
       authorizationState: liveAuthorizationState,

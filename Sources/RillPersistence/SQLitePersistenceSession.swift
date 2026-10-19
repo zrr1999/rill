@@ -513,7 +513,6 @@ struct SQLitePersistenceSession {
   }
 
   private struct StoredClipboardMetadata {
-    let revision: Int64
     let protectedMetadata: Data
   }
 
@@ -528,13 +527,6 @@ struct SQLitePersistenceSession {
       self.byteCount = byteCount
     }
 
-    init(_ reference: LegacyRecordGraphBlobReference) {
-      self.init(
-        blobID: reference.blobID,
-        itemID: reference.itemID,
-        byteCount: reference.byteCount
-      )
-    }
   }
 
   private func storedClipboardMetadata() throws -> StoredClipboardMetadata? {
@@ -558,10 +550,7 @@ struct SQLitePersistenceSession {
       else {
         throw SQLitePersistenceError.clipboardPersistenceUnavailable
       }
-      return StoredClipboardMetadata(
-        revision: revision,
-        protectedMetadata: protectedMetadata
-      )
+      return StoredClipboardMetadata(protectedMetadata: protectedMetadata)
     default:
       throw SQLitePersistenceError.clipboardPersistenceUnavailable
     }

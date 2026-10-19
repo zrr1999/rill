@@ -184,18 +184,6 @@ public actor WakeWordTriggerSource: TriggerSource {
     pendingCommands.removeValue(forKey: eventID)
   }
 
-  public func setSuspended(_ reason: WakeWordSuspensionReason?) async {
-    let interactiveRecognitionIsActive = suspensionReasons.contains(
-      .interactiveRecognition
-    )
-    suspensionReasons = reason.map { [$0] } ?? []
-    if interactiveRecognitionIsActive {
-      suspensionReasons.insert(.interactiveRecognition)
-    }
-    resetGate(cancelRecognition: true)
-    publishEffectiveListeningStatus()
-  }
-
   public func suspend(for reason: WakeWordSuspensionReason) async {
     suspensionReasons.insert(reason)
     resetGate(cancelRecognition: true)

@@ -42,13 +42,6 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
       } ?? .loading
   }
 
-  public init(initialCollections: [VocabularyCollection]?) {
-    legacyRulesSnapshot = initialCollections?.flatMap { collection in
-      collection.entries.map { $0.legacyRule() }
-    }
-    state = initialCollections.map(State.available) ?? .loading
-  }
-
   public func currentRules() throws -> [VocabularyRule] {
     lock.lock()
     defer { lock.unlock() }

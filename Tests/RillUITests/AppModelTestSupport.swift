@@ -55,7 +55,6 @@ struct SettingsStoreActivitySnapshot {
   let storage: [AppSettingKey: String]
   let singleReadCount: Int
   let batchReadCount: Int
-  let settingsSnapshotRequests: [[AppSettingKey]]
   let setCounts: [AppSettingKey: Int]
   let atomicWriteCount: Int
   let atomicSnapshots: [[AppSettingKey: String]]
@@ -66,6 +65,36 @@ enum UITestSettingsStoreError: Error {
   case requestedFailure
 }
 
+actor UITestRollbackFailingSettingsStore: SettingsStore {
+  private var storage: [AppSettingKey: String] = [:]
+  private let rollbackKey: AppSettingKey
+  private var writeCount = 0
+
+  init(rollbackKey: AppSettingKey) {
+    self.rollbackKey = rollbackKey
+  }
+
+  func string(forKey key: AppSettingKey) async throws -> String? { storage[key] }
+
+  func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
+    storage.filter { keys.contains($0.key) }
+  }
+
+  func setString(_ value: String, forKey key: AppSettingKey) async throws {
+    if key == rollbackKey {
+      writeCount += 1
+      if writeCount == 2 { throw UITestSettingsStoreError.requestedFailure }
+    }
+    storage[key] = value
+  }
+
+  func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
+    storage.merge(values) { _, latest in latest }
+  }
+
+  func removeValue(forKey key: AppSettingKey) async throws { storage.removeValue(forKey: key) }
+}
+
 actor UITestSettingsStore: SettingsStore {
   private var storage: [AppSettingKey: String]
   private let failingSetKeys: Set<AppSettingKey>
@@ -74,7 +103,6 @@ actor UITestSettingsStore: SettingsStore {
   private var shouldSuspendBatchReads: Bool
   private var singleReadCount = 0
   private var batchReadCount = 0
-  private var settingsSnapshotRequests: [[AppSettingKey]] = []
   private var setCounts: [AppSettingKey: Int] = [:]
   private var atomicSnapshots: [[AppSettingKey: String]] = []
   private var failNextAtomicWrite = false
@@ -130,7 +158,6 @@ actor UITestSettingsStore: SettingsStore {
   func settingsSnapshot(
     forKeys keys: [AppSettingKey]
   ) async throws -> SettingsStoreReadSnapshot {
-    settingsSnapshotRequests.append(keys)
     var values = try await strings(forKeys: keys)
     let requestedUnavailableKeys = unavailableKeys.intersection(Set(keys))
     for key in requestedUnavailableKeys {
@@ -200,7 +227,6 @@ actor UITestSettingsStore: SettingsStore {
       storage: storage,
       singleReadCount: singleReadCount,
       batchReadCount: batchReadCount,
-      settingsSnapshotRequests: settingsSnapshotRequests,
       setCounts: setCounts,
       atomicWriteCount: atomicSnapshots.count,
       atomicSnapshots: atomicSnapshots,
@@ -211,23 +237,18 @@ actor UITestSettingsStore: SettingsStore {
 
 struct SecureCredentialStoreActivitySnapshot {
   let storage: [SecureCredentialKey: String]
-  let readCounts: [SecureCredentialKey: Int]
   let setCounts: [SecureCredentialKey: Int]
-  let removeCounts: [SecureCredentialKey: Int]
 }
 
 actor UITestSecureCredentialStore: SecureCredentialStore {
   private var storage: [SecureCredentialKey: String]
-  private var readCounts: [SecureCredentialKey: Int] = [:]
   private var setCounts: [SecureCredentialKey: Int] = [:]
-  private var removeCounts: [SecureCredentialKey: Int] = [:]
 
   init(storage: [SecureCredentialKey: String] = [:]) {
     self.storage = storage
   }
 
   func credential(for key: SecureCredentialKey) async throws -> String? {
-    readCounts[key, default: 0] += 1
     return storage[key]
   }
 
@@ -238,15 +259,12 @@ actor UITestSecureCredentialStore: SecureCredentialStore {
 
   func removeCredential(for key: SecureCredentialKey) async throws {
     storage.removeValue(forKey: key)
-    removeCounts[key, default: 0] += 1
   }
 
   func activitySnapshot() -> SecureCredentialStoreActivitySnapshot {
     SecureCredentialStoreActivitySnapshot(
       storage: storage,
-      readCounts: readCounts,
-      setCounts: setCounts,
-      removeCounts: removeCounts
+      setCounts: setCounts
     )
   }
 }

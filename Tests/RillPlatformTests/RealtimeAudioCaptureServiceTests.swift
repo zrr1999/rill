@@ -370,7 +370,6 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
       liveUpdateHandler: { _ in },
       localSpeechCaptureSource: source
     )
-    XCTAssertEqual(source.prepareCount, 0)
     XCTAssertEqual(source.startCount, 0)
     await service.shutdown()
     XCTAssertEqual(source.shutdownCount, 1)

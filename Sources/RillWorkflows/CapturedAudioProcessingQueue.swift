@@ -33,7 +33,6 @@ public actor CapturedAudioProcessingQueue {
     let authorizationLease: AuthorizedAudioProcessingLease
     let triggerEvent: WorkflowTriggerEvent?
     let deferredCapture: DeferredCapturedAudio
-    let enqueuedAt: Date
     let bufferReservation: Task<BufferInputReservation?, Error>
 
     var runID: UUID { authorizationLease.runID }
@@ -145,7 +144,6 @@ public actor CapturedAudioProcessingQueue {
         authorizationLease: authorizationLease,
         triggerEvent: triggerEvent,
         deferredCapture: deferredCapture,
-        enqueuedAt: Date(),
         bufferReservation: bufferReservation
       )
     )

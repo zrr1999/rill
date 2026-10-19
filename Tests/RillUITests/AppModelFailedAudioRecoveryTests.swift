@@ -148,37 +148,6 @@ private actor FailedAudioRecoveryShutdownCompletionProbe {
   }
 }
 
-private actor RollbackFailingRecoverySettingsStore: SettingsStore {
-  private var storage: [AppSettingKey: String] = [:]
-  private var recoveryWriteCount = 0
-
-  func string(forKey key: AppSettingKey) async throws -> String? {
-    storage[key]
-  }
-
-  func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
-    keys.reduce(into: [:]) { result, key in result[key] = storage[key] }
-  }
-
-  func setString(_ value: String, forKey key: AppSettingKey) async throws {
-    if key == .failedAudioRecoveryEnabled {
-      recoveryWriteCount += 1
-      if recoveryWriteCount == 2 {
-        throw UITestSettingsStoreError.requestedFailure
-      }
-    }
-    storage[key] = value
-  }
-
-  func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
-    storage.merge(values) { _, newValue in newValue }
-  }
-
-  func removeValue(forKey key: AppSettingKey) async throws {
-    storage.removeValue(forKey: key)
-  }
-}
-
 @MainActor
 extension AppModelTests {
   func testFailedAudioRecoveryMutationIsRejectedDuringInitialSettingsRead() async {
@@ -269,7 +238,7 @@ extension AppModelTests {
   }
 
   func testEnableRollbackFailureKeepsUIAlignedWithDurableOptInAndWarnsRuntimeIsOff() async {
-    let settingsStore = RollbackFailingRecoverySettingsStore()
+    let settingsStore = UITestRollbackFailingSettingsStore(rollbackKey: .failedAudioRecoveryEnabled)
     let harness = makeHarness(
       settingsStore: settingsStore,
       refreshFailedAudioRecoveryAction: { _ in

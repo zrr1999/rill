@@ -15,10 +15,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
 
-  public init(localDataProtector: any LocalDataProtector) throws {
-    try self.init(databaseURL: Self.defaultDatabaseURL(), localDataProtector: localDataProtector)
-  }
-
   public init(databaseURL: URL, localDataProtector: any LocalDataProtector) throws {
     self.databaseURL = databaseURL
     self.localDataProtector = localDataProtector

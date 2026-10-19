@@ -708,7 +708,7 @@ final class AppBootstrapTests: XCTestCase {
   }
 
   func testLegacySherpaSettingsNormalizeToTheDefaultMLXModel() {
-    for value in ["auto", "sherpa-onnx.local", "sherpa-onnx.streaming"] {
+    for value in ["auto", "sherpa-onnx.local", "sherpa-onnx.streaming", "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25"] {
       XCTAssertEqual(
         LocalSpeechModelCatalog.effectiveModelIdentifier(
           settings: LocalSpeechSettings(model: value)

@@ -87,7 +87,7 @@ final class AppModelCorpusRecordingArchiveTests: XCTestCase {
   }
 
   func testRollbackWriteFailureKeepsDurablePreferenceVisibleAndAllowsRetry() async throws {
-    let settingsStore = RollbackFailingArchiveSettingsStore()
+    let settingsStore = UITestRollbackFailingSettingsStore(rollbackKey: .corpusRecordingArchiveEnabled)
     let probe = CorpusArchiveActionProbe()
     let harness = makeHarness(
       settingsStore: settingsStore,
@@ -147,24 +147,4 @@ final class AppModelCorpusRecordingArchiveTests: XCTestCase {
     XCTAssertEqual(clearCount, 1)
     XCTAssertTrue(harness.model.corpusArchive.isEnabled)
   }
-}
-
-private actor RollbackFailingArchiveSettingsStore: SettingsStore {
-  var storage: [AppSettingKey: String] = [:]
-  var archiveWrites = 0
-  func string(forKey key: AppSettingKey) async throws -> String? { storage[key] }
-  func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
-    storage.filter { keys.contains($0.key) }
-  }
-  func setString(_ value: String, forKey key: AppSettingKey) async throws {
-    if key == .corpusRecordingArchiveEnabled {
-      archiveWrites += 1
-      if archiveWrites == 2 { throw UITestSettingsStoreError.requestedFailure }
-    }
-    storage[key] = value
-  }
-  func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
-    storage.merge(values) { _, latest in latest }
-  }
-  func removeValue(forKey key: AppSettingKey) async throws { storage.removeValue(forKey: key) }
 }

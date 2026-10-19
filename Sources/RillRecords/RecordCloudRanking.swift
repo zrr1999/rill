@@ -15,7 +15,6 @@ public struct RecordRankingReview: Sendable, Identifiable {
 }
 
 public struct RecordCloudRankingResult: Sendable {
-  public let review: RecordRankingReview
   public let response: RecordRankingResponse
   public let elapsedMilliseconds: Double
   public var orderedIndices: [Int] {
@@ -114,7 +113,7 @@ public actor RecordCloudRanking {
       else { throw RecordRankingError.invalidResponse }
       let elapsed = start.duration(to: .now).components
       return RecordCloudRankingResult(
-        review: review, response: response,
+        response: response,
         elapsedMilliseconds: Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
     }
     active = task

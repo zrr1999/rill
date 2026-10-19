@@ -150,7 +150,6 @@ struct VocabularyCollectionCard: View {
 }
 
 private struct VocabularyEntryEditor: View {
-  let entry: VocabularyEntry
   let isNew: Bool
   let language: AppLanguage
   let save: (VocabularyEntry) -> Bool
@@ -160,7 +159,6 @@ private struct VocabularyEntryEditor: View {
   @State private var saveFailed = false
 
   init(entry: VocabularyEntry, isNew: Bool, language: AppLanguage, save: @escaping (VocabularyEntry) -> Bool) {
-    self.entry = entry
     self.isNew = isNew
     self.language = language
     self.save = save

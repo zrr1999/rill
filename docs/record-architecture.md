@@ -11,10 +11,10 @@ routing, delivery state, or workflow history.
 `RecordStore` is the single actor that owns immutable Records and the mutable
 metadata, activity, membership, collection, buffer, route, lease, and persistence CAS
 coordinates around them. `RecordIngestionCoordinator` owns source → privacy →
-route → atomic ingest. `RecordDeliveryCoordinator` owns target route → exact
-membership lease → sink → content-free receipt. Sink identities are checked once at construction; duplicate
-identities return `RegistrationError.duplicateSink` before any lease or output.
-The sink registry is immutable for the coordinator lifetime.
+route → atomic ingest. `RecordDeliveryCoordinator` resolves the target route and exact membership lease.
+`SessionCoordinator` executes the selected output action or collection insertion,
+then settles that lease through `RecordStore`, which creates the content-free
+delivery receipt. Settlement retries do not repeat the external output.
 
 ## Invariants
 

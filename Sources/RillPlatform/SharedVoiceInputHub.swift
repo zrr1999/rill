@@ -65,7 +65,6 @@ public struct SharedVoiceInputFrame: Sendable, Equatable {
 
 public struct SharedVoiceInputSubscription: Sendable {
   public let id: UUID
-  public let channel: SharedVoiceInputChannel
   public let stream: AsyncThrowingStream<SharedVoiceInputFrame, Error>
 }
 
@@ -87,25 +86,13 @@ public enum SharedVoiceInputError: Error, LocalizedError, Equatable, Sendable {
 }
 
 /// Owns the only live microphone producer used by local KWS and recording.
-///
-/// The rolling buffer is process memory only. A handoff names an absolute
-/// sample boundary, allowing wake-word detection to transfer the post-keyword
-/// audio already received while the workflow starts without opening a second
-/// audio engine or writing pre-roll to disk.
 public actor SharedVoiceInputHub {
   private struct Subscriber {
     let channel: SharedVoiceInputChannel
     let continuation: AsyncThrowingStream<SharedVoiceInputFrame, Error>.Continuation
   }
 
-  private struct Handoff: Sendable {
-    let startSampleIndex: Int64
-    let expiresAt: ContinuousClock.Instant
-  }
-
-  private static let ringCapacity = SharedVoiceInputFrame.sampleRate * 2
   private static let subscriberBufferCapacity = 48
-  private static let handoffLifetime: Duration = .seconds(15)
 
   /// Ambient listening deliberately uses an ordinary AVAudioEngine input so
   /// an enabled wake workflow does not leave VoiceProcessingIO attached to the
@@ -119,23 +106,8 @@ public actor SharedVoiceInputHub {
   private var producerTask: Task<Void, Never>?
   private var producerGeneration: UInt64 = 0
   private var producerChannel: SharedVoiceInputChannel?
-  private var ringSamples: [Float] = []
-  private var ringStartSampleIndex: Int64 = 0
   private var nextSampleIndex: Int64 = 0
-  private var handoffs: [UUID: Handoff] = [:]
   private var terminated = false
-
-  init(processor: AppleVoiceProcessingAudioProcessor) {
-    ambientProcessor = processor
-    interactiveProcessor = processor
-    let (activityStream, activityContinuation) =
-      AsyncStream<SharedVoiceInputActivity>.makeStream(
-        bufferingPolicy: .bufferingNewest(8)
-      )
-    activityStreamValue = activityStream
-    self.activityContinuation = activityContinuation
-    ringSamples.reserveCapacity(Self.ringCapacity)
-  }
 
   init(
     ambientProcessor: AppleVoiceProcessingAudioProcessor,
@@ -149,7 +121,6 @@ public actor SharedVoiceInputHub {
       )
     activityStreamValue = activityStream
     self.activityContinuation = activityContinuation
-    ringSamples.reserveCapacity(Self.ringCapacity)
   }
 
   public nonisolated func activityStream() -> AsyncStream<SharedVoiceInputActivity> {
@@ -167,15 +138,8 @@ public actor SharedVoiceInputHub {
     guard !terminated else {
       throw SharedVoiceInputError.producerStopped
     }
-    pruneExpiredHandoffs()
-    let replayStart: Int64?
-    if let handoffID {
-      guard let handoff = handoffs.removeValue(forKey: handoffID) else {
-        throw SharedVoiceInputError.invalidHandoff
-      }
-      replayStart = max(handoff.startSampleIndex, ringStartSampleIndex)
-    } else {
-      replayStart = nil
+    guard handoffID == nil else {
+      throw SharedVoiceInputError.invalidHandoff
     }
 
     let id = UUID()
@@ -187,38 +151,10 @@ public actor SharedVoiceInputHub {
       Task { await self?.unsubscribe(id: id) }
     }
 
-    if let replayStart, replayStart < nextSampleIndex {
-      let offset = Int(replayStart - ringStartSampleIndex)
-      if offset >= 0, offset < ringSamples.count {
-        let samples = Array(ringSamples[offset...])
-        if case .dropped = continuation.yield(
-          SharedVoiceInputFrame(samples: samples, startSampleIndex: replayStart)
-        ) {
-          continuation.finish(throwing: SharedVoiceInputError.consumerTooSlow)
-          throw SharedVoiceInputError.consumerTooSlow
-        }
-      }
-    }
     subscribers[id] = Subscriber(channel: channel, continuation: continuation)
     publishActivity()
     reconcileProducer()
-    return SharedVoiceInputSubscription(id: id, channel: channel, stream: stream)
-  }
-
-  /// Creates a single-use transfer token. The requested boundary is clamped to
-  /// PCM still retained by the two-second in-memory ring.
-  public func makeHandoff(afterSampleIndex sampleIndex: Int64) -> UUID {
-    pruneExpiredHandoffs()
-    let id = UUID()
-    handoffs[id] = Handoff(
-      startSampleIndex: min(max(sampleIndex, ringStartSampleIndex), nextSampleIndex),
-      expiresAt: ContinuousClock.now.advanced(by: Self.handoffLifetime)
-    )
-    return id
-  }
-
-  public func currentSampleIndex() -> Int64 {
-    nextSampleIndex
+    return SharedVoiceInputSubscription(id: id, stream: stream)
   }
 
   public func unsubscribe(id: UUID) {
@@ -226,10 +162,6 @@ public actor SharedVoiceInputHub {
     subscriber.continuation.finish()
     publishActivity()
     reconcileProducer()
-  }
-
-  public func resetHandoffs() {
-    handoffs.removeAll()
   }
 
   public func shutdown() {
@@ -249,8 +181,6 @@ public actor SharedVoiceInputHub {
     if ambientProcessor !== interactiveProcessor {
       interactiveProcessor.shutdown()
     }
-    ringSamples.removeAll(keepingCapacity: false)
-    handoffs.removeAll()
     publishActivity()
     activityContinuation.finish()
   }
@@ -259,7 +189,7 @@ public actor SharedVoiceInputHub {
     let desiredChannel = makeActivity().highestPriorityChannel
     guard desiredChannel != producerChannel || producerTask == nil else { return }
 
-    stopProducer(releaseFrontend: true)
+    stopProducer()
     guard let desiredChannel else { return }
 
     producerGeneration &+= 1
@@ -292,7 +222,6 @@ public actor SharedVoiceInputHub {
       startSampleIndex: nextSampleIndex
     )
     nextSampleIndex = frame.endSampleIndex
-    appendToRing(samples)
 
     var failedSubscribers: [UUID] = []
     let activity = makeActivity()
@@ -336,29 +265,16 @@ public actor SharedVoiceInputHub {
     publishActivity()
   }
 
-  private func appendToRing(_ samples: [Float]) {
-    ringSamples.append(contentsOf: samples)
-    let overflow = ringSamples.count - Self.ringCapacity
-    if overflow > 0 {
-      ringSamples.removeFirst(overflow)
-      ringStartSampleIndex += Int64(overflow)
-    }
-  }
-
-  private func stopProducer(releaseFrontend: Bool) {
+  private func stopProducer() {
     guard producerTask != nil || producerChannel != nil else { return }
     let processor = producerChannel.map(processor(for:))
     producerGeneration &+= 1
     producerTask?.cancel()
     producerTask = nil
-    if releaseFrontend {
-      // A configured, stopped VoiceProcessingIO graph can still affect other
-      // applications. Release the complete frontend whenever ownership moves
-      // away from this channel; the processor remains reusable on the next run.
-      processor?.shutdown()
-    } else {
-      processor?.stopRecording()
-    }
+    // A configured, stopped VoiceProcessingIO graph can still affect other
+    // applications. Release the complete frontend whenever ownership moves
+    // away from this channel; the processor remains reusable on the next run.
+    processor?.shutdown()
     producerContinuation?.finish()
     producerContinuation = nil
     producerChannel = nil
@@ -373,11 +289,6 @@ public actor SharedVoiceInputHub {
     case .interactiveRecognition:
       interactiveProcessor
     }
-  }
-
-  private func pruneExpiredHandoffs() {
-    let now = ContinuousClock.now
-    handoffs = handoffs.filter { $0.value.expiresAt > now }
   }
 
   private func makeActivity() -> SharedVoiceInputActivity {
@@ -409,10 +320,6 @@ final class SharedVoiceInputCaptureSource: LocalSpeechAudioCaptureSource,
 
   var meterRMS: [Float] {
     processor.meterRMS
-  }
-
-  func prepareStoppedFrontend() throws {
-    try processor.prepareRecordingFrontend(inputDeviceID: nil)
   }
 
   func setPendingHandoffID(_ id: UUID?) {

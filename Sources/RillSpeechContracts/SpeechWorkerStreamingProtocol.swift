@@ -218,7 +218,6 @@ public enum SpeechWorkerStreamingProtocol {
   public static let maximumAudioPayloadByteCount =
     maximumSamplesPerFrame * MemoryLayout<Float>.size
   public static let maximumTranscriptByteCount = 64 * 1_024
-  public static let maximumStreamEventCount = 100_000
 }
 
 public enum MLXSileroVADConstants {
@@ -259,16 +258,6 @@ public enum SpeechWorkerFrameCodec {
     let frame = try decode(data)
     try validateEvent(frame)
     return frame
-  }
-
-  public static func isStreamingFrame(_ data: Data) -> Bool {
-    guard let frame = try? decode(data) else { return false }
-    switch frame.body {
-    case .command, .event:
-      return true
-    case .request, .response:
-      return false
-    }
   }
 
   private static func validateBase(_ frame: SpeechWorkerFrame) throws {

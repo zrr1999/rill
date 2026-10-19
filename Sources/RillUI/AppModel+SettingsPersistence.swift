@@ -223,7 +223,6 @@ struct StoredAppSettingsSnapshot: Sendable {
   let openAIBaseURL: String?
   let openAIModel: String?
 
-  let vocabularyRules: [VocabularyRule]
   let vocabularyCollections: [VocabularyCollection]
   let vocabularyBindings: [VocabularyCollectionBinding]
   let vocabularyLibraryNeedsMigration: Bool

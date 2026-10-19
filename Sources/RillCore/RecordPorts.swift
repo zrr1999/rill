@@ -23,32 +23,9 @@ public struct RecordCaptureEnvelope: Sendable, Equatable {
   }
 }
 
-public protocol RecordSource: Sendable {
-  func capture() async throws -> RecordCaptureEnvelope?
-}
-
 public protocol RecordIngestionSink: Sendable {
   @discardableResult
   func ingest(_ envelope: RecordCaptureEnvelope) async throws -> RecordProjection
-}
-
-public struct RecordDeliveryRequest: Sendable, Equatable {
-  public let record: Record
-  public let membershipID: RecordMembershipID
-  public let collectionID: RecordCollectionID
-  public let targetApplication: FocusedApplicationIdentity?
-
-  public init(
-    record: Record,
-    membershipID: RecordMembershipID,
-    collectionID: RecordCollectionID,
-    targetApplication: FocusedApplicationIdentity? = nil
-  ) {
-    self.record = record
-    self.membershipID = membershipID
-    self.collectionID = collectionID
-    self.targetApplication = targetApplication
-  }
 }
 
 public struct RecordDeliveryReceipt: Codable, Sendable, Equatable {
@@ -71,11 +48,6 @@ public struct RecordDeliveryReceipt: Codable, Sendable, Equatable {
     self.sink = sink
     self.deliveredAt = deliveredAt
   }
-}
-
-public protocol RecordSink: Sendable {
-  var identity: RecordSinkIdentity { get }
-  func deliver(_ request: RecordDeliveryRequest) async throws -> RecordDeliveryReceipt
 }
 
 public struct RecordGraphPersistenceBlobReference: Codable, Sendable, Equatable, Hashable {

@@ -60,6 +60,15 @@ final class SharedVoiceInputArbitrationTests: XCTestCase {
       )
     )
 
+    do {
+      _ = try await hub.subscribe(replaying: UUID())
+      XCTFail("An unknown handoff must not start microphone capture")
+    } catch {
+      XCTAssertEqual(error as? SharedVoiceInputError, .invalidHandoff)
+    }
+    XCTAssertEqual(ambientProbe.snapshot(), .zero)
+    XCTAssertEqual(interactiveProbe.snapshot(), .zero)
+
     let ambient = try await hub.subscribe(channel: .ambientWakeWord)
     XCTAssertEqual(ambientProbe.snapshot(), .init(configure: 1, start: 1, stop: 0))
     XCTAssertEqual(ambientProbe.liveFrontendCount, 1)
@@ -97,6 +106,12 @@ final class SharedVoiceInputArbitrationTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(finalAmbientSnapshot.stop, 2)
     XCTAssertEqual(ambientProbe.liveFrontendCount, 0)
     await hub.shutdown()
+    do {
+      _ = try await hub.subscribe(replaying: UUID())
+      XCTFail("Shutdown must reject new subscriptions")
+    } catch {
+      XCTAssertEqual(error as? SharedVoiceInputError, .producerStopped)
+    }
   }
 }
 

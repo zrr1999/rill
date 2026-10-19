@@ -120,7 +120,6 @@ final class LiveAudioSessionAuthorizationState: @unchecked Sendable {
 /// has stopped and the controller seals the capture for deferred processing.
 public actor AuthorizedLiveAudioSession {
   public nonisolated let runID: UUID
-  public nonisolated let workflow: WorkflowDefinition
   public nonisolated let audioLifetime: AudioCaptureLifetime
   public nonisolated let audioCaptureOptions: SpeechRecognitionRequestOptions
 
@@ -138,7 +137,6 @@ public actor AuthorizedLiveAudioSession {
 
   init(
     runID: UUID,
-    workflow: WorkflowDefinition,
     audioLifetime: AudioCaptureLifetime,
     processingLease: AuthorizedAudioProcessingLease,
     authorizationState: LiveAudioSessionAuthorizationState,
@@ -151,7 +149,6 @@ public actor AuthorizedLiveAudioSession {
       ) async -> Void
   ) {
     self.runID = runID
-    self.workflow = workflow
     self.audioLifetime = audioLifetime
     self.processingLease = processingLease
     self.authorizationState = authorizationState

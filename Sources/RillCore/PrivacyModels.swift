@@ -434,7 +434,6 @@ public enum PrivacyPolicy {
   public static func evaluate(
     context: ContextSnapshot,
     workflow: WorkflowDefinition? = nil,
-    preferredSpeechEngine: PreferredSpeechEngine? = nil,
     processingDestinations: [PrivacyProcessingDestination] = [],
     settings: PrivacyPolicySettings = .defaults
   ) -> PrivacyPolicyDecision {
@@ -442,7 +441,6 @@ public enum PrivacyPolicy {
     let matchingRule = settings.sensitiveAppRules.first { $0.matches(focus: context.focus) }
     let usesCloud = usesCloudProcessing(
       workflow: workflow,
-      preferredSpeechEngine: preferredSpeechEngine,
       processingDestinations: processingDestinations
     )
 
@@ -530,7 +528,6 @@ public enum PrivacyPolicy {
 
   private static func usesCloudProcessing(
     workflow: WorkflowDefinition?,
-    preferredSpeechEngine: PreferredSpeechEngine?,
     processingDestinations: [PrivacyProcessingDestination]
   ) -> Bool {
     if processingDestinations.contains(where: \.isCloud) {
