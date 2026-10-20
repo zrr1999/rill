@@ -115,7 +115,9 @@ struct RunWorkflowIntent: AppIntent {
       else {
         throw RillIntentFailure(localizedStringResource: "intent.error.workflowUnavailable")
       }
-      model.runWorkflow(definition)
+      guard model.runWorkflow(definition) else {
+        throw RillIntentFailure(localizedStringResource: "intent.error.workflowNotStarted")
+      }
     }
     return .result()
   }

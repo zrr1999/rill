@@ -43,6 +43,13 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这个工作流不可用。" } }
       }
     },
+    "intent.error.workflowNotStarted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The workflow could not start. Check Rill's current run and settings." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "工作流未能启动。请检查 Rill 当前的运行状态和设置。" } }
+      }
+    },
     "intent.runWorkflow.description" : {
       "extractionState" : "manual",
       "localizations" : {
