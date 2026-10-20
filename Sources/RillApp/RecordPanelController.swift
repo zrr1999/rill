@@ -1035,5 +1035,6 @@ private struct FloatingRecordCollectionsView: View {
         openWindow(id: "main")
       }
     )
+    .id(ObjectIdentifier(content.session))
   }
 }
