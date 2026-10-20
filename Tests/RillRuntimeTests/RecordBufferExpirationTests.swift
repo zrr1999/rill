@@ -80,6 +80,29 @@ struct RecordBufferExpirationTests {
     #expect(try await store.bufferSnapshot().remainingCount == 0)
   }
 
+  @Test func bufferSubscriptionSurvivesFailedExpiryAndReceivesRecovery() async throws {
+    let clock = BufferDateClock(start)
+    let persistence = BufferCatalogFake()
+    let store = RecordStore(persistence: persistence, currentDate: clock.now)
+    let id = try await append("keep on failure", store: store)
+    clock.advance(BufferEntry.pendingLifetime)
+    await persistence.rejectNext()
+
+    let stream = try await store.bufferStream()
+    var snapshots = stream.makeAsyncIterator()
+    #expect(await snapshots.next()?.next?.id == id)
+    await #expect(throws: RecordStoreError.persistenceUnavailable) {
+      try await store.expireBufferEntries()
+    }
+    #expect(try await store.bufferDraft(for: id)?.text == "keep on failure")
+
+    try await store.expireBufferEntries()
+    #expect(await snapshots.next()?.remainingCount == 0)
+    #expect(try await store.snapshot().records.count == 1)
+    let replacement = try await append("new capture", store: store)
+    #expect(await snapshots.next()?.next?.id == replacement)
+  }
+
   @Test func activeEditingUnsentChangesAndUncertainDeliveryAreProtected() async throws {
     let clock = BufferDateClock(start)
     let store = RecordStore(currentDate: clock.now)

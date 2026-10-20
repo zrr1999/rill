@@ -2457,7 +2457,7 @@ extension RecordStore {
   }
 
   public func bufferStream() async throws -> AsyncStream<RecordBufferSnapshot> {
-    try await expireBufferEntries()
+    try await ensureInitialized()
     let token = UUID()
     return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
       bufferContinuations[token] = continuation
