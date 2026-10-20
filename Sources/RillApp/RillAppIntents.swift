@@ -35,7 +35,9 @@ struct ToggleVoiceInputIntent: AppIntent {
     guard let recording = await MainActor.run(body: { RillIntentBridge.recording }) else {
       throw RillIntentFailure(localizedStringResource: "intent.error.unavailable")
     }
-    await recording.toggleLongRecording()
+    guard await recording.toggleLongRecording() else {
+      throw RillIntentFailure(localizedStringResource: "intent.error.voiceInputNotAccepted")
+    }
     return .result()
   }
 }

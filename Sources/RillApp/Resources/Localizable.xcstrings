@@ -43,6 +43,13 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这个工作流不可用。" } }
       }
     },
+    "intent.error.voiceInputNotAccepted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Voice input could not change state. Check Rill's current recording, settings, and permissions." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未能切换语音输入。请检查 Rill 当前的录音状态、设置和权限。" } }
+      }
+    },
     "intent.error.workflowNotStarted" : {
       "extractionState" : "manual",
       "localizations" : {
