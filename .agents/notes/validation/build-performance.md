@@ -22,4 +22,4 @@ SwiftDriver Compilation，排除 Compilation Requirements；不是源文件数�
 
 当时本地开发签名 App/DMG 的 `release.sh --preflight` 用时 133.6 s，Release
 编译任务为零；未安装或公证。现行构建命令、缓存失效与并发约束见
-[CONTRIBUTING.md](../../../CONTRIBUTING.md)，不在笔记维护另一份使用说明。
+[开发参考](../../../docs/development.md)。

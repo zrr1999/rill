@@ -62,6 +62,23 @@ scripts/preflight.sh swift release --worker-cache off
 [Evals](../Evals/README.md)、[Benchmarks](../Benchmarks/README.md) 和
 [ASR 评测](asr-evaluation.md)。原生交互验收见 [QA 清单](release-qa-checklist.md)。
 
+## GitHub Actions
+
+Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci-`、`ce-`、`cd-`、
+`policy-` 或 `automation-` 前缀，显示名称对应 `CI - <Purpose>`、`CE - <Purpose>`、
+`CD - <Purpose>`、`Policy - <Purpose>` 或 `Automation - <Purpose>`。
+
+[Policy - PR](../.github/workflows/policy-pr.yml) 只读校验 PR 元数据，检出 base commit
+的模板。有写操作的 PR 自动化放在独立的
+[Automation - PR Title](../.github/workflows/automation-pr-title.yml) 中，仅授予所需的
+`pull-requests: write` 和 `actions: write`；不检出 PR 代码，也不读取上游运行产物。
+
+仓库规则使用实际检查名称：[Policy - PR](../.github/workflows/policy-pr.yml) 的检查是
+`PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是
+`Release preflight`。后者要求文档检查、所需的 tests / release lane 和 Record workload
+检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。
+修改检查名称时同步核对仓库规则，合并步骤见[发布文档](releasing.md#合并门禁)。
+
 ## 预检报告与故障定位
 
 完整预检在 `.artifacts/preflight/run.*/` 保存 `summary.md`、`source.json` 和阶段日志。
