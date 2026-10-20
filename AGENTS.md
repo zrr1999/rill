@@ -42,7 +42,6 @@ dependencies; each dependent PR targets the branch it needs.
 PRs that change UI must include screenshots in the PR body, as specified in
 [CONTRIBUTING.md](CONTRIBUTING.md) and the PR template.
 
-Describe the final change for a reviewer who has not read the conversation.
 Omit task diaries, stack bookkeeping, full hashes, source fingerprints, and
 local artifact paths from the PR body. Keep those details in local validation
 records. List unfinished acceptance in the current PR's limitations, not as
@@ -50,10 +49,10 @@ roadmap work, and do not invent future work to fill an optional section.
 
 ## Maintaining shared documentation
 
-CONTRIBUTING is the shared entrypoint for human developers and agents. Keep it
-focused on setup, validation, and contribution conventions. Read versions and
-checksums from their executable configuration instead of copying them into the
-guide. Keep operational details in the relevant development or domain reference.
+Keep CONTRIBUTING focused on setup, validation, and PR requirements. Link to
+configuration for versions and checksums instead of copying them into the guide.
+Keep build details in [docs/development.md](docs/development.md) and domain details
+in their reference documents.
 Agent-specific task, orchestration, and reporting instructions belong here or
 in the matching repository skill.
 
@@ -71,9 +70,7 @@ their boundaries; an ordinary edit does not require running all six workflows.
 | Verify macOS interaction, permissions, focus, or release artifacts | [rill-macos-qa](.agents/skills/rill-macos-qa/SKILL.md) |
 | Change visual presentation, materials, type, or floating chrome | [rill-ui-change](.agents/skills/rill-ui-change/SKILL.md) |
 
-These skills are maintained with this repository and require no personal skill
-installation. Keep shared project facts in the documents below and link to them
-from skills rather than maintaining another copy.
+Link to the project contracts from skills rather than maintaining another copy.
 
 ## Project contracts
 

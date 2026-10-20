@@ -5,8 +5,7 @@ description: Change Rill workflow TOML, built-in definitions, parsing, validatio
 
 # Rill Workflow Change
 
-Carry the requested behavior from its authoritative definition through the real
-execution path. Respond in the user's language.
+Respond in the user's language.
 
 ## Locate the contract
 

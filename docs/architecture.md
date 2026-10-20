@@ -15,12 +15,11 @@ RecordStore → SQLite relationship does not mean a RillRecords → RillPersiste
 
 `codemap.lock` binds source and test evidence to exact SHA-256 bytes and a Git
 baseline. Run `python3 scripts/codemap.py check` after source changes; rebuild only
-after reviewing changed claims and updating the inventory. Test declarations are
-navigation evidence, not passing tests or a claim of measured coverage.
+after reviewing changed claims and updating the inventory. The map links test
+declarations; check CI for test outcomes.
 
 The four traces cover local-model dictation, clipboard reuse, optional LLM cleanup/receipts,
-and the independently running input method. Model downloads and remote services
-are dependencies, not evidence that those flows have run on a physical Mac.
+and the independently running input method.
 
 ## Module dependencies
 
@@ -147,7 +146,7 @@ or workflow availability.
 SQLite repository extensions divide queries by domain while preserving the
 connection's transaction boundary. Splitting them into independent actors would
 require a new transaction contract, particularly for history clear barriers and
-Record migration. File size alone is not a reason to introduce that separation.
+Record migration.
 
 `AuthorizedLiveAudioSession` shares the capture admission boundary between held
 recording and workflow-controlled recording: it validates the run and audio
@@ -206,7 +205,7 @@ recording and stopping states keep the corresponding run resources together;
 finishing work retains its existing independent cleanup ownership. `AppModel`
 callers access existing feature owners directly rather than through duplicate
 state forwarding. Remaining settings commands and lifecycle coordination still
-live in AppModel; this is not yet a claim that all its responsibilities migrated.
+live in AppModel.
 
 `OutputAction.execute(record:context:)` is the sole required output entry.
 Text convenience calls convert once to a Record draft. Output action results,

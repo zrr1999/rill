@@ -42,10 +42,8 @@ Check English and Chinese, light and dark appearance, and the compact window.
 Also check Reduce Motion, Reduce Transparency, Increase Contrast, Differentiate
 Without Color, and a larger text size when the change touches type or material.
 
-Render evidence can show layout. It does not accept Fn, IME composition,
-VoiceOver, paste, or a release candidate. Use
-[macOS QA](../rill-macos-qa/SKILL.md) when the change crosses one of those
-boundaries.
+Use [macOS QA](../rill-macos-qa/SKILL.md) for Fn, IME composition, VoiceOver,
+paste, and release-candidate checks.
 
 Report the visual decision changed, the documents updated, the checks run, and
 any physical interaction still unverified.

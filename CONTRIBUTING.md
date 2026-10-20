@@ -1,16 +1,12 @@
 # Contributing to Rill
 
-感谢你改进 Rill。本文面向人类开发者和 agent，说明如何开始开发、验证改动和提交贡献。
-
 ## 开发环境
 
 准备 macOS、Xcode 及其 Command Line Tools 和 Metal Toolchain，以及
 [uv](https://docs.astral.sh/uv/)、[just](https://just.systems/) 和 Git。
 
-支持的平台与 Swift 要求以 [Package.swift](Package.swift) 为准；工具链检查见
-[scripts/preflight.sh](scripts/preflight.sh)。开发工具和 CI 使用的版本由
-[justfile](justfile)、[prek.toml](prek.toml) 和 [工作流配置](.github/workflows/)维护。
-Python 环境由各脚本的元数据、锁文件及 [tools/pyproject.toml](tools/pyproject.toml) 声明。
+平台与 Swift 要求见 [Package.swift](Package.swift)，工具链检查见
+[scripts/preflight.sh](scripts/preflight.sh)。各命令使用仓库配置和锁文件声明的工具版本。
 
 在仓库根目录安装 hooks，然后构建和测试：
 
@@ -36,24 +32,23 @@ just test
 | `just ci` / `just ci-clean` | 完整门禁，以及清理构建产物后重跑完整门禁 |
 
 提交前运行 `just ci` 和 `git diff --check`。完整门禁需要可用的交互式桌面。
-前置条件失败时，报告实际失败和未执行的检查；CI 结果须对应当前提交。
 
-自动化测试不能代替真实 Fn、麦克风、IME、跨应用输出或 VoiceOver 验收。
-相关改动按 [macOS 验收清单](docs/release-qa-checklist.md)补充观察结果。
+涉及 Fn、麦克风、IME、跨应用输出或 VoiceOver 的改动，按
+[macOS 验收清单](docs/release-qa-checklist.md)进行人工验收。
 质量评测与性能测量分别见 [Evals](Evals/README.md) 和
-[Benchmarks](Benchmarks/README.md)，普通 CI 不代表真实模型质量或性能提升。
+[Benchmarks](Benchmarks/README.md)。
 
 ## 本地 App 与发布
 
 构建可执行文件后，还需装配 App 才能验证权限声明和系统集成。
-先完成验证，再使用本机可用的开发签名身份进行本地安装：
+完成验证后，使用本机可用的开发签名身份进行本地安装：
 
 ```bash
 SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 ```
 
 省略 `--install` 可在 `.artifacts/release/` 生成本地产物。
-开发签名不代表正式分发验收；版本标签、签名、公证和发布由维护者按
+正式发布的版本标签、签名、公证和验收由维护者按
 [发布步骤](docs/releasing.md)执行。
 
 ## 文档归属
@@ -61,7 +56,7 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | 入口 | 内容 |
 | --- | --- |
 | [README](README.md)、[用户指南](docs/usage.md) | 安装、首次使用和产品功能 |
-| 本文、[开发参考](docs/development.md) | 贡献流程，以及构建、测试和生成物维护 |
+| [开发参考](docs/development.md) | 构建、测试和生成物维护 |
 | [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[UI](docs/ui-direction.md) | 模块、状态、执行和界面契约 |
 | [输入法工程](docs/input-method-development.md)、[图标设计](docs/icon-design.md) | 对应功能的工程与资源维护 |
 | [文档站维护](docs/documentation.md) | 文档收录、构建和站点交付 |
@@ -69,15 +64,13 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | [EVOLUTION.md](EVOLUTION.md) | 项目起源和真实的方向变化 |
 | [LICENSE](LICENSE)、[SECURITY](SECURITY.md)、[PRIVACY](PRIVACY.md) | 许可、安全报告与隐私说明 |
 
-修改产品行为时同步相关说明；版本、校验值和实现细节以对应配置、源码和专题文档为准。
-Agent 的任务说明与 skills 入口维护在 [AGENTS.md](AGENTS.md)。
+修改产品行为时同步相关说明。Agent 指令见 [AGENTS.md](AGENTS.md)。
 
 ## 改动边界与生成物
 
-- 保持模块依赖和状态所有权清晰，遵循现有架构；让一次改动聚焦于可独立验证的目的。
 - 覆盖真实入口及失败、取消、隐私收紧和退出清理路径。竞态测试优先使用可控时钟或同步屏障。
 - 新增正文、音频、路径、端点或凭据流向时，同步隐私、持久化与清理说明。
-- 更新生成物时，把事实源、生成器和结果放在同一提交中。依赖升级同步清单、锁文件和第三方许可证据；资源维护入口见开发参考。
+- 修改源文件后重新生成并提交对应产物；生成器变化时一并提交。依赖升级同步清单、锁文件和第三方许可证据；资源维护入口见开发参考。
 
 ## 提交与 Pull Request
 
