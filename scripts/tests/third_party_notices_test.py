@@ -160,6 +160,16 @@ class Fixture:
 
         own_bundle = build_dir / "RillMacOS_RillApp.bundle"
         create_bundle(own_bundle, "dev.zrr.Rill.resources")
+        intents_catalog = json.loads(
+            (PROJECT_DIR / "Sources/RillApp/Resources/Localizable.xcstrings").read_text()
+        )
+        for language in ("en", "zh-Hans"):
+            catalog = own_bundle / "Contents/Resources" / f"{language}.lproj/Localizable.strings"
+            catalog.parent.mkdir(parents=True)
+            catalog.write_bytes(plistlib.dumps({
+                key: entry["localizations"][language]["stringUnit"]["value"]
+                for key, entry in intents_catalog["strings"].items()
+            }))
         platform_bundle = build_dir / "RillMacOS_RillPlatform.bundle"
         create_bundle(platform_bundle, "dev.zrr.Rill.platform-resources")
         shutil.copytree(WORKFLOW_RESOURCES, platform_bundle / "Contents" / "Resources" / "BuiltinWorkflows")
@@ -556,6 +566,16 @@ class ThirdPartyNoticesTests(unittest.TestCase):
                     env={**self.fixture.assembler_env, "RILL_TEST_METADATA_RESULT": result},
                 )
 
+    def test_assembler_requires_app_intents_localizations(self) -> None:
+        self.fixture.prepare_packaging()
+        self.fixture.generate()
+        self.fixture.build_dir = self.fixture.create_build_products()
+        catalog = self.fixture.build_dir / "RillMacOS_RillApp.bundle/Contents/Resources/zh-Hans.lproj/Localizable.strings"
+        catalog.unlink()
+        self.expect_rejected("Required App Intents localization not found")
+        catalog.write_text("invalid strings")
+        self.expect_rejected("Invalid App Intents localization")
+
     def test_assembler_packages_reviewed_resources_and_rejects_drift(self) -> None:
         project_documents = ("LICENSE", "README.md")
         self.fixture.prepare_packaging()
@@ -602,6 +622,11 @@ class ThirdPartyNoticesTests(unittest.TestCase):
             self.assertEqual(
                 (app_bundle / "Contents" / "Resources" / relative).read_bytes(),
                 (build_dir / relative).read_bytes(),
+            )
+            intents_relative = Path(f"{language}.lproj/Localizable.strings")
+            self.assertEqual(
+                (app_bundle / "Contents/Resources" / intents_relative).read_bytes(),
+                (build_dir / "RillMacOS_RillApp.bundle/Contents/Resources" / intents_relative).read_bytes(),
             )
         packaged = app_bundle / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.md"
         self.assertEqual(packaged.read_bytes(), self.fixture.output.read_bytes())

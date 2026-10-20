@@ -410,6 +410,11 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
     error "Invalid resource bundle Info.plist: $bundle_name"
   if [[ "$bundle_name" == "$OWN_RESOURCE_BUNDLE" ]]; then
     own_bundle_found=true
+    for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
+      catalog="$source_bundle/Contents/Resources/$localization.lproj/Localizable.strings"
+      [[ -f "$catalog" ]] || error "Required App Intents localization not found: $catalog"
+      plutil -lint "$catalog" >/dev/null || error "Invalid App Intents localization: $catalog"
+    done
   elif [[ "$bundle_name" == "$UI_RESOURCE_BUNDLE" ]]; then
     ui_bundle_found=true
     for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
@@ -491,6 +496,12 @@ for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
   localized_info_destination="$APP_BUNDLE/Contents/Resources/$localization.lproj/InfoPlist.strings"
   mkdir -p "$(dirname "$localized_info_destination")"
   ditto "$localized_info_source" "$localized_info_destination"
+  # App Intents resolves LocalizedStringResource in the main app bundle.
+  intents_catalog_source="$BUILD_DIR/$OWN_RESOURCE_BUNDLE/Contents/Resources/$localization.lproj/Localizable.strings"
+  intents_catalog_destination="$APP_BUNDLE/Contents/Resources/$localization.lproj/Localizable.strings"
+  ditto "$intents_catalog_source" "$intents_catalog_destination"
+  cmp -s "$intents_catalog_source" "$intents_catalog_destination" ||
+    error "App Intents localization copy does not match the release snapshot: $localization"
 done
 
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
