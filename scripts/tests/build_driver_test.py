@@ -350,18 +350,50 @@ package.targets.removeAll { $0.name != "RillCore" }
         worker = output / "RillSpeechWorker"
         worker.write_text("original")
         worker.chmod(0o755)
+        app = output / "RillApp"
+        app.write_text("app")
+        app.chmod(0o755)
         receipt_path = self.root / ".artifacts/receipt.json"
+        with self.assertRaisesRegex(build.BuildError, "App Intents compiler metadata"):
+            build.make_receipt(
+                self.context, output, receipt_path, build.source_inputs(self.root)
+            )
+        metadata_root = self.context.scratch / "out/Intermediates.noindex/RillMacOS.build"
+        metadata_relative = Path("RillApp-product.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues")
+        metadata = metadata_root / "Release" / metadata_relative
+        debug_metadata = metadata_root / "Debug" / metadata_relative
+        test_metadata = metadata_root / "Release/RillApp-testable-t.build/Objects-normal/arm64" / metadata.name
+        legacy_test_metadata = metadata_root / "Release/RillApp-1234-testable.build/Objects-normal/arm64" / metadata.name
+        for path, content in (
+            (metadata, "release"), (debug_metadata, "debug"),
+            (test_metadata, "test"), (legacy_test_metadata, "legacy test"),
+        ):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        extra_metadata = metadata.with_name("Other.swiftconstvalues")
+        extra_metadata.write_text("other release values")
         build.make_receipt(
             self.context, output, receipt_path, build.source_inputs(self.root)
         )
         worker.write_text("concurrent rebuild")
+        metadata.write_text("concurrent metadata")
         receipt = build.receipt_products(receipt_path, self.root)
+        copied_metadata = Path(receipt["productsDirectory"]) / metadata.name
+        self.assertEqual(copied_metadata.read_text(), "release")
+        self.assertEqual(
+            (Path(receipt["productsDirectory"]) / extra_metadata.name).read_text(),
+            "other release values",
+        )
         copied = Path(receipt["productsDirectory"]) / worker.name
         self.assertEqual(copied.read_text(), "original")
         copied.write_text("tampered")
         with self.assertRaisesRegex(build.BuildError, "products changed"):
             build.receipt_products(receipt_path, self.root)
         copied.write_text("original")
+        copied_metadata.write_text("tampered")
+        with self.assertRaisesRegex(build.BuildError, "products changed"):
+            build.receipt_products(receipt_path, self.root)
+        copied_metadata.write_text("release")
         (self.root / "new-source.swift").write_text("new code")
         with self.assertRaisesRegex(build.BuildError, "Source changed"):
             build.receipt_products(receipt_path, self.root)
