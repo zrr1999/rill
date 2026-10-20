@@ -10,6 +10,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -202,6 +203,81 @@ class BuildDriverTests(unittest.TestCase):
         )
         self.assertIn("--scratch-path", command)
         self.assertNotIn("-warnings-as-errors", command)
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS test process sampling")
+    def test_idle_swift_testing_samples_only_its_owned_processes(self):
+        release = self.root / "release"
+        stage = self.root / "stage"
+        script = f"""
+import pathlib, subprocess, sys, time
+stage = pathlib.Path({str(stage)!r})
+stage.write_text('building')
+time.sleep(0.15)
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(5)'])
+print('child=' + str(child.pid), flush=True)
+stage.write_text('testing')
+print('◇ Test run started.', flush=True)
+try:
+    deadline = time.monotonic() + 3
+    while not pathlib.Path({str(release)!r}).exists():
+        if time.monotonic() > deadline:
+            raise RuntimeError('No diagnostic arrived')
+        time.sleep(0.01)
+finally:
+    child.terminate()
+    child.wait()
+"""
+        popen = subprocess.Popen
+        run = subprocess.run
+        owned = []
+        sampled = []
+        previous_alarm = signal.getsignal(signal.SIGALRM)
+
+        def launch(command, **kwargs):
+            if command[0] == "swift":
+                process = popen([sys.executable, "-c", script], **kwargs)
+                owned.append(process.pid)
+                return process
+            return popen(command, **kwargs)
+
+        def sample(command, **kwargs):
+            if command[0] != "/usr/bin/sample":
+                return run(command, **kwargs)
+            self.assertEqual(stage.read_text(), "testing")
+            sampled.append(int(command[1]))
+            Path(command[-1]).write_text(f"sampled pid={command[1]}\n")
+            if int(command[1]) != owned[0]:
+                release.touch()
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with (
+            patch.dict(os.environ, {"CI": "true"}),
+            patch.object(build, "TEST_IDLE_SAMPLE_SECONDS", 0.05),
+            patch.object(build.subprocess, "Popen", side_effect=launch),
+            patch.object(build.subprocess, "run", side_effect=sample),
+        ):
+            output = self.context.swift("test", [])
+        child = int(next(line.removeprefix("child=") for line in output.splitlines() if line.startswith("child=")))
+        self.assertEqual(set(sampled), {owned[0], child})
+        self.assertIn(f"sampled pid={child}", output)
+        self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0, 0))
+        self.assertEqual(signal.getsignal(signal.SIGALRM), previous_alarm)
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS test process sampling")
+    def test_completed_swift_testing_leaves_no_diagnostic_timer(self):
+        popen = subprocess.Popen
+
+        def launch(command, **kwargs):
+            return popen([sys.executable, "-c", "print('◇ Test run started.')"], **kwargs)
+
+        with (
+            patch.dict(os.environ, {"CI": "true"}),
+            patch.object(build.subprocess, "Popen", side_effect=launch),
+            patch.object(build, "sample_test_processes") as sample,
+        ):
+            self.context.swift("test", [])
+        sample.assert_not_called()
+        self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0, 0))
 
     def test_real_manifest_rejects_first_party_swift_warnings(self):
         with tempfile.TemporaryDirectory() as directory:
