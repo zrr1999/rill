@@ -121,18 +121,21 @@ private actor RecordingTimingAudioCaptureService: AudioCaptureService {
   }
 
   private let audio: CapturedAudio
+  private let rejectsStart: Bool
   private var activeRunID: UUID?
   private var startCallCount = 0
   private var finishCallCount = 0
   private var cancelCallCount = 0
   private var cancellationWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
-  init(audio: CapturedAudio) {
+  init(audio: CapturedAudio, rejectsStart: Bool = false) {
     self.audio = audio
+    self.rejectsStart = rejectsStart
   }
 
   func startCapture(_ request: AudioCaptureRequest) async throws {
     startCallCount += 1
+    if rejectsStart { throw CocoaError(.featureUnsupported) }
     activeRunID = request.runID
   }
 
@@ -558,7 +561,7 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
 }
 
 private func makeAudioCaptureService(
-  testName: String
+  testName: String, rejectsStart: Bool = false
 ) throws -> RecordingTimingAudioCaptureService {
   let audio = try CapturedAudio(
     durationSeconds: 1,
@@ -569,7 +572,7 @@ private func makeAudioCaptureService(
     ),
     inlineData: Data(testName.utf8)
   )
-  return RecordingTimingAudioCaptureService(audio: audio)
+  return RecordingTimingAudioCaptureService(audio: audio, rejectsStart: rejectsStart)
 }
 
 private func makeManager(
@@ -580,7 +583,8 @@ private func makeManager(
   cueProbe: RecordingTimingCueProbe = RecordingTimingCueProbe(),
   longRecordingModeEnabled: Bool = false,
   deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
-  recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil
+  recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil,
+  workflowProvider: (@Sendable () async -> [WorkflowDefinition])? = nil
 ) -> RecordingSessionManager {
   let coordinator = makeTestSessionCoordinator(
 
@@ -622,7 +626,7 @@ private func makeManager(
     eventBus: eventBus,
     diagnostics: diagnostics,
     privacyRunGate: privacyRunGate,
-    workflowProvider: { [workflow] },
+    workflowProvider: workflowProvider ?? { [workflow] },
     longRecordingModeProvider: { longRecordingModeEnabled },
     deferredReleaseSleep: deferredReleaseSleep,
     recordingCueAction: recordingCueAction ?? { _, _ in
@@ -882,12 +886,81 @@ struct RecordingSessionManagerReleaseDelayTests {
       longRecordingModeEnabled: true,
       deferredReleaseSleep: { _ in Issue.record("Toggle recording must not delay stopping.") }
     )
-    await manager.toggleLongRecording()
+    #expect(await manager.toggleLongRecording())
     await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
     #expect(await audio.snapshot().isInputRunning)
-    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    #expect(await manager.toggleLongRecording())
     #expect(await audio.snapshot().isInputRunning == false)
     #expect(await audio.snapshot().finishCallCount == 1)
+    await manager.stopForApplicationShutdown()
+    #expect(await manager.toggleLongRecording() == false)
+  }
+
+  @Test
+  func toggleCannotStopHoldToTalkRecording() async throws {
+    let audio = try makeAudioCaptureService(testName: #function)
+    let manager = makeManager(audioCaptureService: audio, diagnostics: nil)
+    await manager.beginPushToTalk()
+    let originalState = await manager.currentState()
+    #expect(await manager.toggleLongRecording() == false)
+    #expect(await manager.currentState() == originalState)
+    #expect(await audio.snapshot().isInputRunning)
+    #expect(await audio.snapshot().finishCallCount == 0)
+    await manager.stopForApplicationShutdown()
+  }
+
+  @Test
+  func toggleReportsCaptureStartupFailure() async throws {
+    let audio = try makeAudioCaptureService(testName: #function, rejectsStart: true)
+    let manager = makeManager(audioCaptureService: audio, diagnostics: nil)
+    #expect(await manager.toggleLongRecording() == false)
+    #expect(await audio.snapshot().startCallCount == 1)
+    #expect(await audio.snapshot().isInputRunning == false)
+    #expect(await manager.currentState() == .idle)
+    await manager.stopForApplicationShutdown()
+  }
+
+  @Test
+  func cancellingToggleDoesNotReportTheCancelledStartAsSuccessful() async throws {
+    let audio = try makeAudioCaptureService(testName: #function)
+    let cues = RecordingTimingCueProbe(shouldBlock: true)
+    let manager = makeManager(audioCaptureService: audio, diagnostics: nil, cueProbe: cues)
+    let start = Task { await manager.toggleLongRecording() }
+    await cues.waitUntilEntered()
+    #expect(await manager.toggleLongRecording())
+    await cues.release()
+    #expect(await start.value == false)
+    #expect(await audio.snapshot().startCallCount == 0)
+    #expect(await manager.currentState() == .idle)
+    await manager.stopForApplicationShutdown()
+  }
+
+  @Test
+  func concurrentToggleLookupCannotReplaceAnAcceptedRecording() async throws {
+    let workflow = WorkflowDefinition(
+      name: "Concurrent toggle", trigger: .hotkey,
+      plan: makeTestAudioPlan(recognizerID: "recording.timing-recognizer"),
+      ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"))
+    let (lookups, continuation) = AsyncStream<CheckedContinuation<[WorkflowDefinition], Never>>.makeStream()
+    var pending = lookups.makeAsyncIterator()
+    let audio = try makeAudioCaptureService(testName: #function)
+    let manager = makeManager(
+      audioCaptureService: audio, diagnostics: nil,
+      workflowProvider: { await withCheckedContinuation { continuation.yield($0) } })
+
+    let first = Task { await manager.toggleLongRecording() }
+    let firstLookup = try #require(await pending.next())
+    let second = Task { await manager.toggleLongRecording() }
+    let secondLookup = try #require(await pending.next())
+    firstLookup.resume(returning: [workflow])
+    #expect(await first.value)
+    let originalState = await manager.currentState()
+    secondLookup.resume(returning: [workflow])
+    #expect(await second.value == false)
+    #expect(await manager.currentState() == originalState)
+    #expect(await audio.snapshot().startCallCount == 1)
+    #expect(await audio.snapshot().isInputRunning)
+    continuation.finish()
     await manager.stopForApplicationShutdown()
   }
 }

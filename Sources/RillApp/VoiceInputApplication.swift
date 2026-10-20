@@ -78,6 +78,10 @@ struct RillApplication: App {
     self._container = State(initialValue: container)
     self.recordPanelController = recordPanelController
     self.liveSubtitlePanelController = liveSubtitlePanelController
+    RillIntentBridge.install(
+      model: container.model,
+      recording: container.recordingSessionManager
+    )
     let shutdown = container.shutdown
     applicationDelegate.installEscapeAction {
       container.model.voice.stopSpeechPlaybackIfActive()

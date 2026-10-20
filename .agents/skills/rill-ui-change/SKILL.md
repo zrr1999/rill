@@ -26,7 +26,7 @@ Do not replace these without a regression that covers the documented contract:
 
 - Global search stays on the AppKit `NSSearchField` bridge. Do not switch it to
   `.searchable` without the focus, arrow, Return, and Escape coverage in
-  [CONTRIBUTING.md](../../../CONTRIBUTING.md).
+  [UI direction](../../../docs/ui-direction.md#统一搜索与导航).
 - Draft editing stays on `NSTextView`, including undo, marked text, and
   Command-Return send.
 - File preview keeps `QLPreviewView.autostarts = false` until SwiftUI preview

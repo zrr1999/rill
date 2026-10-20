@@ -36,7 +36,7 @@ DEPENDENCIES = {
 
 FOUNDATION_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin"}
 SYSTEM_IMPORTS = {
-    "RillCore": FOUNDATION_IMPORTS,
+    "RillCore": FOUNDATION_IMPORTS | {"Synchronization"},
     "RillTestSupport": FOUNDATION_IMPORTS | {"AppKit", "XCTest"},
     "RillDomainTestSupport": FOUNDATION_IMPORTS,
     "RillSpeechContracts": FOUNDATION_IMPORTS,
@@ -59,7 +59,7 @@ SYSTEM_IMPORTS = {
         "UniformTypeIdentifiers"},
     "RillUI": FOUNDATION_IMPORTS | {"AppKit", "Carbon", "ImageIO", "Observation", "Quartz",
         "QuartzCore", "QuickLookThumbnailing", "SwiftUI", "UniformTypeIdentifiers"},
-    "RillApp": FOUNDATION_IMPORTS | {"AppKit", "ApplicationServices", "Combine", "Observation", "QuartzCore", "SwiftUI"},
+    "RillApp": FOUNDATION_IMPORTS | {"AppIntents", "AppKit", "ApplicationServices", "Combine", "Observation", "QuartzCore", "SwiftUI"},
 }
 TEST_IMPORTS = set().union(*SYSTEM_IMPORTS.values()) | {"Testing", "XCTest", "os"}
 

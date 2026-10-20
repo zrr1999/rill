@@ -62,6 +62,13 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
       NSApp.windows.first {
         $0.identifier?.rawValue == "record-panel.page" && $0.isVisible
       })
+    let sheetEvents = ComparisonReturnSheetEvents()
+    let observer = NotificationCenter.default.addObserver(
+      forName: NSWindow.didEndSheetNotification, object: page, queue: .main
+    ) { _ in
+      MainActor.assumeIsolated { sheetEvents.endedCount += 1 }
+    }
+    defer { NotificationCenter.default.removeObserver(observer) }
     addTeardownBlock { @MainActor in
       let sheet = page.attachedSheet
       controller.quickPanelModel?.jev?.invalidate()
@@ -78,8 +85,9 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
     try await waitUntil { original.canCompareWithJev }
     original.select(record.id)
     original.compareWithJev()
-    try await waitUntil { original.jev?.state == .review }
+    try await waitUntil { original.jev?.state == .review && page.attachedSheet?.isVisible == true }
     let oldReview = try XCTUnwrap(original.jev?.review)
+    let originalEndedSheetCount = sheetEvents.endedCount
     controller.prepareForSettings(model: model) { context in
       controller.show(
         model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {}, restoring: context)
@@ -91,43 +99,78 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
     model.resumeComparison()
     let restored = try XCTUnwrap(controller.quickPanelModel)
     XCTAssertFalse(restored === original)
-    try await waitUntil { restored.jev?.state == .review }
+    try await waitUntil(diagnostics: {
+      "initialReturn state=\(String(describing: restored.jev?.state)) "
+        + "endedSheets=\(sheetEvents.endedCount - originalEndedSheetCount) "
+        + "pageVisible=\(page.isVisible) sheetVisible=\(page.attachedSheet?.isVisible == true)"
+    }) {
+      sheetEvents.endedCount > originalEndedSheetCount
+        && restored.jev?.state == .review && page.attachedSheet?.isVisible == true
+    }
     XCTAssertEqual(restored.selectedID, record.id)
     XCTAssertEqual(restored.searchText, "git")
     XCTAssertEqual(restored.kind, .text)
     XCTAssertNotEqual(restored.jev?.review?.id, oldReview.id)
     XCTAssertEqual(restored.jev?.review?.candidates.map(\.id), [record.id])
-    try await waitUntil { page.attachedSheet?.isVisible == true }
     let sheet = try XCTUnwrap(page.attachedSheet)
     XCTAssertNotNil(sheet.contentView)
     let calls = await provider.calls
     XCTAssertEqual(calls, 0)
-    controller.prepareForSettings(model: model) { context in
-      controller.show(
-        model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {}, restoring: context)
+    for visit in 1...3 {
+      let previous = try XCTUnwrap(controller.quickPanelModel)
+      let previousEndedSheetCount = sheetEvents.endedCount
+      controller.prepareForSettings(model: model) { context in
+        controller.show(
+          model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {}, restoring: context)
+      }
+      try await waitUntil { !controller.isVisible && model.comparisonReturn != nil }
+      XCTAssertNil(previous.jev?.review)
+      model.resumeComparison()
+      try await waitUntil(diagnostics: {
+        let session = controller.quickPanelModel
+        let sheet = page.attachedSheet
+        return [
+          "visit=\(visit)", "model=\(session.map { String(describing: ObjectIdentifier($0)) } ?? "nil")",
+          "state=\(String(describing: session?.jev?.state))", "presented=\(session?.jev?.isPresented == true)",
+          "searching=\(session?.isSearching == true)", "pageVisible=\(page.isVisible)", "pageKey=\(page.isKeyWindow)",
+          "endedSheets=\(sheetEvents.endedCount - previousEndedSheetCount)",
+          "sheet=\(sheet.map { String(describing: ObjectIdentifier($0)) } ?? "nil")",
+          "sheetVisible=\(sheet?.isVisible == true)", "sheetKey=\(sheet?.isKeyWindow == true)",
+        ].joined(separator: " ")
+      }) {
+        sheetEvents.endedCount > previousEndedSheetCount
+          && controller.quickPanelModel?.jev?.state == .review && page.attachedSheet?.isVisible == true
+      }
+      XCTAssertNotNil(page.attachedSheet?.contentView)
+      XCTAssertEqual(controller.quickPanelModel?.selectedID, record.id)
     }
-    try await waitUntil { !controller.isVisible && model.comparisonReturn != nil }
-    XCTAssertNil(restored.jev?.review)
-    model.resumeComparison()
-    try await waitUntil { controller.quickPanelModel?.jev?.state == .review && page.attachedSheet?.isVisible == true }
-    XCTAssertNotNil(page.attachedSheet?.contentView)
-    XCTAssertEqual(controller.quickPanelModel?.selectedID, record.id)
     let callsAfterReturn = await provider.calls
     XCTAssertEqual(callsAfterReturn, 0)
   }
 
   private func waitUntil(
-    file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool
+    file: StaticString = #filePath, line: UInt = #line,
+    diagnostics: () -> String = { "" }, _ condition: () -> Bool
   ) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(4))
-    while !condition(), ContinuousClock.now < deadline { await waitForMainRunLoopDefaultMode() }
-    XCTAssertTrue(condition(), file: file, line: line)
+    var states: [String] = []
+    while !condition(), ContinuousClock.now < deadline {
+      let state = diagnostics()
+      if states.last != state { states.append(state) }
+      await waitForMainRunLoopDefaultMode()
+    }
+    XCTAssertTrue(condition(), states.joined(separator: "\n"), file: file, line: line)
     if !condition() { throw ComparisonReturnTestError.timedOut }
   }
 
 }
 
 private enum ComparisonReturnTestError: Error { case timedOut }
+
+@MainActor
+private final class ComparisonReturnSheetEvents {
+  var endedCount = 0
+}
 
 private actor ComparisonReturnProvider: RecordRankingProvider {
   private(set) var calls = 0

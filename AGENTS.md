@@ -20,11 +20,18 @@ and open questions; omit task diaries, transcripts, and full logs.
 - Do not commit PR screenshots, screen recordings, or temporary acceptance
   artifacts. Attach media to the PR and keep local evidence in the ignored
   `.artifacts/` directory.
+- Preserve unrelated working-tree changes; do not overwrite them or fold
+  another task's edits into the current PR.
 
 ## Delivery and reporting
 
 - Wait until every check for the current head commit has finished before
   reporting CI as passing; never reuse a green result from an older commit.
+- After a base or head update, recheck the affected validation. In a dependent
+  stack, fix the owning layer before propagating the repair upward.
+- Keep detailed validation records with the source revision and actual
+  environment. Distinguish local checks, hosted CI, and observed interaction;
+  report failed prerequisites and unexecuted stages explicitly.
 
 ## Pull requests
 
@@ -34,6 +41,21 @@ dependencies; each dependent PR targets the branch it needs.
 
 PRs that change UI must include screenshots in the PR body, as specified in
 [CONTRIBUTING.md](CONTRIBUTING.md) and the PR template.
+
+Describe the final change for a reviewer who has not read the conversation.
+Omit task diaries, stack bookkeeping, full hashes, source fingerprints, and
+local artifact paths from the PR body. Keep those details in local validation
+records. List unfinished acceptance in the current PR's limitations, not as
+roadmap work, and do not invent future work to fill an optional section.
+
+## Maintaining shared documentation
+
+CONTRIBUTING is the shared entrypoint for human developers and agents. Keep it
+focused on setup, validation, and contribution conventions. Read versions and
+checksums from their executable configuration instead of copying them into the
+guide. Keep operational details in the relevant development or domain reference.
+Agent-specific task, orchestration, and reporting instructions belong here or
+in the matching repository skill.
 
 ## Repository skills
 
@@ -55,6 +77,7 @@ from skills rather than maintaining another copy.
 
 ## Project contracts
 
+- [Development and build reference](docs/development.md)
 - [Architecture and state ownership](docs/architecture.md)
 - [Record storage and delivery](docs/record-architecture.md)
 - [Workflow TOML and execution](docs/workflow-toml.md)

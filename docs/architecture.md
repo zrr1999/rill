@@ -115,7 +115,7 @@ drain separately from the clipboard polling lifecycle.
 | Vocabulary | `VocabularyLibraryModel` | Collection mutations and legacy-rule projection update the runtime source together; persisted default bindings retain their scope and uses. |
 | Terminal run body and receipt | `WorkflowRunReceiptRecorder` | Runtime freezes both values and commits them in one generation and one transaction; UI only reloads or displays an explicit session-only result. |
 | Timed-out external work | `BoundedOperation` | A cancelled caller does not free the resource slot until the underlying operation returns. Shutdown seals and drains accepted work. |
-| Workflow files and enabled state | `XDGWorkflowFileStore` and `WorkflowLibraryModel` | External editors own text editing. File writes check the last loaded source before replacement; file observation reloads validated definitions. |
+| Workflow files and enabled state | `XDGWorkflowFileStore` and `WorkflowLibraryModel` | External editors own text editing. The library applies initial, recovered and reloaded file results through one update; reloads retain invalid definitions for diagnosis while blocking new runs. File writes check the last loaded source before replacement. |
 
 `AppModel` receives its production services explicitly; `RillTestSupport` supplies
 only test defaults. Feature models own their observable status and accepted task
@@ -269,7 +269,7 @@ Run `just ci` for the repository hooks, release build and packaging checks, and
 complete test suite. `scripts/preflight.sh test` runs domain tests with four workers and
 native platform, UI, and application tests serially. CI executes the same suite
 through `preflight.sh`. Build modes and cache boundaries are defined in the
-[contribution guide](https://github.com/zrr1999/rill/blob/main/CONTRIBUTING.md).
+[development reference](development.md#构建与缓存).
 `check_module_boundaries.py` checks SwiftPM dependencies and compiler-reported
 imports for every production and test target, including direct dependency
 declarations. `scripts/preflight.sh swift test-domain` selects a reduced graph from

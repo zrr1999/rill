@@ -11,10 +11,10 @@ Respond in the user's language.
 ## Set the evidence boundary
 
 Read only the sections of [the QA checklist](../../../docs/release-qa-checklist.md)
-that match the changed behavior. For UI and focus work, also read
-[UI direction](../../../docs/ui-direction.md) and the focus contracts in
-[CONTRIBUTING.md](../../../CONTRIBUTING.md). A targeted regression needs its
-affected interaction matrix; a release sign-off needs the release checklist.
+that match the changed behavior. For UI and focus work, also read the contracts in
+[UI direction](../../../docs/ui-direction.md) and the desktop test prerequisites in
+[the development reference](../../../docs/development.md#测试). A targeted regression
+needs its affected interaction matrix; a release sign-off needs the release checklist.
 
 Identify the app path, bundle version/build, process, macOS version, architecture,
 relevant permissions, and target application. Record the source revision or
