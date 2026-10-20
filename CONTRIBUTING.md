@@ -189,7 +189,7 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
 | [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
 
-公开文档站收录用户指南、高级工作流参考和隐私/许可说明，并提供独立的代码地图入口。
+公开文档站收录用户指南、高级工作流参考和隐私/许可说明。
 其余技术契约、发布流程与开发命令在本表维护入口，不进入站点正文或搜索索引。
 
 文档站使用 Zensical；`just docs` 严格构建并检查链接，`just docs-serve` 提供自动刷新的

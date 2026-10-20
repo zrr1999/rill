@@ -4,25 +4,40 @@ Rill separates domain contracts, runtime decisions, external effects, and UI
 state. `Package.swift` defines the module graph; `AppBootstrap` assembles the
 concrete implementations.
 
-## Explore and verify the architecture
+## Where to start
 
-Open [the interactive code map](codemap/index.md) for the complete source inventory,
-module callers, injected runtime relationships, and four end-to-end traces. Its
-20 primary nodes follow actual source targets and group external dependencies.
-The map distinguishes build dependencies from runtime data flow: RecordStore
-uses Core persistence ports wired to SQLite in AppBootstrap, so a runtime
-RecordStore → SQLite relationship does not mean a RillRecords → RillPersistence import.
+This document is the maintained guide to responsibilities and boundaries, not a
+complete file or symbol inventory. Read [Package.swift](../Package.swift) for the
+build graph and [AppBootstrap](../Sources/RillApp/AppBootstrap.swift) for concrete
+runtime wiring. A runtime relationship is not necessarily an import: `RecordStore`
+uses Core persistence ports that AppBootstrap connects to SQLite.
 
-`codemap.lock` binds source and test evidence to an immutable Git snapshot and
-checks the current map artifacts. File inventory and test locations come from
-that commit; ordinary source edits do not invalidate the published snapshot.
-Advance `baseline` and review the architectural claims when publishing a new
-snapshot, then run `python3 scripts/codemap.py build` and `check`. Test declarations
-are navigation evidence, not passing tests or a claim of measured coverage.
+For common changes, follow these entry points and then the owning contract:
 
-The four traces cover local-model dictation, clipboard reuse, optional LLM cleanup/receipts,
-and the independently running input method. Model downloads and remote services
-are dependencies, not evidence that those flows have run on a physical Mac.
+- **Local dictation:** [SessionCoordinator](../Sources/RillWorkflows/SessionCoordinator.swift)
+  owns admission and the frozen run. Speech uses the separate
+  [worker](../Sources/RillSpeechWorker/Main.swift); ordered outputs belong to
+  [WorkflowOutputExecutor](../Sources/RillWorkflows/WorkflowOutputExecutor.swift).
+  See [workflow execution](workflow-toml.md) for authorization and output semantics.
+- **Clipboard reuse:** [SystemClipboardCaptureController](../Sources/RillClipboard/SystemClipboardCaptureController.swift)
+  admits capture, [RecordStore](../Sources/RillRecords/RecordStore.swift) owns the
+  committed graph, and [RecordInteractionController](../Sources/RillRecords/RecordInteractionController.swift)
+  serializes explicit delivery. See [Record architecture](record-architecture.md).
+- **Optional text processing:** [WorkflowTextExecutor](../Sources/RillWorkflows/WorkflowTextExecutor.swift)
+  executes authorized steps; [WorkflowRunReceiptRecorder](../Sources/RillWorkflows/WorkflowRunReceiptRecorder.swift)
+  commits terminal history and receipts together. See the state ownership and
+  workflow sections below before changing cancellation or recovery.
+- **Independent input method:** [RillInputMethodMain](../Sources/RillInputMethod/RillInputMethodMain.swift)
+  starts the input source; [RillInputController](../Sources/RillInputMethodKit/RillInputController.swift)
+  owns composition and commits through InputMethodKit. See
+  [input method development](input-method-development.md) for process boundaries
+  and native acceptance.
+
+Keep navigation selective and update it with changes to these boundaries. Use
+source search and the relevant module's tests for detailed symbols and behavior;
+links are not proof of passing tests or physical-device acceptance. Validation
+commands live in [CONTRIBUTING.md](../CONTRIBUTING.md#测试), and native acceptance
+requirements in the [release QA checklist](release-qa-checklist.md).
 
 ## Module dependencies
 

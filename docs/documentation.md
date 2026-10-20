@@ -2,8 +2,7 @@
 
 文档站使用 [Zensical](https://zensical.org/)，直接取用仓库中的 Markdown。
 README 是产品入口，`docs/usage.md` 是安装指南，其余用户页面按任务组织。
-代码地图是单独的开发者导航入口，收录交互地图及其证据清单。
-其他开发契约与发布流程从 [贡献指南](../CONTRIBUTING.md#文档归属)进入，只保留在仓库。
+开发契约与发布流程从 [贡献指南](../CONTRIBUTING.md#文档归属)进入，只保留在仓库。
 当前技能依赖的架构、Record、工作流、UI 和发布验收路径保持稳定。
 README、隐私与许可文件仍按原路径随 App 分发。
 
@@ -40,7 +39,7 @@ just docs
 
 增加页面时，先在仓库维护正文，再加入 `nav`。页面引用的新图片和下载资源加入
 `docs_assets`。代码和工作流配置的链接指向 GitHub 源码，不把源码当站点页面复制。
-页面白名单包含当前用户操作、参考、隐私/许可及代码地图维护入口。开发契约、发布流程、UI 设计方案、
+页面白名单包含当前用户操作、参考及隐私/许可说明。开发契约、发布流程、UI 设计方案、
 研究和历史 QA 不复制到 staging，因而也不进入站点正文或搜索索引。
 公共页面链接仓内开发资料时使用完整 GitHub URL，不把未收录文件加入资源列表来绕过边界。
 删除导航项后必须确认旧 staging 和站点输出已清除，检查搜索产物没有残留。
@@ -154,19 +153,3 @@ npx --yes --ignore-scripts wrangler@4.136.3 deploy           # 部署到正式�
 `/docs/usage/`、`/docs/records/`、搜索、`/docs/examples/conditional-workflow.toml`、
 `/docs/schemas/workflow-v1.schema.json` 和不存在路径的 404。
 PR 预览还应确认正式站点的部署版本未改变。
-
-## 代码地图维护
-
-`docs/codemap/codemap.json` 维护模块职责、关系、流程和每个测试文件的代表声明，
-`template.html` 只负责展示。文件清单、直接导入模块与测试行号由生成器从 `baseline` 指定的完整 Git 提交推导，
-同一测试声明只维护一次。生成器读取 Git 对象，不依赖当前工作区源码，也不执行 Swift。
-发布新快照时先更新 `baseline`，核对该提交的 Package.swift、AppBootstrap 和实际调用点，再更新职责与流程。
-运行 `python3 scripts/codemap.py build` 生成 HTML 和 SHA-256 lock，随后运行 `check`。
-lock 分别绑定该提交的完整 Sources、Tests 和 Package 文件，以及当前地图数据、模板与文档。
-校验包含源码文件归属、证据路径、测试声明位置及生成结果一致性，不下载依赖；本地仓库必须保有所选提交。
-
-导航页 `docs/codemap/index.md` 解释使用方式；HTML、JSON、lock 由 docs_assets 原样复制。
-地图内嵌全部数据，直接打开 HTML 不需要 fetch。线上源码链接使用锁定 Git commit；
-本地相对链接需要完整仓库，部署后的相对源码链接不构成线上源码托管。
-日常源码变更不使历史快照失效。推进快照时不能只刷新 hash 掩盖失效关系；
-重新审核四条端到端流程并保留真实应用验收缺口。
