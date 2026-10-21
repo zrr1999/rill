@@ -231,6 +231,9 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
         self.fixture = WorkerCacheTests()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        output = self.fixture.root / "out/Products/Release"
+        output.parent.mkdir(parents=True)
+        self.fixture.output = self.fixture.output.rename(output)
         self.calls = []
         self.environment_patch = patch.dict(
             os.environ,
@@ -259,6 +262,10 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
                 output.chmod(0o755)
             app_bundle = fixture.output / "Sample_RillApp.bundle" / "data"
             app_bundle.write_text((root / "Sources/RillApp/Source.swift").read_text())
+            if "RillApp" in products:
+                metadata = fixture.output.parents[1] / "Intermediates.noindex/Sample.build/Release/RillApp-p.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues"
+                metadata.parent.mkdir(parents=True, exist_ok=True)
+                metadata.write_text(app_bundle.read_text())
 
         with (
             patch.object(build, "PROJECT", root),
@@ -296,6 +303,9 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
         directory = Path(second["productsDirectory"])
         self.assertEqual(
             (directory / "Sample_RillApp.bundle/data").read_text(), "new branch UI"
+        )
+        self.assertEqual(
+            (directory / "RillApp-primary.swiftconstvalues").read_text(), "new branch UI"
         )
         self.assertEqual(
             (directory / worker.WORKER).read_text(), "RillSpeechWorker compiled"

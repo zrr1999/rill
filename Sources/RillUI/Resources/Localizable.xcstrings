@@ -7559,13 +7559,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Correct terminology"
+            "value": "Correct"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "纠正术语"
+            "value": "纠正"
           }
         }
       }

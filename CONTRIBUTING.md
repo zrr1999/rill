@@ -1,471 +1,90 @@
 # Contributing to Rill
 
-感谢你改进 Rill。这个仓库包含语音采集、剪贴板路由、外部输出和本地持久化等高影响边界；提交应保持改动可解释、依赖可复现，并为失败、取消、隐私收紧和 App 退出路径补充验证。
-
 ## 开发环境
 
-- macOS 26.0 或更高版本
-- Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
-  默认开发工具链为 Xcode 27
-- 与所选 Xcode build version 匹配的 Metal Toolchain；运行 `xcodebuild -downloadComponent MetalToolchain` 安装，`xcrun metal -v` 必须成功。若组件已安装但验证仍失败，请通过 `DEVELOPER_DIR` 临时选择一个组件可用的并存稳定版 Xcode
-- [uv](https://docs.astral.sh/uv/guides/scripts/)；发布脚本通过 PEP 723 单文件脚本模式运行 Python 3.11 或更高版本
-- Git；运行完整发布预检还需要 macOS 自带的 `codesign`、`lipo`、`otool` 和磁盘映像工具
-- Gitleaks 8.30.1；仓库安装脚本会按当前 Mac 架构下载并校验固定 SHA-256
-- [just](https://just.systems/) 与 [prek](https://prek.j178.dev/)，用于运行与 CI 相同的仓库门禁
+准备 macOS、Xcode 及其 Command Line Tools 和 Metal Toolchain，以及
+[uv](https://docs.astral.sh/uv/)、[just](https://just.systems/) 和 Git。
 
-先确认工具链，再使用锁定依赖的包装脚本：
+平台与 Swift 要求见 [Package.swift](Package.swift)，工具链检查见
+[scripts/preflight.sh](scripts/preflight.sh)。各命令使用仓库配置和锁文件声明的工具版本。
 
-```bash
-swift --version
-xcrun metal -v
-uv run --quiet --no-project --python '>=3.11' python --version
-scripts/preflight.sh swift build
-scripts/preflight.sh test
-```
-
-安装 Git hooks，并通过统一入口运行开发门禁：
+在仓库根目录安装 hooks，然后构建和测试：
 
 ```bash
 just install
-just fmt            # 按 .swift-format（两空格缩进）格式化所有受 Git 跟踪的 Swift 文件
-just check
-just build          # 默认只构建 Debug RillApp
+just build
 just test
-just test-desktop   # 在已解锁的交互式桌面验证窗口焦点与键盘路由
-scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
-just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
-just test-tools     # 独立运行评测和回放工具的离线测试
-just validate-performance-workloads # 校验离线性能工作负载；CodSpeed 用法见 Benchmarks/README.md
-just ci             # 保留增量产物的完整门禁
-just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 ```
 
-完整测试先并行运行领域功能测试，再串行运行原生功能测试。两项一万条记录的
-性能测试各自在新的串行进程执行，避免与其他测试争用资源或继承窗口测试状态。
-存储压力测试与窗口就绪测试仍使用原有断言、Debug 构建和性能阈值；CI 通过
-`RILL_RECORD_STRESS=1` 启用它们，分组不减少验收项。
+用 `just --list` 查看完整命令。构建模式、定向测试和故障定位见
+[开发参考](docs/development.md)。SwiftPM 构建和测试统一通过
+`scripts/preflight.sh swift` 运行；保留并使用仓库的 `Package.resolved`。
 
-`just check` 只运行 prek 内建检查、上游提供的 TOML、Actionlint 和 Typos
-检查、内部工具包的 Ruff / ty，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
-完整历史扫描或项目策略测试。Swift 格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
-记录整仓格式化提交，本地可用 `git config blame.ignoreRevsFile .git-blame-ignore-revs`
-让 `git blame` 跳过它。
-这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
-仍然是提交前必须完成的检查。新增通用检查时优先复用维护中的上游工具。
+## 验证
 
-`scripts/preflight.sh test-scripts` 是脚本策略测试的统一入口，由 `just test-scripts` 和
-完整预检共同调用；各测试文件只负责自己的行为，不再嵌套运行其他测试套件。
-第三方许可证检查需要真实依赖 checkout，仍在预检完成 Release 构建后执行。
+| 命令 | 用途 |
+| --- | --- |
+| `just fmt` / `just check` | 格式化与静态检查 |
+| `just docs` / `just docs-serve` | 严格构建文档与本地预览 |
+| `just test` | 不依赖真实桌面焦点的领域和原生测试 |
+| `just test-desktop` | 在已解锁的交互式桌面验证焦点与键盘路由 |
+| `just test-scripts` / `just test-tools` | 构建发布脚本与内部开发工具的离线测试 |
+| `just ci` / `just ci-clean` | 完整门禁，以及清理构建产物后重跑完整门禁 |
 
-评测和回放工具位于 `tools/src/rill_dev/evaluation/`，由 `tools/pyproject.toml`
-及 `tools/uv.lock` 管理一个内部 Python 包。`just eval-quality`、
-`just bench-performance asr`、`just accept-asr`、`just replay-asr` 和
-`just replay-product` 调用该包的命令入口。开发环境使用 Python 3.11，保留原有最低版本兼容性；
-`uv run --locked --project tools` 会安装当前 checkout 的可编辑包和锁定依赖。
-工具包的 uv 配置禁止构建第三方源码分发包；当前 checkout 的可编辑安装仍可执行。
+提交前运行 `just ci` 和 `git diff --check`。完整门禁需要可用的交互式桌面。
 
-`just test-tools` 使用 pytest 收集 `tools/tests/` 中的离线测试，包含原有 unittest 用例；
-完整脚本检查和 Linux CI 也运行这组测试。测试使用合成数据与假 worker，不读取私有录音或调用模型。
-Ruff 的 lint、格式检查与 ty 配置集中在 `tools/pyproject.toml`，由 `just check` / prek 复用：
-
-```bash
-uv run --locked --project tools ruff check tools
-uv run --locked --project tools ruff format --check tools
-uv run --locked --project tools ty check --project tools
-just test-tools
-```
-
-源码指纹和 Release 回执仍由构建驱动验证。内部包通过 `source-inputs` 和
-`receipt --json` 读取它们；装配脚本原有的 `receipt --field` 接口继续可用。
-构建、发布及独立辅助脚本仍使用下文的 PEP 723 方式。
-
-不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/preflight.sh swift` 运行，以保证使用仓库锁定的依赖图。
-
-原生 MLX 路径固定使用 `mlx-audio-swift` 0.1.3 与 `mlx-swift` 0.31.4。
-`mlx-swift` 0.31.5/0.31.6 的 `CudaBuild` package plugin 会破坏当前 Xcode
-package graph，且 SwiftPM 消费方不能关闭传递插件；只有上游发布修复或仓库引入
-受审 fork 后才升级这个底层 pin。
-
-`scripts/check_dependency_security.py` 及其他发布辅助脚本使用 [uv 的单文件脚本模式](https://docs.astral.sh/uv/guides/scripts/)和 PEP 723 inline script metadata，只使用 Python 3.11+ 标准库。脚本顶部的 `requires-python = ">=3.11"` 会让 uv 自动选择或下载兼容的 Python；因此本机不需要单独安装或配置 `python3`。本地默认模式对照 `scripts/dependency_security_baseline.json` 做确定性离线检查；baseline 只记录已经复核来源和受影响版本边界的 advisory，删除或放宽已固定的 required policy 会失败。首次运行时，如果 uv 缓存中没有兼容的 Python，uv 可能需要联网下载解释器。需要联网复核全部 exact lock commit 时运行：
-
-```bash
-uv run --script scripts/check_dependency_security.py
-uv run --script scripts/check_dependency_security.py --live-osv
-```
-
-live 模式固定调用 OSV 官方 `https://api.osv.dev/v1/querybatch`；响应按 lock 顺序映射，只有返回独立 `next_page_token` 的条目会继续分页。网络、重定向、JSON/字段、结果数量、重复 advisory 或分页异常都必须 fail-closed，任何 advisory 都会阻断。依赖变化必须同步锁文件测试与第三方 NOTICE 证据；baseline 变化必须保留受审来源并更新 policy tests，不能用 baseline 忽略 live 结果。
-
-CI 直接调用的 Python 脚本随附 `.py.lock`，并使用 `--no-build --locked`。
-修改这些脚本的依赖或 Python 要求后，运行 `uv lock --script <path>` 更新对应锁文件。
-
-可以把仓库固定的 Gitleaks 安装到个人工具目录：
-
-```bash
-tool_dir="$HOME/.local/share/rill/bin"
-scripts/preflight.sh install-gitleaks --destination "$tool_dir"
-export PATH="$tool_dir:$PATH"
-gitleaks version
-```
-
-## 构建目录与增量验证
-
-Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/release`。
-完整图的 Debug 构建与测试统一使用 SwiftBuild，编译 String Catalog 并保留同一增量构建目录；
-`test-domain` 继续使用原生构建引擎和独立目录；基准负载的 GRDB 原生构建使用独立的
-`.artifacts/build/benchmarks-grdb`，不会因构建引擎指纹不同而清空 Release 目录。
-构建、清理和产物快照由统一入口按配置加锁；不要在另一进程构建时手工删除目录，
-也不要在 worktree 之间复制或软链接 SwiftPM 的构建数据库。工具链、SDK、Metal、
-锁文件、Package 声明或构建参数变化会使相应配置失效；普通源文件变化由 SwiftPM
-增量处理。清理不删除 SwiftPM 的共享依赖下载缓存。
-
-`just build RillApp` 适合 App/UI 日常修改，不编译语音 worker 和 MLX。
-`swift test --filter` 只限定测试执行范围，不保证缩小首次编译范围。
-完整测试默认使用 `--build-system swiftbuild`，与 Release 一样编译 String Catalog；
-旧 native 引擎只复制 `.xcstrings`，不会生成运行时需要的 `.lproj` 资源。
-包内 Swift 目标通过 manifest 将全部告警视为错误；Debug/Release 负向编译测试守住此门禁。
-不再向依赖透传全局告警参数，避免 SwiftBuild 与依赖自身的告警处理冲突。
-CI 同时启用原生渲染导出和 10,000 条记录压力验收，并保存渲染产物；
-真实输入、VoiceOver 和多显示器交互仍按 macOS QA 清单单独验收。
-面板重开复用原生宿主视图，同时创建新的搜索会话并替换投递回调；
-原生回归覆盖跨工作区重开后的输入和投递，万条记录验证保留结果、焦点与有界完成检查。
-呈现和布局耗时使用显式 Release 基准，测量方式与原始样本格式见 [性能基准](Benchmarks/README.md)。
-`test-domain` 从同一份 Package.swift 排除 App、UI、MLX 和原生验收测试目标，
-保留领域测试所需的依赖，并使用独立的 `.artifacts/build/domain-tests`。锁文件校验不变；
-完整 CI 仍使用未裁剪的生产图。该模式不替代 `just ci` 或 Release 模型验收。
-完整预检和打包使用绑定源码摘要的构建回执及独立产物快照；装配过程中源码或
-产物不匹配会失败。许可证验证读取该次构建实际使用的依赖 checkouts。
-
-### 跨 worktree 的 worker 产物缓存
-
-本地 Release 默认复用完整的 `RillSpeechWorker` 和依赖资源，缓存位于
-`~/Library/Caches/Rill/BuildArtifacts/worker-v1/`，只允许当前用户访问。
-缓存键包含求值后的包声明、worker 传递依赖的实际文件内容、锁文件、工具链、
-SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与判断。仅修改 App/UI
-可继续命中。无法完整确定输入、依赖 checkout 有改动或条目损坏时，回退源码构建。
-
-- `just cache-status` 显示容量，`just cache-clean` 删除非活动条目。
-- 默认限制 10 GiB，成功使用后按最近使用情况淘汰；活动条目持有锁。
-- `scripts/preflight.sh swift release --worker-cache off` 强制使用源码。
-- `--result-file PATH` 写入带校验值的 JSON 回执及产品快照；PATH 应放在被 Git
-  忽略的目录或工作区之外。`assemble_app_bundle.sh --build-result PATH` 消费该回执。
-- `--show-bin-path` 仍返回当前 SwiftPM 产品目录。缓存命中的 worker 可以来自
-  独立目录，装配时应使用回执；不要假定该目录含有缓存命中的 worker。
-- `RILL_BUILD_CACHE_DIR` 可将缓存定向到独立测试目录。正式公证发布及 CI 始终关闭
-  worker 缓存；缓存不替代完整测试，新 worktree 首次测试仍需编译测试依赖。
-
-构建回执将产品复制到其父目录中的独立快照，预检和发布脚本会自动清理自己的
-临时快照。手动指定回执目录时，由调用者在装配完成后清理该目录。共享缓存中的
-文件不参与签名；所有签名都在当前装配目录中完成。
+涉及 Fn、麦克风、IME、跨应用输出或 VoiceOver 的改动，按
+[macOS 验收清单](docs/release-qa-checklist.md)进行人工验收。
+质量评测与性能测量分别见 [Evals](Evals/README.md) 和
+[Benchmarks](Benchmarks/README.md)。
 
 ## 本地 App 与发布
 
-`swift build` 只生成可执行文件，不会装配带权限声明的 macOS App。
-使用本机可用的 Apple Development 签名身份进行开发安装：
+构建可执行文件后，还需装配 App 才能验证权限声明和系统集成。
+完成验证后，使用本机可用的开发签名身份进行本地安装：
 
 ```bash
 SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 ```
 
-该命令使用独立的 Release scratch path，增量构建、装配、签名、验证并原子安装；
-不会隐式运行完整测试。先运行 `just ci`，或用 `--preflight --install` 一并执行。
-省略 `--install` 会在 `.artifacts/release/` 生成本地 App 和 DMG。
-本地开发签名不证明 Developer ID 公证或 Gatekeeper 分发验收通过。
-正式版本、签名、公证与对应源码交付见 [发布步骤](docs/releasing.md)。
+省略 `--install` 可在 `.artifacts/release/` 生成本地产物。
+正式发布的版本标签、签名、公证和验收由维护者按
+[发布步骤](docs/releasing.md)执行。
 
 ## 文档归属
 
-参照 ZenDev，文档按用途维护，具体行为以当前源码和配置为准：
-
-| 文档 | 内容 |
+| 入口 | 内容 |
 | --- | --- |
-| [README.md](README.md)、[用户指南](docs/usage.md) | 产品入口、安装与首次使用；按任务链接到语音、记录、工作流、词汇记忆、隐私和排查 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、验证、生成物维护、文档归属与 Git 约定 |
-| [LICENSE](LICENSE) | Rill 原创代码和文档的 AGPL-3.0-only 许可条款 |
-| [SECURITY.md](SECURITY.md) | 支持版本、漏洞报告渠道及披露规则 |
-| [PRIVACY.md](PRIVACY.md) | 随 App 分发的技术隐私与数据流说明 |
-| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md) | 第三方依赖与模型的许可及来源证据 |
-| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[连续输出](docs/continuous-output.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
-| [输入法工程](docs/input-method-development.md) | 独立输入法打包、探针、迁移核对与原生验收方法 |
-| [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
-| [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
+| [README](README.md)、[用户指南](docs/usage.md) | 安装、首次使用和产品功能 |
+| [开发参考](docs/development.md) | 构建、测试和生成物维护 |
+| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[UI](docs/ui-direction.md) | 模块、状态、执行和界面契约 |
+| [输入法工程](docs/input-method-development.md)、[图标设计](docs/icon-design.md) | 对应功能的工程与资源维护 |
+| [文档站维护](docs/documentation.md) | 文档收录、构建和站点交付 |
+| [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 发布流程与候选包验收 |
+| [EVOLUTION.md](EVOLUTION.md) | 项目起源和真实的方向变化 |
+| [LICENSE](LICENSE)、[SECURITY](SECURITY.md)、[PRIVACY](PRIVACY.md) | 许可、安全报告与隐私说明 |
 
-公开文档站收录用户指南、高级工作流参考和隐私/许可说明。
-其余技术契约、发布流程与开发命令在本表维护入口，不进入站点正文或搜索索引。
+修改产品行为时同步相关说明。Agent 指令见 [AGENTS.md](AGENTS.md)。
 
-文档站使用 Zensical；`just docs` 严格构建并检查链接，`just docs-serve` 提供自动刷新的
-本地预览。页面清单、依赖锁定与站点交付边界见 [文档站维护](docs/documentation.md)。
-站点直接使用上述正文，不维护另一份文档副本。`scripts/docs.py` 是 Python 辅助脚本中
-唯一使用第三方依赖的入口；Zensical 与传递依赖由随脚本提交的锁文件固定，不随 App 分发。
+## 改动边界与生成物
 
-修改产品行为时同步对应使用说明和契约，避免在多个计划文件中重复维护使用手册。
-
-## 改动边界
-
-模块依赖应保持单向；完整依赖图与状态归属见 [架构说明](docs/architecture.md)：
-
-```text
-RillCore          领域模型与协议
-RillPlatform      macOS 系统边界
-RillSpeechContracts Worker 协议、流式合同与本地模型清单
-RillProviders     云服务客户端、变换与外部输出实现
-RillSpeech        语音采集、识别、合成与 worker 调用
-RillClipboard     系统剪贴板观察与采集
-RillRecords       记录、搜索、投递与复用
-RillKnowledge     词汇建议与上下文记忆
-RillWorkflows     工作流编排与运行生命周期
-RillInputMethodContracts 输入法本地通信契约
-RillInputMethodKit Rime 会话、候选窗与上屏
-RillInputMethod   独立输入法进程
-RillPersistence   加密持久化
-RillUI            SwiftUI、功能状态所有者与 AppModel 编排
-RillApp           组合根
-```
-
-- 让 `RillCore` 保持平台无关；系统 API 和第三方 SDK 不应反向进入领域层。
-- 将一次运行的成功、失败、取消、部分完成和退出清理建模为显式状态，不用错误字符串替代跨层合同。
-- 新增任何正文、音频、路径、端点或凭据流向时，同步说明隐私判定、持久化、诊断清洗、取消与清理行为。
-- 修复应覆盖用户可见入口和真实组合根；仅有孤立模型或未注册实现不算产品能力。
-- 保持改动聚焦。不要顺带重写无关文件，也不要覆盖工作树中不属于当前改动的内容。
-
-## 测试
-
-AppKit 是应用使用的原生界面框架；XCTest 是断言和测试运行框架；XCUITest 通过
-辅助功能接口从应用外部操作 UI。本仓库当前的窗口测试是 XCTest 内直接调用 AppKit，
-不使用 XCUITest。创建窗口、检查布局或直接操作响应者，不等于验证真实前台键盘焦点。
-
-| 入口 | 覆盖范围 | 桌面要求 |
-| --- | --- | --- |
-| `just test` | 领域逻辑与不依赖前台交互的 AppKit / UI 集成 | 可锁屏；仍需 macOS 图形会话 |
-| `just test-desktop` | 真实窗口焦点切换、应用级键盘事件路由 | 已解锁且无其他 UI 自动化争抢焦点 |
-| `just ci` | 上述两组测试、仓库检查与 Release 验证 | 桌面测试必需；不可用即失败 |
-
-依赖真实键盘焦点的 XCTest 方法使用 `testDesktop…` 前缀，并在任何应用窗口操作前
-使用 `guard try await requireInteractiveDesktop() else { return }`。辅助函数用独立的普通
-AppKit panel 探测键盘焦点；失败时记录 `XCTFail` 并返回 false，停止该用例的后续操作。
-这会使测试失败，不跳过测试，也不把应用自身的焦点断言当成环境探测。
-探测成功后仍须断言被测窗口确实取得焦点，避免只检查内部响应者而产生假通过。
-环境探测失败不证明锁屏是唯一原因，还应检查会话和并发 UI 操作。
-
-领域 XCTest 继续使用 4 个 worker；原生和桌面 XCTest 保持原有的串行执行方式，
-Swift Testing 用例保留框架默认并发。不传 `--parallel` 不代表 Swift Testing 也串行。
-完整预检的 `desktop-tests` 阶段复用 Debug 构建，不重复编译。
-单独的 `just test-desktop` 会按需构建。`just test` 成功只表示非桌面用例通过，不能替代完整 CI。
-新增测试按实际依赖分类；延时、取消和状态转换优先用可控时钟或 barrier 验证，
-仅将必须穿过真实桌面的最小交互留给桌面测试。Fn、真实 IME 和辅助功能仍按验收清单验证。
-
-开发时可以先运行定向测试：
-
-```bash
-scripts/preflight.sh swift test --filter MainShellFocusIntegrationTests --skip '/testDesktop'
-scripts/preflight.sh swift test --filter SessionCoordinatorTests
-```
-
-提交前必须运行完整测试与仓库门禁；`just ci` 是本地与 CI 的统一入口：
-
-```bash
-just ci
-git diff --check
-git diff --cached --check
-```
-
-`scripts/preflight.sh` 按以下顺序运行，任一阶段失败即停止，不执行后续阶段：
-
-1. 工具链检查，记录实际 Swift、Xcode、SDK 和 macOS 版本。
-2. 仓库检查：脚本语法、模块边界、脚本策略测试、依赖安全离线检查、秘密扫描、生成物、发布产物卫生和离线性能样本。
-3. 完整生产依赖图上的 Debug 编译与领域测试，再复用该构建运行不依赖桌面交互的原生平台、UI 和 App 测试；`performance-tests` 将存储压力测试和一万条记录的面板功能验证分别放在独立串行进程中，与 `just test` 相同。面板验证保留结果、焦点与有界完成检查，不以共享 runner 的实际耗时判定性能退化。
-4. `desktop-tests` 验证真实桌面交互；环境不可用时本次完整门禁失败，后续阶段不运行。
-5. arm64-only Release 构建、架构与资源验证、App 装配和临时签名、worker 与输入法 smoke tests。
-6. 工作区 diff 检查。
-
-每次完整预检在 `.artifacts/preflight/run.*/` 保存阶段日志与 `summary.md`，摘要包含
-源码提交、dirty 状态、源码指纹、阶段耗时、退出码，以及 CI 提供的 PR base/head。PR CI 的源码
-提交可能是 GitHub 生成的合并提交，应同时保留 head/base，不能把两者混为一谈。
-预检开始时将源码基线保存为 `source.json`，每个阶段前后核对 HEAD、Git 状态、
-tracked + untracked(nonignored) 文件内容与修改记录；发生漂移即失败并停止后续阶段。
-即使文件随后恢复原文，也要从稳定输入重新运行。开始前已有的修改可以参与预检，
-但全程必须保持稳定，报告会如实标记 dirty；报告不是仅凭提交 SHA 得出的验收结论。
-`RILL_PREFLIGHT_REPORT_DIR` 可以指定被 Git 忽略或位于工作区外的报告根目录；重复运行创建独立子目录。
-CI 无论预检成功或失败都会汇总并上传已有报告，保留 14 天。初始化或前置安装失败
-时可能没有预检报告，应查看对应的 Actions 步骤；摘要中没有出现的阶段表示未执行。
-查看 `toolchain.log` 确认版本，查看首个失败阶段的日志定位问题；已有的构建缓存损坏
-重试仍由构建驱动负责，预检不会自动重跑断言失败或崩溃的测试。
-
-依赖安全检查使用 reviewed baseline；CI 另行运行 live OSV exact-commit 查询，避免把
-可用网络伪装成本地确定性门禁。固定版本的 Gitleaks 扫描完整 Git 历史与
-tracked + untracked(nonignored) 当前源码快照。当前源码扫描拒绝 symlink 与非普通文件，
-并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描
-期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过
-审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。
-
-`just ci-clean` / `scripts/preflight.sh --clean` 在编译前分别清理 Debug 和 Release；
-GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可恢复由工具链、依赖
-和构建驱动分键的 SwiftPM 缓存，并经过相同的构建指纹及完整门禁验证。只有 main
-保存成功 lane 的 SwiftPM 构建缓存；PR 只恢复缓存，避免多个 PR 的大体积快照挤占默认分支
-的共享基线。Debug 与 Release 使用独立缓存键和目录；main / 手动 clean 构建不先恢复
-随后会被清理的 arena。缓存诊断记录请求键、实际匹配键、是否精确命中和 checkout SHA。
-恢复缓存不等于免编译，真实耗时仍以各 lane 的阶段日志为准。预检不能替代在 macOS 26 的 Apple Silicon 真机上验证最终公证包，也
-不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
-
-CI 在独立 runner 上并行执行 `scripts/preflight.sh --lane tests` 和
-`scripts/preflight.sh --lane release`。两条 lane 都保留工具链、仓库策略和源码前后
-一致性检查；tests 按原顺序执行领域、原生、压力和桌面测试，Release 保留完整构建、
-许可证、装配、签名、worker smoke 和源码回执验证。`--clean` 仅清理所选 lane 的
-构建目录；不传 `--lane`（或指定 `all`）仍串行执行原有完整门禁，并清理两个配置。
-worker 产物缓存继续在 CI 关闭。并行化可能增加 runner 用量，不能把预计缩短的
-墙钟时间当成已测得的加速；需要在同一提交的实际 CI 中核对。
-
-修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
-
-主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 26 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Record / History 目的地则由详情页持有目标焦点，Settings 深链由独立设置窗口持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 全部记录 → 活动 → 工作流 → 记录集的方向键、List selection、快速路由与 exact 详情 AX 焦点。
-
-## 质量评测与性能基准
-
-`Evals/` 属于质量评测：ASR、文本改写、词汇纠错和上下文纠错。`Benchmarks/` 属于性能基准。
-`just eval-quality <suite>` 显式运行质量评测，`just bench-performance asr --target <metric>` 比较已采集的性能。
-真实 LLM 评测集中在 `RillQualityEvaluations`，由每周 CE、手动 CE 或本地显式命令执行；普通 CI 不运行它们，
-但始终测试评分器、回放数据校验和语料格式。详见 [质量评测](Evals/README.md)、
-[性能基准](Benchmarks/README.md) 和 [ASR 回放及验收](docs/asr-evaluation.md)。
-
-`just validate-performance-workloads` 验证工作负载结果。macOS 共享 runner 的耗时日志不提供性能结论；
-`CI - Tests` 中的 `Record workload validation` 按相关源码范围运行。CPU simulation 比较由 `CI - Performance` 负责。
-
-`just bench-performance panel` 显式测量 Release 构建的原生面板展示，保存预热后的原始样本、源码指纹与工具链信息。
-`testBenchmark…` 用例不进入普通预检；性能结论需要同一固定机器上的 base/head 对照和噪声评估，见 [性能基准](Benchmarks/README.md)。
-
-## GitHub Actions 命名
-
-参考 ZenDev 和 Volvox，workflow 文件使用小写 kebab-case，按职责使用 `ci-`、
-`ce-`、`cd-`、`policy-` 或 `automation-` 前缀；显示名称对应 `CI - <Purpose>`、
-`CE - <Purpose>`、`CD - <Purpose>`、`Policy - <Purpose>` 或 `Automation - <Purpose>`。
-PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
-
-| Workflow | 显示名称 | 职责 |
-| --- | --- | --- |
-| [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 只读校验 PR 标题和正文 |
-| [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
-| [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
-| [ci-performance.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-performance.yml) | CI - Performance | CodSpeed Linux 文本预览 CPU simulation |
-| [ce-quality.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ce-quality.yml) | CE - Quality | 每周一北京时间 09:30 运行三套固定合成语料的 LLM 质量评测，也支持手动选择，不作为 PR 检查 |
-| [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
-
-job ID 使用小写 kebab-case，检查名称描述具体职责。`CI - Tests` 保留稳定的
-`Release preflight` 汇总检查：文档门禁成功，应用 tests / release 两条 lane 和
-按范围要求的 Record workload validation 均成功后才通过。只接受范围判定明确
-不需要执行的 skipped；失败、取消或缺少范围输出均阻断。
-
-`CI - Tests` 的 Linux job 负责文档、通用质量检查和改动范围判定。仅修改
-`docs/*.md`、`CONTRIBUTING.md`、`zensical.toml` 或 `wrangler.toml` 的 PR 在 Linux 完成秘密扫描，
-跳过 macOS jobs。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
-`README.md` 随 App 分发，因此仍走应用预检。
-
-`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限。它用 `actions/checkout`
-只检出事件中 base commit 的 PR 模板，再由 `octokit/request-action` 读取当前标题和
-正文，交给 ZenDev 官方的 `validate-title`、`validate-body` Actions 校验。
-它不依赖 Automation；所有作者都检查标题，作者类型为 Bot 的 PR 跳过正文模板检查。
-
-`Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
-仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
-`[ImgBot] Optimize images` 改为 `⚡ perf(assets): optimize images`。
-人工标题、其他作者、已关闭的 PR 和已经更新的提交都不修改。
-改名成功后重跑原 Policy run，让检查重新读取当前元数据；这是因为
-[`GITHUB_TOKEN` 改名不会触发 `edited` 工作流](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。
-已经规范化的标题不会再次触发改名或重跑；正文不合规仍会检查失败。
-`pull-requests: write` 和重跑所需的 `actions: write` 只授予 Automation。
-Policy 只检出 base commit 的模板，Automation 不检出仓库代码；两个工作流都不读取
-上游运行的 artifacts。Automation 进入默认分支后生效。提交信息由本地 prek
-`commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
-
-## 生成文件
-
-不要直接编辑生成产物。
-
-- 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，每个文件
-  使用与用户工作流相同的新 v1 格式。`index.json` 只维护文件顺序与本地化标题。
-  `WorkflowDocumentCodecTests.packagedWorkflowsUseTheSameParser` 验证全部资源；
-  装配 App 时通过实际可执行文件的 `--validate-workflows` 入口再次校验打包资源。
-  不生成 JSON 或 Swift 执行定义。
-
-- `THIRD_PARTY_NOTICES.md` 由锁文件和脚本内受审证据生成。依赖变化后运行：
-
-  ```bash
-  uv run --script scripts/generate_third_party_notices.py
-  uv run --script scripts/generate_third_party_notices.py --check
-  ```
-
-- 图标的矢量事实源是 `Resources/AppIcon/Rill.svg` 和 `RillMenuBar.svg`。修改后运行 `scripts/assemble_app_bundle.sh render-brand`（需要 librsvg），同步提交受审 PNG、菜单栏 PDF、输入法 TIFF 和同目录 `README.md` 中的 SHA-256；PNG 的新 hash 也须同步到装配脚本里的 ICNS 校验和图标测试。`scripts/render_app_icon_renditions.swift` 从 PNG 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/assemble_app_bundle.sh app-icon` 再装配 ICNS。正常构建直接使用已提交的 PNG/PDF/TIFF，不依赖 SVG 工具。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
-
-生成器、事实源和生成结果应放在同一个提交中。
+- 覆盖真实入口及失败、取消、隐私收紧和退出清理路径。竞态测试优先使用可控时钟或同步屏障。
+- 新增正文、音频、路径、端点或凭据流向时，同步隐私、持久化与清理说明。
+- 修改源文件后重新生成并提交对应产物；生成器变化时一并提交。依赖升级同步清单、锁文件和第三方许可证据；资源维护入口见开发参考。
 
 ## 提交与 Pull Request
 
-提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev)
-的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
-使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
-当前统一版本是 0.5.0；prek 的上游 revision 和 CI Actions 均固定到同一 commit，
-本地 hook 和 CI 都使用官方校验入口。
+提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev) 的
+`zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
+`just install` 安装的 hooks 与 CI 使用官方校验入口；PR 正文可以使用中文。
 
-- `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
-  `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
-  PR 或主分支的完整提交历史。
-- CI 的 `PR message` 检查英文标题的 ZenDev 格式，并按
-  [.github/pull_request_template.md](https://github.com/zrr1999/rill/blob/main/.github/pull_request_template.md) 验证描述章节。
-  PR 标题必须使用英文；描述可使用中文。
-- 独立改动应分别提交为指向 `main` 的 PR，不因来自同一会话而串成 stack。
-  只有存在真实代码依赖时才使用线性 GitHub 原生 stack；依赖 PR 的 base 指向所需的前置分支。
-- 一个提交表达一个可审阅的意图，说明最终行为和实际测试结果。
-  人工验收未完成时明确记录，不能用单元测试或本地开发签名代替。
-- PR 描述不重复 CI 已验证的内容，如命令、工具链、测试数量和 CI 链接；重点写实机演示：
-  在实际运行的 Rill 上操作了什么、看到了什么，附截图、录屏或操作步骤，并列出 CI 未覆盖的
-  人工验收和已知限制。
-- PR 描述聚焦当前 PR 要解决的问题、最终行为和关键取舍，让评审者无需阅读会话即可理解。
-  仅在理解改动确有需要时简述依赖，不重复介绍 stack 拓扑、分支映射或其他 PR 的改动。
-- 涉及 UI 外观、布局、文案或交互的 PR，必须在正文的“UI 截图”位置内嵌实际界面截图。
-  使用评审者可直接查看的 PR 图片附件，覆盖改动界面和相关交互状态，
-  并标注对应提交、场景及语言/深浅色；按改动范围补充前后对比。
-  截图使用合成数据或脱敏内容，并与自动化测试、人工交互验收结果分别记录。
-  截图和录屏不得提交到仓库。
-  使用仓库截图测试时设置 `RILL_UI_COMPOSITOR_CAPTURE=1`，检查原生分栏、工具栏和系统材质是否完整呈现。
-  无 UI 改动时，在同一位置注明“不适用”及原因。
-- 不粘贴整栈验证流水账、完整提交哈希、源码指纹或本地 artifact 路径。
-  详细验证记录保留命令、实际工具链和对应提交；本地检查和托管 CI 分别记录。
-  等待当前提交的检查全部结束后再报告 CI 通过。影响评审的未验证行为在“说明”中明确列出。
-- “后续工作”只写超出当前 PR 范围的 roadmap 级未来方向，说明下一阶段要解决的问题
-  和预期形成的产品能力或架构演进；没有具体方向时省略该章节，不为填模板编造计划。
-  “继续验证”“等待 CI”“补人工验收”等当前交付事项不得作为后续工作。
-- PR 截图和录屏作为 PR 附件提供；本地验收产物放在已忽略的 `.artifacts/`，不要提交到仓库。
-- 依赖 PR 从底层修复、验证，再按依赖顺序向上传播；同一根因在上层重复失败时，
-  先定位拥有该改动的底层 PR。更新 base 或 head 后重新确认检查对应的提交，并重新
-  运行受影响验证，不沿用旧提交的绿色结果。每层 PR 描述只演示本层改动，未完成的原生验收
-  继续明确列出。
-- 原创贡献使用项目的 AGPL-3.0-only 许可；引入第三方代码时保留其原始
-  版权和许可声明，并同步对应的来源证据。
+独立改动分别提交到指向 `main` 的 PR。只有存在真实代码依赖时才使用线性 stack，
+依赖 PR 指向所需的前置分支。
 
-需要核对一段历史时，可在本地运行同一校验器；无参数时检查当前 HEAD 的全部历史，
-提供 base 时只检查它之后引入的提交：
+按 [PR 模板](.github/pull_request_template.md)说明问题、最终行为、关键取舍和已知限制。
+涉及应用行为时提供实际操作与观察；涉及 UI 时，在正文内嵌对应提交、场景、语言及外观的截图。
+媒体使用 PR 附件，本地验收产物放在忽略的 `.artifacts/` 中。
+“后续工作”只记录超出本次范围的未来方向，当前未完成的验证放在“说明”中。
 
-```bash
-scripts/preflight.sh commit-messages
-scripts/preflight.sh commit-messages origin/main HEAD
-```
-
-主分支保护由维护者在仓库 rules 中配置；required checks 直接引用实际 job 的
-检查名称。改名时应核对已有规则的引用。
-仓库采用 squash 合并；合并前用同一校验器核对最终提交信息，不能仅依赖分支上的
-本地提交检查。GitHub 的计划、权限和
-仓库设置决定这些规则是否实际生效；提交 CI 配置不等于已经启用服务端保护。
-
-## 发布权限
-
-普通贡献不应创建版本标签、安装到其他用户的 `/Applications`，或提交公证请求。发布脚本默认输出到 `.artifacts/release/`，并在构建前使旧 App/DMG/sidecar 失效；新产物只在同文件系统私有 staging 中完成验证后原子发布。仓库内 `RELEASE_OUTPUT_DIR` 的逻辑路径与解析后的物理祖先都必须位于 `.artifacts/`，公证快照 capability 也绑定物理输出位置；仓库外隔离目录不受此限制。完整发布策略测试（包括 App-only SwiftPM 产品面）必须保持通过。正式发布需要维护者明确授权，并要求：
-
-- 工作树（含未跟踪文件）干净；
-- `HEAD` 精确且唯一地标记为 `vMAJOR.MINOR.PATCH`；
-- `Package.resolved` 已跟踪且与该提交一致；
-- 使用 Developer ID Application 身份和维护者管理的 `notarytool` 凭据；
-- 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
-
-发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。项目许可见 [LICENSE](LICENSE)，安全报告渠道状态与披露规则见 [SECURITY.md](SECURITY.md)。
-
-## 项目演进
-
-[EVOLUTION.md](EVOLUTION.md) 保存项目起源和真实的方向变化。后续方向变化按真实日期追加，包含“触发”“变化”“理由”，同日变更合并；维护后运行 `zendev evolution check`。文中历史状态不替代当前实现和验收证据。
+贡献遵循 [项目许可证](LICENSE)。引入第三方代码时保留其版权、许可与来源证据。
+合并遵循仓库保护规则，由维护者确认。

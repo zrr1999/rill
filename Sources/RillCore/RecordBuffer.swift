@@ -48,6 +48,8 @@ public struct BufferEntryID: Codable, Sendable, Hashable, CustomStringConvertibl
 }
 
 public struct BufferEntry: Codable, Sendable, Equatable, Identifiable {
+  public static let pendingLifetime: TimeInterval = 24 * 60 * 60
+
   public enum State: String, Codable, Sendable {
     case preparing, ready, delivering, awaitingConfirmation, delivered
   }
@@ -55,11 +57,17 @@ public struct BufferEntry: Codable, Sendable, Equatable, Identifiable {
   public var recordID: RecordID?
   public var state: State
   public var draft: BufferTextDraft?
-  public init(id: BufferEntryID, recordID: RecordID? = nil, state: State = .preparing, draft: BufferTextDraft? = nil) {
+  /// Older catalogs have no input timestamp; the store assigns and persists it on upgrade.
+  public var enqueuedAt: Date?
+  public init(
+    id: BufferEntryID, recordID: RecordID? = nil, state: State = .preparing,
+    draft: BufferTextDraft? = nil, enqueuedAt: Date? = Date()
+  ) {
     self.id = id
     self.recordID = recordID
     self.state = state
     self.draft = draft
+    self.enqueuedAt = enqueuedAt
   }
 }
 

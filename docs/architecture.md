@@ -1,16 +1,13 @@
 # Architecture
 
 Rill separates domain contracts, runtime decisions, external effects, and UI
-state. `Package.swift` defines the module graph; `AppBootstrap` assembles the
-concrete implementations.
+state. [Package.swift](../Package.swift) defines the module graph;
+[AppBootstrap](../Sources/RillApp/AppBootstrap.swift) assembles the concrete implementations.
 
 ## Where to start
 
-This document is the maintained guide to responsibilities and boundaries, not a
-complete file or symbol inventory. Read [Package.swift](../Package.swift) for the
-build graph and [AppBootstrap](../Sources/RillApp/AppBootstrap.swift) for concrete
-runtime wiring. A runtime relationship is not necessarily an import: `RecordStore`
-uses Core persistence ports that AppBootstrap connects to SQLite.
+Runtime relationships can cross injected ports without a module import:
+`RecordStore` uses Core persistence ports that AppBootstrap connects to SQLite.
 
 For common changes, follow these entry points and then the owning contract:
 
@@ -33,11 +30,8 @@ For common changes, follow these entry points and then the owning contract:
   [input method development](input-method-development.md) for process boundaries
   and native acceptance.
 
-Keep navigation selective and update it with changes to these boundaries. Use
-source search and the relevant module's tests for detailed symbols and behavior;
-links are not proof of passing tests or physical-device acceptance. Validation
-commands live in [CONTRIBUTING.md](../CONTRIBUTING.md#测试), and native acceptance
-requirements in the [release QA checklist](release-qa-checklist.md).
+Validation commands live in [CONTRIBUTING.md](../CONTRIBUTING.md#验证); native
+acceptance requirements are in the [release QA checklist](release-qa-checklist.md).
 
 ## Module dependencies
 
@@ -164,7 +158,7 @@ or workflow availability.
 SQLite repository extensions divide queries by domain while preserving the
 connection's transaction boundary. Splitting them into independent actors would
 require a new transaction contract, particularly for history clear barriers and
-Record migration. File size alone is not a reason to introduce that separation.
+Record migration.
 
 `AuthorizedLiveAudioSession` shares the capture admission boundary between held
 recording and workflow-controlled recording: it validates the run and audio
@@ -223,7 +217,7 @@ recording and stopping states keep the corresponding run resources together;
 finishing work retains its existing independent cleanup ownership. `AppModel`
 callers access existing feature owners directly rather than through duplicate
 state forwarding. Remaining settings commands and lifecycle coordination still
-live in AppModel; this is not yet a claim that all its responsibilities migrated.
+live in AppModel.
 
 `OutputAction.execute(record:context:)` is the sole required output entry.
 Text convenience calls convert once to a Record draft. Output action results,
@@ -286,7 +280,7 @@ Run `just ci` for the repository hooks, release build and packaging checks, and
 complete test suite. `scripts/preflight.sh test` runs domain tests with four workers and
 native platform, UI, and application tests serially. CI executes the same suite
 through `preflight.sh`. Build modes and cache boundaries are defined in the
-[contribution guide](https://github.com/zrr1999/rill/blob/main/CONTRIBUTING.md).
+[development reference](development.md#构建与缓存).
 `check_module_boundaries.py` checks SwiftPM dependencies and compiler-reported
 imports for every production and test target, including direct dependency
 declarations. `scripts/preflight.sh swift test-domain` selects a reduced graph from
