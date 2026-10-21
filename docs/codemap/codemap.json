@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "7f096644fb5c9f2ff746ab42ac1233742e2edfd9",
+  "baseline": "997d061754bb24c98f7e2caa6759097f121cc270",
   "nodes": [
     {
       "id": "RillApp",
@@ -9,6 +9,7 @@
       "role": "负责组装根、生命周期和 macOS 应用入口，将生产适配器注入各功能模块。",
       "impact": "改动会影响跨功能的启动、服务组装和退出。",
       "files": [
+        "Sources/RillApp/AppBootstrap+Services.swift",
         "Sources/RillApp/AppBootstrap.swift",
         "Sources/RillApp/ApplicationStartupTaskCoordinator.swift",
         "Sources/RillApp/ApplicationTerminationCoordinator.swift",
@@ -22,11 +23,13 @@
         "Sources/RillApp/LocalSpeechPreparationProgress.swift",
         "Sources/RillApp/RecordPanelController.swift",
         "Sources/RillApp/RecordPanelPlacement.swift",
+        "Sources/RillApp/Resources/Localizable.xcstrings",
         "Sources/RillApp/Resources/RillMenuBarRecordsTemplate.pdf",
         "Sources/RillApp/Resources/RillMenuBarTemplate.pdf",
         "Sources/RillApp/Resources/WorkflowTemplates/clipboard_capture.toml",
         "Sources/RillApp/Resources/WorkflowTemplates/speech_to_text.toml",
         "Sources/RillApp/Resources/WorkflowTemplates/speech_to_text_polish.toml",
+        "Sources/RillApp/RillAppIntents.swift",
         "Sources/RillApp/RillMenuBarIcon.swift",
         "Sources/RillApp/VoiceInputApplication.swift",
         "Sources/RillApp/WakeWordCoordinator.swift"
@@ -807,7 +810,7 @@
         },
         {
           "path": "Tests/RillUITests/RecordWorkspaceModelTests.swift",
-          "line": 9,
+          "line": 30,
           "symbol": "testAllRecordsDeduplicatesSharedRecordAndMembershipRemovalKeepsItVisible",
           "framework": "XCTest"
         },
@@ -867,7 +870,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 73,
+          "line": 108,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -891,13 +894,13 @@
         },
         {
           "path": "Tests/RillUITests/VocabularyCorrectionDraftTests.swift",
-          "line": 6,
+          "line": 33,
           "symbol": "testEligibilityRequiresCompletedCorrectionSourceAndVisibleHistoryPreviews",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/VocabularyCorrectionSaveTests.swift",
-          "line": 7,
+          "line": 32,
           "symbol": "testRejectedAndUnchangedCorrectionsDoNotWriteSettings",
           "framework": "XCTest"
         },
@@ -1744,7 +1747,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/BufferDraftPersistenceTests.swift",
-          "line": 8,
+          "line": 29,
           "symbol": "serializedDraftLimitRejectsWithoutChangingSavedText",
           "framework": "Swift Testing"
         },
@@ -1948,7 +1951,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordStoreTests.swift",
-          "line": 9,
+          "line": 59,
           "symbol": "testTextCorrectionPreservesOriginalAndCannotTriggerCollectionDelivery",
           "framework": "XCTest"
         },
@@ -1966,7 +1969,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordingSessionManagerTimingTests.swift",
-          "line": 281,
+          "line": 284,
           "symbol": "testInvalidatedCueTokenSuppressesLateSynchronousEffect",
           "framework": "XCTest"
         },
@@ -2422,7 +2425,7 @@
         },
         {
           "path": "Tests/RillUITests/RecordWorkspaceModelTests.swift",
-          "line": 9,
+          "line": 30,
           "symbol": "testAllRecordsDeduplicatesSharedRecordAndMembershipRemovalKeepsItVisible",
           "framework": "XCTest"
         },
@@ -2482,7 +2485,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 73,
+          "line": 108,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -2506,13 +2509,13 @@
         },
         {
           "path": "Tests/RillUITests/VocabularyCorrectionDraftTests.swift",
-          "line": 6,
+          "line": 33,
           "symbol": "testEligibilityRequiresCompletedCorrectionSourceAndVisibleHistoryPreviews",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/VocabularyCorrectionSaveTests.swift",
-          "line": 7,
+          "line": 32,
           "symbol": "testRejectedAndUnchangedCorrectionsDoNotWriteSettings",
           "framework": "XCTest"
         },
@@ -2641,7 +2644,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/BufferDraftPersistenceTests.swift",
-          "line": 8,
+          "line": 29,
           "symbol": "serializedDraftLimitRejectsWithoutChangingSavedText",
           "framework": "Swift Testing"
         },
@@ -2773,7 +2776,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordStoreTests.swift",
-          "line": 9,
+          "line": 59,
           "symbol": "testTextCorrectionPreservesOriginalAndCannotTriggerCollectionDelivery",
           "framework": "XCTest"
         },
@@ -2899,13 +2902,13 @@
         },
         {
           "path": "Tests/RillUITests/RecordWorkspaceModelTests.swift",
-          "line": 9,
+          "line": 30,
           "symbol": "testAllRecordsDeduplicatesSharedRecordAndMembershipRemovalKeepsItVisible",
           "framework": "XCTest"
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 73,
+          "line": 108,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -3086,7 +3089,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 73,
+          "line": 108,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -3428,7 +3431,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordStoreTests.swift",
-          "line": 9,
+          "line": 59,
           "symbol": "testTextCorrectionPreservesOriginalAndCannotTriggerCollectionDelivery",
           "framework": "XCTest"
         },
@@ -3446,7 +3449,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordingSessionManagerTimingTests.swift",
-          "line": 281,
+          "line": 284,
           "symbol": "testInvalidatedCueTokenSuppressesLateSynchronousEffect",
           "framework": "XCTest"
         },
@@ -3626,7 +3629,7 @@
         },
         {
           "path": "Tests/RillUITests/UIRenderEvidenceTests.swift",
-          "line": 73,
+          "line": 108,
           "symbol": "testRenderUnifiedRecordPanel",
           "framework": "XCTest"
         },
@@ -4078,7 +4081,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordingSessionManagerTimingTests.swift",
-          "line": 281,
+          "line": 284,
           "symbol": "testInvalidatedCueTokenSuppressesLateSynchronousEffect",
           "framework": "XCTest"
         },
@@ -4428,7 +4431,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/BufferDraftPersistenceTests.swift",
-          "line": 8,
+          "line": 29,
           "symbol": "serializedDraftLimitRejectsWithoutChangingSavedText",
           "framework": "Swift Testing"
         },
