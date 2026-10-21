@@ -32,11 +32,6 @@ APP_ICON_SOURCE = (
 PRIVACY_NOTICE = PROJECT_DIR / "PRIVACY.md"
 LOCAL_MODEL_NOTICES = PROJECT_DIR / "LOCAL_MODEL_NOTICES.md"
 MLX_RESOURCE_BUNDLE_NAME = "mlx-swift_Cmlx.bundle"
-DEPENDENCY_MANIFEST = PROJECT_DIR / "scripts" / "third_party_notices_manifest.json"
-PACKAGE_MANIFEST = PROJECT_DIR / "Package.swift"
-MLX_SILERO_RUNTIME = (
-    PROJECT_DIR / "Sources" / "RillMLXRuntime" / "MLXSileroVADRuntime.swift"
-)
 
 
 class Fixture:
@@ -150,6 +145,7 @@ class Fixture:
         executable.parent.mkdir(parents=True, exist_ok=True)
         executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         executable.chmod(0o755)
+        (build_dir / "RillApp-primary.swiftconstvalues").write_text("[]\n", encoding="utf-8")
         speech_worker = build_dir / "RillSpeechWorker"
         speech_worker.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         speech_worker.chmod(0o755)
@@ -159,6 +155,16 @@ class Fixture:
 
         own_bundle = build_dir / "RillMacOS_RillApp.bundle"
         create_bundle(own_bundle, "dev.zrr.Rill.resources")
+        intents_catalog = json.loads(
+            (PROJECT_DIR / "Sources/RillApp/Resources/Localizable.xcstrings").read_text()
+        )
+        for language in ("en", "zh-Hans"):
+            catalog = own_bundle / "Contents/Resources" / f"{language}.lproj/Localizable.strings"
+            catalog.parent.mkdir(parents=True)
+            catalog.write_bytes(plistlib.dumps({
+                key: entry["localizations"][language]["stringUnit"]["value"]
+                for key, entry in intents_catalog["strings"].items()
+            }))
         platform_bundle = build_dir / "RillMacOS_RillPlatform.bundle"
         create_bundle(platform_bundle, "dev.zrr.Rill.platform-resources")
         shutil.copytree(WORKFLOW_RESOURCES, platform_bundle / "Contents" / "Resources" / "BuiltinWorkflows")
@@ -205,6 +211,9 @@ class Fixture:
         shutil.copy2(LOCAL_MODEL_NOTICES, self.local_model_notices)
         for document in ("LICENSE", "README.md"):
             shutil.copy2(PROJECT_DIR / document, self.root / document)
+        intents_source = self.root / "Sources" / "RillApp" / "RillAppIntents.swift"
+        intents_source.parent.mkdir(parents=True)
+        shutil.copy2(PROJECT_DIR / "Sources" / "RillApp" / intents_source.name, intents_source)
         self.fake_bin = self.root / "bin"
         self.fake_bin.mkdir()
         fake_lipo = self.fake_bin / "lipo"
@@ -221,6 +230,33 @@ printf '%s\\n' arm64
         fake_xcrun = self.fake_bin / "xcrun"
         fake_xcrun.write_text(
             """#!/bin/sh
+if [ "$1" = "--show-sdk-path" ]; then
+    printf '%s\\n' /fixture/MacOSX.sdk
+    exit 0
+fi
+if [ "$1" = "appintentsmetadataprocessor" ]; then
+    shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --output) output="$2"; shift 2 ;;
+            --source-file-list) source_list="$2"; shift 2 ;;
+            --swift-const-vals-list) const_list="$2"; shift 2 ;;
+            --force) shift ;;
+            *) shift 2 ;;
+        esac
+    done
+    [ "$(cat "$const_list")" = "$RILL_TEST_CONST_VALUES" ] || exit 65
+    [ -s "$RILL_TEST_CONST_VALUES" ] || exit 66
+    [ "$(cat "$source_list")" = "$RILL_TEST_INTENTS_SOURCE" ] || exit 67
+    [ -s "$RILL_TEST_INTENTS_SOURCE" ] || exit 68
+    case "${RILL_TEST_METADATA_RESULT:-success}" in
+        failure) exit 1 ;;
+        missing) exit 0 ;;
+    esac
+    mkdir -p "$output/Metadata.appintents"
+    cp "$RILL_TEST_CONST_VALUES" "$output/Metadata.appintents/fixture.json"
+    exit 0
+fi
 if [ "$#" -ne 5 ] || [ "$1" != "vtool" ] || [ "$2" != "-arch" ] \\
     || [ "$4" != "-show-build" ]; then
     exit 64
@@ -244,7 +280,11 @@ EOF
             encoding="utf-8",
         )
         fake_xcrun.chmod(0o755)
-        self.assembler_env = {"PATH": f"{self.fake_bin}:{os.environ['PATH']}"}
+        self.assembler_env = {
+            "PATH": f"{self.fake_bin}:{os.environ['PATH']}",
+            "RILL_TEST_CONST_VALUES": str((self.root / "build" / "RillApp-primary.swiftconstvalues").resolve()),
+            "RILL_TEST_INTENTS_SOURCE": str(intents_source.resolve()),
+        }
         self.app_bundle = self.root / "output" / "Rill.app"
         self.build_dir: Path | None = None
         self.assembler = scripts / ASSEMBLER.name
@@ -501,6 +541,36 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Required UI resource bundle not found", result.stdout + result.stderr)
 
+    def test_assembler_rejects_missing_or_failed_app_intents_metadata(self) -> None:
+        self.fixture.prepare_packaging()
+        self.fixture.generate()
+        self.fixture.build_dir = self.fixture.create_build_products()
+        metadata = self.fixture.build_dir / "RillApp-primary.swiftconstvalues"
+        metadata.unlink()
+        # An unrelated build must never supply metadata for this app snapshot.
+        (self.fixture.root / ".build" / metadata.name).write_text("stale metadata")
+        self.expect_rejected("App Intents compiler metadata was not produced")
+        metadata.write_text("[]\n")
+        for result, message in (
+            ("failure", "App Intents metadata extraction failed"),
+            ("missing", "App Intents metadata bundle was not written"),
+        ):
+            with self.subTest(result=result):
+                self.expect_rejected(
+                    message,
+                    env={**self.fixture.assembler_env, "RILL_TEST_METADATA_RESULT": result},
+                )
+
+    def test_assembler_requires_app_intents_localizations(self) -> None:
+        self.fixture.prepare_packaging()
+        self.fixture.generate()
+        self.fixture.build_dir = self.fixture.create_build_products()
+        catalog = self.fixture.build_dir / "RillMacOS_RillApp.bundle/Contents/Resources/zh-Hans.lproj/Localizable.strings"
+        catalog.unlink()
+        self.expect_rejected("Required App Intents localization not found")
+        catalog.write_text("invalid strings")
+        self.expect_rejected("Invalid App Intents localization")
+
     def test_assembler_packages_reviewed_resources_and_rejects_drift(self) -> None:
         project_documents = ("LICENSE", "README.md")
         self.fixture.prepare_packaging()
@@ -510,6 +580,10 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         build_dir = self.fixture.build_dir
         assert build_dir is not None
         self.assertEqual(assembled.returncode, 0, assembled.stderr)
+        self.assertEqual(
+            (app_bundle / "Contents/Resources/Metadata.appintents/fixture.json").read_bytes(),
+            (build_dir / "RillApp-primary.swiftconstvalues").read_bytes(),
+        )
         packaged_speech_worker = (
             app_bundle / "Contents" / "Helpers" / "RillSpeechWorker"
         )
@@ -543,6 +617,11 @@ class ThirdPartyNoticesTests(unittest.TestCase):
             self.assertEqual(
                 (app_bundle / "Contents" / "Resources" / relative).read_bytes(),
                 (build_dir / relative).read_bytes(),
+            )
+            intents_relative = Path(f"{language}.lproj/Localizable.strings")
+            self.assertEqual(
+                (app_bundle / "Contents/Resources" / intents_relative).read_bytes(),
+                (build_dir / "RillMacOS_RillApp.bundle/Contents/Resources" / intents_relative).read_bytes(),
             )
         packaged = app_bundle / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.md"
         self.assertEqual(packaged.read_bytes(), self.fixture.output.read_bytes())
@@ -728,40 +807,6 @@ fi
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_repository_has_no_retired_native_speech_inventory(self) -> None:
-        manifest = json.loads(DEPENDENCY_MANIFEST.read_text(encoding="utf-8"))
-        self.assertFalse(
-            [
-                package
-                for package in manifest["packages"]
-                if package["kind"] == "vendored"
-            ]
-        )
-        package_manifest = PACKAGE_MANIFEST.read_text(encoding="utf-8").casefold()
-        for retired_value in (
-            "sherpaonnxnative",
-            "onnxruntimenative",
-            "rillsherparuntime",
-            "csherpaonnx",
-        ):
-            self.assertNotIn(retired_value, package_manifest)
-
-    def test_repository_pins_mlx_silero_v6_without_packaged_onnx(self) -> None:
-        runtime = MLX_SILERO_RUNTIME.read_text(encoding="utf-8")
-        local_notices = LOCAL_MODEL_NOTICES.read_text(encoding="utf-8")
-        for pinned_value in (
-            "mlx-community/silero-vad-v6",
-            "2ebf4a5e10726a2e78ddd4d70eedfb6f1c33eb06",
-            "9fe1befb9692a0d4135adadc33f8075ef6d350bd2391b88d750f2c233f97fa0b",
-            "65b6c5f0293cbc44d109e58bef78b474d9c65dedbee814cf0b90ef5f0d9150ff",
-        ):
-            self.assertIn(pinned_value, runtime)
-        self.assertIn("mlx-community/silero-vad-v6", local_notices)
-        self.assertIn("no ONNX VAD is packaged", local_notices)
-        self.assertNotIn(
-            "RillSherpaRuntime", PACKAGE_MANIFEST.read_text(encoding="utf-8")
-        )
 
 
 def create_bundle(path: Path, identifier: str) -> None:

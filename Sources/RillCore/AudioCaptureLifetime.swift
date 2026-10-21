@@ -1,6 +1,10 @@
 import Foundation
 
-/// Run-scoped authorization for live audio. The first terminal transition wins.
+/// A run-scoped, content-free authorization lifetime for transmitting live audio.
+///
+/// The state transition and transmission-permit acquisition are serialized by
+/// one lock. A permit acquired before revocation represents an already
+/// authorized transmission; after revocation no new permit can be acquired.
 public final class AudioCaptureLifetime: @unchecked Sendable, Equatable {
   public enum RevocationReason: String, Codable, Sendable, Equatable, CaseIterable {
     case authorizationInvalidated
@@ -15,8 +19,15 @@ public final class AudioCaptureLifetime: @unchecked Sendable, Equatable {
     case completed
   }
 
+  /// Opaque proof that one transmission was authorized while the lifetime was active.
+  public struct TransmissionPermit: Sendable, Equatable {
+    public let runID: UUID
+    fileprivate let lifetimeID: UUID
+  }
+
   public let runID: UUID
 
+  private let identity = UUID()
   private let lock = NSLock()
   private var storedState: State = .active
   private var didClaimTerminalStateStream = false
@@ -36,6 +47,14 @@ public final class AudioCaptureLifetime: @unchecked Sendable, Equatable {
         return true
       }
       return false
+    }
+  }
+
+  /// Atomically authorizes one transmission if revocation has not won the race.
+  public func acquireTransmissionPermit() -> TransmissionPermit? {
+    lock.withLock {
+      guard case .active = storedState else { return nil }
+      return TransmissionPermit(runID: runID, lifetimeID: identity)
     }
   }
 

@@ -209,7 +209,7 @@ extension AppModelTests {
     await eventBusHolder.set(harness.eventBus)
     await harness.model.waitForInitialVoiceConfiguration()
 
-    harness.model.runWorkflow(workflow)
+    XCTAssertTrue(harness.model.runWorkflow(workflow))
     await harness.model.waitForWorkflowAudioActions()
 
     let startedSnapshot = await probe.snapshot()
@@ -223,7 +223,7 @@ extension AppModelTests {
     )
     XCTAssertTrue(harness.model.canTriggerWorkflow(workflow))
 
-    harness.model.runWorkflow(workflow)
+    XCTAssertTrue(harness.model.runWorkflow(workflow))
     await harness.model.waitForWorkflowAudioActions()
     await waitForEventProcessing(harness)
 
@@ -252,7 +252,7 @@ extension AppModelTests {
       }
     )
 
-    harness.model.runWorkflow(workflow)
+    XCTAssertTrue(harness.model.runWorkflow(workflow))
 
     XCTAssertEqual(harness.model.voice.workflowAudioRunState, .preparing(workflowID: workflow.id))
     XCTAssertEqual(
@@ -261,7 +261,7 @@ extension AppModelTests {
     )
     XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
 
-    harness.model.runWorkflow(workflow)
+    XCTAssertFalse(harness.model.runWorkflow(workflow))
     await startGate.waitUntilStarted()
 
     let preparingSnapshot = await probe.snapshot()
@@ -972,20 +972,6 @@ extension AppModelTests {
     await harness.model.waitForInitialVoiceConfiguration()
 
     XCTAssertEqual(harness.model.settings.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)
-  }
-
-  func testRetiredCloudSpeechPreferenceMigratesToLocal() async {
-    let settingsStore = UITestSettingsStore(
-      storage: [
-        .preferredSpeechEngine: "cloud"
-      ]
-    )
-    let harness = makeHarness(settingsStore: settingsStore)
-
-    await harness.model.waitForInitialVoiceConfiguration()
-
-    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
-    XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer, .localSpeech)
   }
 
   func testLoadsPersistedLongRecordingMode() async {

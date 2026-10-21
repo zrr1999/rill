@@ -530,31 +530,34 @@ public actor RecordingSessionManager {
     }
   }
 
+  /// Reports starting capture or accepting a stop/cancel; transcription completes separately.
+  @discardableResult
   public func toggleLongRecording(
     triggeredBy gesture: PushToTalkGesture = .fnHold
-  ) async {
+  ) async -> Bool {
     let expectedFocus: FocusPrivacyIdentitySample?
     if case .idle = state {
       expectedFocus = await focusIdentitySampleProvider()
     } else {
       expectedFocus = nil
     }
-    await toggleLongRecording(
+    return await toggleLongRecording(
       triggeredBy: gesture,
       waitsForFinishingCompletion: true,
       expectedFocus: expectedFocus
     )
   }
 
+  @discardableResult
   private func toggleLongRecording(
     triggeredBy gesture: PushToTalkGesture,
     waitsForFinishingCompletion: Bool,
     expectedFocus: FocusPrivacyIdentitySample?
-  ) async {
+  ) async -> Bool {
     switch state {
     case .idle:
-      guard let expectedFocus else { return }
-      guard beginStartOperation() else { return }
+      guard let expectedFocus else { return false }
+      guard beginStartOperation() else { return false }
       defer { finishStartOperation() }
       guard
         let pendingStart = await preparePushToTalkStart(
@@ -562,10 +565,10 @@ public actor RecordingSessionManager {
           controlMode: .toggle,
           expectedFocus: expectedFocus
         )
-      else { return }
-      await completePushToTalkStart(pendingStart)
+      else { return false }
+      return await completePushToTalkStart(pendingStart)
     case .recording(let runID):
-      guard activeControlMode == .toggle, let workflow = activeWorkflow else { return }
+      guard activeControlMode == .toggle, let workflow = activeWorkflow else { return false }
       guard
         let task = beginFinishingPushToTalkRecording(
           runID: runID,
@@ -573,13 +576,14 @@ public actor RecordingSessionManager {
           gesture: gesture
         )
       else {
-        return
+        return false
       }
       if waitsForFinishingCompletion {
         await task.value
       }
+      return true
     case .preparing(let runID):
-      guard activeControlMode == .toggle else { return }
+      guard activeControlMode == .toggle else { return false }
       cancelActivePushToTalkStartTask()
       enqueueDiagnostic(
         level: .debug,
@@ -592,8 +596,9 @@ public actor RecordingSessionManager {
       if waitsForFinishingCompletion {
         await task?.value
       }
+      return task != nil
     case .cancelling, .transcribing, .delivering:
-      return
+      return false
     }
   }
 
@@ -634,7 +639,7 @@ public actor RecordingSessionManager {
   ) async -> PendingPushToTalkStart? {
     guard !hasBegunApplicationShutdown, case .idle = state else { return nil }
     let availableWorkflows = await workflowProvider()
-    guard !hasBegunApplicationShutdown else { return nil }
+    guard !hasBegunApplicationShutdown, case .idle = state else { return nil }
     if let streamStartTaskID {
       guard
         shouldCommitPendingStreamHotkeyStart(
@@ -915,14 +920,15 @@ public actor RecordingSessionManager {
     )
   }
 
-  private func completePushToTalkStart(_ pendingStart: PendingPushToTalkStart) async {
+  @discardableResult
+  private func completePushToTalkStart(_ pendingStart: PendingPushToTalkStart) async -> Bool {
     guard !hasBegunApplicationShutdown,
       activeRunID == pendingStart.runID,
       case .preparing(let expectedRunID) = state,
       expectedRunID == pendingStart.runID
     else {
       _ = pendingStart.request.audioLifetime?.cancel()
-      return
+      return false
     }
     // Avoid presenting two separate surfaces on the normal warm path. The
     // capture runtime publishes `.recording` once PCM is ready; only publish a
@@ -954,7 +960,7 @@ public actor RecordingSessionManager {
           )
         )
       )
-      return
+      return false
     }
     let liveAudioSession = activeLiveAudioSession
     do {
@@ -971,11 +977,11 @@ public actor RecordingSessionManager {
       guard case .preparing(let expectedRunID) = state, expectedRunID == pendingStart.runID else {
         _ = pendingStart.request.audioLifetime?.cancel()
         if isCancellationInProgress(runID: pendingStart.runID) {
-          return
+          return false
         }
         await audioCaptureService.cancelCapture(runID: pendingStart.runID)
         if activeRunID == pendingStart.runID { resetState() }
-        return
+        return false
       }
       if let lifetime = pendingStart.request.audioLifetime, !lifetime.isActive {
         if lifetime.state == .revoked(.serviceFailure) {
@@ -990,7 +996,7 @@ public actor RecordingSessionManager {
         } else {
           await cancelActiveCapture(runID: pendingStart.runID)
         }
-        return
+        return false
       }
       guard installAudioCaptureLifetimeMonitor(for: pendingStart.request) else {
         let task = beginManagedCancellation(
@@ -1001,7 +1007,7 @@ public actor RecordingSessionManager {
           )
         )
         await task?.value
-        return
+        return false
       }
       state = .recording(pendingStart.runID)
       scheduleMaximumDuration(
@@ -1016,10 +1022,11 @@ public actor RecordingSessionManager {
         message: "Push-to-talk recording started with \(pendingStart.gesture.rawValue).",
         runID: pendingStart.runID
       )
+      return true
     } catch is CancellationError {
       _ = pendingStart.request.audioLifetime?.cancel()
       if isCancellationInProgress(runID: pendingStart.runID) {
-        return
+        return false
       }
       if activeRunID == pendingStart.runID {
         await cancelActiveCapture(runID: pendingStart.runID)
@@ -1029,7 +1036,7 @@ public actor RecordingSessionManager {
     } catch {
       _ = pendingStart.request.audioLifetime?.revoke(.serviceFailure)
       if isCancellationInProgress(runID: pendingStart.runID) {
-        return
+        return false
       }
       if activeRunID == pendingStart.runID {
         let task = beginManagedCancellation(
@@ -1044,6 +1051,7 @@ public actor RecordingSessionManager {
         await audioCaptureService.cancelCapture(runID: pendingStart.runID)
       }
     }
+    return false
   }
 
   private func publishPreparingPresentationIfCurrent(

@@ -325,6 +325,32 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertTrue(activity.atomicSnapshots.isEmpty)
   }
 
+  func testRetiredCloudSpeechPreferenceMigratesToLocalOnInitialLoadAndRecovery() async {
+    for initiallyUnavailable in [false, true] {
+      let store = UITestSettingsStore(
+        storage: [.preferredSpeechEngine: "cloud"],
+        unavailableKeys: initiallyUnavailable ? [.preferredSpeechEngine] : []
+      )
+      let harness = makeHarness(settingsStore: store, settingsWriteDebounceDuration: .zero)
+      await harness.model.waitForInitialVoiceConfiguration()
+
+      if initiallyUnavailable {
+        XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .speechRoute))
+        await store.setUnavailableKeys([])
+        harness.model.retryUnavailableScalarSettings(in: .speechRoute)
+        await waitUntil { !harness.model.settings.isRetryingUnavailableScalarSettings(in: .speechRoute) }
+      }
+      await harness.model.flushPendingPersistenceWrites()
+
+      XCTAssertFalse(harness.model.settings.hasUnavailableScalarSettings(in: .speechRoute))
+      XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
+      XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer, .localSpeech)
+      let activity = await store.activitySnapshot()
+      XCTAssertEqual(activity.storage[.preferredSpeechEngine], PreferredSpeechEngine.local.rawValue)
+      XCTAssertEqual(activity.setCounts[.preferredSpeechEngine], 1)
+    }
+  }
+
   func testLocalSpeechRecoveryMigratesRetiredModelToTrustedDefault() async throws {
     let defaultModel = "qwen3-asr-0.6b-int8"
     let store = UITestSettingsStore(

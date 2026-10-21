@@ -188,6 +188,31 @@ final class PrivacyModelsTests: XCTestCase {
     XCTAssertFalse(decision.metadata.values.contains { $0.contains("secret") })
   }
 
+  func testPromptRenderingUsesPrivacyDecisionRedactions() throws {
+    let context = PromptVariableContext(
+      text: "dictation",
+      selectedText: "selected secret",
+      clipboardText: "clipboard secret",
+      applicationName: "Vault",
+      bundleIdentifier: "com.example.vault"
+    )
+    let decision = PrivacyPolicyDecision(
+      decisions: [.redactContext],
+      reasons: [.sensitiveApplication],
+      redactedPromptVariables: [.selected, .clipboard]
+    )
+
+    let result = try PromptVariableRenderer.render(
+      prompt: "{text}; selected={selected}; clipboard={clipboard}; app={app}",
+      context: context,
+      privacyDecision: decision
+    )
+
+    XCTAssertEqual(result.renderedPrompt, "dictation; selected=; clipboard=; app=Vault")
+    XCTAssertEqual(result.redactedVariables, [.selected, .clipboard])
+    XCTAssertEqual(result.missingVariables, [.selected, .clipboard])
+  }
+
   func testUnclassifiedRemoteRecognizerRequiresConfirmation() {
     let decision = PrivacyPolicy.evaluate(
       context: makeContext(),

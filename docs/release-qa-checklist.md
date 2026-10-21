@@ -1,10 +1,8 @@
 # Release QA Checklist
 
-This checklist keeps two evidence layers together without treating them as
-interchangeable. Automated prerequisites prove deterministic state-machine,
-filesystem, packaging-policy, and hosted AppKit contracts. The checkboxes record
-what was exercised with the exact packaged release candidate on real systems.
-Copy this file for each candidate and keep it with both evidence sets.
+Copy this checklist for each release candidate. Keep the automated results and
+device observations together, and complete the checkboxes using the exact
+packaged candidate on real systems.
 
 ## Automated prerequisite evidence
 

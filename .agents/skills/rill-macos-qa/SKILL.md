@@ -5,22 +5,21 @@ description: Verify Rill behavior at macOS boundaries such as Fn gestures, micro
 
 # Rill macOS QA
 
-Tie each acceptance claim to an observed interaction on an identified artifact.
 Respond in the user's language.
 
 ## Set the evidence boundary
 
 Read only the sections of [the QA checklist](../../../docs/release-qa-checklist.md)
-that match the changed behavior. For UI and focus work, also read
-[UI direction](../../../docs/ui-direction.md) and the focus contracts in
-[CONTRIBUTING.md](../../../CONTRIBUTING.md). A targeted regression needs its
-affected interaction matrix; a release sign-off needs the release checklist.
+that match the changed behavior. For UI and focus work, also read the contracts in
+[UI direction](../../../docs/ui-direction.md) and the desktop test prerequisites in
+[the development reference](../../../docs/development.md#测试). A targeted regression
+needs its affected interaction matrix; a release sign-off needs the release checklist.
 
 Identify the app path, bundle version/build, process, macOS version, architecture,
 relevant permissions, and target application. Record the source revision or
 artifact hash when available. If provenance is unknown, keep that uncertainty
 in the result. Check for another running copy before attributing behavior to a
-new build. Installing or signing a build is not an interaction test.
+new build.
 
 Keep distinct evidence for:
 
@@ -29,9 +28,9 @@ Keep distinct evidence for:
 - Observed interaction with the running app and macOS.
 - Acceptance of the exact release candidate, including trust and installation.
 
-A screenshot can establish visible state, not a completed gesture, focus
-transition, spoken output, or VoiceOver experience. Local development signing
-and a passing unit suite do not establish notarization or Gatekeeper acceptance.
+Use screenshots for visible state. Verify gestures, focus transitions, audible
+output, and VoiceOver through interaction; verify notarization and Gatekeeper
+with the release candidate.
 
 ## Exercise the affected interaction
 
@@ -56,8 +55,7 @@ than repeating every checklist item for every patch. Preserve user data and
 settings; clean up only test state created by this run. Do not send sample text
 to a real recipient or change the user's system-wide setup to manufacture a pass.
 
-Use available interaction tools only for actions they can actually perform and
-observe. If physical Fn input, a locked-screen scenario, audible output, or
+If physical Fn input, a locked-screen scenario, audible output, or
 another required observation is unavailable, leave that case unverified and
 give precise manual steps. Synthetic key events or a fake capture source are
 evidence for their own path, not substitutes for the physical interaction.
@@ -71,5 +69,3 @@ boundary. Refer runtime failures back to their owning component for diagnosis
 without speculating from the UI symptom alone.
 
 Release claims apply only to the tested candidate and completed release matrix.
-Report remaining device, OS, permission, accessibility, or trust checks explicitly;
-neither source inspection nor local CI can sign off those missing observations.

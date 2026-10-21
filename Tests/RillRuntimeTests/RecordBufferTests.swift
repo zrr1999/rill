@@ -310,6 +310,13 @@ actor BufferCatalogFake: RecordCatalogPersistenceStore {
   var mutations: [RecordCatalogMutation] = []
   var rejects = false
   func rejectNext() { rejects = true }
+  func removeBufferInputTimestamps() throws {
+    for node in nodes.values where node.kind == .bufferEntry {
+      var entry = try JSONDecoder().decode(BufferEntry.self, from: node.value)
+      entry.enqueuedAt = nil
+      nodes[node.key] = .init(kind: node.kind, id: node.id, value: try JSONEncoder().encode(entry))
+    }
+  }
   func makeLegacy() throws {
     try setCatalogVersion(2)
     nodes = nodes.filter { ![.buffer, .bufferEntry, .bufferClock].contains($0.value.kind) }

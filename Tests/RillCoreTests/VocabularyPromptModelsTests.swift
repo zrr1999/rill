@@ -115,4 +115,249 @@ final class VocabularyPromptModelsTests: XCTestCase {
     XCTAssertEqual(result.issues.map(\.kind), [.invalidRegex])
     XCTAssertFalse(result.changed)
   }
+
+  func testPromptRendererSubstitutesKnownVariables() throws {
+    let context = PromptVariableContext(
+      text: "polish this",
+      rawText: "polish this raw",
+      selectedText: "selected text",
+      clipboardText: "clipboard text",
+      applicationName: "Notes",
+      bundleIdentifier: "com.apple.Notes",
+      groupIdentifier: "voice"
+    )
+
+    let result = try PromptVariableRenderer.render(
+      prompt: "{app}/{bundleID}/{group}: {text}; raw={rawText}; "
+        + "selected={selected}; clipboard={clipboard}",
+      context: context
+    )
+
+    XCTAssertEqual(
+      result.renderedPrompt,
+      "Notes/com.apple.Notes/voice: polish this; raw=polish this raw; "
+        + "selected=selected text; clipboard=clipboard text"
+    )
+    XCTAssertEqual(
+      result.usedVariables,
+      [.app, .bundleID, .group, .text, .rawText, .selected, .clipboard]
+    )
+    XCTAssertTrue(result.missingVariables.isEmpty)
+    XCTAssertTrue(result.unknownVariables.isEmpty)
+  }
+
+  func testPromptRendererReportsMissingKnownVariables() throws {
+    let context = PromptVariableContext(text: "dictation", selectedText: "")
+
+    let result = try PromptVariableRenderer.render(
+      prompt: "Rewrite {text} around {selected}.",
+      context: context
+    )
+
+    XCTAssertEqual(result.renderedPrompt, "Rewrite dictation around .")
+    XCTAssertEqual(result.usedVariables, [.text, .selected])
+    XCTAssertEqual(result.missingVariables, [.selected])
+  }
+
+  func testPromptRendererPreservesUnknownVariablesAndEscapedBraces() throws {
+    let context = PromptVariableContext(text: "dictation")
+
+    let result = try PromptVariableRenderer.render(
+      prompt: "Use {{text}} literally, keep {unknown}, render {text}.",
+      context: context
+    )
+
+    XCTAssertEqual(
+      result.renderedPrompt,
+      "Use {text} literally, keep {unknown}, render dictation."
+    )
+    XCTAssertEqual(result.usedVariables, [.text])
+    XCTAssertEqual(result.unknownVariables, ["unknown"])
+  }
+
+  func testPromptRendererPreservesPrivateUseCharactersAndUnmatchedBraces() throws {
+    let context = PromptVariableContext(text: "dictation")
+    let privateOpen = "\u{E000}"
+    let privateClose = "\u{E001}"
+
+    let result = try PromptVariableRenderer.render(
+      prompt: "\(privateOpen){text}\(privateClose) {9invalid} {unterminated",
+      context: context
+    )
+
+    XCTAssertEqual(
+      result.renderedPrompt,
+      "\(privateOpen)dictation\(privateClose) {9invalid} {unterminated"
+    )
+    XCTAssertEqual(result.usedVariables, [.text])
+    XCTAssertTrue(result.unknownVariables.isEmpty)
+  }
+
+  func testPromptRenderSummaryIsContentFreeAndCodable() throws {
+    let canary = "unknown-private-" + UUID().uuidString
+    let result = PromptRenderResult(
+      renderedPrompt: "rendered-private-" + UUID().uuidString,
+      usedVariables: [.text, .clipboard],
+      missingVariables: [.clipboard],
+      redactedVariables: [.clipboard],
+      unknownVariables: [canary]
+    )
+
+    XCTAssertEqual(
+      result.summary,
+      PromptRenderSummary(
+        usedVariables: [.text, .clipboard],
+        missingVariables: [.clipboard],
+        redactedVariables: [.clipboard],
+        unknownVariableCount: 1
+      )
+    )
+
+    let encoded = try JSONEncoder().encode(result.summary)
+    let encodedText = String(decoding: encoded, as: UTF8.self)
+    XCTAssertFalse(encodedText.contains(canary))
+    XCTAssertFalse(encodedText.contains(result.renderedPrompt))
+    XCTAssertEqual(
+      try JSONDecoder().decode(PromptRenderSummary.self, from: encoded),
+      result.summary
+    )
+
+    let reorderedInput = PromptRenderSummary(
+      usedVariables: [.clipboard, .selected, .text],
+      missingVariables: [.text],
+      redactedVariables: [.selected, .clipboard]
+    )
+    XCTAssertEqual(reorderedInput.missingVariables, [.clipboard, .selected, .text])
+    XCTAssertEqual(reorderedInput.redactedVariables, [.clipboard, .selected])
+  }
+
+  func testPromptRendererUsesStableBraceAndNonRecursiveReplacementSemantics() throws {
+    let context = PromptVariableContext(text: "{selected}", selectedText: "private")
+    let cases: [(String, String)] = [
+      ("{{{text}}}", "{{selected}}"),
+      ("{text}}}", "{selected}}"),
+      ("{bad{text}", "{bad{selected}"),
+      ("{}", "{}"),
+      ("{text}", "{selected}"),
+    ]
+
+    for (prompt, expected) in cases {
+      let result = try PromptVariableRenderer.render(prompt: prompt, context: context)
+      XCTAssertEqual(result.renderedPrompt, expected, prompt)
+    }
+
+    let repeatedUnknown = try PromptVariableRenderer.render(
+      prompt: "{unknown}{unknown}{other}",
+      context: context
+    )
+    XCTAssertEqual(repeatedUnknown.unknownVariables, ["unknown", "other"])
+  }
+
+  func testPromptRendererRejectsEveryBoundedResourceOverflow() throws {
+    let context = PromptVariableContext(text: "value")
+
+    XCTAssertThrowsError(
+      try PromptVariableRenderer.render(
+        prompt: String(
+          repeating: "{",
+          count: PromptVariableRenderer.maximumTemplateUTF8Count + 1
+        ),
+        context: context
+      )
+    ) { error in
+      XCTAssertEqual(error as? PromptVariableRenderingError, .templateTooLong)
+    }
+
+    XCTAssertThrowsError(
+      try PromptVariableRenderer.render(
+        prompt: "{"
+          + String(
+            repeating: "a",
+            count: PromptVariableRenderer.maximumIdentifierScalarCount + 1
+          ) + "}",
+        context: context
+      )
+    ) { error in
+      XCTAssertEqual(error as? PromptVariableRenderingError, .identifierTooLong)
+    }
+
+    XCTAssertThrowsError(
+      try PromptVariableRenderer.render(
+        prompt: "{text}",
+        context: PromptVariableContext(
+          text: String(
+            repeating: "x",
+            count: PromptVariableRenderer.maximumVariableValueUTF8Count + 1
+          )
+        )
+      )
+    ) { error in
+      XCTAssertEqual(
+        error as? PromptVariableRenderingError,
+        .variableValueTooLong(.text)
+      )
+    }
+
+    let maximumValue = String(
+      repeating: "x",
+      count: PromptVariableRenderer.maximumVariableValueUTF8Count
+    )
+    XCTAssertThrowsError(
+      try PromptVariableRenderer.render(
+        prompt: "{text}{text}{text}",
+        context: PromptVariableContext(text: maximumValue)
+      )
+    ) { error in
+      XCTAssertEqual(error as? PromptVariableRenderingError, .renderedPromptTooLong)
+    }
+
+    let unknownPrompt = (0...PromptRenderSummary.maximumUnknownVariableCount)
+      .map { "{unknown\($0)}" }
+      .joined()
+    XCTAssertThrowsError(
+      try PromptVariableRenderer.render(prompt: unknownPrompt, context: context)
+    ) { error in
+      XCTAssertEqual(error as? PromptVariableRenderingError, .tooManyUnknownVariables)
+    }
+  }
+
+  func testPromptRendererProcessesMaximumUnclosedBraceInputWithoutRescanning() throws {
+    let prompt = String(
+      repeating: "{",
+      count: PromptVariableRenderer.maximumTemplateUTF8Count
+    )
+
+    let result = try PromptVariableRenderer.render(
+      prompt: prompt,
+      context: PromptVariableContext(text: "value")
+    )
+
+    XCTAssertEqual(
+      result.renderedPrompt,
+      String(repeating: "{", count: prompt.count / 2)
+    )
+    XCTAssertTrue(result.unknownVariables.isEmpty)
+  }
+
+  func testPromptRenderSummaryRejectsNonCanonicalDecodedEvidence() throws {
+    let invalidPayloads = [
+      #"{"usedVariables":["text","text"],"missingVariables":[],"redactedVariables":[],"unknownVariableCount":0}"#,
+      #"{"usedVariables":["text"],"missingVariables":["clipboard"],"redactedVariables":[],"unknownVariableCount":0}"#,
+      #"{"usedVariables":["clipboard"],"missingVariables":[],"redactedVariables":["clipboard"],"unknownVariableCount":0}"#,
+      #"{"usedVariables":["clipboard","selected"],"missingVariables":["selected","clipboard"],"redactedVariables":[],"unknownVariableCount":0}"#,
+      #"{"usedVariables":["clipboard","selected"],"missingVariables":["clipboard","selected"],"redactedVariables":["selected","clipboard"],"unknownVariableCount":0}"#,
+      #"{"usedVariables":["text"],"missingVariables":[],"redactedVariables":[],"unknownVariableCount":-1}"#,
+      #"{"usedVariables":["text"],"missingVariables":[],"redactedVariables":[],"unknownVariableCount":33}"#,
+    ]
+
+    for payload in invalidPayloads {
+      XCTAssertThrowsError(
+        try JSONDecoder().decode(
+          PromptRenderSummary.self,
+          from: Data(payload.utf8)
+        ),
+        payload
+      )
+    }
+  }
 }

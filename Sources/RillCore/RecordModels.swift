@@ -1,5 +1,10 @@
 import Foundation
 
+public enum RecordTextCorrectionSubject: Sendable {
+  case record(RecordID)
+  case workflowRun(UUID)
+}
+
 public struct RecordCleanupResult: Sendable, Equatable {
   public let removedCount: Int
   public let preservedActiveCount: Int

@@ -6,6 +6,56 @@ import XCTest
 @testable import RillWorkflows
 
 final class RecordStoreTests: XCTestCase {
+  func testCollectionCorrectionUsesExactRecordAndRetainsMembershipsAcrossRestart() async throws {
+    let persistence = BufferCatalogFake()
+    let events = RecordCollectionEventProbe()
+    let store = RecordStore(persistence: persistence, collectionEventSink: events)
+    let runID = UUID()
+    let original = try await store.ingest(
+      .init(payload: .text("older recognition"), provenance: .init(source: .init(kind: .workflow), workflowRunID: runID)),
+      into: [RecordCollection.inboxID, RecordCollection.voiceInputID])
+    let other = try await store.ingest(
+      .init(payload: .text("other text from same run"), provenance: original.record.provenance), into: [])
+    let eventsBefore = await events.events()
+    let operationID = UUID()
+    let corrected = try await store.saveTextCorrection(subject: .record(original.id), text: "corrected", operationID: operationID)
+    XCTAssertEqual(corrected.record.provenance.derivedFrom, original.id)
+    XCTAssertTrue(corrected.memberships.isEmpty)
+    let after = try await RecordStore(persistence: persistence).record(id: original.id)
+    XCTAssertEqual(after, original)
+    let eventsAfter = await events.events()
+    XCTAssertEqual(eventsAfter, eventsBefore)
+    let retry = try await store.saveTextCorrection(subject: .record(original.id), text: "corrected", operationID: operationID)
+    XCTAssertEqual(retry.id, corrected.id)
+    do {
+      _ = try await store.saveTextCorrection(subject: .record(other.id), text: "corrected", operationID: operationID)
+      XCTFail("An operation must stay attached to the exact corrected Record")
+    } catch let error as RecordStoreError { XCTAssertEqual(error, .invalidTextCorrection) }
+  }
+
+  func testCollectionCorrectionWithoutRunHistoryRollsBackAndRejectsDeletedSource() async throws {
+    let persistence = BufferCatalogFake()
+    let store = RecordStore(persistence: persistence)
+    let original = try await store.ingest(
+      .init(payload: .text("recognition without retained run"), provenance: .init(source: .init(kind: .voiceInput))), into: [])
+    let before = try await store.snapshot()
+    let operationID = UUID()
+    await persistence.rejectNext()
+    do {
+      _ = try await store.saveTextCorrection(subject: .record(original.id), text: "edit", operationID: operationID)
+      XCTFail("The correction must require a durable commit")
+    } catch let error as RecordStoreError { XCTAssertEqual(error, .persistenceUnavailable) }
+    let failed = try await store.snapshot()
+    XCTAssertEqual(failed, before)
+    let corrected = try await store.saveTextCorrection(subject: .record(original.id), text: "edit", operationID: operationID)
+    XCTAssertNil(corrected.record.provenance.workflowRunID)
+    try await store.deleteRecord(original.id)
+    do {
+      _ = try await store.saveTextCorrection(subject: .record(original.id), text: "stale edit", operationID: UUID())
+      XCTFail("An editor cannot recreate a deleted source")
+    } catch let error as RecordStoreError { XCTAssertEqual(error, .recordUnavailable) }
+  }
+
   func testTextCorrectionPreservesOriginalAndCannotTriggerCollectionDelivery() async throws {
     let store = RecordStore()
     let runID = UUID()
