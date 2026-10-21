@@ -4,9 +4,8 @@ Rill 的图标表达「语音汇入光标」：上方的波形代表语音，下
 两者汇入同一节点，向右成为光标处的文字。应用图标与菜单栏图标保留相同轮廓，
 分别适配 Dock 中的彩色图块和菜单栏中的单色小图形。
 
-本文记录 [图标实现 PR #22](https://github.com/zrr1999/rill/pull/22) 中
-[`6982d572bf4c` 版本][design-version] 的设计与预览。实现的合并状态以该 PR 为准；
-收录设计文档不代表当前文档分支已经包含对应的 App 资源。
+设计与预览对应 [图标实现 PR #22](https://github.com/zrr1999/rill/pull/22) 中的
+[`6982d572bf4c` 版本][design-version]。
 
 ![Rill 图标家族：左侧为应用图标及 16、32、64、128 px 示例；右侧为就绪与有记录两种菜单栏图标的浅色、深色、选中状态及四倍放大轮廓。](assets/rill-icon-family.png)
 
@@ -52,8 +51,7 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 
 ## 源文件与维护
 
-设计参数、源文件和导出产物对应上述固定版本；修改时以 SVG 为事实源，
-受审 SHA-256 和生成细节统一维护在 [图标资源说明][asset-readme]，不在本文重复维护。
+编辑 SVG 源文件；校验值和生成命令见 [图标资源说明][asset-readme]。
 
 | 文件 | 职责 |
 | --- | --- |
@@ -63,7 +61,7 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 | [render_app_icon_renditions.swift][icon-renderer] | 生成带圆角、阴影和光学调整的各尺寸图标 |
 | `assemble_app_bundle.sh app-icon` | 校验受审 PNG 并装配 ICNS |
 
-在包含该实现的 checkout 中，安装 `librsvg` 后重新导出：
+安装 `librsvg` 后重新导出：
 
 ```sh
 brew install librsvg
@@ -73,8 +71,8 @@ scripts/preflight.sh swift test --filter RillMenuBarIconTests
 ```
 
 常规构建使用提交的 PNG / PDF，无需安装 SVG 转换工具。源 SVG、导出文件、
-资源说明与图标检查中的源图摘要应在同一提交中更新。本文预览是该版本的展示快照，
-设计变化时应从新的导出产物重新渲染，并同步版本链接；预览图不是打包输入。
+资源说明与图标检查中的源图摘要应在同一提交中更新。
+设计变化时从新的导出产物重新渲染预览，并同步版本链接；预览图不是打包输入。
 
 菜单栏 PDF 通过 `Bundle.module.image(forResource:)` 加载，再以 `NSImage`
 交给 SwiftUI 做 template 渲染。松散 PDF 资源不能依赖 SwiftUI 的命名图片初始化器；
@@ -86,8 +84,8 @@ scripts/preflight.sh swift test --filter RillMenuBarIconTests
 20 × 18 pt 尺寸和记录提示点的可见差异。上方预览展示了浅色、深色和选中配色。
 
 发布前仍需在目标 macOS 上检查 Finder、Dock 与真实菜单栏显示、状态切换、
-辅助功能名称和 VoiceOver 操作。预览及自动化测试不能代替这些交互验收，
-步骤见 [发布验收清单](release-qa-checklist.md)。整体界面约定见 [UI 方向](ui-direction.md)。
+辅助功能名称和 VoiceOver 操作，步骤见 [发布验收清单](release-qa-checklist.md)。
+整体界面约定见 [UI 方向](ui-direction.md)。
 
 [design-version]: https://github.com/zrr1999/rill/commit/6982d572bf4c349fca0401eb95dfda36f55927c8
 [asset-readme]: https://github.com/zrr1999/rill/blob/6982d572bf4c349fca0401eb95dfda36f55927c8/Resources/AppIcon/README.md
