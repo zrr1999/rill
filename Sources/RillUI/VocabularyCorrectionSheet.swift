@@ -12,7 +12,7 @@ public struct VocabularyCorrectionSheet: View {
   @Environment(\.dismiss) private var dismiss
   @Bindable private var model: AppModel
   private let historyRecordID: UUID?
-  private let workflowRunID: UUID?
+  private let textCorrectionSubject: RecordTextCorrectionSubject?
   @State private var correctionOperationID = UUID()
   @State private var isSavingText = false
   @State private var draft: VocabularyCorrectionDraft
@@ -20,8 +20,16 @@ public struct VocabularyCorrectionSheet: View {
   @State private var targetCollectionID: UUID?
 
   public init(model: AppModel, source: RecognitionCorrectionSource, historyRecordID: UUID? = nil, workflowRunID: UUID? = nil) {
+    self.init(model: model, source: source, historyRecordID: historyRecordID, subject: workflowRunID.map(RecordTextCorrectionSubject.workflowRun))
+  }
+
+  public init(model: AppModel, source: RecognitionCorrectionSource, recordID: RecordID) {
+    self.init(model: model, source: source, historyRecordID: nil, subject: .record(recordID))
+  }
+
+  private init(model: AppModel, source: RecognitionCorrectionSource, historyRecordID: UUID?, subject: RecordTextCorrectionSubject?) {
     self.historyRecordID = historyRecordID
-    self.workflowRunID = workflowRunID
+    self.textCorrectionSubject = subject
     self.model = model
     _draft = State(initialValue: VocabularyCorrectionDraft(source: source))
     _targetCollectionID = State(initialValue: VocabularyCollection.personalID)
@@ -258,7 +266,7 @@ public struct VocabularyCorrectionSheet: View {
       .disabled(draft.proposedRule == nil || model.settings.isLoading || isSavingText)
       .accessibilityIdentifier("vocabulary.correction.remember")
 
-      if workflowRunID != nil {
+      if textCorrectionSubject != nil {
         Button(L10n.string(.vocabularyCorrectionSaveText, language: model.settings.language)) {
           saveText()
         }
@@ -355,7 +363,7 @@ public struct VocabularyCorrectionSheet: View {
   }
 
   private func saveText() {
-    guard let workflowRunID, !isSavingText, !model.isApplicationShuttingDown,
+    guard let textCorrectionSubject, !isSavingText, !model.isApplicationShuttingDown,
       model.settings.privacyPolicySettings.historyPreviewMode != .disabled
     else { return }
     isSavingText = true
@@ -363,7 +371,7 @@ public struct VocabularyCorrectionSheet: View {
     let operationID = correctionOperationID
     Task { @MainActor in
       let saved = await model.recordWorkspace.saveTextCorrection(
-        workflowRunID: workflowRunID, text: text, operationID: operationID)
+        subject: textCorrectionSubject, text: text, operationID: operationID)
       isSavingText = false
       if saved {
         model.selectSidebarSection(.records)

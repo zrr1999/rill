@@ -5,8 +5,7 @@ description: Change Rill workflow TOML, built-in definitions, parsing, validatio
 
 # Rill Workflow Change
 
-Carry the requested behavior from its authoritative definition through the real
-execution path. Respond in the user's language.
+Respond in the user's language.
 
 ## Locate the contract
 
@@ -66,7 +65,8 @@ Select checks for the actual change: codec and validation for syntax; compiler
 and production registration for new steps; controlled provider/sink failures for
 ordered effects; file-store tests for external edits and invalid reloads. Include
 the failure or cancellation path that would invalidate the requested behavior.
-Use the repository's locked Swift wrapper and generator checks from CONTRIBUTING.
+Use the repository's locked Swift wrapper and generator checks in
+[the development reference](../../../docs/development.md).
 
 Report the behavior changed, relevant compatibility effects, checks run, and
 remaining native interaction evidence. Use macOS QA only when the change crosses

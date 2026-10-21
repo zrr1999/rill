@@ -26,7 +26,7 @@ Do not replace these without a regression that covers the documented contract:
 
 - Global search stays on the AppKit `NSSearchField` bridge. Do not switch it to
   `.searchable` without the focus, arrow, Return, and Escape coverage in
-  [CONTRIBUTING.md](../../../CONTRIBUTING.md).
+  [UI direction](../../../docs/ui-direction.md#统一搜索与导航).
 - Draft editing stays on `NSTextView`, including undo, marked text, and
   Command-Return send.
 - File preview keeps `QLPreviewView.autostarts = false` until SwiftUI preview
@@ -42,10 +42,8 @@ Check English and Chinese, light and dark appearance, and the compact window.
 Also check Reduce Motion, Reduce Transparency, Increase Contrast, Differentiate
 Without Color, and a larger text size when the change touches type or material.
 
-Render evidence can show layout. It does not accept Fn, IME composition,
-VoiceOver, paste, or a release candidate. Use
-[macOS QA](../rill-macos-qa/SKILL.md) when the change crosses one of those
-boundaries.
+Use [macOS QA](../rill-macos-qa/SKILL.md) for Fn, IME composition, VoiceOver,
+paste, and release-candidate checks.
 
 Report the visual decision changed, the documents updated, the checks run, and
 any physical interaction still unverified.

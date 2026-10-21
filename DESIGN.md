@@ -58,15 +58,11 @@ components:
     rounded: "19pt"
   unified-panel-compact:
     width: "620pt"
-    height: "320pt"
+    height: "400pt"
   panel-sidebar:
     width: "194pt"
   panel-mode-control:
     width: "192pt"
-  pending-strip:
-    width: "260pt"
-    height: "48pt"
-    padding: "0pt 12pt"
   panel-search:
     height: "30pt"
     padding: "{spacing.panel}"
@@ -100,12 +96,11 @@ close to the user's current task. The existing Rill identity and recording
 overlay remain the visual baseline. Content, its current state, and the next
 useful action establish hierarchy.
 
-This document records the approved implementation, replacing the earlier visual
-seed. [PRODUCT.md](PRODUCT.md) provides product constraints;
+[PRODUCT.md](PRODUCT.md) provides product constraints;
 [UI direction](docs/ui-direction.md) owns navigation and interaction contracts.
 The tokens above describe current source values in logical macOS points. Window
 and sidebar tokens are default or preferred sizes, except the explicitly named
-minimum and fixed recording/strip surfaces. `system-ui` and `ui-monospace` name
+minimum and fixed recording surfaces. `system-ui` and `ui-monospace` name
 native font families; the SwiftUI roles remain authoritative. Semantic colors
 cannot be represented faithfully as fixed CSS colors, so they are mapped below
 without invented RGB values or tonal ramps.
@@ -116,16 +111,6 @@ without invented RGB values or tonal ramps.
 - All Records, Activity, and Workflows grouped above Collections.
 - Collections and Drafts share one panel and retain their native view state.
 - The existing compact and expanded recording overlay remains recognizable.
-
-The floating panel has compositor-rendered evidence from temporary synthetic
-windows on macOS 27.0 (26A428), using Xcode 27.0 (27A5228h). Captures cover both
-modes, English and Chinese, light and dark appearances, three page sizes, and
-focused scenes for native control states. Those captures are visual evidence,
-not installed-app or release acceptance. Record automated validation with the
-reviewed change and pull request. Physical macOS 26, Fn, IME,
-VoiceOver, cross-application output, and multi-display acceptance remain pending.
-Use the [release acceptance contract](docs/release-qa-checklist.md); local
-galleries are review aids, not durable design authority.
 
 ## Colors
 
@@ -293,8 +278,8 @@ the More menu. Selection, hover, keyboard focus, and inactive-window appearance
 come from native controls. Functional icons use SF Symbols through existing
 project conventions; icon-only buttons retain help and accessibility labels.
 
-The floating workspace keeps the approved B proportions and uses a quiet text
-action for finishing editing or adding a draft, native `.glass` for Copy, and
+The floating workspace uses a quiet text action for finishing editing or adding
+a draft, native `.glass` for Copy, and
 accent-colored `.glassProminent` for Send. Native styles own activation,
 accessibility, and pointer feedback. The 32pt action slots have fixed widths;
 `buttonSizing(.flexible)` fills the assigned width without moving controls when
@@ -312,7 +297,7 @@ explicitly outside composition. The list's Return action, layered Escape, and
 target handoff follow [continuous output](docs/continuous-output.md). Preserve
 the editor, query, selection, and undo state across panel mode changes.
 
-### Unified panel and pending strip
+### Unified panel
 
 [UnifiedRecordPanelView](Sources/RillUI/UnifiedRecordPanelView.swift) hosts
 Collections and Drafts behind one segmented control and one
@@ -333,32 +318,24 @@ show their tasks and reasoning levels without connection or credential controls.
 The item list uses `.listStyle(.inset)` with native selection colors. See
 [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift).
 
-The pending capsule shows a count, reserved attention mark, and close. It is
-separate from the recorder's position and state. When a collection source is
-restored as enabled after settings load, or is newly enabled while the panel is
-hidden, the controller shows the collapsed strip without taking keyboard focus.
-An already open editor retains its current input. Send selected collapses the
-editor and keeps the strip visible; confirmation and recovery continue through
-the existing output state. Expanding or switching modes does not send content.
+The default Cmd+Cmd shortcut opens the panel and restores the last mode, initially Collections.
+The shortcut, Escape, or close button dismisses it; composition and attached
+confirmation sheets take precedence. Switching to another window also dismisses
+the panel. Closing leaves no persistent strip and preserves collected content
+and drafts. Enabling a collection source or receiving new content does not open
+the panel. Mode changes do not send content.
 
 The draft output target is captured when the panel begins a new active editing
-visit, immediately before becoming the key window. Background presentation,
-mode changes within the same editing visit, and Send do not recapture or retarget
+visit, immediately before becoming the key window. Mode changes within the same
+editing visit and Send do not recapture or retarget
 it. The displayed target remains controller-owned and is revalidated at the
-output boundary. A persistent strip does not authorize reuse of a stale target.
+output boundary.
 
-The capsule retains its position under `RillRecordCapsule`. Hover opens a separate
-668×468pt page after 120ms; available screen space may reduce its size before
-opening. Crossing the gap keeps the page visible, and leaving both windows starts
-a 220ms delay, with 6pt tolerance around each window edge. Returning cancels the
-close timer. Editing, pointer presses, composition, sheets, and pinning hold the
-page open. Each window is clamped horizontally on its own, so the capsule can
-reach the 12pt screen margin after the page reaches its boundary. Vertical dragging
-keeps the current page side while it fits, moves the page below a capsule near the
-top or above one near the bottom, and preserves a 14pt gap. Limited space reduces
-page height; normal height returns when space is available. The page has no collapse
-button, and content changes never move its controls. These behaviors are owned by
-[RecordPanelController](Sources/RillApp/RecordPanelController.swift).
+The panel opens at the center of the pointer's screen, within a 12pt margin.
+Its default 668×468pt size scales with text size and shrinks to fit available
+space. Content changes do not move the window. Placement is owned by
+[RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), and focus and
+dismissal by [RecordPanelController](Sources/RillApp/RecordPanelController.swift).
 
 ### Cards and disclosure
 

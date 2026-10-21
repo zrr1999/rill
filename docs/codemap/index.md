@@ -38,5 +38,3 @@ python3 scripts/codemap.py build
 维护实现见 [架构文档](https://github.com/zrr1999/rill/blob/main/docs/architecture.md)与
 [文档站维护](https://github.com/zrr1999/rill/blob/main/docs/documentation.md)。
 麦克风、Fn、粘贴、VoiceOver 和输入法真实验收仍按仓库发布检查表执行。
-
-这两个开发文档按站点收录边界保留在仓库，网页链接查看 main 版本。

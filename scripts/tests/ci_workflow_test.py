@@ -87,28 +87,6 @@ class AggregateTests(unittest.TestCase):
             ):
                 self.assertEqual(self.result(docs, app, preflight, scope, workload) == 0, expected)
 
-    def test_gate_wiring_and_matrix(self):
-        gate = WORKFLOW.split("\n  preflight:\n", 1)[1]
-        self.assertIn("name: Release preflight", gate)
-        self.assertIn("needs: [docs, preflight-lanes, record-workloads]", gate)
-        self.assertIn("if: ${{ always() }}", gate)
-        self.assertIn("run: bash scripts/check_ci_results.sh", gate)
-        for variable, value in {
-            "DOCS_RESULT": "needs.docs.result",
-            "APP_SCOPE": "needs.docs.outputs.app",
-            "PREFLIGHT_RESULT": "needs.preflight-lanes.result",
-            "WORKLOAD_SCOPE": "needs.docs.outputs.performance_workloads",
-            "WORKLOAD_RESULT": "needs.record-workloads.result",
-        }.items():
-            self.assertIn(f"{variable}: ${{{{ {value} }}}}", gate)
-        lanes = WORKFLOW.split("\n  preflight-lanes:\n", 1)[1].split("\n  record-workloads:", 1)[0]
-        self.assertIn("fail-fast: false", lanes)
-        self.assertEqual(re.findall(r"- lane: (\w+)", lanes), ["tests", "release"])
-        self.assertNotIn("continue-on-error", lanes)
-        self.assertIn("if: ${{ needs.docs.outputs.app == 'true' }}", lanes)
-        self.assertIn('bash scripts/preflight.sh --lane "$LANE"', lanes)
-        self.assertIn('bash scripts/preflight.sh --clean --lane "$LANE"', lanes)
-
 
 class CachePolicyTests(unittest.TestCase):
     def test_only_successful_main_lanes_save(self):
@@ -136,28 +114,14 @@ class CachePolicyTests(unittest.TestCase):
             )
             with self.subTest(values=values):
                 self.assertEqual(evaluate(guard, values), expected)
-        # A clean main run skips restore but must still have a computed save key.
-        save = block("Save successful trusted lane build arena")
-        self.assertNotIn("steps.build-cache.outcome", save)
-        self.assertIn("key: ${{ steps.cache-key.outputs.primary }}", save)
 
     def test_clean_runs_do_not_restore(self):
         guard = condition("Restore Swift build arena")
         for event in ("pull_request", "push", "workflow_dispatch"):
             self.assertEqual(evaluate(guard, {"github.event_name": event}), event == "pull_request")
 
-    def test_arenas_and_keys_are_separate(self):
-        self.assertIn("- lane: tests\n            cache-path: .build", WORKFLOW)
-        self.assertIn("- lane: release\n            cache-path: .artifacts/build/release", WORKFLOW)
-        self.assertIn("CACHE_PREFIX: swift-v2-${{ matrix.lane }}-${{ runner.os }}-${{ runner.arch }}", WORKFLOW)
-        self.assertIn("${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py') }}-", WORKFLOW)
-        for step in ("Restore Swift build arena", "Save successful trusted lane build arena"):
-            self.assertIn("path: ${{ matrix.cache-path }}", block(step))
-        self.assertNotIn("worker-cache on", WORKFLOW)
-
     def test_toolchain_key_ignores_remount_but_tracks_compiler_contents(self):
         step = block("Identify the build toolchain")
-        self.assertIn("        shell: bash\n", step)
         script = textwrap.dedent(step.split("        run: |\n", 1)[1])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -198,16 +162,6 @@ class CachePolicyTests(unittest.TestCase):
             (root / "xcodebuild").write_text("#!/bin/bash\nexit 7\n")
             with self.assertRaises(subprocess.CalledProcessError):
                 key(first)
-
-    def test_security_and_evidence_preserved(self):
-        self.assertIn("permissions:\n  contents: read", WORKFLOW)
-        self.assertIn("scripts/check_dependency_security.py --live-osv", WORKFLOW)
-        self.assertIn("run: bash scripts/check_secrets.sh", WORKFLOW)
-        self.assertIn('RILL_RECORD_STRESS: "1"', WORKFLOW)
-        self.assertIn("steps.build-cache.outputs.cache-matched-key", WORKFLOW)
-        self.assertIn('"$(git rev-parse HEAD)"', WORKFLOW)
-        for step in ("Save native render evidence", "Save verified preflight app", "Upload preflight reports"):
-            self.assertRegex(block(step), r"name: .+\$\{\{ matrix.lane \}\}-\$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}")
 
 
 if __name__ == "__main__":

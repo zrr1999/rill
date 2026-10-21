@@ -10,7 +10,7 @@ Rill 的正式版本由 Git 标签决定。开发构建使用 `0.0.0-dev+<commit
 2. 明确版本号、支持的 macOS/硬件、启用的语音模型以及已知限制。
 3. 确认 [AGPL-3.0-only 许可证](../LICENSE) 和对应源码交付准备完毕，
    [SECURITY.md](../SECURITY.md) 中的私密报告渠道已可用，GitHub Actions 实际运行成功。
-   按[贡献约定](../CONTRIBUTING.md#提交与-pull-request)核对仓库 rules 中的检查要求，
+   按[合并门禁](#合并门禁)核对仓库 rules 中的检查要求，
    并限制直接推送和绕过。
 4. 从候选提交运行 `just ci-clean`、`scripts/preflight.sh commit-messages` 和
    `uv run --script scripts/check_dependency_security.py --live-osv`。
@@ -19,6 +19,15 @@ Rill 的正式版本由 Git 标签决定。开发构建使用 `0.0.0-dev+<commit
 
 如果 GitHub Actions 因账单或额度未启动，或者当前计划无法启用主分支保护，
 先处理账户条件并复核实际运行结果。仓库中的 YAML 文件本身不证明服务端门禁生效。
+
+## 合并门禁
+
+在[仓库规则](https://github.com/zrr1999/rill/settings/rules)中核对已启用的 required checks，
+使用[工作流的实际检查名称](development.md#github-actions)，并限制直接推送和绕过。
+检查名称变化时同步更新规则引用。
+
+仓库采用 squash 合并。合并前，用 [prek.toml](../prek.toml) 配置的
+`zendev-message-check` 校验最终 squash 提交的完整信息。
 
 ## 签名、公证和验收
 

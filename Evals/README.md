@@ -1,8 +1,7 @@
 # Quality evaluations
 
-Quality evaluations measure whether model output meets expectations. Performance
-benchmarks measure time and resources; their workloads live in
-[Benchmarks](../Benchmarks/README.md). Deterministic implementation tests stay in
+Performance workloads live in [Benchmarks](../Benchmarks/README.md).
+Deterministic implementation tests stay in
 `Tests` and `tools/tests`, including corpus validation and scorer regression tests.
 
 The replay and analysis implementation is the internal `rill_dev.evaluation`

@@ -5,6 +5,27 @@ import RillRecords
 import Testing
 
 struct BufferDraftPersistenceTests {
+  @Test func expiryTimestampAndRemovalRoundTripThroughEncryptedSQLite() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("rill-expiry-\(UUID())")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let protector = try AESGCMDataProtector(key: Data(repeating: 0x47, count: AESGCMDataProtector.keyByteCount))
+    let database = try SQLitePersistenceStore(databaseURL: directory.appendingPathComponent("records.sqlite"), localDataProtector: protector)
+    let start = Date(timeIntervalSince1970: 1_000_000)
+    let store = RecordStore(persistence: database, currentDate: { start })
+    let id = try await store.reserveBufferInput(in: RecordBuffer.speechID)
+    let record = try await store.ingest(
+      .init(payload: .text("pending"), provenance: .init(source: .init(kind: .voiceInput))),
+      into: [RecordCollection.voiceInputID], fulfilling: id)
+    let reopened = RecordStore(persistence: database, currentDate: { start })
+    #expect(try await reopened.entries(in: id.bufferID).first?.enqueuedAt == start)
+    let overdue = RecordStore(persistence: database, currentDate: { start.addingTimeInterval(BufferEntry.pendingLifetime) })
+    #expect(try await overdue.bufferItems().isEmpty)
+    let restored = RecordStore(persistence: database, currentDate: { start })
+    #expect(try await restored.bufferItems().isEmpty)
+    #expect(try await restored.record(id: record.id) == record)
+  }
+
   @Test func serializedDraftLimitRejectsWithoutChangingSavedText() async throws {
     let store = RecordStore()
     let id = try await store.createBufferDraft(text: "keep me")

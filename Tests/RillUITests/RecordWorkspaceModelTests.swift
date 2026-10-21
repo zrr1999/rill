@@ -6,6 +6,27 @@ import XCTest
 
 @MainActor
 final class RecordWorkspaceModelTests: XCTestCase {
+  func testCorrectionFromCollectionSelectsDerivedTextWithoutChangingOriginal() async throws {
+    let store = RecordStore()
+    let original = try await store.ingest(
+      .init(payload: .text("wrong recognition"), provenance: .init(source: .init(kind: .voiceInput))),
+      into: [RecordCollection.voiceInputID])
+    let model = RecordWorkspaceModel(store: store)
+    await model.refresh()
+    model.selectCollection(RecordCollection.voiceInputID)
+    model.selectedRecordID = original.id
+    let saved = await model.saveTextCorrection(subject: .record(original.id), text: "corrected recognition", operationID: UUID())
+    XCTAssertTrue(saved)
+    XCTAssertNil(model.selectedCollectionID)
+    let correctionID = try XCTUnwrap(model.selectedRecordID)
+    let corrected = try await store.record(id: correctionID)
+    XCTAssertEqual(corrected?.record.payload.textValue, "corrected recognition")
+    XCTAssertEqual(corrected?.record.provenance.derivedFrom, original.id)
+    let unchanged = try await store.record(id: original.id)
+    XCTAssertEqual(unchanged, original)
+    await model.shutdown()
+  }
+
   func testAllRecordsDeduplicatesSharedRecordAndMembershipRemovalKeepsItVisible() async throws {
     let store = RecordStore()
     let second = try await store.createCollection(name: "Second", preset: .queue)
