@@ -71,42 +71,36 @@ enum AppSettingsCodec {
     .openAIModel,
   ]
 
-  static func loadWorkflowFiles(from workflowFileStore: (any WorkflowFileStore)?) async -> InitialWorkflowFileLoad? {
-    guard let workflowFileStore else { return nil }
-    return InitialWorkflowFileLoad(result: await workflowFileStore.load())
-  }
-
-  static func resolveLegacyLocalSpeechSetting(
-    currentKey: AppSettingKey,
-    legacyKey: AppSettingKey,
-    in snapshot: SettingsStoreReadSnapshot
-  ) -> LegacyLocalSpeechSettingResolution {
-    if snapshot.unavailableKeys.contains(currentKey) {
-      return LegacyLocalSpeechSettingResolution(
-        value: nil,
-        usedLegacyValue: false,
-        isUnavailable: true
-      )
+  static func normalizeSettings(_ snapshot: SettingsStoreReadSnapshot) -> (
+    snapshot: SettingsStoreReadSnapshot, migrations: [AppSettingKey: String]
+  ) {
+    var values = snapshot.values
+    var unavailableKeys = snapshot.unavailableKeys
+    var migrations: [AppSettingKey: String] = [:]
+    if values[.preferredSpeechEngine] == "cloud" {
+      values[.preferredSpeechEngine] = PreferredSpeechEngine.local.rawValue
+      migrations[.preferredSpeechEngine] = PreferredSpeechEngine.local.rawValue
     }
-    if let currentValue = snapshot.values[currentKey] {
-      return LegacyLocalSpeechSettingResolution(
-        value: currentValue,
-        usedLegacyValue: false,
-        isUnavailable: false
-      )
+    let legacyKeys: [(AppSettingKey, AppSettingKey)] = [
+      (.localSpeechModel, .legacyWhisperKitModel),
+      (.localSpeechDownloadedModels, .legacyWhisperKitDownloadedModels),
+      (.localSpeechPrewarm, .legacyWhisperKitPrewarm),
+    ]
+    for (currentKey, legacyKey) in legacyKeys {
+      let legacyIsUnavailable = unavailableKeys.remove(legacyKey) != nil
+      if unavailableKeys.contains(currentKey) || (values[currentKey] == nil && legacyIsUnavailable) {
+        values.removeValue(forKey: currentKey)
+        unavailableKeys.insert(currentKey)
+      } else if values[currentKey] == nil, let value = values[legacyKey] {
+        values[currentKey] = value
+        migrations[currentKey] = value
+      }
     }
-    if snapshot.unavailableKeys.contains(legacyKey) {
-      return LegacyLocalSpeechSettingResolution(
-        value: nil,
-        usedLegacyValue: false,
-        isUnavailable: true
-      )
+    unavailableKeys.formUnion(invalidScalarSettingKeys(in: values))
+    for key in unavailableKeys {
+      migrations.removeValue(forKey: key)
     }
-    return LegacyLocalSpeechSettingResolution(
-      value: snapshot.values[legacyKey],
-      usedLegacyValue: snapshot.values[legacyKey] != nil,
-      isUnavailable: false
-    )
+    return (SettingsStoreReadSnapshot(values: values, unavailableKeys: unavailableKeys), migrations)
   }
 
   static func loadStoredAppSettings(
@@ -125,45 +119,10 @@ enum AppSettingsCodec {
         unavailableKeys: Set(Self.settingsLoadKeys)
       )
     }
-    var storedSettings = storedSnapshot.values
-    var unavailableSettingKeys = storedSnapshot.unavailableKeys
-    var legacyLocalSpeechMigrationValues: [AppSettingKey: String] = [:]
-    if storedSettings[.preferredSpeechEngine] == "cloud" {
-      storedSettings[.preferredSpeechEngine] = PreferredSpeechEngine.local.rawValue
-      legacyLocalSpeechMigrationValues[.preferredSpeechEngine] =
-        PreferredSpeechEngine.local.rawValue
-    }
-    let legacyLocalSpeechKeyPairs: [(AppSettingKey, AppSettingKey)] = [
-      (AppSettingKey.localSpeechModel, .legacyWhisperKitModel),
-      (.localSpeechDownloadedModels, .legacyWhisperKitDownloadedModels),
-      (.localSpeechPrewarm, .legacyWhisperKitPrewarm),
-    ]
-    for (currentKey, legacyKey) in legacyLocalSpeechKeyPairs {
-      let resolution = Self.resolveLegacyLocalSpeechSetting(
-        currentKey: currentKey,
-        legacyKey: legacyKey,
-        in: storedSnapshot
-      )
-      unavailableSettingKeys.remove(currentKey)
-      unavailableSettingKeys.remove(legacyKey)
-      if resolution.isUnavailable {
-        storedSettings.removeValue(forKey: currentKey)
-        unavailableSettingKeys.insert(currentKey)
-      } else if let value = resolution.value {
-        storedSettings[currentKey] = value
-        if resolution.usedLegacyValue {
-          legacyLocalSpeechMigrationValues[currentKey] = value
-        }
-      } else {
-        storedSettings.removeValue(forKey: currentKey)
-      }
-    }
-    unavailableSettingKeys.formUnion(
-      Self.invalidScalarSettingKeys(in: storedSettings)
-    )
-    for key in unavailableSettingKeys {
-      legacyLocalSpeechMigrationValues.removeValue(forKey: key)
-    }
+    let normalized = normalizeSettings(storedSnapshot)
+    var storedSettings = normalized.snapshot.values
+    let unavailableSettingKeys = normalized.snapshot.unavailableKeys
+    var legacyLocalSpeechMigrationValues = normalized.migrations
     var loadWarnings: [StoredSettingsLoadWarning] = []
     var unavailableDomains: Set<StoredSettingsDomain> = []
     if [AppSettingKey.customWorkflows, .workflowLibrary].contains(where: { !(storedSettings[$0] ?? "").isEmpty }) {
@@ -185,9 +144,6 @@ enum AppSettingsCodec {
     {
       unavailableDomains.insert(.vocabularyRules)
     }
-
-    let customWorkflows: [WorkflowDefinition] = []
-    let workflowEnabledStates: [UUID: Bool] = [:]
 
     let downloadedLocalSpeechModels: [String]
     do {
@@ -274,35 +230,18 @@ enum AppSettingsCodec {
       openAICredentialAvailability = .inaccessible
     }
 
+    storedSettings[.systemClipboardCaptureEnabled] = storedSettings[.systemClipboardCaptureEnabled] ?? storedSettings[.legacyClipboardCaptureEnabled]
+    storedSettings[.recordHistoryVisibility] = storedSettings[.recordHistoryVisibility] ?? storedSettings[.legacyClipboardHistoryVisibility]
+    storedSettings[.recordPanelHotkey] = storedSettings[.recordPanelHotkey] ?? storedSettings[.legacyClipboardPanelHotkey]
+    storedSettings[.recordRetentionPeriod] = storedSettings[.recordRetentionPeriod] ?? storedSettings[.legacyClipboardHistoryRetentionPeriod]
     return StoredAppSettingsSnapshot(
+      values: storedSettings,
       persistentSettingsStoreWasAvailable: settingsStore != nil,
       unavailableSettingKeys: unavailableSettingKeys,
       legacyLocalSpeechMigrationValues: legacyLocalSpeechMigrationValues,
-      language: storedSettings[.interfaceLanguage],
-      customWorkflows: customWorkflows,
-      workflowLibraryNeedsMigration: false,
-      workflowEnabledStates: workflowEnabledStates,
-      systemClipboardCaptureEnabled: storedSettings[.systemClipboardCaptureEnabled]
-        ?? storedSettings[.legacyClipboardCaptureEnabled],
-      recordHistoryVisibility: storedSettings[.recordHistoryVisibility]
-        ?? storedSettings[.legacyClipboardHistoryVisibility],
-      bufferOutputHotkey: storedSettings[.bufferOutputHotkey],
-      recordPanelHotkey: storedSettings[.recordPanelHotkey]
-        ?? storedSettings[.legacyClipboardPanelHotkey],
-      preferredSpeechEngine: storedSettings[.preferredSpeechEngine],
-      ttsModel: storedSettings[.ttsModel],
-      localSpeechModel: storedSettings[.localSpeechModel],
       downloadedLocalSpeechModels: downloadedLocalSpeechModels,
-      localSpeechPrewarm: storedSettings[.localSpeechPrewarm],
-      enabledSpeechModels: storedSettings[.enabledSpeechModels],
-      residentSpeechModels: storedSettings[.residentSpeechModels],
-      residentSpeechBudgetConfirmation:
-        storedSettings[.residentSpeechBudgetConfirmation],
-      speechModelMeasuredPeaks: storedSettings[.speechModelMeasuredPeaks],
       openAIAPIKey: openAIAPIKey,
       openAICredentialAvailability: openAICredentialAvailability,
-      openAIBaseURL: storedSettings[.openAIBaseURL],
-      openAIModel: storedSettings[.openAIModel],
       vocabularyRules: vocabularyRules,
       vocabularyCollections: vocabularyCollections,
       vocabularyBindings: vocabularyBindings,
@@ -311,13 +250,6 @@ enum AppSettingsCodec {
         && storedSettings[Self.vocabularyRulesSettingKey] != nil,
       privacyPolicySettings: privacyPolicySettings,
       privacySettingsWereInvalid: privacySettingsWereInvalid,
-      recordRetentionPeriod: storedSettings[.recordRetentionPeriod]
-        ?? storedSettings[.legacyClipboardHistoryRetentionPeriod],
-      runHistoryRetentionPeriod: storedSettings[.runHistoryRetentionPeriod],
-      failedAudioRecoveryEnabled: storedSettings[.failedAudioRecoveryEnabled],
-      corpusRecordingArchiveEnabled: storedSettings[.corpusRecordingArchiveEnabled],
-      longRecordingModeEnabled: storedSettings[.longRecordingModeEnabled],
-      recordingDurationLimit: storedSettings[.recordingDurationLimit],
       loadWarnings: loadWarnings,
       unavailableDomains: unavailableDomains
     )
@@ -485,26 +417,20 @@ enum AppSettingsCodec {
       .legacyWhisperKitDownloadedModels,
       vocabularyRulesSettingKey,
     ]
-    let snapshot = try await settingsStore.settingsSnapshot(forKeys: keys)
+    let normalized = normalizeSettings(try await settingsStore.settingsSnapshot(forKeys: keys))
+    let snapshot = normalized.snapshot
     let unavailableKeys = snapshot.unavailableKeys
 
     let workflowFiles = await workflowFileStore?.load()
-    let downloadedResolution = resolveLegacyLocalSpeechSetting(
-      currentKey: .localSpeechDownloadedModels, legacyKey: .legacyWhisperKitDownloadedModels, in: snapshot
-    )
-    let customWorkflows: [WorkflowDefinition]? = []
-    let workflowEnabledStates: [UUID: Bool]? = [:]
-
     let downloadedLocalSpeechModels: [String]?
-    if downloadedResolution.isUnavailable {
+    if unavailableKeys.contains(.localSpeechDownloadedModels) {
       downloadedLocalSpeechModels = nil
     } else {
       downloadedLocalSpeechModels = try? loadDownloadedLocalSpeechModels(
-        from: downloadedResolution.value
+        from: snapshot.values[.localSpeechDownloadedModels]
       )
-      if downloadedResolution.usedLegacyValue,
-        downloadedLocalSpeechModels != nil,
-        let value = downloadedResolution.value
+      if downloadedLocalSpeechModels != nil,
+        let value = normalized.migrations[.localSpeechDownloadedModels]
       {
         try await settingsStore.setStringsAtomically([
           .localSpeechDownloadedModels: value
@@ -522,9 +448,7 @@ enum AppSettingsCodec {
     }
 
     return RecoverableStoredSettingsDomains(
-      customWorkflows: customWorkflows,
       workflowFiles: workflowFiles,
-      workflowEnabledStates: workflowEnabledStates,
       downloadedLocalSpeechModels: downloadedLocalSpeechModels,
       vocabularyRules: vocabularyRules
     )
@@ -624,7 +548,7 @@ enum AppSettingsCodec {
     }
   }
 
-  static func invalidScalarSettingKeys(
+  private static func invalidScalarSettingKeys(
     in values: [AppSettingKey: String]
   ) -> Set<AppSettingKey> {
     var invalidKeys: Set<AppSettingKey> = []

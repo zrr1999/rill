@@ -29,7 +29,7 @@ final class AppModelInteractiveWorkflowShutdownTests: XCTestCase {
     })
     await harness.model.waitForInitialVoiceConfiguration()
     guard harness.model.canTriggerWorkflow(harness.workflow) else { return XCTFail("The capture fixture must be runnable.") }
-    harness.model.runWorkflow(harness.workflow)
+    XCTAssertTrue(harness.model.runWorkflow(harness.workflow))
     await gate.waitUntilStarted()
     let shutdown = Task { await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown() }
     while !harness.model.isApplicationShuttingDown { await Task.yield() }
@@ -39,7 +39,7 @@ final class AppModelInteractiveWorkflowShutdownTests: XCTestCase {
     XCTAssertEqual(actionCount, 0)
     XCTAssertFalse(harness.model.voice.isRunning)
     XCTAssertTrue(harness.model.voice.workflowAudioActionTasks.isEmpty)
-    harness.model.runWorkflow(harness.workflow)
+    XCTAssertFalse(harness.model.runWorkflow(harness.workflow))
     await harness.model.waitForWorkflowAudioActions()
     XCTAssertFalse(harness.model.voice.isRunning)
   }

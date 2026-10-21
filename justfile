@@ -4,12 +4,12 @@ default:
 
 # Install the pre-commit and commit-message hooks.
 install:
-    uvx prek==0.5.3 install --prepare-hooks
+    uvx prek install --prepare-hooks
 
 # Run maintained formatting and configuration hooks.
 check:
-    uvx prek==0.5.3 validate-config prek.toml
-    uvx prek==0.5.3 -c prek.toml run --all-files
+    uvx prek validate-config prek.toml
+    uvx prek -c prek.toml run --all-files
 
 # Format every tracked Swift file, matching the swift-format hook scope.
 fmt:

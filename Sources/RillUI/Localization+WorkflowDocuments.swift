@@ -13,6 +13,9 @@ extension L10n {
     case labelNewFrom
     case labelMoreActions
     case labelNewWorkflow
+    case labelGeneralTemplate
+    case newWorkflowReviewHint
+    case labelShowConfigurationLocation
     case labelSearchWorkflows
     case labelEnabled
     case labelDuplicate

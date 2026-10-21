@@ -29,10 +29,6 @@ public final class WorkflowLibraryModel {
   var outputStateSourcesByID: [UUID: String] = [:]
   public internal(set) var savingOutputStates: Set<UUID> = []
 
-  func installOutputStates(_ records: [WorkflowFileRecord]) {
-    outputStatesByID = Dictionary(uniqueKeysWithValues: records.compactMap { record in record.outputState.map { (record.workflow.id, $0) } })
-    outputStateSourcesByID = Dictionary(uniqueKeysWithValues: records.compactMap { record in record.outputStateSource.map { (record.workflow.id, $0) } })
-  }
   public internal(set) var workflowFileIssues: [WorkflowFileIssue] = []
   public internal(set) var invalidWorkflowFileIDs: Set<UUID> = []
   public internal(set) var workflowFileLoadGeneration: Int = 0
@@ -49,6 +45,55 @@ public final class WorkflowLibraryModel {
     self.explainResolvedWorkflowAction = explain
     self.builtInWorkflows = workflows
     self.workflows = workflows
+  }
+
+  func installFileLoad(
+    _ result: WorkflowFileLoadResult, in directory: URL?, retainingInvalidWorkflows: Bool = false
+  ) {
+    let fileIssues = result.issues.filter { $0.target == .file }
+    let invalidNames = Set(fileIssues.map(\.filename))
+    let retainedInvalid =
+      retainingInvalidWorkflows
+      ? customWorkflows.filter { workflow in
+        workflowFileURLsByID[workflow.id].map { invalidNames.contains($0.lastPathComponent) } ?? false
+      } : []
+    let invalidIDs = Set(fileIssues.compactMap(\.workflowID)).union(retainedInvalid.map(\.id))
+    let retainedURLs =
+      retainingInvalidWorkflows
+      ? workflowFileURLsByID.filter { invalidIDs.contains($0.key) } : [:]
+    let previousCustomIDs = Set(customWorkflows.map(\.id))
+    workflowEnabledStates =
+      retainingInvalidWorkflows
+      ? workflowEnabledStates.filter { !previousCustomIDs.contains($0.key) } : [:]
+
+    let validIDs = Set(result.records.map { $0.workflow.id })
+    customWorkflows = result.records.map(\.workflow) + retainedInvalid.filter { !validIDs.contains($0.id) }
+    workflowFileIssues = result.issues
+    invalidWorkflowFileIDs = invalidIDs
+    workflowFileURLsByID = Dictionary(uniqueKeysWithValues: result.records.map { ($0.workflow.id, $0.fileURL) })
+    workflowFileURLsByID.merge(retainedURLs) { current, _ in current }
+    workflowFileSourcesByID = Dictionary(
+      uniqueKeysWithValues: result.records.compactMap { record in
+        record.source.map { (record.workflow.id, $0) }
+      })
+    outputStatesByID = Dictionary(
+      uniqueKeysWithValues: result.records.compactMap { record in
+        record.outputState.map { (record.workflow.id, $0) }
+      })
+    outputStateSourcesByID = Dictionary(
+      uniqueKeysWithValues: result.records.compactMap { record in
+        record.outputStateSource.map { (record.workflow.id, $0) }
+      })
+    if let directory {
+      for issue in fileIssues {
+        if let id = issue.workflowID, workflowFileURLsByID[id] == nil {
+          workflowFileURLsByID[id] = issue.resolvedURL(in: directory)
+        }
+      }
+    }
+    for record in result.records {
+      workflowEnabledStates[record.workflow.id] = record.isEnabled
+    }
   }
 
   func rebuild() {

@@ -494,23 +494,6 @@
         }
       }
     },
-    "AppModel.SettingsPersistence.Custom.workflows.could.not.be.loaded.and.were.ignored": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Custom workflows could not be loaded and were ignored."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自定义工作流无法加载，已忽略。"
-          }
-        }
-      }
-    },
     "AppModel.SettingsPersistence.Downloaded.local.model.metadata.could.not.be.loaded.Rill.will.not.overwrite.it.until": {
       "extractionState": "manual",
       "localizations": {
@@ -643,23 +626,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "词汇规则无法加载，已忽略。"
-          }
-        }
-      }
-    },
-    "AppModel.SettingsPersistence.Workflow.enabled.states.could.not.be.loaded.and.were.ignored": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Workflow enabled states could not be loaded and were ignored."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流启用状态无法加载，已忽略。"
           }
         }
       }
@@ -7593,13 +7559,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Correct terminology"
+            "value": "Correct"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "纠正术语"
+            "value": "纠正"
           }
         }
       }
@@ -30892,6 +30858,23 @@
         }
       }
     },
+    "workflowDocument.labelGeneralTemplate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General template"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用模板"
+          }
+        }
+      }
+    },
     "workflowDocument.labelImportTOML": {
       "extractionState": "manual",
       "localizations": {
@@ -31164,6 +31147,23 @@
         }
       }
     },
+    "workflowDocument.labelShowConfigurationLocation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show configuration location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示配置位置"
+          }
+        }
+      }
+    },
     "workflowDocument.labelSteps": {
       "extractionState": "manual",
       "localizations": {
@@ -31211,6 +31211,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "工作流"
+          }
+        }
+      }
+    },
+    "workflowDocument.newWorkflowReviewHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New and imported workflows start disabled. Review their steps and outputs before enabling."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建和导入的工作流默认停用，请检查步骤与输出后再启用。"
           }
         }
       }

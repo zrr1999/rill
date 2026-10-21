@@ -94,7 +94,8 @@ public final class RecordBufferDraftModel {
     closeTask = Task {
       await previous?.value
       await pendingCommand?.value
-      guard !isVisible, let session else { return }
+      await saveTask?.value
+      guard !isVisible, let session, !session.hasUnsavedChanges, !session.hasMarkedText else { return }
       await store.closeBufferEditingSession(session.id)
     }
   }

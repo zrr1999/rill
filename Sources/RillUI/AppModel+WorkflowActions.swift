@@ -398,36 +398,39 @@ extension AppModel {
     if lastFailure != nil { recordWorkspace.buffers.editor.reportRecordingFailure() }
   }
 
-  public func runWorkflow(_ workflow: WorkflowDefinition) {
+  @discardableResult
+  public func runWorkflow(_ workflow: WorkflowDefinition) -> Bool {
     runWorkflow(workflow, initiatedBy: .manual)
   }
 
-  public func runWorkflow(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding, bufferInput: BufferSpeechInput? = nil) {
-    guard !hasBegunApplicationShutdown, !self.settings.isLoading else { return }
+  /// Reports admission; authorization and execution complete asynchronously.
+  @discardableResult
+  public func runWorkflow(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding, bufferInput: BufferSpeechInput? = nil) -> Bool {
+    guard !hasBegunApplicationShutdown, !self.settings.isLoading else { return false }
     guard workflow.inputKind != .record else {
       lastFailureResource = L10n.resource("workflow.record-input.required")
-      return
+      return false
     }
     if isRecordingWorkflowAudioRun(for: workflow) {
       finishCapturedAudioWorkflowRun(for: workflow)
-      return
+      return true
     }
 
-    guard !self.voice.isRunning else { return }
+    guard !self.voice.isRunning else { return false }
     if let issue = workflowExecutionSupportIssue(
       for: workflow,
       includeRuntimeAvailability: true
     ) {
       lastFailureResource = workflowRunError(for: issue)
       append(workflowRunError(for: issue))
-      return
+      return false
     }
     guard isWorkflowEnabled(workflow) else {
       lastFailureResource = L10n.resource("run.runWorkflowDisabledNotice")
       append(
         L10n.resource("run.runWorkflowDisabledNotice")
       )
-      return
+      return false
     }
     if workflow.prefersAutomaticRecognizerSelection,
       settings.hasUnavailableScalarSettings(in: .speechRoute)
@@ -436,7 +439,7 @@ extension AppModel {
       append(
         L10n.resource("run.speechRoutingSettingsUnavailable")
       )
-      return
+      return false
     }
 
     guard
@@ -449,14 +452,15 @@ extension AppModel {
       append(
         L10n.resource("run.workflowRoutingUnresolvable")
       )
-      return
+      return false
     }
     if requiresCapturedAudioForInteractiveRun(workflowForExecution) {
       startCapturedAudioWorkflowRun(for: workflowForExecution, initiatedBy: binding, draftInput: bufferInput?.draftIntent)
-      return
+      return true
     }
 
     launchWorkflowRun(workflowForExecution, initiatedBy: binding)
+    return true
   }
 
   func canTriggerWorkflow(_ workflow: WorkflowDefinition?) -> Bool {

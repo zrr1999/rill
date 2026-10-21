@@ -14,8 +14,6 @@ Everyday speech input must remain usable without learning workflow internals.
 
 ## Capabilities and constraints
 
-The existing project contracts remain authoritative:
-
 - [Architecture and ownership](docs/architecture.md)
 - [Record storage and delivery](docs/record-architecture.md)
 - [Editable drafts and continuous output](docs/continuous-output.md)
@@ -23,21 +21,14 @@ The existing project contracts remain authoritative:
 - [UI direction](docs/ui-direction.md)
 - [Native acceptance](docs/release-qa-checklist.md)
 
-The optimization starts from the existing App and preserves effective layouts
-and habits, especially the recording overlay. It retains the Rill identity,
-icon assets, and documentation website framework, along with capture, privacy,
-target validation, persistence, and workflow semantics.
+Preserve the existing recording overlay, Rill identity, icon assets, and
+documentation website framework. Capture, privacy, target validation,
+persistence, and workflow semantics follow the contracts above.
 
-The user's second review groups All Records, Activity, and Workflows at the top
-of the sidebar. The quick panel hosts Collections and Drafts as two modes of one
-panel and can collapse to a small persistent pending strip. This is presentation
-consolidation using the existing Record and draft state, not new content storage.
-
-## Confirmed process
-
-The user reviewed the visual direction and authorized implementation on 2026-09-28.
-Native implementation refines existing surfaces; static mockups and automated
-renders do not replace the interaction and release acceptance contracts.
+All Records, Activity, and Workflows are grouped at the top of the sidebar.
+The quick panel hosts Collections and Drafts as two modes of one panel, opened
+on demand with Cmd+Cmd by default. Closing it leaves no persistent strip.
+Both modes reuse the existing Record and draft state.
 
 ## Accessibility and inclusion
 
