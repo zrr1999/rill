@@ -90,20 +90,9 @@ components:
 
 **Creative North Star: "Quiet native Mac workspace"**
 
-Rill uses SwiftUI and AppKit on macOS 26 or later. System typography, semantic
-colors, native selection, and compact controls keep dictation and content reuse
-close to the user's current task. The existing Rill identity and recording
-overlay remain the visual baseline. Content, its current state, and the next
-useful action establish hierarchy.
+Rill uses SwiftUI and AppKit on macOS 26 or later. System typography, semantic colors, native selection, and compact controls keep dictation and content reuse close to the user's current task. The existing Rill identity and recording overlay remain the visual baseline. Content, its current state, and the next useful action establish hierarchy.
 
-[PRODUCT.md](PRODUCT.md) provides product constraints;
-[UI direction](docs/ui-direction.md) owns navigation and interaction contracts.
-The tokens above describe current source values in logical macOS points. Window
-and sidebar tokens are default or preferred sizes, except the explicitly named
-minimum and fixed recording surfaces. `system-ui` and `ui-monospace` name
-native font families; the SwiftUI roles remain authoritative. Semantic colors
-cannot be represented faithfully as fixed CSS colors, so they are mapped below
-without invented RGB values or tonal ramps.
+[PRODUCT.md](PRODUCT.md) provides product constraints; [UI direction](docs/ui-direction.md) owns navigation and interaction contracts. The tokens above describe current source values in logical macOS points. Window and sidebar tokens are default or preferred sizes, except the explicitly named minimum and fixed recording surfaces. `system-ui` and `ui-monospace` name native font families; the SwiftUI roles remain authoritative. Semantic colors cannot be represented faithfully as fixed CSS colors, so they are mapped below without invented RGB values or tonal ramps.
 
 **Key Characteristics:**
 
@@ -114,8 +103,7 @@ without invented RGB values or tonal ramps.
 
 ## Colors
 
-The palette follows the current system appearance and user accent. Background,
-text, selection, and status use their native semantic roles.
+The palette follows the current system appearance and user accent. Background, text, selection, and status use their native semantic roles.
 
 | Role | Native mapping | Use |
 | --- | --- | --- |
@@ -129,27 +117,13 @@ text, selection, and status use their native semantic roles.
 | Selection | Native `List(selection:)` and native controls | Emphasized and inactive selection, including the corresponding text color |
 | Warning / failure | `Color.orange` / `Color.red` | Actionable warnings, failed saves, recording duration limits |
 
-**The Native Selection Rule.** Let native lists and controls resolve selection
-background and foreground together. Custom row selection uses `rillSelection`;
-its accent wash and contrast-aware border are a separate treatment, not a
-replacement for native list selection.
+**The Native Selection Rule.** Let native lists and controls resolve selection background and foreground together. Custom row selection uses `rillSelection`; its accent wash and contrast-aware border are a separate treatment, not a replacement for native list selection.
 
-Status includes text and an action or symbol; color alone does not communicate
-failure or confirmation. Resolve SwiftUI colors in the view's current environment
-before passing them to fixed-color Core Animation layers, as
-[VoiceActivityIndicator](Sources/RillUI/VoiceActivityIndicator.swift) does for
-the recording waveform.
+Status includes text and an action or symbol; color alone does not communicate failure or confirmation. Resolve SwiftUI colors in the view's current environment before passing them to fixed-color Core Animation layers, as [VoiceActivityIndicator](Sources/RillUI/VoiceActivityIndicator.swift) does for the recording waveform.
 
 ## Typography
 
-Use the macOS system font and platform Chinese fallback. There is no separate
-display face. Floating workspace text uses semantic styles: `.title3` for
-document headings, `.body` for previews and the native editor, `.callout` for
-actions and list titles, and `.caption` for supporting text. Panel, recorder,
-mode, and sidebar frames use `RillDynamicLength` so they follow the body text
-size between a control minimum and a screen-safe maximum. The 668×468 page and
-194pt sidebar are preferred sizes; available screen space can still shrink the
-page.
+Use the macOS system font and platform Chinese fallback. There is no separate display face. Floating workspace text uses semantic styles: `.title3` for document headings, `.body` for previews and the native editor, `.callout` for actions and list titles, and `.caption` for supporting text. Panel, recorder, mode, and sidebar frames use `RillDynamicLength` so they follow the body text size between a control minimum and a screen-safe maximum. The 668×468 page and 194pt sidebar are preferred sizes; available screen space can still shrink the page.
 
 | Token role | Source role | Use |
 | --- | --- | --- |
@@ -162,22 +136,13 @@ page.
 | `key-hint` | `.caption2.monospaced().weight(.medium)` | Recorder Esc key hint |
 | `draft-editor` | `NSFont.preferredFont(forTextStyle: .body)` | Native `NSTextView` |
 
-The editor's exact font and text insets come from
-[BufferDraftTextEditor](Sources/RillUI/BufferDraftTextEditor.swift). SwiftUI
-supporting variants also use `.subheadline.weight(.medium)`, `.caption2`, and
-semibold captions where needed; they are native roles rather than another
-application-wide size scale.
+The editor's exact font and text insets come from [BufferDraftTextEditor](Sources/RillUI/BufferDraftTextEditor.swift). SwiftUI supporting variants also use `.subheadline.weight(.medium)`, `.caption2`, and semibold captions where needed; they are native roles rather than another application-wide size scale.
 
-**The Stable Label Rule.** Preserve functional labels and counts at their
-intrinsic width. Truncate the next-item preview, not the Drafts entry name;
-allow longer English and Chinese labels to wrap where the control permits it.
+**The Stable Label Rule.** Preserve functional labels and counts at their intrinsic width. Truncate the next-item preview, not the Drafts entry name; allow longer English and Chinese labels to wrap where the control permits it.
 
 ## Layout
 
-Spacing follows [RillSpacing](Sources/RillUI/RillCard.swift): compact inline
-gaps, row gaps, card insets, panel insets, section gaps, and page margins. Reuse
-those named steps. Component-specific dimensions, such as the recorder's text
-insets and the native editor's padding, remain local to their owners.
+Spacing follows [RillSpacing](Sources/RillUI/RillCard.swift): compact inline gaps, row gaps, card insets, panel insets, section gaps, and page margins. Reuse those named steps. Component-specific dimensions, such as the recorder's text insets and the native editor's padding, remain local to their owners.
 
 | Surface | Implemented layout | Source |
 | --- | --- | --- |
@@ -190,178 +155,67 @@ insets and the native editor's padding, remain local to their owners.
 | Unified panel | Centered on the pointer screen; preferred size scales with body text and shrinks to the visible frame | [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
-Settings has six sidebar pages: General, Input, Model services, Vocabulary &
-Memory, Privacy, and Data. Model services contains four expandable modules:
-speech recognition, classification and scoring, language model, and speech
-synthesis. Their titles follow the interface language without bilingual suffixes.
-The initial overview shows all four modules collapsed; a service deep link expands
-and focuses its module. Input owns Fn, wake listening, and panel shortcuts; each
-service owns its connection or local model resources. Settings replaces the main
-sidebar until Back. The selected pane is the window subtitle; mounted hidden
-panes preserve drafts while remaining
-outside hit testing and accessibility navigation.
+Settings has six sidebar pages: General, Input, Model services, Vocabulary & Memory, Privacy, and Data. Model services contains four expandable modules: speech recognition, classification and scoring, language model, and speech synthesis. Their titles follow the interface language without bilingual suffixes. The initial overview shows all four modules collapsed; a service deep link expands and focuses its module. Input owns Fn, wake listening, and panel shortcuts; each service owns its connection or local model resources. Settings replaces the main sidebar until Back. The selected pane is the window subtitle; mounted hidden panes preserve drafts while remaining outside hit testing and accessibility navigation.
 
-Main-window navigation keeps All Records, Activity, and Workflows in one top
-group, Collections below, and a glass Settings button in the bottom safe-area
-bar. `ToolbarSpacer` separates global search from the contextual toolbar actions.
-A single toolbar search opens grouped results. The Records compact Back path preserves selection;
-exact record navigation opens detail again even for the same selected record.
+Main-window navigation keeps All Records, Activity, and Workflows in one top group, Collections below, and a glass Settings button in the bottom safe-area bar. `ToolbarSpacer` separates global search from the contextual toolbar actions. A single toolbar search opens grouped results. The Records compact Back path preserves selection; exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
 
-Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, navigation
-sidebar, mode track, selected mode, and action buttons. Reading surfaces, record
-previews, and draft editing stay opaque. Reduce Transparency or Increase
-Contrast selects an opaque control background through `RillGlass`. Each mounted
-mode owns a separate `GlassEffectContainer` so hidden effects cannot join the
-visible pane. The header
-has its own container. Custom effects apply directly to their content;
-native `.glass` and `.glassProminent` button styles own pointer, pressed, and
-disabled feedback. The primary action uses the system accent color. Reading
-surfaces, record previews, and draft editing stay opaque; individual records do
-not receive glass shells.
+Native window and panel depth carries the hierarchy. The unified panel uses Liquid Glass for the page, navigation sidebar, mode track, selected mode, and action buttons. Reading surfaces, record previews, and draft editing stay opaque. Reduce Transparency or Increase Contrast selects an opaque control background through `RillGlass`. Each mounted mode owns a separate `GlassEffectContainer` so hidden effects cannot join the visible pane. The header has its own container. Custom effects apply directly to their content; native `.glass` and `.glassProminent` button styles own pointer, pressed, and disabled feedback. The primary action uses the system accent color. Reading surfaces, record previews, and draft editing stay opaque; individual records do not receive glass shells.
 
-The sidebar and paper are inset 8pt. `ConcentricRectangle` resolves their corners
-inside the panel's container shape. The selected mode uses `glassEffectID` and
-a short matched geometry transition, without animating the editor or window
-geometry. This follows Apple's [Liquid Glass guidance](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views)
-and [material hierarchy](https://developer.apple.com/design/human-interface-guidelines/materials).
+The sidebar and paper are inset 8pt. `ConcentricRectangle` resolves their corners inside the panel's container shape. The selected mode uses `glassEffectID` and a short matched geometry transition, without animating the editor or window geometry. This follows Apple's [Liquid Glass guidance](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views) and [material hierarchy](https://developer.apple.com/design/human-interface-guidelines/materials).
 
-**The Content Surface Rule.** Keep text and payloads on their own opaque surface.
-Apply translucent material to navigation and controls without lowering the
-opacity of their text or icons.
+**The Content Surface Rule.** Keep text and payloads on their own opaque surface. Apply translucent material to navigation and controls without lowering the opacity of their text or icons.
 
-The recorder and floating workspace share [RillGlass](Sources/RillUI/RillGlass.swift).
-It applies native regular Liquid Glass directly to the custom surface, including
-the recorder's Esc hint. Reduce Transparency or Increase Contrast selects an
-opaque control background. Glass buttons retain the system's accessibility
-adaptations. The recorder retains its fixed compact and expanded frames,
-waveform, network disclosure, countdown, continue action, and Esc hint. System
-glass supplies its depth; no custom tint, outline, or additional shadow is
-layered over the surface. The native floating panels use `NSPanel.hasShadow`.
+The recorder and floating workspace share [RillGlass](Sources/RillUI/RillGlass.swift). It applies native regular Liquid Glass directly to the custom surface, including the recorder's Esc hint. Reduce Transparency or Increase Contrast selects an opaque control background. Glass buttons retain the system's accessibility adaptations. The recorder retains its fixed compact and expanded frames, waveform, network disclosure, countdown, continue action, and Esc hint. System glass supplies its depth; no custom tint, outline, or additional shadow is layered over the surface. The native floating panels use `NSPanel.hasShadow`.
 
-Main-window Drafts, Copy, Settings, and workflow actions use native glass button
-styles. Primary workflow and explicit output actions use `.glassProminent`.
-The Drafts entry stays above the nested record splits. `safeAreaBar` keeps record
-inspector actions, the global search field, settings heading, and workflow actions
-visible beside scrolling content.
-`scrollEdgeEffectStyle(.soft)` lets that content recede under its controls.
-Settings keeps grouped native forms and a semantic heading for each pane;
-Activity gives its history heading a stronger type hierarchy. Shared content
-cards retain quaternary tonal fills through `RillCardProminence`.
+Main-window Drafts, Copy, Settings, and workflow actions use native glass button styles. Primary workflow and explicit output actions use `.glassProminent`. The Drafts entry stays above the nested record splits. `safeAreaBar` keeps record inspector actions, the global search field, settings heading, and workflow actions visible beside scrolling content. `scrollEdgeEffectStyle(.soft)` lets that content recede under its controls. Settings keeps grouped native forms and a semantic heading for each pane; Activity gives its history heading a stronger type hierarchy. Shared content cards retain quaternary tonal fills through `RillCardProminence`.
 
-Reduce Motion disables the custom card/selection transitions, panel fades, and
-meter interpolation. The recorder's geometry transition has one AppKit owner.
-Motion constants stay with their owning implementation; none of these
-transitions delays capture, editing, or output authorization.
+Reduce Motion disables the custom card/selection transitions, panel fades, and meter interpolation. The recorder's geometry transition has one AppKit owner. Motion constants stay with their owning implementation; none of these transitions delays capture, editing, or output authorization.
 
 ## Shapes
 
-[RillRadius](Sources/RillUI/RillSelection.swift) supplies the chip, badge, row,
-section, card, and panel radii in frontmatter. Rounded rectangles use continuous
-corners where specified by the source. Native buttons, lists, fields, and window
-chrome keep their platform geometry instead of being wrapped in new borders.
+[RillRadius](Sources/RillUI/RillSelection.swift) supplies the chip, badge, row, section, card, and panel radii in frontmatter. Rounded rectangles use continuous corners where specified by the source. Native buttons, lists, fields, and window chrome keep their platform geometry instead of being wrapped in new borders.
 
-The recorder is the explicit local exception to the shared radius scale: its
-compact capsule and expanded surface use the two recorder radii. Preserve that
-silhouette and the space reserved for timer, Esc hint, and near-limit action.
+The recorder is the explicit local exception to the shared radius scale: its compact capsule and expanded surface use the two recorder radii. Preserve that silhouette and the space reserved for timer, Esc hint, and near-limit action.
 
 ## Components
 
 ### Native actions and navigation
 
-Use native buttons and menus. Main-window and floating-workspace output uses
-`.glassProminent`;
-secondary copy and administration remain separate actions. Compact panel controls
-use `.controlSize(.small)`. Records keeps Copy reachable and secondary actions in
-the More menu. Selection, hover, keyboard focus, and inactive-window appearance
-come from native controls. Functional icons use SF Symbols through existing
-project conventions; icon-only buttons retain help and accessibility labels.
+Use native buttons and menus. Main-window and floating-workspace output uses `.glassProminent`; secondary copy and administration remain separate actions. Compact panel controls use `.controlSize(.small)`. Records keeps Copy reachable and secondary actions in the More menu. Selection, hover, keyboard focus, and inactive-window appearance come from native controls. Functional icons use SF Symbols through existing project conventions; icon-only buttons retain help and accessibility labels.
 
-The floating workspace uses a quiet text action for finishing editing or adding
-a draft, native `.glass` for Copy, and
-accent-colored `.glassProminent` for Send. Native styles own activation,
-accessibility, and pointer feedback. The 32pt action slots have fixed widths;
-`buttonSizing(.flexible)` fills the assigned width without moving controls when
-selection, status, or output confirmation changes.
+The floating workspace uses a quiet text action for finishing editing or adding a draft, native `.glass` for Copy, and accent-colored `.glassProminent` for Send. Native styles own activation, accessibility, and pointer feedback. The 32pt action slots have fixed widths; `buttonSizing(.flexible)` fills the assigned width without moving controls when selection, status, or output confirmation changes.
 
 ### Search and text input
 
-`RecordSearchField` and the global-search bridge retain `NSSearchField` focus and
-keyboard handling. The panel search height and padding are extracted above;
-global search remains navigation and does not paste a selected result.
+`RecordSearchField` and the global-search bridge retain `NSSearchField` focus and keyboard handling. The panel search height and padding are extracted above; global search remains navigation and does not paste a selected result.
 
-Drafts uses one mounted `NSTextView` with native selection, undo, scrolling, and
-IME composition. Return inserts a newline in the editor; Command-Return sends
-explicitly outside composition. The list's Return action, layered Escape, and
-target handoff follow [continuous output](docs/continuous-output.md). Preserve
-the editor, query, selection, and undo state across panel mode changes.
+Drafts uses one mounted `NSTextView` with native selection, undo, scrolling, and IME composition. Return inserts a newline in the editor; Command-Return sends explicitly outside composition. The list's Return action, layered Escape, and target handoff follow [continuous output](docs/continuous-output.md). Preserve the editor, query, selection, and undo state across panel mode changes.
 
 ### Unified panel
 
-[UnifiedRecordPanelView](Sources/RillUI/UnifiedRecordPanelView.swift) hosts
-Collections and Drafts behind one segmented control and one
-[RecordPanelController](Sources/RillApp/RecordPanelController.swift) lifecycle.
-Hidden content remains mounted but cannot receive interaction or accessibility
-focus. Collections keeps Copy, Add to Drafts, and explicit output distinct.
+[UnifiedRecordPanelView](Sources/RillUI/UnifiedRecordPanelView.swift) hosts Collections and Drafts behind one segmented control and one [RecordPanelController](Sources/RillApp/RecordPanelController.swift) lifecycle. Hidden content remains mounted but cannot receive interaction or accessibility focus. Collections keeps Copy, Add to Drafts, and explicit output distinct.
 
-Drafts retains a native checkbox for clipboard collection. Voice collection belongs
-to the active workflow's output choices, shared by its detail, Fn settings and
-native menu. Automatic outputs appear on and disabled; optional outputs can all
-be off. Each choice is stored in the workflow's adjacent state file and reports
-conflicts without discarding external edits. Explicit new-item and draft dictation
-use dedicated workflow declarations with a single Record destination.
+Drafts retains a native checkbox for clipboard collection. Voice collection belongs to the active workflow's output choices, shared by its detail, Fn settings and native menu. Automatic outputs appear on and disabled; optional outputs can all be off. Each choice is stored in the workflow's adjacent state file and reports conflicts without discarding external edits. Explicit new-item and draft dictation use dedicated workflow declarations with a single Record destination.
 
-The single Model services sidebar page groups four service modules. Model
-identifiers, resources and residency stay inside their owning module. Workflows
-show their tasks and reasoning levels without connection or credential controls.
-The item list uses `.listStyle(.inset)` with native selection colors. See
-[RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift).
+The single Model services sidebar page groups four service modules. Model identifiers, resources and residency stay inside their owning module. Workflows show their tasks and reasoning levels without connection or credential controls. The item list uses `.listStyle(.inset)` with native selection colors. See [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift).
 
-The default Cmd+Cmd shortcut opens the panel and restores the last mode, initially Collections.
-The shortcut, Escape, or close button dismisses it; composition and attached
-confirmation sheets take precedence. Switching to another window also dismisses
-the panel. Closing leaves no persistent strip and preserves collected content
-and drafts. Enabling a collection source or receiving new content does not open
-the panel. Mode changes do not send content.
+The default Cmd+Cmd shortcut opens the panel and restores the last mode, initially Collections. The shortcut, Escape, or close button dismisses it; composition and attached confirmation sheets take precedence. Switching to another window also dismisses the panel. Closing leaves no persistent strip and preserves collected content and drafts. Enabling a collection source or receiving new content does not open the panel. Mode changes do not send content.
 
-The draft output target is captured when the panel begins a new active editing
-visit, immediately before becoming the key window. Mode changes within the same
-editing visit and Send do not recapture or retarget
-it. The displayed target remains controller-owned and is revalidated at the
-output boundary.
+The draft output target is captured when the panel begins a new active editing visit, immediately before becoming the key window. Mode changes within the same editing visit and Send do not recapture or retarget it. The displayed target remains controller-owned and is revalidated at the output boundary.
 
-The panel opens at the center of the pointer's screen, within a 12pt margin.
-Its default 668×468pt size scales with text size and shrinks to fit available
-space. Content changes do not move the window. Placement is owned by
-[RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), and focus and
-dismissal by [RecordPanelController](Sources/RillApp/RecordPanelController.swift).
+The panel opens at the center of the pointer's screen, within a 12pt margin. Its default 668×468pt size scales with text size and shrinks to fit available space. Content changes do not move the window. Placement is owned by [RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), and focus and dismissal by [RecordPanelController](Sources/RillApp/RecordPanelController.swift).
 
 ### Cards and disclosure
 
-`rillCard` uses the frontmatter padding and radius by default, with prominent,
-regular, and subdued quaternary fills. Use it for existing grouped or actionable
-content. Native lists and forms do not need additional card wrappers.
-`RillHoverButtonStyle` supplies the shared hover cue: a border and small press
-response for cards, a stroke for chips, a quiet fill for settings rows, and a
-tint for compact navigation labels. Reduce Motion disables those transitions.
+`rillCard` uses the frontmatter padding and radius by default, with prominent, regular, and subdued quaternary fills. Use it for existing grouped or actionable content. Native lists and forms do not need additional card wrappers. `RillHoverButtonStyle` supplies the shared hover cue: a border and small press response for cards, a stroke for chips, a quiet fill for settings rows, and a tint for compact navigation labels. Reduce Motion disables those transitions.
 
-Record bodies and Copy lead the detail view; collection membership and metadata
-use disclosure. Activity emphasizes current work, pending choices, and recovery,
-while successful runs stay compact. Workflow details lead with purpose, trigger,
-output, and enabled state before optional technical steps. Setup sheets fit their
-missing-condition content with a bounded scroll area and a visible skip action.
+Record bodies and Copy lead the detail view; collection membership and metadata use disclosure. Activity emphasizes current work, pending choices, and recovery, while successful runs stay compact. Workflow details lead with purpose, trigger, output, and enabled state before optional technical steps. Setup sheets fit their missing-condition content with a bounded scroll area and a visible skip action.
 
 ### Recording overlay
 
-Preserve the incumbent compact/expanded composition, measured waveform,
-streaming text, network disclosure, monospaced timer, Esc hint, and near-limit
-continue action. It remains an active-recording surface, not the Drafts editor.
-The waveform stays neutral until measured levels arrive; its environment-resolved
-semantic color follows the current appearance. See
-[LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift),
-[VoiceActivityIndicator](Sources/RillUI/VoiceActivityIndicator.swift), and
-[LiveSubtitlePanelController](Sources/RillApp/LiveSubtitlePanelController.swift).
+Preserve the incumbent compact/expanded composition, measured waveform, streaming text, network disclosure, monospaced timer, Esc hint, and near-limit continue action. It remains an active-recording surface, not the Drafts editor. The waveform stays neutral until measured levels arrive; its environment-resolved semantic color follows the current appearance. See [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift), [VoiceActivityIndicator](Sources/RillUI/VoiceActivityIndicator.swift), and [LiveSubtitlePanelController](Sources/RillApp/LiveSubtitlePanelController.swift).
 
 ## Do's and Don'ts
 

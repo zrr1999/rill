@@ -78,7 +78,7 @@
     },
     {
       "path": "Sources/RillApp/RecordPanelController.swift",
-      "sha256": "63d97428395e58cef778df27299dbd08612967072e258fb8ea8768d1c5c4a3d3"
+      "sha256": "01430a8b1cb2e8470aae1498621fb13a2c016a2c0659be001fe42a7019789c7e"
     },
     {
       "path": "Sources/RillApp/RecordPanelPlacement.swift",
@@ -1778,7 +1778,7 @@
     },
     {
       "path": "Tests/RillAppTests/RecordPanelComparisonReturnTests.swift",
-      "sha256": "5deb3286533d37ccdc178964c6f2030b377884c449962cc3ee1a07d77a2ad016"
+      "sha256": "ef6fc8eb154e9b3ff901127a04a32b53e40a02fdc3c6197bec403c610b16dfa8"
     },
     {
       "path": "Tests/RillAppTests/RecordPanelControllerTests.swift",
@@ -2938,7 +2938,7 @@
     },
     {
       "path": "docs/architecture.md",
-      "sha256": "3128076277a1632a67c9a356e34d3b01669cb598ab14ea38088917eb62b72cc6"
+      "sha256": "5583e31f6d35433ed4e781ea97d1128c752866e3b98ea4d4695c6656840e471a"
     },
     {
       "path": "docs/codemap/codemap.html",
@@ -2958,7 +2958,7 @@
     },
     {
       "path": "docs/documentation.md",
-      "sha256": "495d0addb2511e43127ee2bde7aa4a199e6a1029d55976c497aff28f08bf1c2e"
+      "sha256": "10e08090def8f5f25ac581adf77a90343a43f7e2d424611c2bdfe796f9c0e74a"
     },
     {
       "path": "scripts/codemap.py",
