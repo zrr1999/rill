@@ -298,6 +298,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   private let pasteTaskOwner = RecordPanelPasteTaskOwner()
   private var panelTransitionGeneration: UInt64 = 0
   private var panelHideTask: Task<Void, Never>?
+  private var pendingComparisonResume: (@MainActor () -> Void)?
   private var retiringSessionTasks: [UUID: Task<Void, Never>] = [:]
   private var hasBegunShutdown = false
   private var autoHideSuppressedUntil = ContinuousClock.now
@@ -364,6 +365,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     restoring comparison: RecordComparisonReturn? = nil
   ) {
     guard !hasBegunShutdown else { return }
+    pendingComparisonResume = nil
     model.discardComparisonReturn()
     let mode = mode ?? presentation.mode
     if isVisible {
@@ -510,18 +512,34 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
   }
 
   func prepareForSettings(model: AppModel, resume: @escaping @MainActor (RecordComparisonReturn) -> Void) {
+    pendingComparisonResume = nil
     if let context = quickPanelModel?.comparisonReturnContext() {
-      model.offerComparisonReturn(context, resume: resume)
+      model.offerComparisonReturn(context) { [weak self] context in
+        guard let self, !self.hasBegunShutdown else { return }
+        self.pendingComparisonResume = { resume(context) }
+        self.resumeComparisonIfReady()
+      }
     } else {
       model.discardComparisonReturn()
     }
     hidePanel(restorePreviousApplication: false)
   }
 
-  private func handleReuseOutcome(_ result: RecordReuseOutcome, session: RecordQuickPanelModel) {
+  private func resumeComparisonIfReady() {
+    guard !hasBegunShutdown, !isVisible, panelHideTask == nil, panel?.attachedSheet == nil,
+      let resume = pendingComparisonResume
+    else { return }
+    pendingComparisonResume = nil
+    resume()
+  }
+
+  func handleReuseOutcome(_ result: RecordReuseOutcome, session: RecordQuickPanelModel) {
     guard !hasBegunShutdown, session === quickPanelModel else { return }
     session.report(result)
-    if result != .delivered && result != .copied, let panel, !panel.isVisible {
+    if result != .delivered && result != .copied,
+      pendingComparisonResume == nil, appModel?.comparisonReturn == nil,
+      let panel, !panel.isVisible
+    {
       session.resume()
       if !session.isPreviewVisible { session.togglePreview() }
       present(panel)
@@ -530,6 +548,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
   func dismiss() {
     guard !hasMarkedText else { return }
+    pendingComparisonResume = nil
     hidePanel(restorePreviousApplication: true)
   }
 
@@ -587,6 +606,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
       return
     }
     hasBegunShutdown = true
+    pendingComparisonResume = nil
     focusModeTask?.cancel()
     appModel?.recordWorkspace.buffers.editor.close()
     editingActivity(false)
@@ -754,6 +774,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     let previousApp = restorePreviousApplication ? previousApplication ?? fallbackExternalApplication : nil
     // Reduce Motion: skip the exit fade and hide the panel directly.
     panelHideTask?.cancel()
+    panelHideTask = nil
     guard !reduceMotionProvider() else {
       finishHide(
         transitionGeneration: transitionGeneration,
@@ -783,6 +804,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         transitionGeneration: transitionGeneration, previousApp: previousApp,
         onHidden: onHidden, onInvalidated: onInvalidated)
       if self.panelTransitionGeneration == transitionGeneration { self.panelHideTask = nil }
+      self.resumeComparisonIfReady()
     }
   }
 
@@ -800,6 +822,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     }
     panel?.orderOut(nil)
     panel?.alphaValue = 1
+    resumeComparisonIfReady()
     guard previousApp != nil else {
       onHidden?()
       return
@@ -869,7 +892,13 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     editingActivity(presentation.mode == .drafts)
   }
 
-  func windowDidEndSheet(_ notification: Notification) { scheduleHideOnFocusLoss() }
+  func windowDidEndSheet(_ notification: Notification) {
+    if pendingComparisonResume != nil {
+      resumeComparisonIfReady()
+    } else {
+      scheduleHideOnFocusLoss()
+    }
+  }
 
   func windowDidResignKey(_ notification: Notification) {
     editingActivity(false)

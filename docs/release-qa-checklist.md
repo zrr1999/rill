@@ -1,8 +1,6 @@
 # Release QA Checklist
 
-Copy this checklist for each release candidate. Keep the automated results and
-device observations together, and complete the checkboxes using the exact
-packaged candidate on real systems.
+Copy this checklist for each release candidate. Keep the automated results and device observations together, and complete the checkboxes using the exact packaged candidate on real systems.
 
 ## Automated prerequisite evidence
 
@@ -17,26 +15,11 @@ Attach evidence from the exact candidate commit before beginning device QA:
   advisory results for the exact locked dependency revisions.
 - The corresponding successful GitHub checks and the final DMG SHA-256.
 
-Preserve logs, toolchain versions, expected skips, source commit, and artifact
-hashes together. Local development runs and historical WhisperKit/sherpa-onnx
-results do not satisfy current MLX speech-worker candidate gates. The current
-source and locked model catalog determine which tests and models apply.
+Preserve logs, toolchain versions, expected skips, source commit, and artifact hashes together. Local development runs and historical WhisperKit/sherpa-onnx results do not satisfy current MLX speech-worker candidate gates. The current source and locked model catalog determine which tests and models apply.
 
-The Release lane of `CI - Tests` retains a `native-preflight-app-release-<run id>-<attempt>`
-artifact for 14 days. It contains the arm64 app assembled and signature-verified
-by that run, its ZIP SHA-256, and the source revision/dirty state. Verify the
-checksum before extraction and record the app's embedded build identity for
-interaction QA. The bundle keeps the existing ad-hoc signature and `preflight`
-version; distribution trust and notarization still need the release candidate.
-Local preflight can save the same evidence by setting `RILL_PREFLIGHT_APP_DIR`
-to an artifact directory. CI exports after the Release lane passes; the parallel
-Tests lane may still be running. Use the app for acceptance only when that run's
-`Release preflight` aggregate succeeds. Default local preflight still exports
-after all tests pass. An existing archive is preserved rather than overwritten.
+The Release lane of `CI - Tests` retains a `native-preflight-app-release-<run id>-<attempt>` artifact for 14 days. It contains the arm64 app assembled and signature-verified by that run, its ZIP SHA-256, and the source revision/dirty state. Verify the checksum before extraction and record the app's embedded build identity for interaction QA. The bundle keeps the existing ad-hoc signature and `preflight` version; distribution trust and notarization still need the release candidate. Local preflight can save the same evidence by setting `RILL_PREFLIGHT_APP_DIR` to an artifact directory. CI exports after the Release lane passes; the parallel Tests lane may still be running. Use the app for acceptance only when that run's `Release preflight` aggregate succeeds. Default local preflight still exports after all tests pass. An existing archive is preserved rather than overwritten.
 
-Automated checks do not prove Gatekeeper behavior after a real download,
-permission prompts, physical Fn or input-method behavior, acoustic quality,
-or VoiceOver usability. Record those results below with the packaged candidate.
+Automated checks do not prove Gatekeeper behavior after a real download, permission prompts, physical Fn or input-method behavior, acoustic quality, or VoiceOver usability. Record those results below with the packaged candidate.
 
 ## Release identity
 
@@ -56,16 +39,11 @@ or VoiceOver usability. Record those results below with the packaged candidate.
 - Preflight log / SHA-256:
 - Tester and date:
 
-All applicable fields above must identify the same clean, uniquely tagged source
-commit. The speech scope is immutable candidate identity: changing between
-`cloud-only` and `cloud + trusted local` requires a new candidate. Any rebuild,
-model-manifest change, signing change, or DMG change invalidates the remaining
-results.
+All applicable fields above must identify the same clean, uniquely tagged source commit. The speech scope is immutable candidate identity: changing between `cloud-only` and `cloud + trusted local` requires a new candidate. Any rebuild, model-manifest change, signing change, or DMG change invalidates the remaining results.
 
 ## Test matrix
 
-Record the exact hardware model, architecture, macOS build, input method, App
-language, and whether the account was newly created.
+Record the exact hardware model, architecture, macOS build, input method, App language, and whether the account was newly created.
 
 | Required environment | Hardware / OS evidence | Result | Evidence path |
 | --- | --- | --- | --- |
@@ -73,8 +51,7 @@ language, and whether the account was newly created.
 | Latest macOS supported by the candidate, Apple Silicon |  |  |  |
 | Clean local account |  |  |  |
 
-`LC_BUILD_VERSION minos` and deployment-target checks are build evidence only;
-they do not replace running the notarized candidate on macOS 26.
+`LC_BUILD_VERSION minos` and deployment-target checks are build evidence only; they do not replace running the notarized candidate on macOS 26.
 
 ## Installation and trust
 
@@ -111,9 +88,7 @@ For a declared `cloud + trusted local` candidate:
 
 ## App icon surfaces
 
-Run these checks on macOS 26.0 and the current supported macOS with the
-exact installed candidate. Clear stale Finder/Dock icon caches or reinstall the
-candidate before recording a failure.
+Run these checks on macOS 26.0 and the current supported macOS with the exact installed candidate. Clear stale Finder/Dock icon caches or reinstall the candidate before recording a failure.
 
 - [ ] Applications, Finder, Dock, Launchpad, Spotlight, and the App switcher all
       show the routed voice cursor artwork rather than a generic or stale icon.
@@ -156,9 +131,7 @@ candidate before recording a failure.
 
 ## Input and global shortcuts
 
-Run each case with the Simplified Chinese and US input sources and with at least
-TextEdit, Safari, and a password field as the foreground target. Exercise the
-clipboard-panel shortcut cases with Clipboard Capture both enabled and disabled.
+Run each case with the Simplified Chinese and US input sources and with at least TextEdit, Safari, and a password field as the foreground target. Exercise the clipboard-panel shortcut cases with Clipboard Capture both enabled and disabled.
 
 - [ ] With Clipboard Capture on, Left Command double tap opens the clipboard
       panel once.
@@ -197,8 +170,7 @@ clipboard-panel shortcut cases with Clipboard Capture both enabled and disabled.
 
 ## Clipboard capture control
 
-Run this pass with pre-existing Clipboard history so disabling automatic capture
-cannot be confused with deleting stored content.
+Run this pass with pre-existing Clipboard history so disabling automatic capture cannot be confused with deleting stored content.
 
 - [ ] Turn Clipboard Capture off in Settings and confirm the menu-bar control and
       main Clipboard page immediately show the same disabled state while existing
@@ -398,9 +370,7 @@ Complete the pass in both App languages.
 
 ## External output actions
 
-Use disposable local destinations and remove them after the candidate is signed
-off. Do not use a real automation, note archive, or sensitive transcription as
-test data.
+Use disposable local destinations and remove them after the candidate is signed off. Do not use a real automation, note archive, or sensitive transcription as test data.
 
 - [ ] A disposable Shortcut receives one intended transcription through the
       configured `Run Shortcut` workflow and runs exactly once. A missing or
@@ -467,10 +437,7 @@ test data.
 
 ## Sign-off
 
-Apple Voice Processing and AGC are capture-frontend controls. Until controlled
-raw-versus-processed acoustic A/B evidence is attached, release notes must not
-describe them as a dedicated broadband denoiser, claim a quantitative noise
-reduction level, or imply that every diagnostics/prerecorded path is processed.
+Apple Voice Processing and AGC are capture-frontend controls. Until controlled raw-versus-processed acoustic A/B evidence is attached, release notes must not describe them as a dedicated broadband denoiser, claim a quantitative noise reduction level, or imply that every diagnostics/prerecorded path is processed.
 
 - Product:
 - Privacy/security:
@@ -478,16 +445,11 @@ reduction level, or imply that every diagnostics/prerecorded path is processed.
 - Accessibility:
 - Known limitations linked from release notes:
 
-Any unchecked required or scope-applicable item is a release blocker. Mark the
-other speech-scope branch `N/A` in the copied candidate checklist; leaving both
-branches unresolved is not acceptable. A feature can be treated as out of scope
-only when its UI, documentation, and stored-configuration migration are updated
-in the same release.
+Any unchecked required or scope-applicable item is a release blocker. Mark the other speech-scope branch `N/A` in the copied candidate checklist; leaving both branches unresolved is not acceptable. A feature can be treated as out of scope only when its UI, documentation, and stored-configuration migration are updated in the same release.
 
 ## Continuous output (Command-Shift-V)
 
-Use the exact candidate and an isolated test database. Application compatibility
-is established per app and content type; see [continuous output](continuous-output.md).
+Use the exact candidate and an isolated test database. Application compatibility is established per app and content type; see [continuous output](continuous-output.md).
 
 - [ ] Native Command-C/X/V pass through with capture on/off and with pending entries.
 - [ ] Default and custom Output Next shortcuts work, report conflicts, and do not repeat while held.
