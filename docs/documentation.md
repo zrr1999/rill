@@ -1,9 +1,6 @@
 # 文档站维护
 
-文档站使用 [Zensical](https://zensical.org/)，直接取用仓库中的 Markdown。
-README 是产品入口，`docs/usage.md` 是安装指南，其余用户页面按任务组织。
-开发契约与发布流程从 [贡献指南](../CONTRIBUTING.md#文档归属)进入，只保留在仓库。
-README、隐私与许可文件仍按原路径随 App 分发。
+文档站使用 [Zensical](https://zensical.org/)，直接取用仓库中的 Markdown。 README 是产品入口，`docs/usage.md` 是安装指南，其余用户页面按任务组织。开发契约与发布流程从 [贡献指南](../CONTRIBUTING.md#文档归属)进入，只保留在仓库。 README、隐私与许可文件仍按原路径随 App 分发。
 
 ## 构建与预览
 
@@ -14,14 +11,9 @@ just docs
 just docs-serve
 ```
 
-`just docs` 使用锁定依赖运行 Zensical 严格构建，检查站内链接和标题锚点。
-产物位于 `.artifacts/docs/site/`。它不需要 Xcode、Swift 或 MLX。
-`just docs-serve` 在 `http://127.0.0.1:8000` 提供本地预览；修改原始 Markdown
-后会自动同步并刷新。可用 `just docs-serve 8001` 更换端口；预览仅监听本机地址，
-端口只接受 1–65535 的整数。构建与预览都通过 uv 锁定环境的 Python 启动 Zensical。
+`just docs` 使用锁定依赖运行 Zensical 严格构建，检查站内链接和标题锚点。产物位于 `.artifacts/docs/site/`。它不需要 Xcode、Swift 或 MLX。 `just docs-serve` 在 `http://127.0.0.1:8000` 提供本地预览；修改原始 Markdown 后会自动同步并刷新。可用 `just docs-serve 8001` 更换端口；预览仅监听本机地址，端口只接受 1–65535 的整数。构建与预览都通过 uv 锁定环境的 Python 启动 Zensical。
 
-`scripts/docs.py` 使用 PEP 723 声明 Zensical 的固定版本，完整依赖由
-`scripts/docs.py.lock` 锁定。升级时同时更新版本与锁文件：
+`scripts/docs.py` 使用 PEP 723 声明 Zensical 的固定版本，完整依赖由 `scripts/docs.py.lock` 锁定。升级时同时更新版本与锁文件：
 
 ```sh
 uv lock --script scripts/docs.py
@@ -30,88 +22,44 @@ just docs
 
 ## 收录范围
 
-`zensical.toml` 的 `project.nav` 是页面清单，也是导航的唯一配置。
-`project.extra.docs_assets` 列出页面图片，以及可下载的许可证、工作流示例与 JSON Schema。
-构建入口把这些文件按仓库相对路径复制到 `.artifacts/docs/source/`，README 自动成为首页。
-唯一的链接转换是将 `LICENSE` 导出为 `LICENSE.txt` 并调整生成页面中的下载链接，
-避免预览服务器把无扩展名 URL 当作目录；许可证内容不变。不要手工编辑生成目录。
+`zensical.toml` 的 `project.nav` 是页面清单，也是导航的唯一配置。 `project.extra.docs_assets` 列出页面图片，以及可下载的许可证、工作流示例与 JSON Schema。构建入口把这些文件按仓库相对路径复制到 `.artifacts/docs/source/`，README 自动成为首页。唯一的链接转换是将 `LICENSE` 导出为 `LICENSE.txt` 并调整生成页面中的下载链接，避免预览服务器把无扩展名 URL 当作目录；许可证内容不变。不要手工编辑生成目录。
 
-增加页面时，先在仓库维护正文，再加入 `nav`。页面引用的新图片和下载资源加入
-`docs_assets`。代码和工作流配置的链接指向 GitHub 源码，不把源码当站点页面复制。
-页面白名单包含当前用户操作、参考及隐私/许可说明。开发契约、发布流程、UI 设计方案、
-研究和历史 QA 不复制到 staging，因而也不进入站点正文或搜索索引。
-公共页面链接仓内开发资料时使用完整 GitHub URL，不把未收录文件加入资源列表来绕过边界。
-删除导航项后必须确认旧 staging 和站点输出已清除，检查搜索产物没有残留。
+增加页面时，先在仓库维护正文，再加入 `nav`。页面引用的新图片和下载资源加入 `docs_assets`。代码和工作流配置的链接指向 GitHub 源码，不把源码当站点页面复制。页面白名单包含当前用户操作、参考及隐私/许可说明。开发契约、发布流程、UI 设计方案、研究和历史 QA 不复制到 staging，因而也不进入站点正文或搜索索引。公共页面链接仓内开发资料时使用完整 GitHub URL，不把未收录文件加入资源列表来绕过边界。删除导航项后必须确认旧 staging 和站点输出已清除，检查搜索产物没有残留。
 
-界面采用中文导航、系统字体和随系统切换的深浅主题。搜索由浏览器本地执行；
-Zensical 当前的搜索筛选标题仍使用英文；本地补充脚本为搜索输入与图标按钮提供中文辅助名称和无结果恢复提示，文档内容可用中文搜索。没有配置分析服务。
+界面采用中文导航、系统字体和随系统切换的深浅主题。搜索由浏览器本地执行； Zensical 当前的搜索筛选标题仍使用英文；本地补充脚本为搜索输入与图标按钮提供中文辅助名称和无结果恢复提示，文档内容可用中文搜索。没有配置分析服务。
 
 ## 主题辅助功能适配
 
-`docs/assets/search-accessibility.js` 适配锁定的 Zensical 0.0.70 搜索组件开放 shadow root，
-提供中文输入、对话框、结果与按钮名称，以及区分文档搜索和个人记录的恢复提示。
-页眉只承载触发按钮，移除上游在该容器遗留的对话框角色，避免重复宣告。
-搜索继续使用上游原生 `dialog`、`combobox` / `listbox`、方向键选择、Enter 跳转、
-Tab 边界循环和组合输入保护，不复制这些状态与键盘逻辑。
-关闭原生对话框后，若焦点落到页面背景，适配脚本恢复到此前点击的可见搜索入口。
-减少动态设置只关闭搜索组件内部的过渡与动画，保留静态状态与焦点反馈。
+`docs/assets/search-accessibility.js` 适配锁定的 Zensical 0.0.70 搜索组件开放 shadow root，提供中文输入、对话框、结果与按钮名称，以及区分文档搜索和个人记录的恢复提示。页眉只承载触发按钮，移除上游在该容器遗留的对话框角色，避免重复宣告。搜索继续使用上游原生 `dialog`、`combobox` / `listbox`、方向键选择、Enter 跳转、 Tab 边界循环和组合输入保护，不复制这些状态与键盘逻辑。关闭原生对话框后，若焦点落到页面背景，适配脚本恢复到此前点击的可见搜索入口。减少动态设置只关闭搜索组件内部的过渡与动画，保留静态状态与焦点反馈。
 
-`docs/assets/navigation-accessibility.js` 单独负责嵌套导航。窄屏分组支持 Enter/Space、
-可见焦点和同步的展开状态。`navigation.sections` 在主题的 76.25em 断点以上始终展开，
-此时移除按钮语义和额外 Tab 停靠；改变窗口宽度时同步更新。
-即时导航替换页面后，通过主题的 `document$` 通知重新绑定新控件，已有控件不会重复绑定。当前 modern 主题是原位折叠，
-隐藏的返回标题不能接收焦点，收起操作使用同一可见分组标题。
+`docs/assets/navigation-accessibility.js` 单独负责嵌套导航。窄屏分组支持 Enter/Space、可见焦点和同步的展开状态。`navigation.sections` 在主题的 76.25em 断点以上始终展开，此时移除按钮语义和额外 Tab 停靠；改变窗口宽度时同步更新。即时导航替换页面后，通过主题的 `document$` 通知重新绑定新控件，已有控件不会重复绑定。当前 modern 主题是原位折叠，隐藏的返回标题不能接收焦点，收起操作使用同一可见分组标题。
 
-这两个脚本不替代搜索或导航状态所有者，仍通过现有控件的 click/change 驱动主题。
-升级主题后必须复核 shadow root 结构、原生对话框、筛选面板及响应式断点：测试窄屏与宽屏往返、
-Enter/Space 每次只切换一次、从搜索输入/筛选/结果退出，以及 normal/reduce 两种动态设置。
-不要仅凭构建通过判断辅助功能回归已验证，也不要把浏览器模拟的组合事件当作物理键盘或 VoiceOver 验收。
+这两个脚本不替代搜索或导航状态所有者，仍通过现有控件的 click/change 驱动主题。升级主题后必须复核 shadow root 结构、原生对话框、筛选面板及响应式断点：测试窄屏与宽屏往返、 Enter/Space 每次只切换一次、从搜索输入/筛选/结果退出，以及 normal/reduce 两种动态设置。不要仅凭构建通过判断辅助功能回归已验证，也不要把浏览器模拟的组合事件当作物理键盘或 VoiceOver 验收。
 
-站内链接使用即时导航，页面底部提供上一页/下一页；下载资源仍按普通链接打开。
-页面操作提供 GitHub 编辑、查看源文件和「复制为 Markdown」（按钮提示目前为英文）。
-内置 `llmstxt` 插件同时生成 `/llms.txt` 与逐页 Markdown。`project.plugins.llmstxt.sections`
-显式列出收录页面，路径失效时严格构建失败；增加使用说明或参考页时，同时加入 `nav` 和该列表。
-许可、第三方与数据来源清单（含输入法依赖）不收录，也不显示「复制为 Markdown」。
+站内链接使用即时导航，页面底部提供上一页/下一页；下载资源仍按普通链接打开。页面操作提供 GitHub 编辑、查看源文件和「复制为 Markdown」（按钮提示目前为英文）。内置 `llmstxt` 插件同时生成 `/llms.txt` 与逐页 Markdown。`project.plugins.llmstxt.sections` 显式列出收录页面，路径失效时严格构建失败；增加使用说明或参考页时，同时加入 `nav` 和该列表。许可、第三方与数据来源清单（含输入法依赖）不收录，也不显示「复制为 Markdown」。
 
 ## 验证与交付
 
-提交前运行 `just docs` 和仓库要求的 `just ci`。更新主题或 Zensical 时还应在
-本地预览检查窄窗口、键盘搜索、深浅主题、用户指南的任务链接，以及 TOML 与 Schema 下载。
-搜索至少覆盖「语音识别」「剪贴板」「润色」和 `record_duration`。
+提交前运行 `just docs` 和仓库要求的 `just ci`。更新主题或 Zensical 时还应在本地预览检查窄窗口、键盘搜索、深浅主题、用户指南的任务链接，以及 TOML 与 Schema 下载。搜索至少覆盖「语音识别」「剪贴板」「润色」和 `record_duration`。
 
-CI 通过 `Documentation and change scope` 在 Linux 构建文档、验证 Cloudflare
-静态资产配置并运行 prek，
-通过 `Release preflight` 在 macOS 执行预检。纯文档修改仍扫描完整 Git 历史和
-当前源码中的密钥，但跳过 Swift/MLX 构建与应用测试。
-随 App 分发的根目录文档、工作流 Schema、代码、脚本和 CI 配置变化仍运行完整预检。
+CI 通过 `Documentation and change scope` 在 Linux 构建文档、验证 Cloudflare 静态资产配置并运行 prek，通过 `Release preflight` 在 macOS 执行预检。纯文档修改仍扫描完整 Git 历史和当前源码中的密钥，但跳过 Swift/MLX 构建与应用测试。随 App 分发的根目录文档、工作流 Schema、代码、脚本和 CI 配置变化仍运行完整预检。
 
 ## Cloudflare 托管
 
-文档站使用 [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)，
-与 zendev、zrr.dev 使用同一托管方式。Worker 名称为 `rill-docs`，正式域名为
-`https://rill.zrr.dev/`。`zensical.toml` 的 `site_url` 决定 canonical URL 与 sitemap；
-`wrangler.toml` 管理静态产物目录、域名、目录索引和 404 行为。
-无需 Worker 脚本，也不包含 App 运行时或用户数据。
+文档站使用 [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)，与 zendev、zrr.dev 使用同一托管方式。Worker 名称为 `rill-docs`，正式域名为 `https://rill.zrr.dev/`。`zensical.toml` 的 `site_url` 决定 canonical URL 与 sitemap； `wrangler.toml` 管理静态产物目录、域名、目录索引和 404 行为。无需 Worker 脚本，也不包含 App 运行时或用户数据。
 
-仅在验证或部署 Cloudflare 时需要 Node.js 22+ 和 npm。与 zendev 一样，
-仓库不维护 Node.js 文档包；通过 npx 调用固定版本的 Wrangler，
-Zensical 继续由 `scripts/docs.py.lock` 锁定。普通 `just docs` 仍只需要 uv 和 just。
-从仓库根目录验证：
+仅在验证或部署 Cloudflare 时需要 Node.js 22+ 和 npm。与 zendev 一样，仓库不维护 Node.js 文档包；通过 npx 调用固定版本的 Wrangler， Zensical 继续由 `scripts/docs.py.lock` 锁定。普通 `just docs` 仍只需要 uv 和 just。从仓库根目录验证：
 
 ```sh
 just docs
 npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
 ```
 
-npx 将工具缓存到 npm 缓存目录，不在仓库生成 `package.json`、锁文件或
-`node_modules/`。上述 dry-run 不需要 Cloudflare 登录，也不会上传资源；
-它不能证明线上域名、TLS 或 Git 集成已经生效。
+npx 将工具缓存到 npm 缓存目录，不在仓库生成 `package.json`、锁文件或 `node_modules/`。上述 dry-run 不需要 Cloudflare 登录，也不会上传资源；它不能证明线上域名、TLS 或 Git 集成已经生效。
 
 ### 自动构建
 
-在 Cloudflare 的 Workers & Pages 中连接 GitHub 仓库 `zrr1999/rill`，
-使用 [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)
-配置以下项目。已有 Worker 时从 **Settings > Build** 连接仓库。
+在 Cloudflare 的 Workers & Pages 中连接 GitHub 仓库 `zrr1999/rill`，使用 [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) 配置以下项目。已有 Worker 时从 **Settings > Build** 连接仓库。
 
 | 设置 | 值 |
 | --- | --- |
@@ -124,21 +72,11 @@ npx 将工具缓存到 npm 缓存目录，不在仓库生成 `package.json`、�
 | 非生产分支构建 | 需要预览的分支均包含托管配置后启用 |
 | 构建变量 | `NODE_VERSION=22`、`PYTHON_VERSION=3.13.3`、`SKIP_DEPENDENCY_INSTALL=true` |
 
-上述命令在仓库根目录执行。先构建再上传：Wrangler 的 `assets.directory`
-指向 `.artifacts/docs/site/`，
-只安装依赖不会生成该目录。生产部署更新正式域名和默认 `workers.dev` 地址；
-非生产分支只上传版本并生成预览 URL，不替换正式站点。
-Cloudflare Git 集成提供构建状态；GitHub Actions 只做验证，不重复部署。
-构建命令显式安装与 GitHub CI 相同版本的 uv，不依赖构建镜像预装它。
-跳过平台的自动依赖安装；构建命令使用 Python 脚本锁文件，npx 禁用安装脚本。
-Python 固定为构建镜像的默认版本，避免每次安装最新补丁版本。
+上述命令在仓库根目录执行。先构建再上传：Wrangler 的 `assets.directory` 指向 `.artifacts/docs/site/`，只安装依赖不会生成该目录。生产部署更新正式域名和默认 `workers.dev` 地址；非生产分支只上传版本并生成预览 URL，不替换正式站点。 Cloudflare Git 集成提供构建状态；GitHub Actions 只做验证，不重复部署。构建命令显式安装与 GitHub CI 相同版本的 uv，不依赖构建镜像预装它。跳过平台的自动依赖安装；构建命令使用 Python 脚本锁文件，npx 禁用安装脚本。 Python 固定为构建镜像的默认版本，避免每次安装最新补丁版本。
 
 ### 手动部署与验收
 
-在拥有 `zrr.dev` 域名的 Cloudflare 账户中运行 `npx --yes --ignore-scripts wrangler@4.136.3 login`，
-用 `npx --yes --ignore-scripts wrangler@4.136.3 whoami` 核对账户。无人值守部署使用
-`CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`；凭据只配置在受保护的
-环境中，不写入仓库。Workers Builds 使用 Cloudflare 管理的构建凭据。
+在拥有 `zrr.dev` 域名的 Cloudflare 账户中运行 `npx --yes --ignore-scripts wrangler@4.136.3 login`，用 `npx --yes --ignore-scripts wrangler@4.136.3 whoami` 核对账户。无人值守部署使用 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`；凭据只配置在受保护的环境中，不写入仓库。Workers Builds 使用 Cloudflare 管理的构建凭据。
 
 ```sh
 # 在仓库根目录执行
@@ -147,8 +85,4 @@ npx --yes --ignore-scripts wrangler@4.136.3 versions upload  # 上传预览版�
 npx --yes --ignore-scripts wrangler@4.136.3 deploy           # 部署到正式域名
 ```
 
-首次部署会按 `routes` 创建自定义域名；若目标已有 DNS 记录，先核对记录用途，
-不要覆盖其他服务。部署后确认 Cloudflare 中的源码分支与 commit，检查 HTTPS 首页、
-`/docs/usage/`、`/docs/records/`、搜索、`/docs/examples/conditional-workflow.toml`、
-`/docs/schemas/workflow-v1.schema.json` 和不存在路径的 404。
-PR 预览还应确认正式站点的部署版本未改变。
+首次部署会按 `routes` 创建自定义域名；若目标已有 DNS 记录，先核对记录用途，不要覆盖其他服务。部署后确认 Cloudflare 中的源码分支与 commit，检查 HTTPS 首页、 `/docs/usage/`、`/docs/records/`、搜索、`/docs/examples/conditional-workflow.toml`、 `/docs/schemas/workflow-v1.schema.json` 和不存在路径的 404。 PR 预览还应确认正式站点的部署版本未改变。

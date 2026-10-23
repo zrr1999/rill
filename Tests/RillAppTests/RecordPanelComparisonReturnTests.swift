@@ -12,6 +12,31 @@ import RillWorkflows
 @MainActor
 final class RecordPanelComparisonReturnTests: XCTestCase {
   func testSettingsReturnPresentsRebuiltComparisonInTheMountedPanelWithoutSending() async throws {
+    try await assertSettingsReturnPresentsRebuiltComparison(reduceMotion: true)
+  }
+
+  func testImmediateSettingsReturnWaitsForAnimatedDismissalWithoutSending() async throws {
+    try await assertSettingsReturnPresentsRebuiltComparison(reduceMotion: false)
+  }
+
+  func testSettingsReturnAfterReducingMotionDuringDismissalWithoutSending() async throws {
+    try await assertSettingsReturnPresentsRebuiltComparison(
+      reduceMotion: false, interruption: .reduceMotion)
+  }
+
+  func testShutdownCancelsComparisonReturnWaitingForDismissal() async throws {
+    try await assertSettingsReturnPresentsRebuiltComparison(
+      reduceMotion: false, interruption: .shutdown)
+  }
+
+  func testLateReuseFailureDoesNotReopenTheSessionWaitingForComparisonReturn() async throws {
+    try await assertSettingsReturnPresentsRebuiltComparison(
+      reduceMotion: true, interruption: .reuseFailure)
+  }
+
+  private func assertSettingsReturnPresentsRebuiltComparison(
+    reduceMotion: Bool, interruption: ComparisonReturnInterruption? = nil
+  ) async throws {
     _ = NSApplication.shared
     // XCTest drives the run loop without NSApplication.run().
     if NSApp.activationPolicy() == .prohibited {
@@ -50,9 +75,10 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
       refreshPermissionsAction: {}, requestAccessibilityAction: {}, requestMicrophoneAction: {},
       openAccessibilitySettingsAction: {}, openMicrophoneSettingsAction: {},
       requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {})
+    let sheetEvents = ComparisonReturnSheetEvents(reduceMotion: reduceMotion)
     let controller = RecordPanelController(
       pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false },
-      reduceMotionProvider: { true })
+      reduceMotionProvider: { sheetEvents.reduceMotion })
     addTeardownBlock {
       await controller.shutdown()
       await workspace.shutdown()
@@ -62,7 +88,6 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
       NSApp.windows.first {
         $0.identifier?.rawValue == "record-panel.page" && $0.isVisible
       })
-    let sheetEvents = ComparisonReturnSheetEvents()
     let observer = NotificationCenter.default.addObserver(
       forName: NSWindow.didEndSheetNotification, object: page, queue: .main
     ) { _ in
@@ -92,11 +117,41 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
       controller.show(
         model: model, deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {}, restoring: context)
     }
-    XCTAssertFalse(controller.isVisible)
+    if reduceMotion { XCTAssertFalse(controller.isVisible) }
     XCTAssertNil(original.jev?.review)
     XCTAssertNotNil(model.comparisonReturn)
     workspace.jevSettings?.setKey("unit-test-key")
+    if interruption == .reduceMotion {
+      sheetEvents.reduceMotion = true
+      controller.dismiss()
+    }
+    if interruption == .reuseFailure {
+      controller.handleReuseOutcome(.failed, session: original)
+      XCTAssertFalse(controller.isVisible, "A late failure must not reopen the panel while Settings offers a return")
+    }
     model.resumeComparison()
+    if interruption == .reuseFailure {
+      XCTAssertFalse(controller.isVisible)
+      XCTAssertTrue(controller.quickPanelModel === original)
+      XCTAssertNotNil(page.attachedSheet, "Deliver the late outcome while the old comparison sheet is still attached")
+      controller.handleReuseOutcome(.failed, session: original)
+      XCTAssertFalse(controller.isVisible, "A late failure must not reopen the panel while its return is pending")
+    }
+    if interruption == .shutdown {
+      await controller.shutdown()
+      try await waitUntil { page.attachedSheet == nil }
+      XCTAssertFalse(controller.isVisible)
+      XCTAssertTrue(controller.quickPanelModel === original)
+      let calls = await provider.calls
+      XCTAssertEqual(calls, 0)
+      return
+    }
+    try await waitUntil(diagnostics: {
+      "waitingForNewSession reduceMotion=\(reduceMotion) pageVisible=\(page.isVisible) "
+        + "sheetVisible=\(page.attachedSheet?.isVisible == true)"
+    }) {
+      return controller.quickPanelModel !== original
+    }
     let restored = try XCTUnwrap(controller.quickPanelModel)
     XCTAssertFalse(restored === original)
     try await waitUntil(diagnostics: {
@@ -167,9 +222,14 @@ final class RecordPanelComparisonReturnTests: XCTestCase {
 
 private enum ComparisonReturnTestError: Error { case timedOut }
 
+private enum ComparisonReturnInterruption { case reduceMotion, shutdown, reuseFailure }
+
 @MainActor
 private final class ComparisonReturnSheetEvents {
+  var reduceMotion: Bool
   var endedCount = 0
+
+  init(reduceMotion: Bool) { self.reduceMotion = reduceMotion }
 }
 
 private actor ComparisonReturnProvider: RecordRankingProvider {
