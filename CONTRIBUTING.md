@@ -2,11 +2,9 @@
 
 ## 开发环境
 
-准备 macOS、Xcode 及其 Command Line Tools 和 Metal Toolchain，以及
-[uv](https://docs.astral.sh/uv/)、[just](https://just.systems/) 和 Git。
+准备 macOS、Xcode 及其 Command Line Tools 和 Metal Toolchain，以及 [uv](https://docs.astral.sh/uv/)、[just](https://just.systems/) 和 Git。
 
-平台与 Swift 要求见 [Package.swift](Package.swift)，工具链检查见
-[scripts/preflight.sh](scripts/preflight.sh)。各命令使用仓库配置和锁文件声明的工具版本。
+平台与 Swift 要求见 [Package.swift](Package.swift)，工具链检查见 [scripts/preflight.sh](scripts/preflight.sh)。各命令使用仓库配置和锁文件声明的工具版本。
 
 在仓库根目录安装 hooks，然后构建和测试：
 
@@ -16,9 +14,7 @@ just build
 just test
 ```
 
-用 `just --list` 查看完整命令。构建模式、定向测试和故障定位见
-[开发参考](docs/development.md)。SwiftPM 构建和测试统一通过
-`scripts/preflight.sh swift` 运行；保留并使用仓库的 `Package.resolved`。
+用 `just --list` 查看完整命令。构建模式、定向测试和故障定位见 [开发参考](docs/development.md)。SwiftPM 构建和测试统一通过 `scripts/preflight.sh swift` 运行；保留并使用仓库的 `Package.resolved`。
 
 ## 验证
 
@@ -33,23 +29,17 @@ just test
 
 提交前运行 `just ci` 和 `git diff --check`。完整门禁需要可用的交互式桌面。
 
-涉及 Fn、麦克风、IME、跨应用输出或 VoiceOver 的改动，按
-[macOS 验收清单](docs/release-qa-checklist.md)进行人工验收。
-质量评测与性能测量分别见 [Evals](Evals/README.md) 和
-[Benchmarks](Benchmarks/README.md)。
+涉及 Fn、麦克风、IME、跨应用输出或 VoiceOver 的改动，按 [macOS 验收清单](docs/release-qa-checklist.md)进行人工验收。质量评测与性能测量分别见 [Evals](Evals/README.md) 和 [Benchmarks](Benchmarks/README.md)。
 
 ## 本地 App 与发布
 
-构建可执行文件后，还需装配 App 才能验证权限声明和系统集成。
-完成验证后，使用本机可用的开发签名身份进行本地安装：
+构建可执行文件后，还需装配 App 才能验证权限声明和系统集成。完成验证后，使用本机可用的开发签名身份进行本地安装：
 
 ```bash
 SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 ```
 
-省略 `--install` 可在 `.artifacts/release/` 生成本地产物。
-正式发布的版本标签、签名、公证和验收由维护者按
-[发布步骤](docs/releasing.md)执行。
+省略 `--install` 可在 `.artifacts/release/` 生成本地产物。正式发布的版本标签、签名、公证和验收由维护者按 [发布步骤](docs/releasing.md)执行。
 
 ## 文档归属
 
@@ -74,17 +64,10 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 
 ## 提交与 Pull Request
 
-提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev) 的
-`zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
-`just install` 安装的 hooks 与 CI 使用官方校验入口；PR 正文可以使用中文。
+提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev) 的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。 `just install` 安装的 hooks 与 CI 使用官方校验入口；PR 正文可以使用中文。
 
-独立改动分别提交到指向 `main` 的 PR。只有存在真实代码依赖时才使用线性 stack，
-依赖 PR 指向所需的前置分支。
+独立改动分别提交到指向 `main` 的 PR。只有存在真实代码依赖时才使用线性 stack，依赖 PR 指向所需的前置分支。
 
-按 [PR 模板](.github/pull_request_template.md)说明问题、最终行为、关键取舍和已知限制。
-涉及应用行为时提供实际操作与观察；涉及 UI 时，在正文内嵌对应提交、场景、语言及外观的截图。
-媒体使用 PR 附件，本地验收产物放在忽略的 `.artifacts/` 中。
-“后续工作”只记录超出本次范围的未来方向，当前未完成的验证放在“说明”中。
+按 [PR 模板](.github/pull_request_template.md)说明问题、最终行为、关键取舍和已知限制。涉及应用行为时提供实际操作与观察；涉及 UI 时，在正文内嵌对应提交、场景、语言及外观的截图。媒体使用 PR 附件，本地验收产物放在忽略的 `.artifacts/` 中。“后续工作”只记录超出本次范围的未来方向，当前未完成的验证放在“说明”中。
 
-贡献遵循 [项目许可证](LICENSE)。引入第三方代码时保留其版权、许可与来源证据。
-合并遵循仓库保护规则，由维护者确认。
+贡献遵循 [项目许可证](LICENSE)。引入第三方代码时保留其版权、许可与来源证据。合并遵循仓库保护规则，由维护者确认。

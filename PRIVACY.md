@@ -14,15 +14,7 @@ Global-search and quick-panel keyword, pinyin, and approximate text matching run
 
 Optional **Search by meaning** downloads a fixed, verified Qwen3 embedding model only after the user chooses the download action. Hugging Face and its download infrastructure receive normal model-download network metadata, but no search query or record content. Queries, eligible text/file names, source identity, and tags are processed in a separate local helper. Derived vectors remain in a 128 MiB logical-content memory cache, are invalidated for changed tags/deleted records, and are cleared at shutdown; they are not persisted or uploaded. The helper releases its model after 30 idle seconds. Long records have bounded partial coverage; image contents and referenced-file contents are not read for semantic search.
 
-**Global model selection:** Fast and Intelligent each have their own model, endpoint
-and Keychain credential; workflows select only a role. Classification features use
-one session selection: TypeSafe Jev (`api.typesafe.ai/v1/systemone`), or Cloudflare
-Clef/Clef Flash (`api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/cloudflare/{model}`).
-The classification paragraphs below apply to the selected service. Cloudflare receives
-the same bounded text payloads and score questions described for Jev. The account ID,
-selection, token and automatic-use switches are session-only. Changing the selected
-service/account clears its token and revokes previous authorizations. Each service's
-own retention and data practices apply; Rill cannot inspect or delete its server records.
+**Global model selection:** Fast and Intelligent each have their own model, endpoint and Keychain credential; workflows select only a role. Classification features use one session selection: TypeSafe Jev (`api.typesafe.ai/v1/systemone`), or Cloudflare Clef/Clef Flash (`api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/cloudflare/{model}`). The classification paragraphs below apply to the selected service. Cloudflare receives the same bounded text payloads and score questions described for Jev. The account ID, selection, token and automatic-use switches are session-only. Changing the selected service/account clears its token and revokes previous authorizations. Each service's own retention and data practices apply; Rill cannot inspect or delete its server records.
 
 Optional **Compare with classification** is a separate, per-request cloud action. After preview and explicit confirmation, Rill sends the displayed query and up to 10 text excerpts or file names (each at most 1,800 UTF-8 bytes) to the globally selected classification service. Requests contain a fixed relevance rubric; record IDs, source apps, tags, images and referenced-file contents are not included as metadata or attachments. Text itself may contain sensitive information, so review every excerpt before sending. The API key is held in memory for this App session only, can be cleared in Settings → Voice & Models → API Providers, and is never written to settings, Keychain or diagnostics. Opening the sheet, saving a key and ordinary search do not contact the service. No automatic retry occurs. Scores and token usage remain transient. Source privacy rules, capture exclusions, Secure Input and catalog revision are checked before submission and before displaying a response; unknown sources fail closed. Closing or changing the query cancels the operation, but already-sent data cannot be recalled and may incur usage. The selected service's own terms and retention controls govern server-side data; Rill cannot inspect or delete those records. Candidate comparison uses its own explicit send action every time and does not reuse remembered workflow cloud authorizations.
 
@@ -50,14 +42,7 @@ Third-party services and user-created automations apply their own retention, acc
 
 ## Local storage and retention
 
-Editable pending drafts store their initial text, available raw recognition text,
-current edits and unapplied speech suggestions in the existing encrypted Record
-catalog. Closing the panel retains drafts; removing a pending item deletes its
-draft, while immutable Records and workflow history follow their own deletion and
-retention rules. Drafts do not expire automatically. Difference comparison runs
-locally, adds no cloud request and does not automatically learn vocabulary.
-Dictation uses the enabled voice workflow and its existing cloud authorization;
-the editor does not add the surrounding draft text to those requests.
+Editable pending drafts store their initial text, available raw recognition text, current edits and unapplied speech suggestions in the existing encrypted Record catalog. Closing the panel retains drafts; removing a pending item deletes its draft, while immutable Records and workflow history follow their own deletion and retention rules. Drafts do not expire automatically. Difference comparison runs locally, adds no cloud request and does not automatically learn vocabulary. Dictation uses the enabled voice workflow and its existing cloud authorization; the editor does not add the surrounding draft text to those requests.
 
 Rill stores settings, clipboard state, run history, run receipts, and sanitized diagnostics in the user's Application Support area. Sensitive stored payloads are protected with AES-256-GCM using a root key held in macOS Keychain. Each text role’s LLM credential is stored in Keychain rather than ordinary settings rows. Diagnostics record only allowlisted provider, stage, result category, duration, and coarse status-code metadata; they do not record the API key, request text, response text, prompt, or OpenAI error body.
 
@@ -115,12 +100,7 @@ Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认
 
 “按含义补充”是可选功能，只有点击下载按钮后才获取固定版本、经校验的本地搜索模型（约 1.2 GB）。下载服务会收到普通网络连接元数据，但查询、记录正文、文件名、来源和标签均在本机的独立辅助进程中处理，不上传。向量只保存在限额为 128 MiB 逻辑内容的内存缓存中；标签变化、记录删除会使缓存失效，退出时清空，不新增持久化索引。模型在空闲 30 秒后释放。长记录仅搜索部分内容，不读取图片或文件引用指向的正文。权重存放于 `~/Library/Application Support/Rill/Models/record-search`，卸载 App 不会自动移除；下次主动下载会清理中断下载的临时文件。
 
-**全局模型选择：**快速与智能类别各自保存模型、地址和 Keychain 凭据；工作流仅选择类别。
-分类功能在会话内统一选择 TypeSafe Jev（`api.typesafe.ai/v1/systemone`）或 Cloudflare
-Clef/Clef Flash（`api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/cloudflare/{model}`）。
-下文 Jev 分类功能的数据范围同样适用于所选 Cloudflare 服务：只发送相同的有限文本与评分问题。
-分类模型选择、账户 ID、Token 和自动开关均仅在本次会话内保留。更换服务或账户会清除 Token
-并撤销旧授权。数据保留由所选服务商决定，Rill 无法检查或删除服务端记录。
+**全局模型选择：**快速与智能类别各自保存模型、地址和 Keychain 凭据；工作流仅选择类别。分类功能在会话内统一选择 TypeSafe Jev（`api.typesafe.ai/v1/systemone`）或 Cloudflare Clef/Clef Flash（`api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/cloudflare/{model}`）。下文 Jev 分类功能的数据范围同样适用于所选 Cloudflare 服务：只发送相同的有限文本与评分问题。分类模型选择、账户 ID、Token 和自动开关均仅在本次会话内保留。更换服务或账户会清除 Token 并撤销旧授权。数据保留由所选服务商决定，Rill 无法检查或删除服务端记录。
 
 **用分类模型比较候选：**这是独立的逐次确认云端操作。预览并点击发送后，Rill 将显示的查询及最多 10 条文字片段或文件名（每项最多 1,800 UTF-8 字节），连同固定相关性评分规则，发送到全局选择的分类服务。不附带记录 ID、来源应用、标签、图片或引用文件正文；文字本身仍可能包含敏感信息，请检查预览。Key 只在本次 App 会话内存中暂存，可在“设置 → 语音与模型 → API 服务”清除，不写入设置、Keychain 或诊断。打开面板、暂存 Key 和普通搜索均不调用该服务；不自动重试，评分和用量只临时展示。发送前和展示响应前检查来源隐私规则、捕获排除、Secure Input 和目录版本，未知来源会阻止请求。关闭或改变查询会取消操作，但已发送的数据无法撤回，仍可能计费；服务端保留策略由所选服务决定，Rill 无法检查或删除。每次候选比较都需要主动发送，不复用工作流的持久云端授权。
 
@@ -147,10 +127,7 @@ Clef/Clef Flash（`api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf
 
 ## 本地存储与留存
 
-待发草稿的初始文字、可用的识别原文、当前修改和未应用语音建议保存在现有加密 Record
-目录中。关闭面板会保留草稿；移除待发项会删除对应草稿，原始记录与工作流历史沿用各自的
-删除、留存规则。草稿不自动过期。差异比较只在本机运行，不新增云端请求，也不自动学习词汇。
-听写沿用已启用语音工作流及其现有云端授权；编辑器不会把草稿上下文额外附加到请求中。
+待发草稿的初始文字、可用的识别原文、当前修改和未应用语音建议保存在现有加密 Record 目录中。关闭面板会保留草稿；移除待发项会删除对应草稿，原始记录与工作流历史沿用各自的删除、留存规则。草稿不自动过期。差异比较只在本机运行，不新增云端请求，也不自动学习词汇。听写沿用已启用语音工作流及其现有云端授权；编辑器不会把草稿上下文额外附加到请求中。
 
 Rill 在用户的 Application Support 区域保存设置、剪贴板状态、运行历史、运行收据和净化后的诊断。敏感持久化正文使用 macOS Keychain 中的根密钥和 AES-256-GCM 保护；快速和智能两组模型的 API Key 保存在 Keychain，而不是普通设置行中。诊断只记录白名单内的 provider、阶段、结果分类、耗时和粗粒度状态码信息，不记录 API Key、请求正文、响应正文、prompt 或服务端错误正文。
 
