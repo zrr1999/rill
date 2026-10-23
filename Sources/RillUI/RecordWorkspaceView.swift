@@ -397,23 +397,25 @@ public struct RecordWorkspaceView: View {
       if workspace.isLoading && workspace.snapshot.revision == 0 {
         ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if workspace.visibleRecords.isEmpty {
-        ContentUnavailableView(
-          hasRecordFilters
-            ? L10n.presentation(.noMatchingRecords, language: language)
-            : L10n.recordText(.noRecordsTitle, language: language),
-          systemImage: RillSystemSymbol.tray.rawValue,
-          description: Text(
+        ContentUnavailableView {
+          Label(
+            hasRecordFilters
+              ? L10n.presentation(.noMatchingRecords, language: language)
+              : L10n.recordText(.noRecordsTitle, language: language),
+            systemImage: RillSystemSymbol.tray.rawValue)
+        } description: {
+          Text(
             hasRecordFilters
               ? L10n.presentation(.noMatchingRecordsDetail, language: language)
               : L10n.recordText(.noRecordsDescription, language: language))
-        )
-        if hasRecordFilters {
-          Button(L10n.presentation(.clearFilters, language: language)) {
-            workspace.clearFilters()
+        } actions: {
+          if hasRecordFilters {
+            Button(L10n.presentation(.clearFilters, language: language)) {
+              workspace.clearFilters()
+            }
           }
-          .buttonStyle(.borderless)
-          .padding(.bottom, RillSpacing.panel)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         ScrollViewReader { proxy in
           List(
@@ -476,13 +478,10 @@ public struct RecordWorkspaceView: View {
       VStack(alignment: .leading, spacing: 5) {
         Text(projection.header.kind == .image ? L10n.recordText(.imagePayload, language: language) : projection.header.preview)
           .lineLimit(2)
-        HStack(spacing: 5) {
+        HStack(spacing: RillSpacing.row) {
           if projection.metadata.isPinned {
             Image(systemName: RillSystemSymbol.pinFill.rawValue).foregroundStyle(Color.accentColor)
           }
-
-        }
-        HStack(spacing: RillSpacing.row) {
           Text(sourceName(projection.header.provenance)).lineLimit(1)
           Text(projection.header.createdAt, style: .relative).monospacedDigit()
         }

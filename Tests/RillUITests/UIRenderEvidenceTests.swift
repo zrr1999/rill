@@ -34,11 +34,11 @@ final class UIRenderEvidenceTests: XCTestCase {
         let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
         try await render(
           RecordWorkspaceView(workspace: workspace, language: language, copySelection: model.copyRecord, correctSelection: { _ in }),
-          size: NSSize(width: 850, height: 640), dark: dark,
+          size: NSSize(width: 850, height: 640), dark: dark, language: language,
           to: output.appendingPathComponent("collection-correction-entry-\(variant).png"))
         try await render(
           VocabularyCorrectionSheet(model: model, source: request.source, recordID: request.id),
-          size: NSSize(width: 620, height: 600), dark: dark,
+          size: NSSize(width: 620, height: 600), dark: dark, language: language,
           to: output.appendingPathComponent("collection-correction-editor-\(variant).png"))
       }
     }
@@ -58,14 +58,14 @@ final class UIRenderEvidenceTests: XCTestCase {
         try await render(
           MemoryManagementView(model: fixture.model, workflows: [fixture.workflow], language: language, openSource: { _ in })
             .environment(\.locale, language.formattingLocale),
-          size: NSSize(width: 820, height: 1_000), dark: dark,
+          size: NSSize(width: 820, height: 1_000), dark: dark, language: language,
           to: output.appendingPathComponent("memory-management-\(variant).png"))
         try await render(
           CorrectionReferenceView(
             receipt: fixture.receipt, memories: fixture.model.memories, workflows: [fixture.workflow],
             previewMode: .full, language: language, manageMemories: {}, isExpanded: true
           ).padding(20).environment(\.locale, language.formattingLocale),
-          size: NSSize(width: 760, height: 720), dark: dark,
+          size: NSSize(width: 760, height: 720), dark: dark, language: language,
           to: output.appendingPathComponent("memory-references-\(variant).png"))
       }
     }
@@ -85,20 +85,21 @@ final class UIRenderEvidenceTests: XCTestCase {
         model.setInterfaceLanguage(language)
         let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
         try await render(
-          WorkflowDocumentLibraryView(model: model), size: NSSize(width: 500, height: 700), dark: dark, focusWindow: true,
+          WorkflowDocumentLibraryView(model: model), size: NSSize(width: 500, height: 700), dark: dark, language: language, focusWindow: true,
           to: output.appendingPathComponent("workflow-diagnostics-\(variant).png"))
         model.showWorkflow(fixture.workflow.id)
         try await render(
-          WorkflowDocumentLibraryView(model: model), size: NSSize(width: 500, height: 600), dark: dark, focusWindow: true,
+          WorkflowDocumentLibraryView(model: model), size: NSSize(width: 500, height: 600), dark: dark, language: language, focusWindow: true,
           to: output.appendingPathComponent("workflow-detail-\(variant).png"))
         model.showWorkflow(fixture.workflow.id)
         try await render(
-          MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark, focusWindow: true,
+          MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark, language: language, focusWindow: true,
           to: output.appendingPathComponent("workflow-window-\(variant).png"))
         model.workflowLibrary.explainWorkflowBeforeRun(fixture.workflow)
         await model.workflowLibrary.waitForWorkflowExplanationTasks()
         try await render(
-          WorkflowExplanationSheet(model: model, workflowID: fixture.workflow.id), size: NSSize(width: 520, height: 600), dark: dark, focusWindow: true,
+          WorkflowExplanationSheet(model: model, workflowID: fixture.workflow.id), size: NSSize(width: 520, height: 600), dark: dark, language: language,
+          focusWindow: true,
           to: output.appendingPathComponent("workflow-explanation-\(variant).png"))
         await fixture.shutdown()
       }
@@ -154,7 +155,7 @@ final class UIRenderEvidenceTests: XCTestCase {
           }
           for size in [NSSize(width: 620, height: 320), NSSize(width: 668, height: 468), NSSize(width: 820, height: 560)] {
             try await render(
-              view, size: size, dark: dark, floating: true,
+              view, size: size, dark: dark, language: language, floating: true,
               to: output.appendingPathComponent("unified-\(mode.rawValue)-\(variant)-\(Int(size.width)).png"))
           }
           let scene = ZStack {
@@ -169,16 +170,16 @@ final class UIRenderEvidenceTests: XCTestCase {
             }
           }
           try await render(
-            scene, size: NSSize(width: 760, height: 610), dark: dark,
+            scene, size: NSSize(width: 760, height: 610), dark: dark, language: language,
             focusWindow: true, floating: true,
             to: output.appendingPathComponent("floating-scene-\(mode.rawValue)-\(variant).png"))
         }
         try await render(
-          VoiceSetupView(model: model), size: NSSize(width: 500, height: 360), dark: dark,
+          VoiceSetupView(model: model), size: NSSize(width: 500, height: 360), dark: dark, language: language,
           to: output.appendingPathComponent("setup-\(variant).png"))
         model.voiceSetupPresentation = .presented
         try await render(
-          MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark,
+          MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark, language: language,
           to: output.appendingPathComponent("setup-window-\(variant).png"))
         model.voiceSetupPresentation = .dismissed
       }
@@ -220,7 +221,7 @@ final class UIRenderEvidenceTests: XCTestCase {
           editor.showsChanges = width > 580
           try await render(
             RecordBufferDraftView(model: model),
-            size: NSSize(width: width, height: 520), dark: dark,
+            size: NSSize(width: width, height: 520), dark: dark, language: language,
             to: output.appendingPathComponent("drafts-\(language.rawValue)-\(dark ? "dark" : "light")-\(Int(width)).png"))
         }
       }
@@ -240,7 +241,7 @@ final class UIRenderEvidenceTests: XCTestCase {
     model.applyLanguage(.simplifiedChinese)
     try await render(
       RecordBufferDraftView(model: model),
-      size: NSSize(width: 580, height: 520), dark: false,
+      size: NSSize(width: 580, height: 520), dark: false, language: .simplifiedChinese,
       to: output.appendingPathComponent("drafts-suggestion-compact.png"))
     await editor.shutdown()
   }
@@ -282,7 +283,7 @@ final class UIRenderEvidenceTests: XCTestCase {
           height: LiveSubtitleOverlayMetrics.expandedSurfaceHeight * 4 + 80
         )
         try await render(
-          content, size: size, dark: dark,
+          content, size: size, dark: dark, language: language,
           to: output.appendingPathComponent("subtitle-controls-\(language.rawValue)-\(dark ? "dark" : "light").png"))
         for expanded in [false, true] {
           let overlay = LiveSubtitleOverlay(
@@ -293,7 +294,7 @@ final class UIRenderEvidenceTests: XCTestCase {
             size: NSSize(
               width: expanded ? LiveSubtitleOverlayMetrics.expandedSurfaceWidth : LiveSubtitleOverlayMetrics.compactSurfaceWidth,
               height: expanded ? LiveSubtitleOverlayMetrics.expandedSurfaceHeight : LiveSubtitleOverlayMetrics.compactSurfaceHeight),
-            dark: dark, floating: true,
+            dark: dark, language: language, floating: true,
             to: output.appendingPathComponent("subtitle-\(expanded ? "expanded" : "compact")-\(language.rawValue)-\(dark ? "dark" : "light").png"))
         }
       }
@@ -335,7 +336,7 @@ final class UIRenderEvidenceTests: XCTestCase {
           for section in [SidebarSection.records, .stream, .workflows] {
             model.selectSidebarSection(section)
             try await render(
-              MainShellView(model: model), size: NSSize(width: width, height: 720), dark: dark,
+              MainShellView(model: model), size: NSSize(width: width, height: 720), dark: dark, language: language,
               to: output.appendingPathComponent("\(section.rawValue)-\(variant)-\(width).png"))
           }
         }
@@ -343,7 +344,7 @@ final class UIRenderEvidenceTests: XCTestCase {
           model.selectedSettingsPane = pane
           model.presentSettings()
           try await render(
-            MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark,
+            MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark, language: language,
             to: output.appendingPathComponent("settings-\(pane.rawValue)-\(variant).png"))
         }
         model.dismissSettings()
@@ -351,18 +352,18 @@ final class UIRenderEvidenceTests: XCTestCase {
           await workspace.revealRecord(id)
           try await render(
             RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .copied }),
-            size: NSSize(width: 980, height: 660), dark: dark,
+            size: NSSize(width: 980, height: 660), dark: dark, language: language,
             to: output.appendingPathComponent("payload-\(name)-\(variant).png"))
         }
         try await render(
           RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .storageUnavailable }),
-          size: NSSize(width: 620, height: 660), dark: dark,
+          size: NSSize(width: 620, height: 660), dark: dark, language: language,
           to: output.appendingPathComponent("records-compact-\(variant).png"))
         workspace.setPayloadKindFilter(.image)
         workspace.setShowsPinnedOnly(true)
         try await render(
           RecordWorkspaceView(workspace: workspace, language: language),
-          size: NSSize(width: 720, height: 560), dark: dark,
+          size: NSSize(width: 720, height: 560), dark: dark, language: language,
           to: output.appendingPathComponent("records-no-results-\(variant).png"))
         workspace.setPayloadKindFilter(nil)
         workspace.setShowsPinnedOnly(false)
@@ -372,7 +373,7 @@ final class UIRenderEvidenceTests: XCTestCase {
             historySearchState: .failed, recordSearchState: .failed, historyFailureActionTitle: "Retry", language: language,
             focusRequest: 0, onMoveSelection: { _ in }, onSubmit: {}, onCancel: {},
             onHistorySearchFailureAction: {}, onHighlight: { _ in }, onSelect: { _ in }),
-          size: NSSize(width: 620, height: 420), dark: dark,
+          size: NSSize(width: 620, height: 420), dark: dark, language: language,
           to: output.appendingPathComponent("search-failure-\(variant).png"))
       }
     }
@@ -461,7 +462,8 @@ final class UIRenderEvidenceTests: XCTestCase {
             let name = section?.rawValue ?? "overview"
             try await render(
               MainShellView(model: model), size: size,
-              dark: dark, to: output.appendingPathComponent("model-services-\(name)-\(Int(size.width))-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+              dark: dark, language: language,
+              to: output.appendingPathComponent("model-services-\(name)-\(Int(size.width))-\(language.rawValue)-\(dark ? "dark" : "light").png"))
           }
         }
       }
@@ -482,7 +484,7 @@ final class UIRenderEvidenceTests: XCTestCase {
           source: RecognitionCorrectionSource(preMappingText: "请保留原始文本，不要重复发送。", context: VocabularyRuleContext()),
           workflowRunID: UUID())
         try await render(
-          sheet, size: NSSize(width: 620, height: 600), dark: dark,
+          sheet, size: NSSize(width: 620, height: 600), dark: dark, language: language,
           to: URL(fileURLWithPath: directory).appendingPathComponent("correction-\(language.rawValue)-\(dark ? "dark" : "light").png"))
       }
     }
@@ -525,7 +527,7 @@ final class UIRenderEvidenceTests: XCTestCase {
   }
 
   private func render<Content: View>(
-    _ content: Content, size: NSSize, dark: Bool, focusWindow: Bool = false,
+    _ content: Content, size: NSSize, dark: Bool, language: AppLanguage, focusWindow: Bool = false,
     floating: Bool = false, to url: URL
   ) async throws {
     if let match = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_MATCH"],
@@ -534,7 +536,8 @@ final class UIRenderEvidenceTests: XCTestCase {
       return
     }
     let originalAppearance = NSApplication.shared.appearance
-    let highContrast = ProcessInfo.processInfo.environment["RILL_UI_HIGH_CONTRAST"] == "1"
+    let environment = ProcessInfo.processInfo.environment
+    let highContrast = environment["RILL_UI_HIGH_CONTRAST"] == "1"
     let appearance = NSAppearance(
       named: highContrast
         ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
@@ -544,6 +547,7 @@ final class UIRenderEvidenceTests: XCTestCase {
     // Match SwiftUI scenes: the native titlebar overlaps full-size content.
     let view = NSHostingView(
       rootView: content.environment(\.colorScheme, dark ? .dark : .light)
+        .environment(\.locale, language.formattingLocale)
         .background(floating ? Color.clear : (dark ? Color(white: 0.12) : Color(white: 0.98))))
     view.sizingOptions = []
     let window: NSWindow =
@@ -558,7 +562,15 @@ final class UIRenderEvidenceTests: XCTestCase {
     window.isReleasedWhenClosed = false
     window.contentView = view
     view.autoresizingMask = [.width, .height]
-    if focusWindow { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
+    if environment["RILL_UI_SNAPSHOT_FOCUS"] == "1" {
+      NSApplication.shared.setActivationPolicy(.regular)
+      NSApplication.shared.activate()
+      window.makeKeyAndOrderFront(nil)
+    } else if focusWindow {
+      window.makeKeyAndOrderFront(nil)
+    } else {
+      window.orderFront(nil)
+    }
     defer {
       window.orderOut(nil)
       window.contentView = nil
