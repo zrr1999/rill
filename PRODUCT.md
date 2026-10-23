@@ -8,9 +8,7 @@ Native macOS, implemented with SwiftUI and AppKit, requiring macOS 26.0 or later
 
 ## Users and purpose
 
-People working across Mac applications who want to dictate without interrupting
-their work, then find, edit, and reuse voice and clipboard content when needed.
-Everyday speech input must remain usable without learning workflow internals.
+People working across Mac applications who want to dictate without interrupting their work, then find, edit, and reuse voice and clipboard content when needed. Everyday speech input must remain usable without learning workflow internals.
 
 ## Capabilities and constraints
 
@@ -21,16 +19,10 @@ Everyday speech input must remain usable without learning workflow internals.
 - [UI direction](docs/ui-direction.md)
 - [Native acceptance](docs/release-qa-checklist.md)
 
-Preserve the existing recording overlay, Rill identity, icon assets, and
-documentation website framework. Capture, privacy, target validation,
-persistence, and workflow semantics follow the contracts above.
+Preserve the existing recording overlay, Rill identity, icon assets, and documentation website framework. Capture, privacy, target validation, persistence, and workflow semantics follow the contracts above.
 
-All Records, Activity, and Workflows are grouped at the top of the sidebar.
-The quick panel hosts Collections and Drafts as two modes of one panel, opened
-on demand with Cmd+Cmd by default. Closing it leaves no persistent strip.
-Both modes reuse the existing Record and draft state.
+All Records, Activity, and Workflows are grouped at the top of the sidebar. The quick panel hosts Collections and Drafts as two modes of one panel, opened on demand with Cmd+Cmd by default. Closing it leaves no persistent strip. Both modes reuse the existing Record and draft state.
 
 ## Accessibility and inclusion
 
-English and Simplified Chinese; keyboard and VoiceOver access; light and dark
-appearance; reduced motion, reduced transparency, and increased contrast.
+English and Simplified Chinese; keyboard and VoiceOver access; light and dark appearance; reduced motion, reduced transparency, and increased contrast.
