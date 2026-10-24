@@ -47,6 +47,18 @@ guarded path as reachable or recommend splitting the transaction across actors
 based on file size. Any structural finding needs a concrete cost and deletion
 test. Missing execution evidence stays separate from confirmed defects.
 
+### CR-4 — Separate independent work without splitting a repair
+
+Request: “审查这个取消修复的 PR，检查范围和描述，先不要修改。” Fixture:
+the diff fixes cancellation with a required local helper and regression test,
+and also changes an unrelated CI cache policy. The PR body narrates discarded
+approaches and repeats CI output.
+
+Expected: keep the helper and regression with the repair, recommend a separate
+PR for the independent cache change, and shorten the description to the final
+behavior and material manual evidence or gaps. Report scope and description
+feedback separately from defects; do not edit files or PR metadata.
+
 ## rill-workflow-change
 
 ### WF-1 — Store the answer before speaking
@@ -119,7 +131,10 @@ an old request while cancellation and a new run occur, then returns the old resu
 Expected: correlate run identity, find the first invalid transition, block stale
 delivery, and retain pending ownership until cleanup drains. A controlled
 regression observes both output and cleanup through the production caller;
-adding sleep or dropping the task handle does not count as a repair.
+inspect existing supervisor and queue lifecycle coverage, reuse the relevant
+barriers, and verify the new run can complete. Explain the incorrect ordering
+the regression rejects. Adding sleep or dropping the task handle does not count
+as a repair.
 
 ### RT-2 — Provider design proposal
 
