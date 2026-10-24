@@ -8,10 +8,6 @@ import XCTest
 @testable import RillPlatform
 @testable import RillWorkflows
 
-private struct RecordingTestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private func makeRecordingTestPrivacyGate() -> PrivacyRunGate {
   PrivacyRunGate(
     settingsProvider: {
@@ -707,7 +703,10 @@ private struct RecordingFocusTargetFixture {
 private func makeRecordingFocusTargetFixture(
   initialFocus: FocusPrivacyIdentitySample,
   privacyRunGate: PrivacyRunGate = makeRecordingTestPrivacyGate(),
-  runPreflight: @escaping RecognitionRunPreflight = { _ in }
+  runPreflight: @escaping RecognitionRunPreflight = { _ in },
+  recognitionOptionsProvider:
+    @escaping @Sendable (WorkflowDefinition, ContextSnapshot)
+    async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty }
 ) throws -> RecordingFocusTargetFixture {
   let eventBus = EventBus()
   let workflow = WorkflowDefinition(
@@ -750,6 +749,7 @@ private func makeRecordingFocusTargetFixture(
         ifFocusMatches: expectedFocus
       )
     },
+    recognitionOptionsProvider: recognitionOptionsProvider,
     runPreflight: runPreflight,
     liveAuthorizationMonitorInterval: .milliseconds(5),
     pushToTalkGestureStateProvider: { _ in false }
@@ -2061,7 +2061,6 @@ final class RecordingSessionManagerTests: XCTestCase {
       eventBus: eventBus,
       privacyRunGate: gate,
       workflowProvider: { [workflow] },
-      contextProvider: { await ordering.readContext() },
       privacyContextProvider: { await ordering.readContext() },
       authorizedContextProvider: { _ in await ordering.readContext() },
       recognitionOptionsProvider: { _, _ in await ordering.resolveOptions() },
@@ -2139,7 +2138,6 @@ final class RecordingSessionManagerTests: XCTestCase {
       eventBus: eventBus,
       privacyRunGate: gate,
       workflowProvider: { [workflow] },
-      contextProvider: { await ordering.readContext() },
       privacyContextProvider: { await ordering.readContext() },
       authorizedContextProvider: { _ in await ordering.readContext() },
       recognitionOptionsProvider: { _, _ in await ordering.resolveOptions() },
@@ -2316,89 +2314,42 @@ final class RecordingSessionManagerTests: XCTestCase {
   }
 
   func testCloudPrivacyBlockPreventsAudioCaptureFromStarting() async throws {
-    let eventBus = EventBus()
-    let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-    let workflow = WorkflowDefinition(
-      name: "Blocked Cloud Workflow",
-      trigger: .hotkey,
-      plan: makeTestAudioPlan(recognizerID: "remote.speech"),
-      ui: WorkflowUIConfig(symbolName: "lock", accentColorName: "red")
-    )
-    let audio = try CapturedAudio(
-      durationSeconds: 1,
-      format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
-      fileURL: URL(fileURLWithPath: "/tmp/unused-privacy-block.caf")
-    )
-    let audioCaptureService = MockAudioCaptureService(audio: audio)
-    let coordinator = makeTestSessionCoordinator(
-
-      recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
-      transformerRegistry: TextTransformerRegistry(transformers: []),
-      actionRegistry: OutputActionRegistry(actions: []),
-      candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-      eventBus: eventBus,
-      diagnostics: diagnostics
-    )
-    let privacyRunGate = PrivacyRunGate(
-      settingsProvider: {
-        PrivacyPolicySettings(
-          sensitiveAppRules: [
-            SensitiveAppRule(
-              bundleIdentifier: "com.example.vault", applicationName: "Vault")
-          ]
-        )
-      },
-      cloudConfirmationProvider: { _, _, _, _ in true }
-    )
-    let optionsProbe = RecordingOptionsProbe()
-    let manager = makeTestRecordingSessionManager(
-      audioCaptureService: audioCaptureService,
-      hotkeyTap: HotkeyEventTap(),
-      capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
-        sessionCoordinator: coordinator,
-        eventBus: eventBus,
-        diagnostics: diagnostics
-      ),
-      eventBus: eventBus,
-      diagnostics: diagnostics,
-      privacyRunGate: privacyRunGate,
-      workflowProvider: { [workflow] },
-      contextProvider: {
-        ContextSnapshot(
-          focus: FocusSnapshot(
-            applicationName: "Vault",
-            bundleIdentifier: "com.example.vault",
-            processIdentifier: nil,
-            focusedRole: nil,
-            selectedText: "",
-            secureInput: false
-          ),
-          clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 1)
-        )
-      },
-      recognitionOptionsProvider: { _, _ in
-        await optionsProbe.resolve(
-          SpeechRecognitionRequestOptions(
-            hints: RecognitionHints(keyterms: ["must-not-be-resolved"])
+    let focus = makeRecordingFocusIdentitySample(
+      applicationName: "Vault", bundleIdentifier: "com.example.vault", activationRevision: 1)
+    for blocked in [false, true] {
+      let optionsProbe = RecordingOptionsProbe()
+      let gate = PrivacyRunGate(
+        settingsProvider: {
+          PrivacyPolicySettings(
+            sensitiveAppRules: blocked
+              ? [SensitiveAppRule(bundleIdentifier: "com.example.vault", applicationName: "Vault")]
+              : [],
+            cloudConfirmationRequired: false
           )
-        )
+        },
+        cloudConfirmationProvider: { _, _, _, _ in true },
+        destinationClassifier: { _ in .classified([.cloudSpeech]) }
+      )
+      let fixture = try makeRecordingFocusTargetFixture(
+        initialFocus: focus,
+        privacyRunGate: gate,
+        recognitionOptionsProvider: { _, _ in await optionsProbe.resolve(.empty) }
+      )
+
+      await fixture.manager.beginPushToTalk()
+
+      let request = await fixture.audioCaptureService.snapshot()
+      let optionsCallCount = await optionsProbe.callCount()
+      XCTAssertEqual(request == nil, blocked)
+      XCTAssertEqual(optionsCallCount, blocked ? 0 : 1)
+      if blocked {
+        let state = await fixture.manager.currentState()
+        XCTAssertEqual(state, .idle)
       }
-    )
 
-    await manager.beginPushToTalk()
-
-    let captureRequest = await audioCaptureService.snapshot()
-    let state = await manager.currentState()
-    var events = await diagnostics.snapshot(matching: DiagnosticQuery(subsystem: .platform))
-    for _ in 0..<100 where !events.contains(where: { $0.event == "recording.failure" }) {
-      await Task.yield()
-      events = await diagnostics.snapshot(matching: DiagnosticQuery(subsystem: .platform))
+      await fixture.manager.stopForApplicationShutdown()
+      await fixture.queue.shutdown()
     }
-    XCTAssertNil(captureRequest)
-    XCTAssertEqual(state, RecordingSessionManager.State.idle)
-    XCTAssertTrue(events.contains { $0.event == "recording.failure" })
-    let optionsCallCount = await optionsProbe.callCount()
-    XCTAssertEqual(optionsCallCount, 0)
   }
 
   func testPushToTalkReturnsToIdleBeforeBackgroundRunCompletes() async throws {

@@ -71,10 +71,6 @@ private struct ProcessingTestTransformer: TracedTextTransformer {
   }
 }
 
-private struct ProcessingTestContext: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private struct ProcessingTestAction: OutputAction {
   let id = "timed.action"
   let clock: ProcessingTestClock

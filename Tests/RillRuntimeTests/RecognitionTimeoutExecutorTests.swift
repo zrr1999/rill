@@ -6,10 +6,6 @@ import XCTest
 
 @testable import RillCore
 
-private struct TimeoutTestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor HangingRecognitionProbe {
   private var invocationCount = 0
   private var firstCallStarted = false

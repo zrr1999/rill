@@ -138,10 +138,6 @@ private actor RecordingCancellationCompletionProbe {
   }
 }
 
-private struct RecordingCleanupContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
   func testCancellationDuringDeferredFinishDiscardsManagedTemporaryFile() async throws {
     let fileURL = FileManager.default.temporaryDirectory

@@ -26,10 +26,6 @@ private actor RecordPanelDeliveryProbe {
   }
 }
 
-private struct RecordPanelDigitTestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor RecordPanelPasteProbe {
   struct Snapshot: Sendable {
     var restoredTargets: [FocusedApplicationTargetIdentity] = []

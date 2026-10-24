@@ -28,10 +28,6 @@ private actor ManagedFileAudioCaptureService: AudioCaptureService {
   }
 }
 
-private struct WorkflowAudioCleanupContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor WorkflowManagedAudioRemovalProbe {
   private enum ProbeError: Error { case transient }
   private var attempts = 0

@@ -160,10 +160,6 @@ private struct CueFixture {
   }
 }
 
-private struct CueContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor CueCapture: AudioCaptureService {
   enum Failure: Error { case start, finish }
   enum Event: Equatable { case started, finished, cancelled, cue(RecordingInteractionCue) }
