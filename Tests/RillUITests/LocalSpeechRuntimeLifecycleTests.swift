@@ -54,16 +54,11 @@ final class LocalSpeechRuntimeLifecycleTests: XCTestCase {
 private final class LocalSpeechRuntimeLifecycleProbe: @unchecked Sendable {
   private let lock = NSLock()
   private var storedRuntimeTransitions: [Bool] = []
-  private var storedPreparationCount = 0
   private var storedReleaseCount = 0
   private var storedStopCount = 0
 
   var runtimeTransitions: [Bool] {
     lock.withLock { storedRuntimeTransitions }
-  }
-
-  var preparationCount: Int {
-    lock.withLock { storedPreparationCount }
   }
 
   var releaseCount: Int {
@@ -76,10 +71,6 @@ private final class LocalSpeechRuntimeLifecycleProbe: @unchecked Sendable {
 
   func recordRuntimeEnabled(_ enabled: Bool) {
     lock.withLock { storedRuntimeTransitions.append(enabled) }
-  }
-
-  func recordPreparation(model _: String) {
-    lock.withLock { storedPreparationCount += 1 }
   }
 
   func recordRelease() {

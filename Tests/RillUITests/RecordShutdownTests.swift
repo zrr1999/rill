@@ -139,7 +139,6 @@ private actor SuspendedRecordRead: RecordGraphPersistenceStore {
     read = nil
   }
 
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult { .removed }
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { 0 }
 }
 
@@ -159,7 +158,6 @@ private actor SuspendedRecordWrite: RecordGraphPersistenceStore {
     blockedWrite = nil
   }
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult { .removed }
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 {
     if shouldBlock {
       shouldBlock = false

@@ -9,7 +9,6 @@ import TOML
 /// specification. Files are deliberately independent so they remain easy to
 /// hand-author, diff, copy and remove with ordinary tools.
 public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
-  public static let currentSchemaVersion = WorkflowDocument.schemaVersion
   public static let maximumFileCount = 256
   public static let maximumFileSize = 1_048_576
 

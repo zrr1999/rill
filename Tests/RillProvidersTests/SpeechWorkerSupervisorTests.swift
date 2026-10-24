@@ -887,19 +887,6 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     return url
   }
 
-  private func makeWorkflow() -> WorkflowDefinition {
-    WorkflowDefinition(
-      name: "Worker Adapter Test",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
-      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent")
-    )
-  }
-
   private func waitForPID(
     _ supervisor: SpeechWorkerSupervisor,
     file: StaticString = #filePath,

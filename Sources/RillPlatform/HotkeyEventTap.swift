@@ -85,19 +85,6 @@ public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
     self.pushToTalkGestureStateProvider = pushToTalkGestureStateProvider
   }
 
-  init(
-    eventTapHealthChecker: HotkeyEventTapHealthChecker<CFMachPort>,
-    physicalKeyStateProvider: @escaping @Sendable (CGKeyCode) -> Bool = {
-      CGEventSource.keyState(.combinedSessionState, key: $0)
-    },
-    pushToTalkGestureStateProvider: @escaping @Sendable (PushToTalkGesture) -> Bool =
-      HotkeyEventTap.systemPushToTalkGestureIsActive
-  ) {
-    self.eventTapHealthChecker = eventTapHealthChecker
-    self.physicalKeyStateProvider = physicalKeyStateProvider
-    self.pushToTalkGestureStateProvider = pushToTalkGestureStateProvider
-  }
-
   deinit {
     uninstall()
   }

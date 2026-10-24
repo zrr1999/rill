@@ -502,7 +502,4 @@ private struct LegacyCatalogTestWriter: RecordGraphPersistenceStore {
     try await store.loadRecordGraph()
   }
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { try await store.replaceRecordGraph(with: snapshot) }
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    try await store.removeRecordGraph()
-  }
 }

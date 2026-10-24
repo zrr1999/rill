@@ -11,7 +11,6 @@ struct LocalSpeechAudioStream: Sendable {
 protocol LocalSpeechAudioCaptureSource: AnyObject, Sendable {
   var meterRMS: [Float] { get }
 
-  func prepareStoppedFrontend() throws
   func setPendingHandoffID(_ id: UUID?)
   func startStreaming() -> LocalSpeechAudioStream
   func stop()
@@ -19,7 +18,6 @@ protocol LocalSpeechAudioCaptureSource: AnyObject, Sendable {
 }
 
 extension LocalSpeechAudioCaptureSource {
-  func prepareStoppedFrontend() throws {}
   func setPendingHandoffID(_: UUID?) {}
   func shutdown() {}
 }
@@ -225,10 +223,6 @@ final class AppleVoiceProcessingCaptureSource: LocalSpeechAudioCaptureSource,
 
   var meterRMS: [Float] {
     processor.meterRMS
-  }
-
-  func prepareStoppedFrontend() throws {
-    try processor.prepareRecordingFrontend(inputDeviceID: nil)
   }
 
   func startStreaming() -> LocalSpeechAudioStream {

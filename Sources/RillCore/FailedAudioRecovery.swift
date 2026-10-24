@@ -211,17 +211,3 @@ public protocol FailedAudioRecoveryStore: Sendable {
   func deleteAll() async throws
   func purgeExpired(now: Date) async throws -> Int
 }
-
-public extension FailedAudioRecoveryStore {
-  func receipts() async throws -> [FailedAudioRecoveryReceipt] {
-    try await receipts(now: Date())
-  }
-
-  func materializeForRetry(id: UUID, attemptID: UUID) async throws -> CapturedAudio {
-    try await materializeForRetry(id: id, attemptID: attemptID, now: Date())
-  }
-
-  func purgeExpired() async throws -> Int {
-    try await purgeExpired(now: Date())
-  }
-}

@@ -139,15 +139,6 @@ public enum LegacyWhisperModelOption: String, Codable, CaseIterable, Identifiabl
     }
   }
 
-  public init(storedModelValue: String?) {
-    let trimmed = storedModelValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    switch trimmed.lowercased() {
-    case "":
-      self = .automatic
-    default:
-      self = Self(rawValue: trimmed) ?? .custom
-    }
-  }
 }
 
 /// Release-owned presentation metadata for one exact trusted local model.

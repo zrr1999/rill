@@ -67,28 +67,6 @@ public struct AudioProcessingQueueSnapshot: Codable, Sendable, Equatable {
   }
 }
 
-public struct WorkflowRunStageSnapshot: Codable, Sendable, Equatable {
-  public var runID: UUID
-  public var workflowID: UUID
-  public var workflow: WorkflowPresentation
-  public var stage: WorkflowRunStage
-  public var updatedAt: Date
-
-  public init(
-    runID: UUID,
-    workflowID: UUID,
-    workflow: WorkflowPresentation,
-    stage: WorkflowRunStage,
-    updatedAt: Date = Date()
-  ) {
-    self.runID = runID
-    self.workflowID = workflowID
-    self.workflow = workflow
-    self.stage = stage
-    self.updatedAt = updatedAt
-  }
-}
-
 // MARK: - Content-free terminal run receipts
 
 /// A privacy-bounded duration classification used by persisted run receipts.

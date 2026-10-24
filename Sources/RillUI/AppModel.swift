@@ -11,10 +11,7 @@ import RillSpeech
 public final class AppModel {
   public var inputMethod: InputMethodFeatureModel?
   static let vocabularyRulesSettingKey = AppSettingsCodec.vocabularyRulesSettingKey
-  static let vocabularyLibrarySettingKey = AppSettingsCodec.vocabularyLibrarySettingKey
   static let workflowLibrarySettingKey = AppSettingsCodec.workflowLibrarySettingKey
-
-  static let settingsLoadKeys = AppSettingsCodec.settingsLoadKeys
 
   static let debouncedStringSettingKeys: Set<AppSettingKey> = [
     .localSpeechModel,
@@ -24,11 +21,6 @@ public final class AppModel {
     .openAIModel,
   ]
 
-  static let recognizerIDsRequiringCapturedAudio: Set<String> = [
-    localSpeechRecognizerID,
-    sherpaOnnxRecognizerID,
-    sherpaStreamingRecognizerID,
-  ]
   static let productionPostProcessStepKinds: Set<PostProcessStepKind> = [
     .llmRewrite,
     .llmAnswer,
@@ -76,10 +68,6 @@ public final class AppModel {
   public var recordCount: Int {
     recordWorkspace.snapshot.records.count
   }
-  public var recordPreview: String? {
-    guard let projection = recordWorkspace.snapshot.records.first else { return nil }
-    return projection.header.kind == .text ? projection.header.preview : nil
-  }
   public internal(set) var systemClipboardCaptureControlSnapshot =
     SystemClipboardCaptureControlSnapshot(
       revision: 0,
@@ -90,9 +78,6 @@ public final class AppModel {
   }
   public var isIgnoringNextExternalClipboardChange: Bool {
     systemClipboardCaptureControlSnapshot.state.isIgnoringNextExternalChange
-  }
-  public var isSystemClipboardCaptureControlTransitioning: Bool {
-    systemClipboardCaptureControlSnapshot.state.isTransitioning
   }
   var lastFailureResource: LocalizedStringResource?
   public var lastFailure: String? { lastFailureResource?.string(for: settings.language) }
@@ -136,9 +121,6 @@ public final class AppModel {
         && VoiceTextStyle.infer(from: workflow) != .custom
     }
   }
-  public var canRunAnyManualWorkflow: Bool {
-    enabledManualWorkflows.contains(where: canTriggerWorkflow)
-  }
   public var canDeliverNextRecord: Bool {
     recordCount > 0 && permissionSnapshot.accessibility == .granted
   }
@@ -176,7 +158,6 @@ public final class AppModel {
   let outputActionRegistry: OutputActionRegistry
   let candidateResolver: CandidateResolver
   let historyRepository: (any HistoryRepository)?
-  let runHistoryBrowser: (any RunHistoryBrowsing)?
   let runReceiptRepository: (any WorkflowRunReceiptRepository)?
   let localHistoryMaintenance: (any LocalHistoryMaintaining)?
   let diagnosticRepository: (any DiagnosticRepository)?
@@ -394,7 +375,6 @@ public final class AppModel {
     self.recordInteractions = recordInteractionServices
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
-    self.runHistoryBrowser = runHistoryBrowser
     self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary, maintenanceSleep: historyMaintenanceSleep)
     self.voice = VoiceRunModel(
       settings: settings, resources: voiceResourceServices,
@@ -496,28 +476,6 @@ extension AppModel {
   nonisolated static let localSpeechTestWorkflowID = UUID(
     uuidString: "95DA4DD0-38BF-4AE6-AF6E-493FA77E748B"
   )!
-}
-
-extension ActionResult {
-  func localizedDescription(language: AppLanguage) -> String {
-    switch self {
-    case .injected:
-      return L10n.runText(.runActionInjected, language: language)
-    case .copiedToClipboard:
-      return L10n.runText(.runActionCopiedToClipboard, language: language)
-    case .storedRecord:
-      return L10n.runText(.runActionStoredRecord, language: language)
-    case .externalOutput(let destination):
-      return String(
-        format: L10n.runText(.runActionExternalOutputFormat, language: language),
-        destination
-      )
-    case .skipped(let reason):
-      return String(format: L10n.runText(.runActionSkippedFormat, language: language), reason)
-    case .failed(let reason):
-      return String(format: L10n.runText(.runActionFailedFormat, language: language), reason)
-    }
-  }
 }
 
 extension AppModel {

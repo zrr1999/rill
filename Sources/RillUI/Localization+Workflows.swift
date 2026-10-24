@@ -30,17 +30,6 @@ extension L10n {
     pluralString("workflow.workflowVocabularyEntryCountFormat", language: language, count)
   }
 
-  static func workflowPhaseTitle(_ phase: WorkflowPhaseKind, language: AppLanguage) -> String {
-    switch phase {
-    case .setup:
-      workflowText(.workflowPhaseSetup, language: language)
-    case .process:
-      workflowText(.workflowPhaseProcess, language: language)
-    case .output:
-      workflowText(.workflowPhaseOutput, language: language)
-    }
-  }
-
   static func workflowWakePhraseValidationError(
     englishDescription: String,
     language: AppLanguage
@@ -95,9 +84,6 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
   case workflowOpenFolder
   case workflowOrderedActionsHint
   case workflowOutputPhaseSubtitle
-  case workflowPhaseOutput
-  case workflowPhaseProcess
-  case workflowPhaseSetup
   case workflowPhrasePlaceholder
   case workflowPrivacyShortAutomatic
   case workflowPrivacyShortLocal

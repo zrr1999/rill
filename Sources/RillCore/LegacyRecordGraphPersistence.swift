@@ -24,8 +24,3 @@ public struct LegacyRecordGraphImageBlob: Sendable, Equatable {
     self.payload = payload
   }
 }
-
-public enum RecordGraphRemovalResult: Sendable, Equatable {
-  case removed
-  case removedCleanupPending
-}

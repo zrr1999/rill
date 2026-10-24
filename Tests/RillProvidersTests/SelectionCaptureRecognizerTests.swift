@@ -66,19 +66,6 @@ final class SelectionCaptureRecognizerTests: XCTestCase {
   }
 }
 
-private func makeWorkflow() -> WorkflowDefinition {
-  WorkflowDefinition(
-    name: "Capture",
-    plan: WorkflowPlan(
-      setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "context.selection")),
-      process: WorkflowProcessPhase(steps: [
-        WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-        WorkflowProcessStep(kind: .applyVocabulary),
-      ]), output: WorkflowOutputPhase(actions: [OutputActionReference(id: "system-clipboard.copy")], deliveryPolicy: .init(strategy: .immediate))),
-    ui: WorkflowUIConfig(symbolName: "doc.on.clipboard", accentColorName: "blue")
-  )
-}
-
 private func makeContext(selectedText: String, clipboard: SystemClipboardSnapshot) -> ContextSnapshot {
   ContextSnapshot(
     focus: FocusSnapshot(

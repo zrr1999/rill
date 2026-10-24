@@ -15,10 +15,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
 
-  public init(localDataProtector: any LocalDataProtector) throws {
-    try self.init(databaseURL: Self.defaultDatabaseURL(), localDataProtector: localDataProtector)
-  }
-
   public init(databaseURL: URL, localDataProtector: any LocalDataProtector) throws {
     self.databaseURL = databaseURL
     self.localDataProtector = localDataProtector
@@ -110,10 +106,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
     with snapshot: RecordGraphPersistenceWriteSnapshot
   ) async throws -> Int64 {
     try access { try $0.replaceRecordGraph(with: snapshot) }
-  }
-
-  public func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    try access { try $0.removeRecordGraph() }
   }
 
   public func purgeSensitiveStorageResidue() async throws {

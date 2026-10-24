@@ -46,7 +46,6 @@ public enum ExternalOutputActionID {
 public enum ExternalOutputActionConfigurationKey {
   public static let webhookURL = "webhook.url"
   public static let webhookHeadersJSON = "webhook.headersJSON"
-  public static let webhookSecureReference = "webhook.secureReference"
   public static let shortcutName = "shortcuts.name"
   public static let markdownAppendPath = "markdown.append.path"
 }
@@ -313,11 +312,5 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
     try container.encode(plan, forKey: .plan)
     try container.encode(ui, forKey: .ui)
     try container.encode(properties, forKey: .properties)
-  }
-}
-
-private extension String {
-  var nilIfEmpty: String? {
-    isEmpty ? nil : self
   }
 }

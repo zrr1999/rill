@@ -65,7 +65,6 @@ public struct SharedVoiceInputFrame: Sendable, Equatable {
 
 public struct SharedVoiceInputSubscription: Sendable {
   public let id: UUID
-  public let channel: SharedVoiceInputChannel
   public let stream: AsyncThrowingStream<SharedVoiceInputFrame, Error>
 }
 
@@ -124,18 +123,6 @@ public actor SharedVoiceInputHub {
   private var nextSampleIndex: Int64 = 0
   private var handoffs: [UUID: Handoff] = [:]
   private var terminated = false
-
-  init(processor: AppleVoiceProcessingAudioProcessor) {
-    ambientProcessor = processor
-    interactiveProcessor = processor
-    let (activityStream, activityContinuation) =
-      AsyncStream<SharedVoiceInputActivity>.makeStream(
-        bufferingPolicy: .bufferingNewest(8)
-      )
-    activityStreamValue = activityStream
-    self.activityContinuation = activityContinuation
-    ringSamples.reserveCapacity(Self.ringCapacity)
-  }
 
   init(
     ambientProcessor: AppleVoiceProcessingAudioProcessor,
@@ -202,7 +189,7 @@ public actor SharedVoiceInputHub {
     subscribers[id] = Subscriber(channel: channel, continuation: continuation)
     publishActivity()
     reconcileProducer()
-    return SharedVoiceInputSubscription(id: id, channel: channel, stream: stream)
+    return SharedVoiceInputSubscription(id: id, stream: stream)
   }
 
   /// Creates a single-use transfer token. The requested boundary is clamped to
@@ -259,7 +246,7 @@ public actor SharedVoiceInputHub {
     let desiredChannel = makeActivity().highestPriorityChannel
     guard desiredChannel != producerChannel || producerTask == nil else { return }
 
-    stopProducer(releaseFrontend: true)
+    stopProducer()
     guard let desiredChannel else { return }
 
     producerGeneration &+= 1
@@ -345,20 +332,16 @@ public actor SharedVoiceInputHub {
     }
   }
 
-  private func stopProducer(releaseFrontend: Bool) {
+  private func stopProducer() {
     guard producerTask != nil || producerChannel != nil else { return }
     let processor = producerChannel.map(processor(for:))
     producerGeneration &+= 1
     producerTask?.cancel()
     producerTask = nil
-    if releaseFrontend {
-      // A configured, stopped VoiceProcessingIO graph can still affect other
-      // applications. Release the complete frontend whenever ownership moves
-      // away from this channel; the processor remains reusable on the next run.
-      processor?.shutdown()
-    } else {
-      processor?.stopRecording()
-    }
+    // A configured, stopped VoiceProcessingIO graph can still affect other
+    // applications. Release the complete frontend whenever ownership moves
+    // away from this channel; the processor remains reusable on the next run.
+    processor?.shutdown()
     producerContinuation?.finish()
     producerContinuation = nil
     producerChannel = nil
@@ -409,10 +392,6 @@ final class SharedVoiceInputCaptureSource: LocalSpeechAudioCaptureSource,
 
   var meterRMS: [Float] {
     processor.meterRMS
-  }
-
-  func prepareStoppedFrontend() throws {
-    try processor.prepareRecordingFrontend(inputDeviceID: nil)
   }
 
   func setPendingHandoffID(_ id: UUID?) {

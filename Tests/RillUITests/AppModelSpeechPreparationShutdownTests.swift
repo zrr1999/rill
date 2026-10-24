@@ -6,7 +6,6 @@ import XCTest
 
 private actor CancellationIgnoringSpeechProvider {
   private var prepareCallCount = 0
-  private var receivedSettings: LocalSpeechSettings?
   private var didStart = false
   private var didObserveCancellation = false
   private var startWaiters: [CheckedContinuation<Void, Never>] = []
@@ -15,11 +14,10 @@ private actor CancellationIgnoringSpeechProvider {
   private var progressCallback: (@Sendable (Progress) -> Void)?
 
   func prepare(
-    settings: LocalSpeechSettings? = nil,
+    settings _: LocalSpeechSettings? = nil,
     progressCallback: (@Sendable (Progress) -> Void)? = nil
   ) async -> String {
     prepareCallCount += 1
-    receivedSettings = settings
     self.progressCallback = progressCallback
     didStart = true
     let pendingStartWaiters = startWaiters
@@ -46,10 +44,6 @@ private actor CancellationIgnoringSpeechProvider {
 
   func callCount() -> Int {
     prepareCallCount
-  }
-
-  func settingsSnapshot() -> LocalSpeechSettings? {
-    receivedSettings
   }
 
   func waitUntilCancellationObserved() async {

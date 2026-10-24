@@ -8,10 +8,6 @@ import RillSpeech
 
 extension AppModel {
   func synchronizeWorkflowEnabledStates() { workflowLibrary.synchronizeWorkflowEnabledStates() }
-  func normalizeExclusiveWorkflowSelections() {
-    workflowLibrary.normalizeExclusiveWorkflowSelections()
-  }
-  func updateWorkflowTriggerConflicts() { workflowLibrary.updateWorkflowTriggerConflicts() }
   func triggerRequiresExclusiveBinding(_ trigger: TriggerBinding) -> Bool {
     workflowLibrary.triggerRequiresExclusiveBinding(trigger)
   }

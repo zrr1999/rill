@@ -100,12 +100,6 @@ public actor RecordCollectionEventScheduler: RecordCollectionEventSink {
     shutdownWaiters.resumeAll()
   }
 
-  func waitUntilIdleForTesting() async {
-    while drainTask != nil || !pending.isEmpty {
-      await Task.yield()
-    }
-  }
-
   private func startDrainIfNeeded() {
     guard drainTask == nil, !pending.isEmpty else { return }
     drainTask = Task { [weak self] in

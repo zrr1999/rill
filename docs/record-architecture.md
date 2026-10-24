@@ -6,7 +6,7 @@ Status: accepted, Record catalog v4 / SQLite schema 14.
 
 Rill is a local-first Record flow and Record routing system. The system clipboard is one source and one sink. It does not own stored content, grouping, routing, delivery state, or workflow history.
 
-`RecordStore` is the single actor that owns immutable Records and the mutable metadata, activity, membership, collection, buffer, route, lease, and persistence CAS coordinates around them. `RecordIngestionCoordinator` owns source → privacy → route → atomic ingest. `RecordDeliveryCoordinator` owns target route → exact membership lease → sink → content-free receipt. Sink identities are checked once at construction; duplicate identities return `RegistrationError.duplicateSink` before any lease or output. The sink registry is immutable for the coordinator lifetime.
+`RecordStore` is the single actor that owns immutable Records and the mutable metadata, activity, membership, collection, buffer, route, lease, and persistence CAS coordinates around them. `RecordIngestionCoordinator` owns source → privacy → route → atomic ingest. `RecordDeliveryCoordinator` resolves the target route and exact membership lease. `SessionCoordinator` executes the selected output action or collection insertion, then settles that lease through `RecordStore`, which creates the content-free delivery receipt. Settlement retries do not repeat the external output.
 
 ## Invariants
 

@@ -314,36 +314,6 @@ public final class SystemClipboardPort: Sendable {
     )
   }
 
-  /// Performs the same synchronous protection/change-count gate for callers
-  /// that already hold an authorized preserved snapshot.
-  @discardableResult
-  public func writeSnapshot(
-    _ snapshot: SystemClipboardSnapshot,
-    ifChangeCountIs expectedChangeCount: Int
-  ) -> Int? {
-    let descriptor = currentDescriptor()
-    guard descriptor.protections.isEmpty,
-      descriptor.changeCount == expectedChangeCount,
-      pasteboard.changeCount == expectedChangeCount
-    else {
-      return nil
-    }
-    return writeSnapshot(snapshot)
-  }
-
-  public func restore(_ snapshot: SystemClipboardSnapshot, ifChangeCountIs expected: Int) -> Bool {
-    guard pasteboard.changeCount == expected else { return false }
-    Self.writeContents(
-      of: snapshot,
-      to: pasteboard,
-      writerInstanceID: writerInstanceID,
-      limits: temporaryPreservationLimits
-    )
-    let restoredChangeCount = pasteboard.changeCount
-    markOwnedChangeCount(restoredChangeCount)
-    return true
-  }
-
   /// Restores the exact item/type/data layout captured by beginTemporaryWrite.
   /// An external clipboard change always wins and is never overwritten.
   public func restore(_ transaction: TemporaryWriteTransaction) -> TemporaryRestoreOutcome {
