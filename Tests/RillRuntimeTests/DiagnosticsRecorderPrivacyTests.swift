@@ -68,7 +68,6 @@ private actor FailingDiagnosticPrivacyRepository: DiagnosticRepository, Diagnost
 
 private actor BlockingClearDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
   private var generation: RunHistoryWriteGeneration = .initial
-  private var lastClearIntentID: UUID?
   private var stored: [DiagnosticEvent] = []
   private var clearAdvanced = false
   private var clearAdvancedWaiters: [CheckedContinuation<Void, Never>] = []
@@ -107,7 +106,6 @@ private actor BlockingClearDiagnosticRepository: DiagnosticRepository, Diagnosti
       throw RunHistoryGenerationError.clearTransitionConflict
     }
     generation = transition.nextGeneration
-    lastClearIntentID = transition.intentID
     let removedCount = stored.count
     stored.removeAll()
     clearAdvanced = true

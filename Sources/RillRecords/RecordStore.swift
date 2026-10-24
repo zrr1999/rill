@@ -314,18 +314,6 @@ public actor RecordStore {
     return try await projection(for: id)
   }
 
-  public func collection(id: RecordCollectionID) async throws -> RecordCollectionProjection? {
-    try await ensureInitialized()
-    guard let collection = graphState.collectionsByID[id] else { return nil }
-    let memberships = graphState.membershipIDsByCollectionID[id, default: []]
-      .compactMap { graphState.membershipsByID[$0] }
-    var records: [RecordID: Record] = [:]
-    for id in Set(memberships.map(\.recordID)) {
-      records[id] = try await materializedRecord(id)
-    }
-    return RecordCollectionProjection(collection: collection, memberships: memberships, recordsByID: records)
-  }
-
   /// A local correction is a new immutable, history-only Record. It neither
   /// changes the original nor emits collection events that could deliver it.
   public func saveTextCorrection(
@@ -891,41 +879,6 @@ public actor RecordStore {
       .first
   }
 
-  public func routeProjection(
-    target: FocusedApplicationIdentity
-  ) async throws -> RecordRouteProjection {
-    try await ensureInitialized()
-    let route = graphState.deliveryRules
-      .filter { $0.isEnabled && $0.matcher.matches(target) }
-      .sorted {
-        if $0.priority != $1.priority { return $0.priority > $1.priority }
-        return $0.id.rawValue.uuidString < $1.id.rawValue.uuidString
-      }
-      .first
-    let sourceIDs = route?.sourceCollectionIDs ?? [RecordCollection.inboxID]
-    for collectionID in sourceIDs {
-      guard let collection = graphState.collectionsByID[collectionID] else { continue }
-      let active = activeMemberships(in: collectionID)
-      guard collection.selectionPolicy != .manual,
-        let membership = selectedMembership(from: active, policy: collection.selectionPolicy),
-        let record = try await materializedRecord(membership.recordID),
-        graphState.membershipsByID[membership.id] == membership,
-        !leasedMembershipIDs.contains(membership.id)
-      else { continue }
-      return RecordRouteProjection(
-        collection: collection,
-        count: active.count,
-        previewText: record.payload.textValue.map { text in
-          let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
-          return normalized.count <= 120 ? normalized : String(normalized.prefix(117)) + "…"
-        },
-        previewSubject: deliverySubject(record: record, membership: membership),
-        previewPayload: record.payload
-      )
-    }
-    return RecordRouteProjection()
-  }
-
   public func beginDelivery(
     sourceCollectionIDs: [RecordCollectionID],
     sink: RecordSinkIdentity,
@@ -1054,12 +1007,11 @@ public actor RecordStore {
 
   public func completeDelivery(
     leaseID: UUID,
-    receipt: RecordDeliveryReceipt? = nil,
     deliveredAt: Date = Date()
   ) async throws -> RecordDeliveryReceipt {
     try await ensureInitialized()
     if let reuse = reuseLeases[leaseID] {
-      guard receipt == nil, settlingLeaseIDs.insert(leaseID).inserted else { throw RecordStoreError.invalidDeliveryReceipt }
+      guard settlingLeaseIDs.insert(leaseID).inserted else { throw RecordStoreError.invalidDeliveryReceipt }
       defer { settlingLeaseIDs.remove(leaseID) }
       guard var activity = graphState.activityByRecordID[reuse.record.id] else { throw RecordStoreError.recordUnavailable }
       recordSuccessfulOutput(&activity, sink: reuse.sink, at: deliveredAt)
@@ -1077,12 +1029,6 @@ public actor RecordStore {
       throw RecordStoreError.membershipAlreadyInUse
     }
     defer { settlingLeaseIDs.remove(leaseID) }
-    if let receipt {
-      guard receipt.recordID == membership.recordID,
-        receipt.membershipID == membership.id,
-        receipt.sink == lease.sink
-      else { throw RecordStoreError.invalidDeliveryReceipt }
-    }
     guard membership.revision == lease.expectedRevision else {
       throw RecordStoreError.membershipChanged
     }
@@ -1094,20 +1040,18 @@ public actor RecordStore {
       markCatalogChange(.membership, id: membership.id)
       graphState.membershipsByID[membership.id] = membership
     }
-    let completedAt = receipt?.deliveredAt ?? deliveredAt
-    recordSuccessfulOutput(&activity, sink: lease.sink, at: completedAt)
+    recordSuccessfulOutput(&activity, sink: lease.sink, at: deliveredAt)
     markCatalogChange(.activity, id: membership.recordID)
     graphState.activityByRecordID[membership.recordID] = activity
     noteMutation()
     try await persistCurrentGraph()
     releaseDeliveryLease(leaseID, lease: lease)
-    return receipt
-      ?? RecordDeliveryReceipt(
-        recordID: membership.recordID,
-        membershipID: membership.id,
-        sink: lease.sink,
-        deliveredAt: completedAt
-      )
+    return RecordDeliveryReceipt(
+      recordID: membership.recordID,
+      membershipID: membership.id,
+      sink: lease.sink,
+      deliveredAt: deliveredAt
+    )
   }
 
   public func failDelivery(
@@ -1225,37 +1169,6 @@ public actor RecordStore {
     graphState.membershipIDsByCollectionID[collectionID] = graphState.membershipIDsByCollectionID[collectionID]?.sorted {
       (graphState.membershipsByID[$0]?.ordinal ?? 0) < (graphState.membershipsByID[$1]?.ordinal ?? 0)
     }
-  }
-
-  private func activeMemberships(in collectionID: RecordCollectionID) -> [RecordMembership] {
-    graphState.membershipIDsByCollectionID[collectionID, default: []]
-      .compactMap { graphState.membershipsByID[$0] }
-      .filter { $0.state == .active && !leasedMembershipIDs.contains($0.id) }
-  }
-
-  private func selectedMembership(
-    from candidates: [RecordMembership],
-    policy: RecordSelectionPolicy
-  ) -> RecordMembership? {
-    switch policy {
-    case .newestFirst: candidates.max { $0.ordinal < $1.ordinal }
-    case .oldestFirst: candidates.min { $0.ordinal < $1.ordinal }
-    case .manual: nil
-    }
-  }
-
-  private func deliverySubject(
-    record: Record,
-    membership: RecordMembership
-  ) -> RecordDeliverySubject {
-    RecordDeliverySubject(
-      recordID: record.id,
-      membershipID: membership.id,
-      membershipRevision: membership.revision,
-      collectionID: membership.collectionID,
-      payloadKind: record.payload.kind,
-      captureTags: record.provenance.captureTags
-    )
   }
 
   private func projection(for recordID: RecordID) async throws -> RecordProjection? {

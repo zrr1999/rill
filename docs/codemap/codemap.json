@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "997d061754bb24c98f7e2caa6759097f121cc270",
+  "baseline": "4db9300beeae2b27215a336d2060eab5c3261f41",
   "nodes": [
     {
       "id": "RillApp",
@@ -41,7 +41,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -134,6 +134,12 @@
           "line": 11,
           "symbol": "sharedAppActionPlaysBothSoundsAndRejectsInvalidatedTokens",
           "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillAppTests/RillIntentTextTests.swift",
+          "line": 12,
+          "symbol": "testLastTranscriptionRejectsBlankText",
+          "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/RillMenuBarIconTests.swift",
@@ -324,7 +330,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -377,6 +383,12 @@
           "framework": "XCTest"
         },
         {
+          "path": "Tests/RillAppTests/RillIntentTextTests.swift",
+          "line": 12,
+          "symbol": "testLastTranscriptionRejectsBlankText",
+          "framework": "XCTest"
+        },
+        {
           "path": "Tests/RillAppTests/RillMenuBarIconTests.swift",
           "line": 10,
           "symbol": "testBrandImagesRenderFromPackageResourcesWithVisibleRecordIndicator",
@@ -408,7 +420,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelFailedAudioRecoveryTests.swift",
-          "line": 184,
+          "line": 153,
           "symbol": "testFailedAudioRecoveryMutationIsRejectedDuringInitialSettingsRead",
           "framework": "XCTest"
         },
@@ -480,7 +492,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelSpeechPreparationShutdownTests.swift",
-          "line": 117,
+          "line": 111,
           "symbol": "testUserCancelBeforeScheduledPreparationDoesNotStartProvider",
           "framework": "XCTest"
         },
@@ -752,6 +764,12 @@
           "path": "Tests/RillUITests/RecordBufferDraftModelTests.swift",
           "line": 9,
           "symbol": "closingDuringNewItemReleasesTheEventualEditingSession",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillUITests/RecordBufferMaintenanceTests.swift",
+          "line": 23,
+          "symbol": "periodicMaintenanceExpiresEntriesWithoutOpeningThePanelAndDrainsOnShutdown",
           "framework": "Swift Testing"
         },
         {
@@ -1063,7 +1081,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -1132,6 +1150,12 @@
           "line": 11,
           "symbol": "sharedAppActionPlaysBothSoundsAndRejectsInvalidatedTokens",
           "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillAppTests/RillIntentTextTests.swift",
+          "line": 12,
+          "symbol": "testLastTranscriptionRejectsBlankText",
+          "framework": "XCTest"
         },
         {
           "path": "Tests/RillAppTests/SystemClipboardCaptureControllerTests.swift",
@@ -1734,12 +1758,6 @@
           "framework": "Swift Testing"
         },
         {
-          "path": "Tests/RillProvidersTests/WakePhraseTokenizerTests.swift",
-          "line": 27,
-          "symbol": "testEncodesEnglishAndMixedMandarinUsingModelTokens",
-          "framework": "XCTest"
-        },
-        {
           "path": "Tests/RillRuntimeTests/AuthorizedLiveAudioSessionTests.swift",
           "line": 67,
           "symbol": "testCaptureCannotSealBeforePrivacyMonitorStarts",
@@ -1777,7 +1795,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/DiagnosticsRecorderPrivacyTests.swift",
-          "line": 137,
+          "line": 135,
           "symbol": "testRecordSanitizesMemoryRepositoryAndPublishedEvent",
           "framework": "XCTest"
         },
@@ -1872,6 +1890,12 @@
           "framework": "Swift Testing"
         },
         {
+          "path": "Tests/RillRuntimeTests/RecordBufferExpirationTests.swift",
+          "line": 26,
+          "symbol": "expiresAt24HoursAndPreservesRecordAndMemberships",
+          "framework": "Swift Testing"
+        },
+        {
           "path": "Tests/RillRuntimeTests/RecordBufferTests.swift",
           "line": 28,
           "symbol": "scheduling",
@@ -1921,8 +1945,8 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordRoutingTests.swift",
-          "line": 9,
-          "symbol": "testCaptureSourceCreatesOneRecordInStableUnionOfCollections",
+          "line": 10,
+          "symbol": "testCaptureCreatesOneRecordInStableUnionOfCollections",
           "framework": "XCTest"
         },
         {
@@ -2017,7 +2041,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 492,
+          "line": 438,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
           "framework": "XCTest"
         },
@@ -2089,7 +2113,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelFailedAudioRecoveryTests.swift",
-          "line": 184,
+          "line": 153,
           "symbol": "testFailedAudioRecoveryMutationIsRejectedDuringInitialSettingsRead",
           "framework": "XCTest"
         },
@@ -2161,7 +2185,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelSpeechPreparationShutdownTests.swift",
-          "line": 117,
+          "line": 111,
           "symbol": "testUserCancelBeforeScheduledPreparationDoesNotStartProvider",
           "framework": "XCTest"
         },
@@ -2379,6 +2403,12 @@
           "path": "Tests/RillUITests/RecordBufferDraftModelTests.swift",
           "line": 9,
           "symbol": "closingDuringNewItemReleasesTheEventualEditingSession",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillUITests/RecordBufferMaintenanceTests.swift",
+          "line": 23,
+          "symbol": "periodicMaintenanceExpiresEntriesWithoutOpeningThePanelAndDrainsOnShutdown",
           "framework": "Swift Testing"
         },
         {
@@ -2703,6 +2733,12 @@
           "framework": "Swift Testing"
         },
         {
+          "path": "Tests/RillRuntimeTests/RecordBufferExpirationTests.swift",
+          "line": 26,
+          "symbol": "expiresAt24HoursAndPreservesRecordAndMemberships",
+          "framework": "Swift Testing"
+        },
+        {
           "path": "Tests/RillRuntimeTests/RecordBufferTests.swift",
           "line": 28,
           "symbol": "scheduling",
@@ -2746,8 +2782,8 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordRoutingTests.swift",
-          "line": 9,
-          "symbol": "testCaptureSourceCreatesOneRecordInStableUnionOfCollections",
+          "line": 10,
+          "symbol": "testCaptureCreatesOneRecordInStableUnionOfCollections",
           "framework": "XCTest"
         },
         {
@@ -2824,7 +2860,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 492,
+          "line": 438,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
           "framework": "XCTest"
         },
@@ -2856,6 +2892,12 @@
           "path": "Tests/RillUITests/RecordBufferDraftModelTests.swift",
           "line": 9,
           "symbol": "closingDuringNewItemReleasesTheEventualEditingSession",
+          "framework": "Swift Testing"
+        },
+        {
+          "path": "Tests/RillUITests/RecordBufferMaintenanceTests.swift",
+          "line": 23,
+          "symbol": "periodicMaintenanceExpiresEntriesWithoutOpeningThePanelAndDrainsOnShutdown",
           "framework": "Swift Testing"
         },
         {
@@ -3133,7 +3175,6 @@
         "Sources/RillWorkflows/SealedCaptureHandoff.swift",
         "Sources/RillWorkflows/SelectionCaptureRecognizer.swift",
         "Sources/RillWorkflows/SessionCoordinator.swift",
-        "Sources/RillWorkflows/SpeechWorkflowAdapters.swift",
         "Sources/RillWorkflows/WorkflowAudioRunController.swift",
         "Sources/RillWorkflows/WorkflowExecutionPolicy.swift",
         "Sources/RillWorkflows/WorkflowExplainService.swift",
@@ -3155,7 +3196,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -3220,6 +3261,12 @@
           "framework": "Swift Testing"
         },
         {
+          "path": "Tests/RillAppTests/RillIntentTextTests.swift",
+          "line": 12,
+          "symbol": "testLastTranscriptionRejectsBlankText",
+          "framework": "XCTest"
+        },
+        {
           "path": "Tests/RillAppTests/SystemClipboardCaptureControllerTests.swift",
           "line": 168,
           "symbol": "repeatedCopyReusesHistoryAndFulfillsBothOutputPositions",
@@ -3275,7 +3322,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/DiagnosticsRecorderPrivacyTests.swift",
-          "line": 137,
+          "line": 135,
           "symbol": "testRecordSanitizesMemoryRepositoryAndPublishedEvent",
           "framework": "XCTest"
         },
@@ -3401,8 +3448,8 @@
         },
         {
           "path": "Tests/RillRuntimeTests/RecordRoutingTests.swift",
-          "line": 9,
-          "symbol": "testCaptureSourceCreatesOneRecordInStableUnionOfCollections",
+          "line": 10,
+          "symbol": "testCaptureCreatesOneRecordInStableUnionOfCollections",
           "framework": "XCTest"
         },
         {
@@ -3497,7 +3544,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 492,
+          "line": 438,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
           "framework": "XCTest"
         },
@@ -3545,7 +3592,7 @@
         },
         {
           "path": "Tests/RillUITests/AppModelFailedAudioRecoveryTests.swift",
-          "line": 184,
+          "line": 153,
           "symbol": "testFailedAudioRecoveryMutationIsRejectedDuringInitialSettingsRead",
           "framework": "XCTest"
         },
@@ -3704,7 +3751,6 @@
         "Sources/RillPlatform/RawMicrophoneAudioEngineSession.swift",
         "Sources/RillPlatform/RealtimeAudioCaptureService.swift",
         "Sources/RillPlatform/RecordBufferTextOutput.swift",
-        "Sources/RillPlatform/RecordSystemPorts.swift",
         "Sources/RillPlatform/RecordingInteractionCuePlayer.swift",
         "Sources/RillPlatform/Resources/BuiltinWorkflows/bufferDictation.toml",
         "Sources/RillPlatform/Resources/BuiltinWorkflows/bufferDraftDictation.toml",
@@ -3739,7 +3785,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -3777,6 +3823,12 @@
           "path": "Tests/RillAppTests/RecordPanelCollectionTests.swift",
           "line": 15,
           "symbol": "testRestoredCollectionSettingsDoNotPresentThePanelOrCaptureATarget",
+          "framework": "XCTest"
+        },
+        {
+          "path": "Tests/RillAppTests/RillIntentTextTests.swift",
+          "line": 12,
+          "symbol": "testLastTranscriptionRejectsBlankText",
           "framework": "XCTest"
         },
         {
@@ -4162,7 +4214,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -4315,12 +4367,6 @@
           "line": 7,
           "symbol": "vocabularyIsDataAndTraceContainsOnlyTranscript",
           "framework": "Swift Testing"
-        },
-        {
-          "path": "Tests/RillProvidersTests/WakePhraseTokenizerTests.swift",
-          "line": 27,
-          "symbol": "testEncodesEnglishAndMixedMandarinUsingModelTokens",
-          "framework": "XCTest"
         },
         {
           "path": "Tests/RillRuntimeTests/CleanupProtectionFallbackTests.swift",
@@ -4480,8 +4526,7 @@
         "Sources/RillSpeech/QwenStreamingText.swift",
         "Sources/RillSpeech/RoutedLocalSpeechRecognizer.swift",
         "Sources/RillSpeech/SpeechWorkerStreamingPreviewService.swift",
-        "Sources/RillSpeech/SpeechWorkerSupervisor.swift",
-        "Sources/RillSpeech/WakePhraseTokenizer.swift"
+        "Sources/RillSpeech/SpeechWorkerSupervisor.swift"
       ],
       "evidence": [
         "Package.swift",
@@ -4490,7 +4535,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },
@@ -4537,12 +4582,6 @@
           "framework": "XCTest"
         },
         {
-          "path": "Tests/RillProvidersTests/WakePhraseTokenizerTests.swift",
-          "line": 27,
-          "symbol": "testEncodesEnglishAndMixedMandarinUsingModelTokens",
-          "framework": "XCTest"
-        },
-        {
           "path": "Tests/RillRuntimeTests/AuthorizedLiveAudioSessionTests.swift",
           "line": 67,
           "symbol": "testCaptureCannotSealBeforePrivacyMonitorStarts",
@@ -4574,7 +4613,7 @@
         },
         {
           "path": "Tests/RillRuntimeTests/SessionCoordinatorTests.swift",
-          "line": 492,
+          "line": 438,
           "symbol": "testCancelledRunStillDeliversTerminalUnderBackpressure",
           "framework": "XCTest"
         }
@@ -4603,7 +4642,7 @@
       "tests": [
         {
           "path": "Tests/RillAppTests/AppBootstrapTests.swift",
-          "line": 441,
+          "line": 345,
           "symbol": "testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation",
           "framework": "XCTest"
         },

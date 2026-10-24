@@ -6,23 +6,6 @@ import RillRecords
 import RillKnowledge
 import RillSpeech
 
-enum AppCredentialPersistenceError: LocalizedError {
-  case secureStoreUnavailable
-  case settingsStoreUnavailable
-  case verificationFailed
-
-  var errorDescription: String? {
-    switch self {
-    case .secureStoreUnavailable:
-      return "Secure credential storage is unavailable."
-    case .settingsStoreUnavailable:
-      return "Provider settings storage is unavailable."
-    case .verificationFailed:
-      return "The provider configuration could not be saved and verified."
-    }
-  }
-}
-
 public enum VocabularyCorrectionSaveOutcome: Sendable, Equatable {
   case created(ruleID: UUID)
   case reused(ruleID: UUID)
@@ -149,9 +132,6 @@ enum ProviderSettingsPersistenceError: LocalizedError, Sendable, Equatable {
     L10n.resource("AppModel.SettingsPersistence.Saved.speech.provider.settings.are.unavailable")
   }
 
-  func message(language: AppLanguage) -> String {
-    presentation.string(for: language)
-  }
 }
 
 typealias SettingsStoreWriteOperation =
@@ -206,7 +186,6 @@ struct StoredAppSettingsSnapshot: Sendable {
   let openAIAPIKey: String?
   let openAICredentialAvailability: OpenAICredentialAvailability
 
-  let vocabularyRules: [VocabularyRule]
   let vocabularyCollections: [VocabularyCollection]
   let vocabularyBindings: [VocabularyCollectionBinding]
   let vocabularyLibraryNeedsMigration: Bool
@@ -230,11 +209,6 @@ extension AppModel {
   static let scalarSettingsKeys = Set(
     ScalarSettingsDomain.allCases.flatMap(\.settingKeys)
   )
-
-  private static let privacySettingKeys = AppSettingsCodec.privacySettingKeys
-
-  private static let openAIConfigurationSettingKeys = AppSettingsCodec
-    .openAIConfigurationSettingKeys
 
   func loadSettings() {
     guard settingsStore != nil || credentialStore != nil else {

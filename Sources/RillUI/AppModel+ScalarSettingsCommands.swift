@@ -74,10 +74,6 @@ extension AppModel {
 }
 
 extension AppModel {
-  public func setOpenAIAPIKey(_ value: String) { setLanguageModelAPIKey(value) }
-  public func setOpenAIBaseURL(_ value: String) { setLanguageModelBaseURL(value) }
-  public func setOpenAIModel(_ value: String) { setLanguageModelIdentifier(value) }
-
   public func setLanguageModelAPIKey(_ value: String) {
     guard !hasBegunApplicationShutdown, settings.credentialAvailability() != .inaccessible else { return }
     applyLanguageModelAPIKey(value)

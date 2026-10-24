@@ -235,10 +235,6 @@ extension AppModel {
     trustedLocalSpeechModels.map(\.id).filter(self.settings.enabledSpeechModelIDs.contains)
   }
 
-  public var workflowSelectableTTSModels: [String] {
-    ttsModelOptions.map(\.id).filter(self.settings.enabledSpeechModelIDs.contains)
-  }
-
   public func isLocalSpeechModelDownloaded(_ modelIdentifier: String) -> Bool {
     self.voice.downloadedLocalSpeechModels.contains(modelIdentifier)
   }
@@ -871,11 +867,6 @@ extension AppModel {
     _ = setSystemClipboardCaptureEnabled(!self.settings.systemClipboardCaptureEnabled)
   }
 
-  @available(*, deprecated, message: "Use toggleClipboardCaptureEnabled().")
-  public func toggleClipboardCapturePaused() {
-    toggleClipboardCaptureEnabled()
-  }
-
   public func ignoreNextExternalClipboardChange() {
     guard self.settings.systemClipboardCaptureEnabled,
       systemClipboardCaptureControlSnapshot.state == .active
@@ -1009,10 +1000,6 @@ extension AppModel {
     applyRecordPanelHotkeyBinding(.doubleCommand)
   }
 
-  public func reportRecordPanelPasteFailure() {
-    lastFailureResource = L10n.resource("run.recordDeliveryFocusFailure")
-  }
-
   public func updatePermissionSnapshot(_ snapshot: PermissionSnapshot) {
     let microphoneChanged = permissionSnapshot.microphone != snapshot.microphone
     permissionSnapshot = snapshot
@@ -1027,11 +1014,6 @@ extension AppModel {
 
   public func defaultWorkflowDraft() -> WorkflowEditorDraft {
     WorkflowEditorDraft(recognizer: .localSpeech)
-  }
-
-  public func isCustomWorkflow(_ workflow: WorkflowDefinition) -> Bool {
-    !isBuiltInWorkflow(workflow)
-      && !workflow.properties.isBuiltin
   }
 
   public func isBuiltInWorkflow(_ workflow: WorkflowDefinition) -> Bool {

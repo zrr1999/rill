@@ -2517,40 +2517,6 @@
         }
       }
     },
-    "Localization.Selects.this.item.Press.Return.to.paste.it": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selects this item. Press Return to paste it."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择这个条目；按 Return 键可粘贴。"
-          }
-        }
-      }
-    },
-    "Localization.Selects.this.item.and.opens.its.details": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selects this item and opens its details."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择这个条目并打开其详情。"
-          }
-        }
-      }
-    },
     "Localization.WorkflowExplanation.Input.availability.unclassified": {
       "extractionState": "manual",
       "localizations": {
@@ -4305,57 +4271,6 @@
         }
       }
     },
-    "count.pending": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ item(s) pending"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "待投递 %@ 项"
-          }
-        }
-      }
-    },
-    "count.recordSummary": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ item(s)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 项"
-          }
-        }
-      }
-    },
-    "count.routeEmpty": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Route empty"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "路由为空"
-          }
-        }
-      }
-    },
     "diagnosticLevel.debug": {
       "extractionState": "manual",
       "localizations": {
@@ -4420,74 +4335,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "警告"
-          }
-        }
-      }
-    },
-    "externalOutputField.markdownAppendPath": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Markdown File Path"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Markdown 文件路径"
-          }
-        }
-      }
-    },
-    "externalOutputField.shortcutName": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Shortcut Name"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "快捷指令名称"
-          }
-        }
-      }
-    },
-    "externalOutputField.webhookHeadersJSON": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Headers JSON (optional)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请求头 JSON（可选）"
-          }
-        }
-      }
-    },
-    "externalOutputField.webhookURL": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook URL"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook URL"
           }
         }
       }
@@ -7259,40 +7106,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地模型覆盖"
-          }
-        }
-      }
-    },
-    "general.workflowRouteAutomaticHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Uses the current global engine, with this workflow's language/model overrides when set."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用当前全局引擎；如已设置，则应用此工作流自己的语言/模型覆盖。"
-          }
-        }
-      }
-    },
-    "general.workflowRouteLocalHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local speech worker; the workflow's model and language stay on this Mac."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用本地语音 worker；workflow 的模型和语言处理留在本机。"
           }
         }
       }
@@ -26838,125 +26651,6 @@
         }
       }
     },
-    "voiceTextStyleDescription.cleanInput": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Clean spacing and line breaks without rewriting meaning."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "整理空格和换行，不改写含义。"
-          }
-        }
-      }
-    },
-    "voiceTextStyleDescription.commandMode": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Shape the transcript into a concise command or instruction."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "把转写内容整理成简洁命令或指令。"
-          }
-        }
-      }
-    },
-    "voiceTextStyleDescription.custom": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use the custom advanced text steps below."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用下方自定义高级文本步骤。"
-          }
-        }
-      }
-    },
-    "voiceTextStyleDescription.formalWriting": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rewrite into a concise polished draft while preserving meaning."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在保留含义的前提下润色成简洁成稿。"
-          }
-        }
-      }
-    },
-    "voiceTextStyleDescription.rawInput": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep the transcript as close to the recognizer result as possible."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "尽量保留识别结果原文。"
-          }
-        }
-      }
-    },
-    "voiceTextStyleDescription.smartCleanup": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Correct transcription errors and organize paragraphs and lists without losing information."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "纠正识别错误，整理段落和列表，保留所有实质信息。"
-          }
-        }
-      }
-    },
-    "voiceTextStyleDescription.translateInput": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Translate the transcript when you ask for a target language."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按你说出的目标语言翻译转写内容。"
-          }
-        }
-      }
-    },
     "voiceTextStyleTitle.cleanInput": {
       "extractionState": "manual",
       "localizations": {
@@ -27803,57 +27497,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择主要输出目标，并可追加语音朗读。"
-          }
-        }
-      }
-    },
-    "workflow.workflowPhaseOutput": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Output"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "输出"
-          }
-        }
-      }
-    },
-    "workflow.workflowPhaseProcess": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Process"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "处理"
-          }
-        }
-      }
-    },
-    "workflow.workflowPhaseSetup": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Setup"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "准备"
           }
         }
       }
@@ -28784,23 +28427,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已存入记录"
-          }
-        }
-      }
-    },
-    "workflowConflict": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Conflict: %1$@ is also enabled for %2$@."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "冲突：%1$@ 也被以下工作流启用了：%2$@。"
           }
         }
       }

@@ -880,11 +880,11 @@ extension AppModelTests {
     )
     let payload = String(decoding: try JSONEncoder().encode([rule]), as: UTF8.self)
     let settingsStore = UITestSettingsStore(storage: [AppSettingKey(rawValue: "vocabulary.rules")!: payload])
-    let settings = try await AppSettingsCodec.loadStoredAppSettings(from: settingsStore)
-
-    let mirror = Mirror(reflecting: settings)
-    let loadedRules = mirror.children.first { $0.label == "vocabularyRules" }?.value as? [VocabularyRule]
-    XCTAssertEqual(loadedRules, [rule])
+    let harness = makeHarness(settingsStore: settingsStore)
+    await harness.model.waitForInitialVoiceConfiguration()
+    XCTAssertEqual(harness.model.vocabulary.vocabularyRules, [rule])
+    await harness.model.stopSettingsReadTasksForApplicationShutdown()
+    await harness.model.flushPendingPersistenceWrites()
   }
 
   func testVocabularySourceTracksLoadedRulesAndSessionEditsSynchronously() async throws {

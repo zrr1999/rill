@@ -48,29 +48,6 @@ final class MLXAudioSwiftBackendTests: XCTestCase {
     )
   }
 
-  func testLegacyWorkflowOverrideCannotChangeGlobalASR() {
-    let workflow = WorkflowDefinition(
-      name: "MLX override",
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "local-speech")),
-        process: WorkflowProcessPhase(steps: [
-          WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-          WorkflowProcessStep(kind: .applyVocabulary),
-        ]), output: WorkflowOutputPhase(actions: [], deliveryPolicy: .init(strategy: .immediate))),
-      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent"),
-      properties: .init())
-
-    XCTAssertEqual(
-      LocalSpeechModelCatalog.effectiveModelIdentifier(
-        settings: LocalSpeechSettings(
-          model: "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25"
-        ),
-        workflow: workflow
-      ),
-      MLXAudioModelID.qwen3ASR06BInt8.rawValue
-    )
-  }
-
   func testNativeSwiftBackendAdvertisesQwenContextKeyterms() {
     let supervisor = SpeechWorkerSupervisor(
       configuration: .init(executableURL: URL(fileURLWithPath: "/usr/bin/false"))

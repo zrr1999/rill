@@ -143,57 +143,6 @@ public enum WorkflowExecutionPlanResolver {
   }
 }
 
-public enum WorkflowOutputSourceItemReplacementCapability: String, Sendable, Equatable {
-  case unsupported
-  case replacesSourceItem
-}
-
-public struct WorkflowClosedTransformCapability: Sendable, Equatable {
-  public var kind: WorkflowExplanationTransformKind
-  public var processingDestination: WorkflowExplanationProcessingDestination
-
-  public init(
-    kind: WorkflowExplanationTransformKind,
-    processingDestination: WorkflowExplanationProcessingDestination
-  ) {
-    self.kind = kind
-    self.processingDestination = processingDestination
-  }
-}
-
-public struct WorkflowClosedOutputEffectCapability: Sendable, Equatable {
-  public var effect: WorkflowExplanationOutputEffect
-  public var processingDestination: WorkflowExplanationProcessingDestination
-
-  public init(
-    effect: WorkflowExplanationOutputEffect,
-    processingDestination: WorkflowExplanationProcessingDestination
-  ) {
-    self.effect = effect
-    self.processingDestination = processingDestination
-  }
-}
-
-/// A privacy-safe projection of a shipped output profile.
-///
-/// The projection contains no component identifier or configuration value. It
-/// is safe for a pure planner to retain or serialize through its own closed DTO.
-public struct WorkflowClosedOutputCapability: Sendable, Equatable {
-  public var effects: [WorkflowClosedOutputEffectCapability]
-  public var configurationState: WorkflowExplanationConfigurationState
-  public var sourceItemReplacement: WorkflowOutputSourceItemReplacementCapability
-
-  public init(
-    effects: [WorkflowClosedOutputEffectCapability],
-    configurationState: WorkflowExplanationConfigurationState,
-    sourceItemReplacement: WorkflowOutputSourceItemReplacementCapability
-  ) {
-    self.effects = effects
-    self.configurationState = configurationState
-    self.sourceItemReplacement = sourceItemReplacement
-  }
-}
-
 public struct WorkflowComponentProfileRegistry: Sendable {
   fileprivate struct InputProfile: Sendable {
     var category: WorkflowExplanationInputCategory
@@ -221,7 +170,6 @@ public struct WorkflowComponentProfileRegistry: Sendable {
   fileprivate struct OutputProfile: Sendable {
     var effects: [OutputEffectProfile]
     var configurationRequirement: ConfigurationRequirement
-    var sourceItemReplacement: WorkflowOutputSourceItemReplacementCapability = .unsupported
   }
 
   private let recognizers: [String: RecognizerProfile]
@@ -369,38 +317,6 @@ public struct WorkflowComponentProfileRegistry: Sendable {
 
   fileprivate func output(for id: String) -> OutputProfile? {
     outputs[id]
-  }
-
-  /// Returns only the closed transform semantics shipped by Rill. Unknown
-  /// steps remain unavailable rather than being guessed to be local.
-  public func closedTransformCapability(
-    for kind: PostProcessStepKind
-  ) -> WorkflowClosedTransformCapability? {
-    guard let profile = transformer(for: kind) else { return nil }
-    return WorkflowClosedTransformCapability(
-      kind: profile.kind,
-      processingDestination: profile.destination
-    )
-  }
-
-  /// Resolves an output reference into closed effects and a closed
-  /// configuration state without returning its identifier or configuration.
-  public func closedOutputCapability(
-    for reference: OutputActionReference
-  ) -> WorkflowClosedOutputCapability? {
-    guard let profile = output(for: reference.id) else { return nil }
-    return WorkflowClosedOutputCapability(
-      effects: profile.effects.map {
-        WorkflowClosedOutputEffectCapability(
-          effect: $0.effect,
-          processingDestination: $0.destination
-        )
-      },
-      configurationState: profile.configurationRequirement.state(
-        of: reference.configuration, stage: .declaration
-      ),
-      sourceItemReplacement: profile.sourceItemReplacement
-    )
   }
 
 }
@@ -804,7 +720,4 @@ public struct WorkflowExplainService: Sendable {
     return result
   }
 
-  private func trimmed(_ value: String?) -> String {
-    value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-  }
 }

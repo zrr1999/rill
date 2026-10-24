@@ -6,11 +6,11 @@ import Testing
 
 struct CleanupBudgetProviderTests {
   enum Scenario: CaseIterable, Sendable {
-    case canonical, contextual, customRewrite, answer, voiceAssistantRewrite, voiceAssistantAnswer, canonicalWithCustomStep
+    case canonical, contextual, customRewrite, answer, canonicalWithCustomStep
 
-    func usesShortBudget(deepSeek: Bool) -> Bool {
+    var usesShortBudget: Bool {
       switch self {
-      case .answer, .voiceAssistantAnswer: false
+      case .answer: false
       default: true
       }
     }
@@ -25,7 +25,7 @@ struct CleanupBudgetProviderTests {
     #expect(try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context) == "预算五百元")
     let request = try #require(await client.requests.first)
     let deepSeek = model == LLMTextProcessing.deepSeekModel
-    #expect(request.timeoutInterval == (scenario.usesShortBudget(deepSeek: deepSeek) ? 5 : 60))
+    #expect(request.timeoutInterval == (scenario.usesShortBudget ? 5 : 60))
     let deepSeekRewrite = deepSeek && fixture.step.kind == .llmRewrite && fixture.step.reasoning == .some(.none)
     #expect(request.reasoning == fixture.step.reasoning)
     #expect(request.temperature == (deepSeekRewrite ? 0.1 : nil))
@@ -39,7 +39,7 @@ struct CleanupBudgetProviderTests {
     let fixture = try fixture(scenario)
     let client = EchoBudgetClient()
     let transformer = OpenAITextRewriteTransformer(settingsProvider: { _ in settings }, clientFactory: { client }, rewriteTimeout: .zero)
-    if scenario.usesShortBudget(deepSeek: model == LLMTextProcessing.deepSeekModel) {
+    if scenario.usesShortBudget {
       await #expect(throws: OpenAITextRewriteError.timedOut) {
         _ = try await transformer.transform(text: "预算五百元", step: fixture.step, context: fixture.context)
       }
@@ -150,10 +150,7 @@ struct CleanupBudgetProviderTests {
         ui: .init(symbolName: "waveform", accentColorName: "blue"))
     }
     if scenario == .canonicalWithCustomStep { step.prompt = "Rewrite in a formal style." }
-    if scenario == .answer || scenario == .voiceAssistantAnswer { step.kind = .llmAnswer }
-    if scenario == .voiceAssistantRewrite || scenario == .voiceAssistantAnswer {
-
-    }
+    if scenario == .answer { step.kind = .llmAnswer }
     var context = TransformContext(
       runID: UUID(), workflow: workflow, contextSnapshot: .empty,
       recognitionResult: .init(rawText: "预算五百元", bestText: "预算五百元"))

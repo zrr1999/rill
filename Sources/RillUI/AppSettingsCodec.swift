@@ -149,7 +149,6 @@ enum AppSettingsCodec {
       unavailableDomains.insert(.downloadedModelMetadata)
     }
 
-    let vocabularyRules: [VocabularyRule]
     let vocabularyCollections: [VocabularyCollection]
     let vocabularyBindings: [VocabularyCollectionBinding]
     do {
@@ -162,17 +161,14 @@ enum AppSettingsCodec {
           ?? library.collections.map { collection in
             VocabularyCollectionBinding(collectionID: collection.id)
           }
-        vocabularyRules = sortedVocabularyRules(
-          VocabularyLegacyMigrator.project(vocabularyCollections, bindings: vocabularyBindings))
       } else {
-        vocabularyRules = try Self.loadVocabularyRules(
+        let vocabularyRules = try Self.loadVocabularyRules(
           from: storedSettings[Self.vocabularyRulesSettingKey])
         let migration = VocabularyLegacyMigrator.migrate(vocabularyRules)
         vocabularyCollections = migration.collections
         vocabularyBindings = migration.bindings
       }
     } catch {
-      vocabularyRules = []
       vocabularyCollections = [.personal()]
       vocabularyBindings = [
         VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID)
@@ -232,7 +228,6 @@ enum AppSettingsCodec {
       downloadedLocalSpeechModels: downloadedLocalSpeechModels,
       openAIAPIKey: openAIAPIKey,
       openAICredentialAvailability: openAICredentialAvailability,
-      vocabularyRules: vocabularyRules,
       vocabularyCollections: vocabularyCollections,
       vocabularyBindings: vocabularyBindings,
       vocabularyLibraryNeedsMigration:
@@ -449,13 +444,6 @@ enum AppSettingsCodec {
       if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
       return lhs.id.uuidString < rhs.id.uuidString
     }
-  }
-
-  static func normalizeCustomWorkflow(_ workflow: WorkflowDefinition) -> WorkflowDefinition {
-    var workflow = workflow
-    workflow.titleKey = nil
-    workflow.properties.isBuiltin = false
-    return workflow
   }
 
   static func privacySettingsStorageValues(

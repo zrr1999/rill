@@ -187,26 +187,6 @@ public struct PrivacyRunGate: Sendable {
     }
   }
 
-  init(
-    settingsProvider: @escaping @Sendable () async throws -> PrivacyPolicySettings,
-    cloudConfirmationProvider:
-      @escaping @Sendable (
-        WorkflowDefinition,
-        PrivacyPolicyDecision,
-        [PrivacyProcessingDestination],
-        WorkflowModelSnapshot?
-      ) async -> Bool,
-    invocationDestinationClassifier:
-      @escaping @Sendable (
-        WorkflowDefinition,
-        WorkflowRunInvocation
-      ) -> WorkflowPrivacyDestinationClassification
-  ) {
-    self.settingsProvider = settingsProvider
-    self.cloudConfirmationProvider = cloudConfirmationProvider
-    destinationClassifier = invocationDestinationClassifier
-  }
-
   public func authorize(
     context: ContextSnapshot,
     workflow: WorkflowDefinition
@@ -417,42 +397,6 @@ public struct PrivacyRunGate: Sendable {
     )
   }
 
-  public func captureAuthorizedRecordRunContext(
-    subject: RecordDeliverySubject,
-    operation: RecordWorkflowOperation,
-    privacyContextProvider: @Sendable () async -> ContextSnapshot,
-    contextProvider: @Sendable (PrivacyPolicyDecision) async -> ContextSnapshot,
-    workflow: WorkflowDefinition
-  ) async throws -> AuthorizedWorkflowRunContext {
-    guard subject.payloadKind == .text else {
-      throw GateError.recordContentUnsupported
-    }
-    guard !subject.captureTags.contains(.excludeFromWorkflowCapture) else {
-      throw GateError.recordExcludedFromWorkflowCapture
-    }
-    if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
-      throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
-    }
-    let invocation = WorkflowRunInvocation.record(
-      subject: subject,
-      operation: operation
-    )
-    let gate = try bindingModels(for: workflow)
-    let capture = try await gate.captureAuthorizedPolicyContext(
-      privacyContextProvider: privacyContextProvider,
-      contextProvider: contextProvider,
-      workflow: workflow,
-      invocation: invocation
-    )
-    return AuthorizedWorkflowRunContext(
-      workflow: workflow,
-      contextSnapshot: capture.authorizedContext,
-      recognitionOptions: .empty,
-      invocation: invocation,
-      modelSnapshot: gate.modelSnapshot
-    )
-  }
-
   /// Authorizes capture and issues a one-shot lease for deferred processing.
   /// The queue must claim the lease before resolving the capture and finalize
   /// that claim against the same gate before recognizing the captured audio.
@@ -513,7 +457,6 @@ public struct PrivacyRunGate: Sendable {
     )
     return AuthorizedLiveAudioSession(
       runID: runID,
-      workflow: workflow,
       audioLifetime: audioLifetime,
       processingLease: lease,
       authorizationState: liveAuthorizationState,

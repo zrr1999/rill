@@ -172,30 +172,6 @@ private struct ContextProbeAction: OutputAction {
   }
 }
 
-private actor PrivacyContextCaptureProbe {
-  private var captureCount = 0
-
-  func capture(_ context: ContextSnapshot) -> ContextSnapshot {
-    captureCount += 1
-    return context
-  }
-
-  func count() -> Int {
-    captureCount
-  }
-}
-
-private struct FailingContextProbeAction: OutputAction {
-  let id = "failing.context.probe"
-  let probe: ActionContextProbe
-
-  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-    _ = try record.requireText(for: id)
-    await probe.record(context.contextSnapshot)
-    throw TestRecognizerError(message: "injection failed")
-  }
-}
-
 private struct ProbeAction: OutputAction {
   let id = "probe.action"
   let probe: ActionProbe
@@ -265,29 +241,6 @@ private actor BlockingGate {
   }
 }
 
-private actor BlockingInitializationSettingsStore: SettingsStore {
-  private let loadStarted: BlockingGate
-  private let releaseLoad: BlockingGate
-
-  init(loadStarted: BlockingGate, releaseLoad: BlockingGate) {
-    self.loadStarted = loadStarted
-    self.releaseLoad = releaseLoad
-  }
-
-  func string(forKey _: AppSettingKey) async throws -> String? {
-    await loadStarted.resume()
-    await releaseLoad.wait()
-    return nil
-  }
-
-  func setString(_: String, forKey _: AppSettingKey) async throws {}
-
-  func setStringsAtomically(_: [AppSettingKey: String]) async throws {}
-
-  func removeValue(forKey _: AppSettingKey) async throws {}
-
-}
-
 private actor BlockingRecordGraphPersistenceStore: RecordGraphPersistenceStore {
   private let loadStarted: BlockingGate
   private let releaseLoad: BlockingGate
@@ -310,9 +263,6 @@ private actor BlockingRecordGraphPersistenceStore: RecordGraphPersistenceStore {
     return 1
   }
 
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    .removed
-  }
 }
 
 private enum RecoveringRecordGraphPersistenceError: Error {
@@ -345,10 +295,6 @@ private actor RecoveringRecordGraphPersistenceStore: RecordGraphPersistenceStore
     }
     repositoryRevision += 1
     return repositoryRevision
-  }
-
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    .removed
   }
 
   func setRejectsWrites(_ rejectsWrites: Bool) {

@@ -1,12 +1,5 @@
 import RillCore
 
-enum WorkflowExternalOutputField {
-  case webhookURL
-  case webhookHeadersJSON
-  case shortcutName
-  case markdownAppendPath
-}
-
 enum WorkflowExternalOutputValidationMessage {
   case webhookUnavailable
   case shortcutNameRequired
@@ -15,15 +8,6 @@ enum WorkflowExternalOutputValidationMessage {
 }
 
 extension L10n {
-  static func externalOutputField(_ field: WorkflowExternalOutputField, language: AppLanguage) -> String {
-    switch field {
-    case .webhookURL: return catalogString("externalOutputField.webhookURL", language: language)
-    case .webhookHeadersJSON: return catalogString("externalOutputField.webhookHeadersJSON", language: language)
-    case .shortcutName: return catalogString("externalOutputField.shortcutName", language: language)
-    case .markdownAppendPath: return catalogString("externalOutputField.markdownAppendPath", language: language)
-    }
-  }
-
   static func externalOutputValidationMessage(
     _ message: WorkflowExternalOutputValidationMessage,
     language: AppLanguage

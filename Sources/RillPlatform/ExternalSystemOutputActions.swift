@@ -1523,9 +1523,3 @@ enum ExternalOutputActionError: LocalizedError, Equatable, Sendable {
     }
   }
 }
-
-private extension Optional where Wrapped == String {
-  var trimmingWhitespaceAndNewlines: String? {
-    self?.trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-}

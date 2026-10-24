@@ -51,7 +51,6 @@ public actor RecordingSessionManager {
     let runID: UUID
     let workflow: WorkflowDefinition
     let gesture: PushToTalkGesture
-    let controlMode: RecordingControlMode
     let request: AudioCaptureRequest
     let startCueToken: RecordingCueToken
   }
@@ -916,7 +915,6 @@ public actor RecordingSessionManager {
       runID: runID,
       workflow: workflow,
       gesture: gesture,
-      controlMode: controlMode,
       request: request,
       startCueToken: startCueToken
     )
@@ -1616,7 +1614,6 @@ extension RecordingSessionManager {
       try await finishPushToTalkRecording(
         runID: runID,
         operationID: operationID,
-        workflow: workflow,
         gesture: gesture,
         triggerEvent: triggerEvent,
         liveAudioSession: liveAudioSession,
@@ -1645,7 +1642,6 @@ extension RecordingSessionManager {
   fileprivate func finishPushToTalkRecording(
     runID: UUID,
     operationID: UUID,
-    workflow: WorkflowDefinition,
     gesture: PushToTalkGesture,
     triggerEvent: WorkflowTriggerEvent?,
     liveAudioSession: AuthorizedLiveAudioSession,

@@ -7,12 +7,6 @@ public enum PasteCommandSender {
   private static let commandVKeyCode: CGKeyCode = 0x09
   private static let pasteShortcutEventDelay: Duration = .milliseconds(10)
 
-  public static func send() -> Bool {
-    guard let events = makeCommandVEvents() else { return false }
-    post(events)
-    return true
-  }
-
   public static func sendWithEventSpacing() async -> Bool {
     guard let events = makeCommandVEvents() else { return false }
     await postWithEventSpacing(events)
@@ -59,10 +53,6 @@ public enum PasteCommandSender {
     keyDown.flags = .maskCommand
     keyUp.flags = .maskCommand
     return [commandDown, keyDown, keyUp, commandUp]
-  }
-
-  private static func post(_ events: [CGEvent]) {
-    events.forEach { $0.post(tap: .cghidEventTap) }
   }
 
   private static func postWithEventSpacing(_ events: [CGEvent]) async {

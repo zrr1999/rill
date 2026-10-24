@@ -833,9 +833,6 @@ private actor FailingRecordGraphPersistence: RecordGraphPersistenceStore {
     return 1
   }
 
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    .removed
-  }
 }
 
 private actor ReentrantRecordGraphPersistenceProbe: RecordGraphPersistenceStore {
@@ -864,10 +861,6 @@ private actor ReentrantRecordGraphPersistenceProbe: RecordGraphPersistenceStore 
     await Task.yield()
     activeWriteCount -= 1
     return committedRevision
-  }
-
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    .removed
   }
 
   func observation() -> Observation {
@@ -958,9 +951,6 @@ private actor MissingDigestCatalog: RecordCatalogPersistenceStore {
     throw RecordStoreError.persistenceUnavailable
   }
 
-  func removeRecordGraph() async throws -> RecordGraphRemovalResult {
-    throw RecordStoreError.persistenceUnavailable
-  }
 }
 
 private actor RecordCollectionEventProbe: RecordCollectionEventSink {

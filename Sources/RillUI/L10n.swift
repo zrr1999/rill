@@ -148,8 +148,6 @@ public enum L10n {
     case historyFailedAudioRetrying
     case workflowAdvancedTextSteps
     case workflowLanguageOverride
-    case workflowRouteAutomaticHint
-    case workflowRouteLocalHint
     case workflowSpeechRoute
     case workflowTextStyle
     case workflowTextStyleHint
@@ -192,10 +190,6 @@ public enum L10n {
     L10n.pluralString("count.items", language: language, count)
   }
 
-  public static func voiceFailureSummary(message: String, language: AppLanguage) -> String {
-    return string(.voiceFailureGenericSummary, language: language)
-  }
-
   public static func menuClipboardReadyStatus(_ count: Int, language: AppLanguage) -> String {
     "\(string(.menuStatusClipboardReady, language: language)): \(itemCount(count, language: language))"
   }
@@ -209,29 +203,6 @@ public enum L10n {
     case .translateInput: return catalogString("voiceTextStyleTitle.translateInput", language: language)
     case .commandMode: return catalogString("voiceTextStyleTitle.commandMode", language: language)
     case .custom: return catalogString("voiceTextStyleTitle.custom", language: language)
-    }
-  }
-
-  static func speechRouteHint(_ route: WorkflowEditorDraft.RecognizerChoice, language: AppLanguage)
-    -> String
-  {
-    switch route {
-    case .automatic:
-      return string(.workflowRouteAutomaticHint, language: language)
-    case .localSpeech:
-      return string(.workflowRouteLocalHint, language: language)
-    }
-  }
-
-  static func voiceTextStyleDescription(_ style: VoiceTextStyle, language: AppLanguage) -> String {
-    switch style {
-    case .rawInput: return catalogString("voiceTextStyleDescription.rawInput", language: language)
-    case .cleanInput: return catalogString("voiceTextStyleDescription.cleanInput", language: language)
-    case .smartCleanup: return catalogString("voiceTextStyleDescription.smartCleanup", language: language)
-    case .formalWriting: return catalogString("voiceTextStyleDescription.formalWriting", language: language)
-    case .translateInput: return catalogString("voiceTextStyleDescription.translateInput", language: language)
-    case .commandMode: return catalogString("voiceTextStyleDescription.commandMode", language: language)
-    case .custom: return catalogString("voiceTextStyleDescription.custom", language: language)
     }
   }
 
@@ -349,15 +320,6 @@ enum HistorySettingsTextKey: String, CaseIterable, Sendable {
   case title
 }
 extension L10n {
-  public static func stackPending(_ count: Int, language: AppLanguage) -> String {
-    if count == 0 { return catalogString("count.routeEmpty", language: language) }
-    return resource("count.pending", defaultValue: "\(String(count)) item(s) pending").string(for: language)
-  }
-
-  public static func recordCountSummary(_ count: Int, language: AppLanguage) -> String {
-    L10n.resource("count.recordSummary", defaultValue: "\(String(count)) item(s)").string(for: language)
-  }
-
   public static func permissionState(_ state: PermissionState, language: AppLanguage) -> String {
     switch state {
     case .granted: return catalogString("permissionState.granted", language: language)
@@ -421,16 +383,6 @@ extension L10n {
     case .providers: return resource("subsystem.providers")
     case .ui: return resource("subsystem.ui")
     }
-  }
-
-  public static func workflowConflict(
-    trigger: TriggerBinding,
-    names: [String],
-    language: AppLanguage
-  ) -> String {
-    resource(
-      "workflowConflict", defaultValue: "Conflict: \(workflowTrigger(trigger, language: language)) is also enabled for \(names.joined(separator: ", "))."
-    ).string(for: language)
   }
 
   public static func workflowEnableConflict(

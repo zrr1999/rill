@@ -93,7 +93,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
   private let localSpeechCaptureRuntimeFactory: LocalSpeechCaptureRuntimeFactory
   private let localSpeechCaptureSource: (any LocalSpeechAudioCaptureSource)?
-  private let wakeWordSpeechStartedHandler: @Sendable () -> Void
 
   private var activeCapture: ActiveCapture?
   private var lifecycle: Lifecycle = .accepting
@@ -135,7 +134,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       processor: voiceInputProcessor
     )
     self.localSpeechCaptureSource = localSpeechCaptureSource
-    self.wakeWordSpeechStartedHandler = wakeWordSpeechStartedHandler
     self.localSpeechCaptureRuntimeFactory = Self.makeLocalSpeechCaptureRuntimeFactory(
       captureSource: localSpeechCaptureSource,
       streamingPreviewSessionFactory: streamingPreviewSessionFactory,
@@ -159,7 +157,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     self.sharedVoiceInputHub = nil
     self.localSpeechCaptureRuntimeFactory = localSpeechCaptureRuntimeFactory
     self.localSpeechCaptureSource = nil
-    self.wakeWordSpeechStartedHandler = {}
   }
 
   /// Internal production-shaped seam for proving that sequential local runs
@@ -176,7 +173,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     self.cleanupOwner = cleanupOwner
     self.sharedVoiceInputHub = nil
     self.localSpeechCaptureSource = localSpeechCaptureSource
-    self.wakeWordSpeechStartedHandler = {}
     self.localSpeechCaptureRuntimeFactory = Self.makeLocalSpeechCaptureRuntimeFactory(
       captureSource: localSpeechCaptureSource,
       streamingPreviewSessionFactory: { _ in nil },

@@ -1565,11 +1565,9 @@ final class TestLocalSpeechAudioCaptureSource: LocalSpeechAudioCaptureSource,
   private var continuation: AsyncThrowingStream<[Float], Error>.Continuation?
   private var terminalState: AppleVoiceProcessingPCMStreamTerminalState?
   private var rms: [Float] = []
-  private var preparations = 0
   private var starts = 0
   private var stops = 0
   private var shutdowns = 0
-  private var preparationError: Error?
 
   var meterRMS: [Float] {
     lock.withLock { rms }
@@ -1579,30 +1577,12 @@ final class TestLocalSpeechAudioCaptureSource: LocalSpeechAudioCaptureSource,
     lock.withLock { starts }
   }
 
-  var prepareCount: Int {
-    lock.withLock { preparations }
-  }
-
   var stopCount: Int {
     lock.withLock { stops }
   }
 
   var shutdownCount: Int {
     lock.withLock { shutdowns }
-  }
-
-  func prepareStoppedFrontend() throws {
-    let error = lock.withLock { () -> Error? in
-      preparations += 1
-      return preparationError
-    }
-    if let error { throw error }
-  }
-
-  func setPreparationError(_ error: Error?) {
-    lock.withLock {
-      preparationError = error
-    }
   }
 
   func startStreaming() -> LocalSpeechAudioStream {

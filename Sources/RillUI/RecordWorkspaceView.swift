@@ -834,18 +834,6 @@ public struct RecordWorkspaceView: View {
     }
   }
 
-  private func payloadTitle(_ payload: RecordPayload) -> String {
-    switch payload {
-    case .text(let value):
-      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-      return trimmed.isEmpty ? L10n.recordText(.emptyTextPayload, language: language) : trimmed
-    case .image:
-      return L10n.recordText(.imagePayload, language: language)
-    case .files(let urls):
-      return urls.map(\.lastPathComponent).joined(separator: ", ")
-    }
-  }
-
   private func payloadPreview(_ record: Record) -> some View {
     RecordContentPreview(record: record, language: language)
   }

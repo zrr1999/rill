@@ -376,14 +376,6 @@ public actor TextInjectionEngine {
     )
   }
 
-  @discardableResult
-  public func pasteCurrentClipboard(targetFocus: FocusSnapshot? = nil) async throws -> Bool {
-    let lease = try beginOutputTransaction()
-    defer { endOutputTransaction(lease) }
-    try await recoverPendingClipboardIfNeeded()
-    return try await postPasteCommand(targetFocus: targetFocus)
-  }
-
   /// Seals new clipboard deliveries and retains the exact archive until it is
   /// either verified representation-for-representation or an external
   /// change-count winner is observed. Application termination intentionally
@@ -422,20 +414,6 @@ public actor TextInjectionEngine {
     for waiter in waiters {
       waiter.resume()
     }
-  }
-
-  @discardableResult
-  private func postPasteCommand(targetFocus: FocusSnapshot? = nil) async throws -> Bool {
-    guard accessibilityChecker() else {
-      await recordDiagnostic(
-        event: .clipboardInjectPasteBlocked,
-        message: "Clipboard paste injection was blocked because accessibility permission is missing.",
-        level: .error
-      )
-      throw InjectionError.accessibilityPermissionRequired
-    }
-    let preparedTarget = try await prepareTargetFocus(targetFocus)
-    return try await postPasteCommand(target: preparedTarget)
   }
 
   @discardableResult

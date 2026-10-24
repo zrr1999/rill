@@ -45,7 +45,6 @@ final class LocalSpeechIncrementalWaveWriter: LocalSpeechRecordingWriting, @unch
   let fileURL: URL
 
   private let lock = NSLock()
-  private let format: AVAudioFormat
   private let scratchBuffer: AVAudioPCMBuffer
   private var maximumFrameCount: Int?
   private var audioFile: AVAudioFile?
@@ -74,7 +73,6 @@ final class LocalSpeechIncrementalWaveWriter: LocalSpeechRecordingWriting, @unch
     else {
       throw RealtimeAudioCaptureService.CaptureError.microphoneStartFailed
     }
-    self.format = format
     self.scratchBuffer = scratchBuffer
 
     let fileManager = FileManager.default

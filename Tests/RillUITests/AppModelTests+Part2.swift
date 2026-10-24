@@ -1014,24 +1014,6 @@ extension AppModelTests {
   }
 }
 
-private enum FailingSpeechCheckCredentialError: Error {
-  case writeRejected
-}
-
 private enum WakeWordSaveValidationError: Error {
   case unexpectedConfiguration
-}
-
-private actor FailingSpeechCheckCredentialStore: SecureCredentialStore {
-  func credential(for key: SecureCredentialKey) async throws -> String? {
-    nil
-  }
-
-  func setCredential(_ value: String, for key: SecureCredentialKey) async throws {
-    throw FailingSpeechCheckCredentialError.writeRejected
-  }
-
-  func removeCredential(for key: SecureCredentialKey) async throws {
-    throw FailingSpeechCheckCredentialError.writeRejected
-  }
 }
