@@ -36,7 +36,6 @@ struct InternationalizationTests {
   @Test func countsUsePluralRulesAndPreserveUserContent() {
     for count in [0, 1, 2, 1200] {
       #expect(L10n.routeWorkflowsCount(count, language: .english) == "\(count) \(count == 1 ? "workflow" : "workflows")")
-      #expect(L10n.recordCount(count, language: .english) == "\(count) \(count == 1 ? "record" : "records")")
       #expect(L10n.workflowVocabularyEntryCount(count, language: .english) == "\(count) \(count == 1 ? "entry" : "entries")")
       #expect(
         L10n.inputMethodSuggestionDetail(count: count, applications: "50% %@ Notes", language: .english)

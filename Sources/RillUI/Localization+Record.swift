@@ -35,10 +35,6 @@ extension L10n {
     catalogString("record.\(key.rawValue)", language: language)
   }
 
-  static func recordCount(_ count: Int, language: AppLanguage) -> String {
-    pluralString("record.recordCountFormat", language: language, count)
-  }
-
   static func removeFromCollection(_ collectionName: String, language: AppLanguage) -> String {
     String(format: recordText(.removeFromCollectionFormat, language: language), collectionName)
   }
@@ -152,7 +148,6 @@ enum RecordTextKey: String, CaseIterable, Sendable {
   case preset
   case priorityFormat
   case priorityLabelFormat
-  case recordCountFormat
   case recordRoutesTitle
   case recordsHeaderDetail
   case recordsUpdateFailedReasonFormat

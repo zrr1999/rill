@@ -77,15 +77,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     case runShortcut
     case appendToMarkdown
 
-    static let productionChoices: [DestinationChoice] = [
-      .pasteIntoApp,
-      .copyToClipboard,
-      .saveToQueue,
-      .speakOnly,
-      .runShortcut,
-      .appendToMarkdown,
-    ]
-
     public var id: String { rawValue }
 
     var outputActionID: String {

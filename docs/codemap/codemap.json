@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "31ff86dd971d735418f1d640815421ad6b58780d",
+  "baseline": "4db9300beeae2b27215a336d2060eab5c3261f41",
   "nodes": [
     {
       "id": "RillApp",
@@ -200,7 +200,6 @@
         "Sources/RillUI/DiagnosticTimelineEntry.swift",
         "Sources/RillUI/DiagnosticsLoadState.swift",
         "Sources/RillUI/DiagnosticsView.swift",
-        "Sources/RillUI/EventFeedEntry.swift",
         "Sources/RillUI/GlobalSearchModel.swift",
         "Sources/RillUI/GlobalSearchModels.swift",
         "Sources/RillUI/GlobalSearchView.swift",
@@ -552,9 +551,9 @@
           "framework": "XCTest"
         },
         {
-          "path": "Tests/RillUITests/EventFeedPrivacyPresentationTests.swift",
-          "line": 7,
-          "symbol": "testEventResourcesPreserveArgumentsAcrossLanguageChanges",
+          "path": "Tests/RillUITests/HistoryTextStepPresentationTests.swift",
+          "line": 23,
+          "symbol": "testFailedVoiceRunRetainsHistorySteps",
           "framework": "XCTest"
         },
         {
@@ -859,8 +858,8 @@
         },
         {
           "path": "Tests/RillUITests/SpeechEngineSelectionTests.swift",
-          "line": 8,
-          "symbol": "testEngineLabelsIdentifyExactLocalBackends",
+          "line": 9,
+          "symbol": "testSelectingExactLocalEngineUpdatesRouteAndModelTogether",
           "framework": "XCTest"
         },
         {
@@ -955,8 +954,8 @@
         },
         {
           "path": "Tests/RillUITests/VoiceWorkflowPresentationTests.swift",
-          "line": 6,
-          "symbol": "testDetailIncludesBothRecordAndTextOutputs",
+          "line": 8,
+          "symbol": "testLegacyDraftValidatesLLMRewriteSteps",
           "framework": "XCTest"
         },
         {
@@ -2245,9 +2244,9 @@
           "framework": "XCTest"
         },
         {
-          "path": "Tests/RillUITests/EventFeedPrivacyPresentationTests.swift",
-          "line": 7,
-          "symbol": "testEventResourcesPreserveArgumentsAcrossLanguageChanges",
+          "path": "Tests/RillUITests/HistoryTextStepPresentationTests.swift",
+          "line": 23,
+          "symbol": "testFailedVoiceRunRetainsHistorySteps",
           "framework": "XCTest"
         },
         {
@@ -2486,8 +2485,8 @@
         },
         {
           "path": "Tests/RillUITests/SpeechEngineSelectionTests.swift",
-          "line": 8,
-          "symbol": "testEngineLabelsIdentifyExactLocalBackends",
+          "line": 9,
+          "symbol": "testSelectingExactLocalEngineUpdatesRouteAndModelTogether",
           "framework": "XCTest"
         },
         {
@@ -2576,8 +2575,8 @@
         },
         {
           "path": "Tests/RillUITests/VoiceWorkflowPresentationTests.swift",
-          "line": 6,
-          "symbol": "testDetailIncludesBothRecordAndTextOutputs",
+          "line": 8,
+          "symbol": "testLegacyDraftValidatesLLMRewriteSteps",
           "framework": "XCTest"
         },
         {

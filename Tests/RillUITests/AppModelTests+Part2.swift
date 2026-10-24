@@ -108,11 +108,6 @@ extension AppModelTests {
     XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == runID })
     XCTAssertFalse(harness.model.recentVoiceResultRecords.contains { $0.runID == runID })
     XCTAssertNil(harness.model.voice.lastCompletedText)
-    XCTAssertFalse(
-      harness.model.history.eventFeed.contains { entry in
-        entry.english.contains(payloadCanary)
-          || entry.simplifiedChinese.contains(payloadCanary)
-      })
   }
 
   func testRunCancellationClearsActiveStateWithoutCreatingFailureHistory() async throws {
@@ -171,7 +166,6 @@ extension AppModelTests {
     XCTAssertNil(harness.model.lastFailure)
     XCTAssertTrue(storedRecords.isEmpty)
     XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == runID })
-    XCTAssertTrue(harness.model.history.eventFeed.contains { $0.english == "Run cancelled." })
   }
 
   func testVoiceGroupTargetRunIsShownInRecentVoiceResults() async {
@@ -578,18 +572,11 @@ extension AppModelTests {
       harness.model.voice.localSpeechPreparationError,
       expected.string(for: harness.model.settings.language)
     )
-    let event = try XCTUnwrap(
-      harness.model.history.eventFeed.last {
-        $0.english == expected.english
-          && $0.simplifiedChinese == expected.simplifiedChinese
-      }
-    )
-    XCTAssertEqual(event.english, expected.english)
-    XCTAssertEqual(event.simplifiedChinese, expected.simplifiedChinese)
-    let exposedText =
-      ([harness.model.voice.localSpeechPreparationError ?? ""]
-      + harness.model.history.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] })
-      .joined(separator: " ")
+    for language in AppLanguage.allCases {
+      harness.model.settings.language = language
+      XCTAssertEqual(harness.model.voice.localSpeechPreparationError, expected.string(for: language))
+    }
+    let exposedText = harness.model.voice.localSpeechPreparationError ?? ""
     XCTAssertFalse(exposedText.contains("/Users/private/manual-model"))
     XCTAssertFalse(exposedText.contains("manual-secret"))
     XCTAssertFalse(exposedText.contains("1234567890abcdef"))
@@ -611,14 +598,10 @@ extension AppModelTests {
       harness.model.voice.localSpeechPreparationError,
       expected.string(for: harness.model.settings.language)
     )
-    let event = try XCTUnwrap(
-      harness.model.history.eventFeed.last {
-        $0.english == expected.english
-          && $0.simplifiedChinese == expected.simplifiedChinese
-      }
-    )
-    XCTAssertEqual(event.english, expected.english)
-    XCTAssertEqual(event.simplifiedChinese, expected.simplifiedChinese)
+    for language in AppLanguage.allCases {
+      harness.model.settings.language = language
+      XCTAssertEqual(harness.model.voice.localSpeechPreparationError, expected.string(for: language))
+    }
   }
 
   func testWorkflowConflictsTrackSharedEnabledTrigger() async {

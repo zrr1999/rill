@@ -418,23 +418,16 @@ extension AppModel {
       includeRuntimeAvailability: true
     ) {
       lastFailureResource = workflowRunError(for: issue)
-      append(workflowRunError(for: issue))
       return false
     }
     guard isWorkflowEnabled(workflow) else {
       lastFailureResource = L10n.resource("run.runWorkflowDisabledNotice")
-      append(
-        L10n.resource("run.runWorkflowDisabledNotice")
-      )
       return false
     }
     if workflow.prefersAutomaticRecognizerSelection,
       settings.hasUnavailableScalarSettings(in: .speechRoute)
     {
       lastFailureResource = L10n.resource("run.speechRoutingSettingsUnavailable")
-      append(
-        L10n.resource("run.speechRoutingSettingsUnavailable")
-      )
       return false
     }
 
@@ -445,9 +438,6 @@ extension AppModel {
       )
     else {
       lastFailureResource = L10n.resource("run.workflowRoutingUnresolvable")
-      append(
-        L10n.resource("run.workflowRoutingUnresolvable")
-      )
       return false
     }
     if requiresCapturedAudioForInteractiveRun(workflowForExecution) {
@@ -725,7 +715,6 @@ extension AppModel {
         self.voice.isRunning = false
         let failure = L10n.modelServiceFailure(error) ?? WorkflowOperationFailureStage.workflowStart.presentation
         self.lastFailureResource = failure
-        self.append(failure)
       }
     }
     self.voice.pendingInteractiveWorkflowTask = task
@@ -747,9 +736,6 @@ extension AppModel {
         await MainActor.run {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.voice.workflowAudioRunState = .recording(workflowID: workflow.id)
-          self.append(
-            L10n.resource("run.recordingStartedAutoStop")
-          )
         }
       } catch is CancellationError {
         await MainActor.run {
@@ -769,7 +755,6 @@ extension AppModel {
           if draftInput != nil || workflow.collectsSpeech {
             self.recordWorkspace.buffers.editor.reportRecordingFailure()
           }
-          self.append(failure)
         }
       }
     }
@@ -796,7 +781,6 @@ extension AppModel {
           self.voice.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioTranscription.presentation
           self.lastFailureResource = failure
-          self.append(failure)
         }
       }
     }
@@ -1197,9 +1181,6 @@ extension AppModel {
     self.workflowLibrary.workflowEditorErrorPresentation = nil
     rebuildWorkflowLibrary()
     persistCustomWorkflows()
-    append(
-      L10n.resource("run.workflowSavedFormat", defaultValue: "Workflow saved: \(workflow.name)")
-    )
   }
 
   // Only custom names are reserved for true customs: naming a custom
@@ -1258,9 +1239,6 @@ extension AppModel {
     self.workflowLibrary.workflowLibraryErrorPresentation = nil
     rebuildWorkflowLibrary()
     persistCustomWorkflows()
-    append(
-      L10n.resource("run.workflowRemovedFormat", defaultValue: "Workflow removed: \(workflow.name)")
-    )
   }
 
   public func restoreBuiltInWorkflowToDefault(_ workflow: WorkflowDefinition) async {
@@ -1295,9 +1273,6 @@ extension AppModel {
     self.workflowLibrary.workflowLibraryErrorPresentation = nil
     rebuildWorkflowLibrary()
     persistCustomWorkflows()
-    append(
-      L10n.resource("run.builtInWorkflowRestoredFormat", defaultValue: "Built-in workflow restored: \(localizedWorkflowName(for: defaultWorkflow))")
-    )
   }
 
   public func acceptResolution(selections: [UUID: UUID]) {

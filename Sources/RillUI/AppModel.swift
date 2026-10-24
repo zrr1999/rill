@@ -383,8 +383,7 @@ public final class AppModel {
       resourceAvailabilityChanged: workflowLibraryChangedAction,
       prepareLocalSpeech: prepareLocalSpeechAction,
       releaseLocalSpeech: releaseLocalSpeechRuntimeAction,
-      stopLocalSpeech: stopLocalSpeechRuntimeAction,
-      appendEvent: { [history] in history.append($0) })
+      stopLocalSpeech: stopLocalSpeechRuntimeAction)
     self.runReceiptRepository = runReceiptRepository
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
@@ -395,11 +394,6 @@ public final class AppModel {
         workflowLibrary.cancelWorkflowExplanation()
         workflowLibrary.rebuild()
         workflowLibraryChangedAction()
-      },
-      saveFailed: { [history] in
-        history.append(
-          EventFeedEntry(
-            L10n.resource("run.settingsSaveFailedRetry")))
       })
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore

@@ -112,14 +112,13 @@ public final class SettingsPersistenceModel {
 
   func submit(
     key: AppSettingKey, category: SettingsSaveCategory, debounce: Duration,
-    operation: @escaping SettingsStoreWriteOperation, onFailure: @escaping @MainActor () -> Void
+    operation: @escaping SettingsStoreWriteOperation
   ) {
     schedule(
-      .init(category: category, operation: operation), key: key, debounce: debounce,
-      onFailure: onFailure)
+      .init(category: category, operation: operation), key: key, debounce: debounce)
   }
 
-  func retry(onFailure: @escaping @MainActor () -> Void) {
+  func retry() {
     guard !failed.isEmpty else { return }
     var strings: [AppSettingKey: SettingsStringWrite] = [:]
     for (key, write) in failed.sorted(by: { $0.key.rawValue < $1.key.rawValue })
@@ -127,14 +126,14 @@ public final class SettingsPersistenceModel {
       if case .string(let encode) = write.content {
         strings[key] = SettingsStringWrite(category: write.category, encode: encode)
       } else {
-        schedule(write, key: key, debounce: .zero, onFailure: onFailure)
+        schedule(write, key: key, debounce: .zero)
       }
     }
-    submitAtomically(strings, onFailure: onFailure)
+    submitAtomically(strings)
   }
 
   func submitAtomically(
-    _ values: [AppSettingKey: SettingsStringWrite], onFailure: @escaping @MainActor () -> Void
+    _ values: [AppSettingKey: SettingsStringWrite]
   ) {
     guard !values.isEmpty else { return }
     let entries = values.mapValues(RetryableSettingsStoreWrite.init)
@@ -147,7 +146,6 @@ public final class SettingsPersistenceModel {
       }
       failed.merge(entries) { _, latest in latest }
       refreshState()
-      onFailure()
       return
     }
     for (key, entry) in entries where failed[key] != nil {
@@ -172,20 +170,17 @@ public final class SettingsPersistenceModel {
         for key in currentKeys { failed.removeValue(forKey: key) }
       case .failure:
         for key in currentKeys { failed[key] = entries[key] }
-        onFailure()
       }
       refreshState()
     }
   }
 
   private func schedule(
-    _ write: RetryableSettingsStoreWrite, key: AppSettingKey, debounce: Duration,
-    onFailure: @escaping @MainActor () -> Void
+    _ write: RetryableSettingsStoreWrite, key: AppSettingKey, debounce: Duration
   ) {
     guard let store else {
       failed[key] = write
       refreshState()
-      onFailure()
       return
     }
     if failed[key] != nil {
@@ -202,7 +197,6 @@ public final class SettingsPersistenceModel {
       case .success: failed.removeValue(forKey: key)
       case .failure:
         failed[key] = write
-        onFailure()
       }
       refreshState()
     }
@@ -237,7 +231,7 @@ public enum OpenAIConfigurationVerificationState: Sendable, Equatable {
 }
 
 extension SettingsPersistenceModel {
-  func persistPrivacyPolicySettings(onFailure: @escaping @MainActor () -> Void) {
+  func persistPrivacyPolicySettings() {
     guard !hasBegunApplicationShutdown, !isRestoringSettings else { return }
     let policy = privacyPolicySettings
     let values: [AppSettingKey: String]
@@ -252,7 +246,7 @@ extension SettingsPersistenceModel {
     submitAtomically(
       values.mapValues { value in
         SettingsStringWrite(category: .privacy, encode: { value })
-      }, onFailure: onFailure)
+      })
   }
 
   private func localizedPrivacySettingsSaveFailure() -> LocalizedStringResource {

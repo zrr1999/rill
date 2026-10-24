@@ -123,14 +123,7 @@ enum AppSettingsCodec {
     var storedSettings = normalized.snapshot.values
     let unavailableSettingKeys = normalized.snapshot.unavailableKeys
     var legacyLocalSpeechMigrationValues = normalized.migrations
-    var loadWarnings: [StoredSettingsLoadWarning] = []
     var unavailableDomains: Set<StoredSettingsDomain> = []
-    if [AppSettingKey.customWorkflows, .workflowLibrary].contains(where: { !(storedSettings[$0] ?? "").isEmpty }) {
-      loadWarnings.append(.legacyWorkflowFormatUnsupported)
-    }
-    if !unavailableSettingKeys.isEmpty {
-      loadWarnings.append(.storedValuesUnavailable)
-    }
     if !unavailableSettingKeys.isDisjoint(with: [
       Self.workflowLibrarySettingKey
     ]) {
@@ -153,7 +146,6 @@ enum AppSettingsCodec {
     } catch {
       downloadedLocalSpeechModels = []
       legacyLocalSpeechMigrationValues.removeValue(forKey: .localSpeechDownloadedModels)
-      loadWarnings.append(.downloadedModelMetadata)
       unavailableDomains.insert(.downloadedModelMetadata)
     }
 
@@ -181,7 +173,6 @@ enum AppSettingsCodec {
       vocabularyBindings = [
         VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID)
       ]
-      loadWarnings.append(.vocabularyRules)
       unavailableDomains.insert(.vocabularyRules)
     }
 
@@ -219,7 +210,6 @@ enum AppSettingsCodec {
       } catch {
         openAIAPIKey = nil
         openAICredentialAvailability = .inaccessible
-        loadWarnings.append(.openAICredential)
       }
     } else {
       openAIAPIKey = nil
@@ -245,7 +235,6 @@ enum AppSettingsCodec {
         && storedSettings[Self.vocabularyRulesSettingKey] != nil,
       privacyPolicySettings: privacyPolicySettings,
       privacySettingsWereInvalid: privacySettingsWereInvalid,
-      loadWarnings: loadWarnings,
       unavailableDomains: unavailableDomains
     )
   }

@@ -5,29 +5,6 @@ import XCTest
 
 @MainActor
 final class SpeechEngineSelectionTests: XCTestCase {
-  func testEngineLabelsIdentifyExactLocalBackends() {
-    let retired = localModel(
-      id: "retired-local-model",
-      engine: .sherpaOnnx,
-      name: "Qwen3-ASR · 0.6B · INT8"
-    )
-    let mlx = localModel(
-      id: "qwen3-asr-1.7b-mlx-8bit",
-      engine: .mlxAudioSwift,
-      name: "Qwen3-ASR · 1.7B · INT8"
-    )
-
-    XCTAssertEqual(
-      L10n.localSpeechEngine(retired.engine, language: .simplifiedChinese),
-      "旧版本地"
-    )
-    XCTAssertEqual(
-      L10n.localSpeechEngine(mlx.engine, language: .english),
-      "MLX Local"
-    )
-    XCTAssertEqual(retired.simplifiedChineseName, "Qwen3-ASR · 0.6B · INT8")
-    XCTAssertEqual(mlx.englishName, "Qwen3-ASR · 1.7B · INT8")
-  }
 
   func testSelectingExactLocalEngineUpdatesRouteAndModelTogether() async {
     let compact = localModel(
