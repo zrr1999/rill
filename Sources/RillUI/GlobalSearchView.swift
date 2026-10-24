@@ -2,8 +2,6 @@ import AppKit
 import SwiftUI
 
 struct GlobalSearchResultsView: View {
-  private static let emptyStateMinHeight: CGFloat = 320
-
   @AccessibilityFocusState private var accessibilityFocusedResultID: String?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Binding var query: String
@@ -43,12 +41,13 @@ struct GlobalSearchResultsView: View {
             .accessibilityIdentifier("global-search.history.loading")
           } else if historySearchState == .failed {
             HStack(spacing: 12) {
-              Label(
-                GlobalSearchText.historyUnavailable(language: language),
-                systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
-              )
-              .font(.caption)
-              .foregroundStyle(.orange)
+              Label {
+                Text(GlobalSearchText.historyUnavailable(language: language))
+                  .foregroundStyle(.secondary)
+              } icon: {
+                Image(systemName: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+                  .foregroundStyle(.orange)
+              }.font(.caption)
 
               Spacer(minLength: 12)
 
@@ -57,6 +56,7 @@ struct GlobalSearchResultsView: View {
                 action: onHistorySearchFailureAction
               )
               .buttonStyle(.borderless)
+              .fixedSize(horizontal: true, vertical: false)
               .accessibilityIdentifier("global-search.history.retry")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -73,67 +73,74 @@ struct GlobalSearchResultsView: View {
       if recordSearchState == .searching || recordSearchState == .failed {
         HStack {
           if recordSearchState == .searching { ProgressView().controlSize(.small) }
+          if recordSearchState == .failed {
+            Image(systemName: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+              .font(.caption).foregroundStyle(.orange)
+          }
           Text(L10n.workspace(recordSearchState == .failed ? .recordsUnavailable : .recordsSearching, language: language))
             .font(.caption).foregroundStyle(.secondary)
           Spacer()
           if recordSearchState == .failed {
             Button(GlobalSearchText.historyRetry(language: language), action: onRecordRetry)
+              .buttonStyle(.borderless)
+              .fixedSize(horizontal: true, vertical: false)
           }
         }.padding(.horizontal, RillSpacing.section).padding(.vertical, RillSpacing.row)
       }
 
       ScrollViewReader { proxy in
-        ScrollView {
-          if results.isEmpty && (recordSearchState == .searching || historySearchState == .searching) {
-            ProgressView(L10n.quickRecord(.searching, language: language))
-              .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
-          } else if results.isEmpty {
-            ContentUnavailableView(
-              GlobalSearchText.noResultsTitle(language: language),
-              systemImage: RillSystemSymbol.magnifyingglass.rawValue,
-              description: Text(
-                GlobalSearchText.noResultsDescription(language: language)
-              )
-            )
-            .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
-            .accessibilityIdentifier("global-search.empty")
-            if !query.isEmpty {
-              Button(L10n.presentation(.clearSearch, language: language)) { query = "" }
-                .buttonStyle(.borderless)
-            }
-          } else {
-            LazyVStack(alignment: .leading, spacing: RillSpacing.section) {
-              if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(GlobalSearchText.quickDestinations(language: language))
-                  .font(.title2.weight(.semibold))
-                  .accessibilityAddTraits(.isHeader)
-              }
-
-              ForEach(GlobalSearchResultCategory.allCases, id: \.rawValue) { category in
-                let categoryResults = results.filter { $0.category == category }
-                if !categoryResults.isEmpty {
-                  resultSection(category, results: categoryResults)
+        GeometryReader { viewport in
+          ScrollView {
+            if results.isEmpty && (recordSearchState == .searching || historySearchState == .searching) {
+              ProgressView(L10n.quickRecord(.searching, language: language))
+                .frame(maxWidth: .infinity, minHeight: viewport.size.height)
+            } else if results.isEmpty {
+              ContentUnavailableView {
+                Label(GlobalSearchText.noResultsTitle(language: language), systemImage: RillSystemSymbol.magnifyingglass.rawValue)
+              } description: {
+                Text(GlobalSearchText.noResultsDescription(language: language))
+              } actions: {
+                if !query.isEmpty {
+                  Button(L10n.presentation(.clearSearch, language: language)) { query = "" }
+                    .accessibilityIdentifier("global-search.clear")
                 }
               }
-            }
-            .padding(RillSpacing.panel)
-            if hasMore {
-              Button(L10n.workspace(.loadMore, language: language), action: onLoadMore)
-                .disabled(recordSearchState == .searching || historySearchState == .searching)
-                .padding()
+              .frame(maxWidth: .infinity, minHeight: viewport.size.height)
+              .accessibilityIdentifier("global-search.empty")
+            } else {
+              LazyVStack(alignment: .leading, spacing: RillSpacing.section) {
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                  Text(GlobalSearchText.quickDestinations(language: language))
+                    .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                }
+
+                ForEach(GlobalSearchResultCategory.allCases, id: \.rawValue) { category in
+                  let categoryResults = results.filter { $0.category == category }
+                  if !categoryResults.isEmpty {
+                    resultSection(category, results: categoryResults)
+                  }
+                }
+              }
+              .padding(RillSpacing.panel)
+              if hasMore {
+                Button(L10n.workspace(.loadMore, language: language), action: onLoadMore)
+                  .disabled(recordSearchState == .searching || historySearchState == .searching)
+                  .padding()
+              }
             }
           }
-        }
-        .accessibilityIdentifier("global-search.results")
-        .onChange(of: selectedResultID) { _, selectedID in
-          guard let selectedID else { return }
-          // Navigation scroll, not decorative motion: keep the fixed
-          // duration easing so result positioning stays predictable.
-          if reduceMotion {
-            proxy.scrollTo(selectedID, anchor: .center)
-          } else {
-            withAnimation(.easeInOut(duration: 0.12)) {
+          .accessibilityIdentifier("global-search.results")
+          .onChange(of: selectedResultID) { _, selectedID in
+            guard let selectedID else { return }
+            // Navigation scroll, not decorative motion: keep the fixed
+            // duration easing so result positioning stays predictable.
+            if reduceMotion {
               proxy.scrollTo(selectedID, anchor: .center)
+            } else {
+              withAnimation(.easeInOut(duration: 0.12)) {
+                proxy.scrollTo(selectedID, anchor: .center)
+              }
             }
           }
         }

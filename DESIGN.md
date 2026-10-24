@@ -171,7 +171,7 @@ The recorder and floating workspace share [RillGlass](Sources/RillUI/RillGlass.s
 
 Main-window Drafts, Copy, Settings, and workflow actions use native glass button styles. Primary workflow and explicit output actions use `.glassProminent`. The Drafts entry stays above the nested record splits. `safeAreaBar` keeps record inspector actions, the global search field, settings heading, and workflow actions visible beside scrolling content. `scrollEdgeEffectStyle(.soft)` lets that content recede under its controls. Settings keeps grouped native forms and a semantic heading for each pane; Activity gives its history heading a stronger type hierarchy. Shared content cards retain quaternary tonal fills through `RillCardProminence`.
 
-Reduce Motion disables the custom card/selection transitions, panel fades, and meter interpolation. The recorder's geometry transition has one AppKit owner. Motion constants stay with their owning implementation; none of these transitions delays capture, editing, or output authorization.
+Reduce Motion disables the custom card/selection transitions, panel fades, meter interpolation, and copy/status symbol bounce. The recorder's geometry transition has one AppKit owner. Motion constants stay with their owning implementation; none of these transitions delays capture, editing, or output authorization.
 
 ## Shapes
 
@@ -185,11 +185,11 @@ The recorder is the explicit local exception to the shared radius scale: its com
 
 Use native buttons and menus. Main-window and floating-workspace output uses `.glassProminent`; secondary copy and administration remain separate actions. Compact panel controls use `.controlSize(.small)`. Records keeps Copy reachable and secondary actions in the More menu. Selection, hover, keyboard focus, and inactive-window appearance come from native controls. Functional icons use SF Symbols through existing project conventions; icon-only buttons retain help and accessibility labels.
 
-The floating workspace uses a quiet text action for finishing editing or adding a draft, native `.glass` for Copy, and accent-colored `.glassProminent` for Send. Native styles own activation, accessibility, and pointer feedback. The 32pt action slots have fixed widths; `buttonSizing(.flexible)` fills the assigned width without moving controls when selection, status, or output confirmation changes.
+The floating workspace uses a quiet text action for finishing editing or adding a draft, native `.glass` for Copy, and accent-colored `.glassProminent` for Send or Paste. Native styles own activation, accessibility, and pointer feedback. Actions keep their intrinsic label width inside a footer at least 56pt tall. The Collections footer shows the controller-provided delivery target as supporting text; Paste keeps a short visible label and exposes the full target in help and accessibility text. Long target names yield space before action labels do. Small custom draft actions keep a minimum 28pt hit height.
 
 ### Search and text input
 
-`RecordSearchField` and the global-search bridge retain `NSSearchField` focus and keyboard handling. The panel search height and padding are extracted above; global search remains navigation and does not paste a selected result.
+`RecordSearchField` and the global-search bridge retain `NSSearchField` focus and keyboard handling. The panel search height and padding are extracted above; draft search uses the opaque text background. Global search remains navigation and does not paste a selected result. Empty states group their explanation and recovery action in `ContentUnavailableView`; search fits the available viewport so source-failure notices do not push Clear Search out of view. Failure symbols carry warning color while explanations use semantic text colors.
 
 Drafts uses one mounted `NSTextView` with native selection, undo, scrolling, and IME composition. Return inserts a newline in the editor; Command-Return sends explicitly outside composition. The list's Return action, layered Escape, and target handoff follow [continuous output](docs/continuous-output.md). Preserve the editor, query, selection, and undo state across panel mode changes.
 
@@ -211,7 +211,7 @@ The panel opens at the center of the pointer's screen, within a 12pt margin. Its
 
 `rillCard` uses the frontmatter padding and radius by default, with prominent, regular, and subdued quaternary fills. Use it for existing grouped or actionable content. Native lists and forms do not need additional card wrappers. `RillHoverButtonStyle` supplies the shared hover cue: a border and small press response for cards, a stroke for chips, a quiet fill for settings rows, and a tint for compact navigation labels. Reduce Motion disables those transitions.
 
-Record bodies and Copy lead the detail view; collection membership and metadata use disclosure. Activity emphasizes current work, pending choices, and recovery, while successful runs stay compact. Workflow details lead with purpose, trigger, output, and enabled state before optional technical steps. Setup sheets fit their missing-condition content with a bounded scroll area and a visible skip action.
+Record bodies and Copy lead the detail view; collection membership and metadata use disclosure. A record row keeps its pin, source, and time on one supporting line. Activity emphasizes current work, pending choices, and recovery, while successful runs stay compact. Workflow details lead with purpose, trigger, output, and enabled state before optional technical steps. Setup sheets fit their missing-condition content with a bounded scroll area and a visible skip action.
 
 ### Recording overlay
 

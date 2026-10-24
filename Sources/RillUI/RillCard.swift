@@ -153,6 +153,7 @@ struct RillCopyButton: View {
   let language: AppLanguage
   let action: () -> Void
   @State private var feedbackID: UUID?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     Button {
@@ -164,6 +165,7 @@ struct RillCopyButton: View {
           if feedbackID != nil {
             Image(systemName: RillSystemSymbol.checkmark.rawValue)
               .symbolEffect(.bounce, value: feedbackID)
+              .symbolEffectsRemoved(reduceMotion)
           }
           Text(feedbackID == nil ? title : L10n.presentation(.copied, language: language))
         }

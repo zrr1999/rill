@@ -160,13 +160,15 @@ public struct UnifiedRecordPanelView<Records: View>: View {
     HStack(spacing: 8) {
       Image(systemName: needsAttention ? RillSystemSymbol.exclamationmarkCircle.rawValue : RillSystemSymbol.checkmarkCircle.rawValue)
         .symbolEffect(.bounce, value: needsAttention)
+        .symbolEffectsRemoved(reduceMotion)
         .foregroundStyle(needsAttention ? Color.orange : Color.secondary)
         .font(.callout).frame(width: 16)
       Text(noticeText).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+        .help(noticeText)
       Spacer(minLength: 0)
       Button(panelText(.review)) { showsOutputReview = true }
         .buttonStyle(.plain).font(.callout).foregroundStyle(Color.accentColor)
-        .frame(width: 48, height: 29)
+        .fixedSize(horizontal: true, vertical: false).frame(minWidth: 48, minHeight: 29)
         .opacity(needsAttention ? 1 : 0)
         .disabled(!needsAttention)
         .accessibilityHidden(!needsAttention)

@@ -16,7 +16,7 @@ extension View {
   func recordPanelSearchSurface() -> some View {
     frame(height: 30)
       .background(
-        RecordPanelAppearance.paper.opacity(0.6),
+        RecordPanelAppearance.paper,
         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
   }
 }
