@@ -93,6 +93,7 @@ public struct RecordBufferDraftView: View {
             } label: {
               Label(panelText(.newItem), systemImage: RillSystemSymbol.plus.rawValue)
                 .font(.caption)
+                .frame(minHeight: 28).contentShape(Rectangle())
             }
             .buttonStyle(.plain).foregroundStyle(.secondary)
             .help(panelText(.newDraft))
@@ -115,7 +116,7 @@ public struct RecordBufferDraftView: View {
             .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 22)
             .foregroundStyle(.secondary)
             .accessibilityLabel(panelText(.draftOptions))
-          }.controlSize(.small).frame(height: 25).padding(.horizontal, 13).padding(.top, 10)
+          }.controlSize(.small).frame(minHeight: 28).padding(.horizontal, 13).padding(.top, 10)
           HStack(spacing: 5) {
             Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
               .font(.callout).foregroundStyle(.secondary)
@@ -151,11 +152,13 @@ public struct RecordBufferDraftView: View {
             ?? panelText(.sendWhenReady)
         )
         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        .truncationMode(.middle)
+        .help(model.targetName.map { text(.sendTo) + $0 } ?? panelText(.sendWhenReady))
       }
-      Spacer(minLength: 0)
+      Spacer(minLength: RillSpacing.row)
       Button(panelText(.doneEditing), action: onFinishEditing)
         .buttonStyle(.borderless).foregroundStyle(Color.accentColor)
-        .frame(width: 88, height: 32)
+        .fixedSize(horizontal: true, vertical: false).frame(minHeight: 32)
         .disabled(model.session == nil || model.session?.hasMarkedText == true)
         .accessibilityIdentifier("record-buffer.finish-editing")
       Button(panelText(.copy)) {
@@ -163,8 +166,8 @@ public struct RecordBufferDraftView: View {
         copyFeedback &+= 1
         copyText(session.text)
       }
-      .buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
-      .frame(width: 60, height: 32)
+      .buttonStyle(.glass).buttonBorderShape(.capsule)
+      .fixedSize(horizontal: true, vertical: false)
       .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
       .sensoryFeedback(.success, trigger: copyFeedback)
       .accessibilityIdentifier("record-buffer.copy")
@@ -172,15 +175,15 @@ public struct RecordBufferDraftView: View {
         sendFeedback &+= 1
         model.send()
       }
-      .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
-      .tint(.accentColor).frame(width: 84, height: 32)
+      .buttonStyle(.glassProminent).buttonBorderShape(.capsule)
+      .fixedSize(horizontal: true, vertical: false)
       .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
       .sensoryFeedback(.impact, trigger: sendFeedback)
       .help(text(.returnSendsWhileEditingReturn))
       .accessibilityIdentifier("record-buffer.send")
     }
     .font(.callout).controlSize(.large)
-    .padding(.horizontal, 15).frame(height: 56)
+    .padding(.horizontal, 15).frame(minHeight: 56)
     .accessibilityIdentifier("record-buffer.actions")
   }
 
@@ -273,8 +276,9 @@ public struct RecordBufferDraftView: View {
           Button(action: model.dictateHere) {
             Label(text(.dictateHere), systemImage: RillSystemSymbol.micBadgePlus.rawValue)
               .font(.caption)
+              .frame(minHeight: 28).contentShape(Rectangle())
           }
-          .buttonStyle(.plain).foregroundStyle(.secondary).padding(.top, 4)
+          .buttonStyle(.plain).foregroundStyle(.secondary)
           .disabled(model.isBusy || voice.isRunning || session.hasMarkedText)
         }.padding(.horizontal, 22).padding(.top, 18).frame(height: 72, alignment: .top)
         BufferDraftTextEditor(
@@ -288,9 +292,12 @@ public struct RecordBufferDraftView: View {
           Spacer(minLength: 8)
           Text(L10n.recordPanelCharacterCount(session.text.count, language: language))
             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-          Button(session.saved.suggestions.isEmpty ? panelText(.reviewEdits) : panelText(.reviewResults)) {
+          Button {
             model.showsChanges = true
             showsDetails = true
+          } label: {
+            Text(session.saved.suggestions.isEmpty ? panelText(.reviewEdits) : panelText(.reviewResults))
+              .frame(minHeight: 28).contentShape(Rectangle())
           }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
         }.padding(.horizontal, 22).frame(height: 36)
       }

@@ -167,6 +167,7 @@ public struct RecordQuickPanelView: View {
             }
             .buttonStyle(.borderless).font(.callout).frame(width: 28, height: 28)
             .foregroundStyle(.secondary)
+            .help(panelText(.searchAndFilterOptions))
             .accessibilityLabel(panelText(.searchAndFilterOptions))
           }.controlSize(.small).frame(height: 25).padding(.horizontal, 13).padding(.top, 10)
           RecordSearchField(
@@ -186,24 +187,23 @@ public struct RecordQuickPanelView: View {
       .padding(RecordPanelAppearance.paneInset)
       HStack(spacing: 8) {
         Text(statusText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        Spacer(minLength: 0)
-        addToDrafts.frame(width: 88)
-        Button(text(.copy)) {
+          .truncationMode(.middle).help(statusText)
+        Spacer(minLength: RillSpacing.row)
+        addToDrafts.fixedSize(horizontal: true, vertical: false)
+        Button(panelText(.copy)) {
           if let subject = model.selectedRecord?.reuseSubject { onCopy(subject) }
-        }.buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
-          .frame(width: 60, height: 32).disabled(model.selectedRecord == nil)
+        }.buttonStyle(.glass).buttonBorderShape(.capsule)
+          .fixedSize(horizontal: true, vertical: false).disabled(model.selectedRecord == nil)
           .accessibilityIdentifier("quick-records.copy")
-        Button(action: pasteSelection) {
-          Text(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language))
-            .lineLimit(1)
-        }
-        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
-        .tint(.accentColor).frame(width: 84, height: 32).disabled(model.selectedRecord == nil)
-        .help(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language))
-        .accessibilityIdentifier("quick-records.insert")
+        Button(text(.paste), action: pasteSelection)
+          .buttonStyle(.glassProminent).buttonBorderShape(.capsule)
+          .fixedSize(horizontal: true, vertical: false).disabled(model.selectedRecord == nil)
+          .help(deliveryTitle + " · ↩")
+          .accessibilityLabel(deliveryTitle)
+          .accessibilityIdentifier("quick-records.insert")
       }
       .font(.callout).controlSize(.large)
-      .padding(.horizontal, 15).frame(height: 56)
+      .padding(.horizontal, 15).frame(minHeight: 56)
       .accessibilityIdentifier("quick-records.actions")
     }
     .onAppear { if !model.isPreviewVisible { model.togglePreview() } }
@@ -245,7 +245,11 @@ public struct RecordQuickPanelView: View {
     }
     if model.capacity.isCaptureLimited { return text(.capacityFull) }
     if model.capacity.isWarning { return text(.capacityWarning) }
-    return capturePaused ? text(.capturePaused) : text(.paste) + " ↩"
+    return capturePaused ? text(.capturePaused) : deliveryTitle
+  }
+
+  private var deliveryTitle: String {
+    RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language)
   }
 
   private var addToDrafts: some View {
