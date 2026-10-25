@@ -5,7 +5,7 @@ Deterministic implementation tests stay in
 `Tests` and `tools/tests`, including corpus validation and scorer regression tests.
 
 The replay and analysis implementation is the internal `rill_dev.evaluation`
-package in `tools/`. `just test-tools` runs its offline tests using the locked
+package in `tools/`. `just test tools` runs its offline tests using the locked
 Python environment; it neither loads models nor calls providers. The existing
 `just` commands below are the supported entry points.
 
@@ -107,7 +107,7 @@ ASR remains local: the repository contains collection slots, not an authorized,
 annotated audio dataset. [ASR evaluation and replay](../docs/asr-evaluation.md)
 documents corpus export, Release receipts, cache conditions and timing boundaries.
 
-Use `just eval-quality asr` and `just bench-performance asr --target METRIC` on the
+Use `just eval-quality asr` and `just bench asr --target METRIC` on the
 same raw runs. Quality needs human references, not memory measurements; performance
 needs comparable valid work and its target metric, not human references. Both can
 report small or synthetic experiments. `just accept-asr --goal quality|performance`

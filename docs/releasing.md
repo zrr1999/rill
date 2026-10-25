@@ -10,7 +10,7 @@ Rill 的正式版本由 Git 标签决定。开发构建使用 `0.0.0-dev+<commit
    [SECURITY.md](../SECURITY.md) 中的私密报告渠道已可用，GitHub Actions 实际运行成功。
    按[合并门禁](#合并门禁)核对仓库 rules 中的检查要求，
    并限制直接推送和绕过。
-4. 从候选提交运行 `just ci-clean`、`scripts/preflight.sh commit-messages` 和
+4. 从候选提交运行 `just ci clean`、`scripts/preflight.sh commit-messages` 和
    `uv run --script scripts/check_dependency_security.py --live-osv`。
    保存日志、版本信息和预期跳过项，并确认该提交的 GitHub CI 通过。
 5. 维护者授权发布后，为该提交创建并推送唯一的语义版本标签。
@@ -79,7 +79,7 @@ gh workflow run cd-release.yml --ref main -f tag=v1.2.3
 
 ```bash
 SIGN_IDENTITY="Developer ID Application" NOTARY_PROFILE="Rill" \
-  just release-github v1.2.3 /absolute/path/release-notes.md
+  just release github v1.2.3 /absolute/path/release-notes.md
 ```
 
 此命令会实际提交 Apple 公证并写入 GitHub，只有维护者授权本次候选后才执行。它先核对干净 HEAD、本地标签与 GitHub 标签的 commit，拒绝已有 Release，随后调用 `scripts/release.sh --notarize` 完成现有全量预检、构建、签名与公证。上传前再次核对 HEAD、远端标签与 SHA-256；[GitHub CLI](https://cli.github.com/manual/gh_release_create) 的 `--verify-tag --draft` 确保不自动造标签、不直接公开发布。目标仓库明确为 `zrr1999/rill`，fork 维护者需要先修改脚本中的目标。

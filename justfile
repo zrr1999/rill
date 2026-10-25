@@ -11,50 +11,110 @@ check:
     uvx prek validate-config prek.toml
     uvx prek -c prek.toml run --all-files
 
-# Format every tracked Swift file, matching the swift-format hook scope.
-fmt:
-    git ls-files -z '*.swift' | xargs -0 swift format --configuration .swift-format --in-place
+# Build the documentation, or serve a local preview (`serve [PORT]`).
+[positional-arguments]
+docs *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "${1:-build}" in
+      build)
+        if [[ $# -gt 1 ]]; then
+          echo "Usage: just docs [serve [PORT]]" >&2
+          exit 2
+        fi
+        uv run --no-build --locked --script scripts/docs.py build
+        ;;
+      serve)
+        if [[ $# -gt 2 ]]; then
+          echo "Usage: just docs [serve [PORT]]" >&2
+          exit 2
+        fi
+        uv run --no-build --locked --script scripts/docs.py serve --port "${2:-8000}"
+        ;;
+      *)
+        echo "Usage: just docs [serve [PORT]]" >&2
+        exit 2
+        ;;
+    esac
 
-# Build the documentation and reject broken links and anchors.
-docs:
-    uv run --no-build --locked --script scripts/docs.py build
+# Build one Debug product, or all arm64 Release products (`release [arguments...]`).
+[positional-arguments]
+build target="RillApp" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    target="$1"
+    shift
+    if [[ "$target" == release ]]; then
+      scripts/preflight.sh swift release "$@"
+    elif [[ $# -eq 0 ]]; then
+      scripts/preflight.sh swift build --product "$target"
+    else
+      echo "Usage: just build [PRODUCT] | just build release [arguments...]" >&2
+      exit 2
+    fi
 
-# Preview documentation and refresh when its Markdown sources change.
-docs-serve port="8000":
-    uv run --no-build --locked --script scripts/docs.py serve --port {{quote(port)}}
+# Run domain and native tests, or one suite: desktop, scripts, tools, render, stress.
+[positional-arguments]
+test suite="default":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$1" in
+      default) scripts/preflight.sh test ;;
+      desktop) scripts/preflight.sh test-desktop ;;
+      scripts) scripts/preflight.sh test-scripts ;;
+      tools) uv run --locked --project tools pytest tools/tests ;;
+      render)
+        RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" \
+          scripts/preflight.sh swift test --filter 'Render|UIRenderEvidence'
+        ;;
+      stress)
+        RILL_RECORD_STRESS=1 scripts/preflight.sh swift test --filter RecordCatalogStressTests
+        ;;
+      *)
+        echo "Supported test suites: desktop, scripts, tools, render, stress" >&2
+        exit 2
+        ;;
+    esac
 
-# Build one Debug product; application changes do not compile MLX.
-build product="RillApp":
-    scripts/preflight.sh swift build --product {{quote(product)}}
+# Reproduce the local CI gate (`clean` rebuilds without worker artifact reuse).
+[positional-arguments]
+ci *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "${1:-}" in
+      "") [[ $# -eq 0 ]] || { echo "Usage: just ci [clean]" >&2; exit 2; }
+          clean=() ;;
+      clean) [[ $# -eq 1 ]] || { echo "Usage: just ci [clean]" >&2; exit 2; }
+          clean=(--clean) ;;
+      *) echo "Usage: just ci [clean]" >&2; exit 2 ;;
+    esac
+    just check
+    just docs
+    bash scripts/preflight.sh "${clean[@]}"
 
-# Run domain and native tests that do not require desktop interaction.
-test:
-    scripts/preflight.sh test
+# Inspect inactive shared worker artifacts (`clean` removes them).
+[positional-arguments]
+cache action="status":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$1" in
+      status | clean) scripts/preflight.sh swift cache "$1" ;;
+      *) echo "Usage: just cache [status|clean]" >&2; exit 2 ;;
+    esac
 
-# Test real window focus and keyboard routing in an unlocked macOS session.
-test-desktop:
-    scripts/preflight.sh test-desktop
-
-# Test build, release, security, and asset scripts without building the app.
-test-scripts:
-    scripts/preflight.sh test-scripts
-
-# Test the internal evaluation and replay tools without model or provider access.
-test-tools:
-    uv run --locked --project tools pytest tools/tests
-
-# Build and validate the production performance workloads.
-validate-performance-workloads:
-    bash scripts/build_benchmarks.sh
+# Assemble a local release artifact (`github TAG NOTES` uploads a draft).
+[positional-arguments]
+release *args:
+    bash scripts/release.sh "$@"
 
 # Run one explicit quality evaluation (real LLM calls are opt-in).
 [positional-arguments]
 eval-quality suite *args:
     uv run --locked --project tools rill-eval-quality "$@"
 
-# Compare paired ASR performance or measure native panel presentation.
+# Run one performance suite: asr, panel, or workloads.
 [positional-arguments]
-bench-performance suite *args:
+bench suite *args:
     #!/usr/bin/env bash
     set -euo pipefail
     suite="$1"
@@ -62,7 +122,8 @@ bench-performance suite *args:
     case "$suite" in
       asr) uv run --locked --project tools rill-bench-asr "$@" ;;
       panel) bash scripts/benchmark_panel.sh "$@" ;;
-      *) echo "Supported performance suites: asr, panel" >&2; exit 2 ;;
+      workloads) bash scripts/build_benchmarks.sh "$@" ;;
+      *) echo "Supported performance suites: asr, panel, workloads" >&2; exit 2 ;;
     esac
 
 # Apply the explicit ASR experiment admission policy to two matching reports.
@@ -70,51 +131,15 @@ bench-performance suite *args:
 accept-asr *args:
     uv run --locked --project tools rill-accept-asr "$@"
 
-# Replay authorized audio through a verified Release speech worker.
+# Replay authorized audio through the speech worker (`asr`) or host pipeline (`product`).
 [positional-arguments]
-replay-asr *args:
-    uv run --locked --project tools rill-replay-asr "$@"
-
-# Replay authorized audio through the host pipeline with isolated output.
-[positional-arguments]
-replay-product *args:
-    uv run --locked --project tools rill-replay-product "$@"
-
-# Reproduce the complete local CI gate.
-ci:
-    just check
-    just docs
-    bash scripts/preflight.sh
-
-# Reproduce the clean CI gate, without worker artifact reuse.
-ci-clean:
-    just check
-    just docs
-    bash scripts/preflight.sh --clean
-
-# Build and validate the arm64 release products.
-build-release:
-    scripts/preflight.sh swift release
-
-# Inspect or clear inactive shared worker artifacts.
-cache-status:
-    scripts/preflight.sh swift cache status
-
-cache-clean:
-    scripts/preflight.sh swift cache clean
-
-# Assemble a local release artifact.
-release:
-    bash scripts/release.sh
-
-# Build, notarize, and upload a new GitHub Release draft.
-release-github tag notes:
-    bash scripts/release.sh github {{quote(tag)}} {{quote(notes)}}
-
-# Export native UI render evidence for review.
-test-render:
-    RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" scripts/preflight.sh swift test --filter 'Render|UIRenderEvidence'
-
-# Exercise the large catalog fixture separately from the fast suite.
-test-stress:
-    RILL_RECORD_STRESS=1 scripts/preflight.sh swift test --filter RecordCatalogStressTests
+replay target *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    target="$1"
+    shift
+    case "$target" in
+      asr) uv run --locked --project tools rill-replay-asr "$@" ;;
+      product) uv run --locked --project tools rill-replay-product "$@" ;;
+      *) echo "Supported replay targets: asr, product" >&2; exit 2 ;;
+    esac

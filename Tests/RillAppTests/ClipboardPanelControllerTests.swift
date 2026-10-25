@@ -614,7 +614,7 @@ final class RecordPanelControllerTests: XCTestCase {
 
   func testBenchmarkWarmPanelPresentation() async throws {
     guard let output = ProcessInfo.processInfo.environment["RILL_PANEL_BENCHMARK_OUTPUT"] else {
-      throw XCTSkip("Run just bench-performance panel to measure Release panel presentation.")
+      throw XCTSkip("Run just bench panel to measure Release panel presentation.")
     }
     #if DEBUG
       XCTFail("Panel latency must be measured with a Release build.")
