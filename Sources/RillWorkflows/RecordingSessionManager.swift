@@ -39,7 +39,6 @@ public actor RecordingSessionManager {
     case recording(UUID)
     case cancelling(UUID)
     case transcribing(UUID)
-    case delivering(UUID)
   }
 
   private enum RecordingControlMode: String, Sendable, Equatable {
@@ -338,7 +337,7 @@ public actor RecordingSessionManager {
       // arrived. Do not suspend for settings and then reinterpret the
       // same press as a fresh idle start after finalization completes.
       switch state {
-      case .cancelling, .transcribing, .delivering:
+      case .cancelling, .transcribing:
         return
       case .idle, .preparing, .recording:
         break
@@ -524,7 +523,7 @@ public actor RecordingSessionManager {
       if waitsForCancellationCompletion {
         await task?.value
       }
-    case .cancelling, .transcribing, .delivering:
+    case .cancelling, .transcribing:
       break
     }
   }
@@ -596,7 +595,7 @@ public actor RecordingSessionManager {
         await task?.value
       }
       return task != nil
-    case .cancelling, .transcribing, .delivering:
+    case .cancelling, .transcribing:
       return false
     }
   }
@@ -1143,7 +1142,7 @@ public actor RecordingSessionManager {
       if waitsForFinishingCompletion {
         await task.value
       }
-    case .idle, .cancelling, .transcribing, .delivering:
+    case .idle, .cancelling, .transcribing:
       return
     }
   }
