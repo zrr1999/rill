@@ -76,7 +76,8 @@ test suite="default":
         ;;
     esac
 
-# Reproduce the local CI gate (`clean` rebuilds without worker artifact reuse).
+# Reproduce the local CI gate, including hosted stress and render evidence.
+# `clean` rebuilds without worker artifact reuse.
 [positional-arguments]
 ci *args:
     #!/usr/bin/env bash
@@ -90,7 +91,8 @@ ci *args:
     esac
     just check
     just docs
-    bash scripts/preflight.sh "${clean[@]}"
+    RILL_RECORD_STRESS=1 RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" \
+      bash scripts/preflight.sh "${clean[@]}"
 
 # Inspect inactive shared worker artifacts (`clean` removes them).
 [positional-arguments]

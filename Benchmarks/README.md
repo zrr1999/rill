@@ -57,7 +57,7 @@ fast preview validation and tests buffer behavior through the Runtime tests.
 
 ## Native panel measurement
 
-`RILL_RECORD_STRESS=1 just ci` checks the initial panel presentation and two
+`just ci` sets `RILL_RECORD_STRESS=1` and checks the initial panel presentation and two
 reopenings with 10,000 summaries. Each visit must expose 50 results and give the
 search field its internal text responder. The two-second readiness timeout is a
 liveness guard. The build does not apply a percentile latency budget to

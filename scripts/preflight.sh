@@ -433,7 +433,7 @@ check_repository() {
   uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
 
   info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
-  uv run --script "$SCRIPT_DIR/check_dependency_security.py"
+  uv run --no-build --locked --script "$SCRIPT_DIR/check_dependency_security.py"
 
   info "Scanning Git history and the current source snapshot for secrets..."
   bash "$SCRIPT_DIR/check_secrets.sh"
