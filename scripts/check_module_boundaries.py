@@ -20,17 +20,17 @@ DEPENDENCIES = {
     "RillSpeechContracts": {"RillCore"},
     "RillRecords": {"RillCore"},
     "RillKnowledge": {"RillCore"},
-    "RillSpeech": {"RillCore", "RillPlatform", "RillSpeechContracts"},
+    "RillSpeech": {"RillCore", "RillSpeechContracts"},
     "RillClipboard": {"RillCore", "RillPlatform", "RillRecords"},
-    "RillWorkflows": {"RillCore", "RillKnowledge", "RillRecords", "RillSpeech", "RillSpeechContracts"},
+    "RillWorkflows": {"RillCore", "RillKnowledge", "RillRecords"},
     "RillPersistence": {"GRDB", "RillCore"},
     "RillPlatform": {"RillCore", "RillInputMethodContracts", "TOML"},
     "RillProviders": {"OpenAI", "RillCore", "RillSpeech", "RillSpeechContracts"},
-    "RillUI": {"RillCore", "RillInputMethodContracts", "RillInputMethodIPC", "RillKnowledge", "RillRecords", "RillSpeech", "RillWorkflows"},
+    "RillUI": {"RillCore", "RillInputMethodContracts", "RillInputMethodIPC", "RillKnowledge", "RillRecords", "RillWorkflows"},
     "RillApp": {"RillClipboard", "RillCore", "RillKnowledge", "RillPersistence", "RillPlatform", "RillProviders", "RillRecords", "RillSpeech", "RillSpeechContracts", "RillUI", "RillWorkflows"},
     "RillMLXRuntime": {"HuggingFace", "MLX", "MLXAudioCore", "MLXAudioSTT", "MLXAudioTTS", "MLXAudioVAD", "MLXEmbedders", "MLXHuggingFace", "MLXLMCommon", "MLXNN", "RillCore", "RillSpeechContracts", "Tokenizers"},
-    "RillSpeechWorker": {"RillCore", "RillMLXRuntime", "RillSpeechContracts"},
-    "RillTestSupport": {"RillCore", "RillDomainTestSupport", "RillKnowledge", "RillRecords", "RillSpeech", "RillUI", "RillWorkflows"},
+    "RillSpeechWorker": {"RillMLXRuntime", "RillSpeechContracts"},
+    "RillTestSupport": {"RillCore", "RillKnowledge", "RillRecords", "RillSpeech", "RillUI", "RillWorkflows"},
     "RillDomainTestSupport": {"RillCore", "RillKnowledge", "RillPlatform", "RillRecords", "RillSpeech", "RillWorkflows"},
 }
 
@@ -79,6 +79,7 @@ def main() -> None:
     production = {name for name, target in targets.items() if target["type"] != "test"}
     if production != DEPENDENCIES.keys():
         raise SystemExit(f"Every production target needs an explicit policy: {sorted(production ^ DEPENDENCIES.keys())}")
+    failures: list[str] = []
     for name, target in targets.items():
         is_test = target["type"] == "test"
         source_root = ROOT / target.get("path", str(Path("Tests" if is_test else "Sources") / name))
@@ -92,7 +93,12 @@ def main() -> None:
         declared = {next(iter(dependency.values()))[0] for dependency in target["dependencies"]}
         permitted = declared | (TEST_IMPORTS if is_test else SYSTEM_IMPORTS[name])
         if unexpected := imports - permitted:
-            raise SystemExit(f"{name}: undeclared or forbidden imports: {sorted(unexpected)}")
+            failures.append(f"{name}: undeclared or forbidden imports: {sorted(unexpected)}")
+        internal = set(DEPENDENCIES)
+        if unused := (declared & internal) - imports:
+            failures.append(f"{name}: declared internal dependencies are not imported: {sorted(unused)}")
+    if failures:
+        raise SystemExit("\n".join(failures))
     print("Module boundaries passed (SwiftPM graph and parsed imports)")
 
 

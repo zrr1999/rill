@@ -4,7 +4,6 @@ import RillCore
 import RillWorkflows
 import RillRecords
 import RillKnowledge
-import RillSpeech
 
 private enum EventFeedPrivacyBodyKind {
   case recognition
