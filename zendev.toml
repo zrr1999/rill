@@ -1,0 +1,7 @@
+version = 1
+
+[message]
+profile = "zendev"
+
+[message.normalization.replacements]
+"[ImgBot] Optimize images" = "⚡️ perf(assets): optimize images"
