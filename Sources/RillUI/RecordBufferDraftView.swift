@@ -15,7 +15,8 @@ public struct RecordBufferDraftView: View {
   @State private var showsCollectionControls = false
   @State private var showsDetails = false
   @State private var showsFailure = false
-  @State private var copyFeedback = 0
+  @State private var copyFeedback: UUID?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sendFeedback = 0
 
   public init(model: AppModel, onFinishEditing: @escaping () -> Void = {}) {
@@ -161,16 +162,31 @@ public struct RecordBufferDraftView: View {
         .fixedSize(horizontal: true, vertical: false).frame(minHeight: 32)
         .disabled(model.session == nil || model.session?.hasMarkedText == true)
         .accessibilityIdentifier("record-buffer.finish-editing")
-      Button(panelText(.copy)) {
+      Button {
         guard let session = model.session else { return }
-        copyFeedback &+= 1
+        copyFeedback = UUID()
         copyText(session.text)
+      } label: {
+        HStack(spacing: RillSpacing.compact) {
+          if copyFeedback != nil {
+            Image(systemName: RillSystemSymbol.checkmark.rawValue)
+              .symbolEffect(.bounce, value: copyFeedback)
+              .symbolEffectsRemoved(reduceMotion)
+          }
+          Text(copyFeedback == nil ? panelText(.copy) : L10n.presentation(.copied, language: language))
+        }
       }
       .buttonStyle(.glass).buttonBorderShape(.capsule)
       .fixedSize(horizontal: true, vertical: false)
       .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
       .sensoryFeedback(.success, trigger: copyFeedback)
+      .accessibilityLabel(copyFeedback == nil ? panelText(.copy) : L10n.presentation(.copied, language: language))
       .accessibilityIdentifier("record-buffer.copy")
+      .task(id: copyFeedback) {
+        guard copyFeedback != nil else { return }
+        do { try await Task.sleep(for: .milliseconds(1500)) } catch { return }
+        copyFeedback = nil
+      }
       Button(panelText(.send)) {
         sendFeedback &+= 1
         model.send()
