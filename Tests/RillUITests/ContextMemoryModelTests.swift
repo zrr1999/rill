@@ -18,12 +18,10 @@ struct ContextMemoryModelTests {
         return false
       }, maintain: {})
     model.load()
-    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-    while model.isLoading && ContinuousClock.now < deadline { await Task.yield() }
+    try await waitUntil { !model.isLoading }
     #expect(!model.settings.vocabularyCorrectionEnabled)
     model.apply(screen: false, memory: false, workflowIDs: [UUID()], vocabulary: true)
-    while model.isSaving && ContinuousClock.now < deadline { await Task.yield() }
-    #expect(model.isAuthorized)
+    try await waitUntil { model.isAuthorized }
     #expect(screenRequests == 0)
     #expect(!model.settings.screenContextEnabled && !model.settings.memoryEnabled)
     await model.shutdown()
@@ -97,16 +95,14 @@ struct ContextMemoryModelTests {
       repository: repository, settingsStore: store, activate: { _ in true },
       revoke: {}, fingerprint: { "fixture" }, screenPermission: { _ in false }, maintain: {})
     model.load()
-    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-    while model.isLoading && ContinuousClock.now < deadline { await Task.yield() }
+    try await waitUntil { !model.isLoading }
     let memory = LongTermMemory(
       scope: .init(workflowID: UUID(), applicationBundleID: nil, language: nil),
       summary: "Rill", evidenceKind: .userStatement, sources: [.init(sourceID: UUID(), revision: 1)])
     let operation = Task {
       if deleting { await model.delete(memory) } else { await model.save(memory) }
     }
-    while await !repository.entered && ContinuousClock.now < deadline { await Task.yield() }
-    #expect(await repository.entered)
+    try await waitUntilEntered(repository)
     var shutdownStarted = false
     var shutdownCompleted = false
     let shutdown = Task {
@@ -145,17 +141,14 @@ struct ContextMemoryModelTests {
         return value.providerFingerprint != nil
       }, revoke: {}, fingerprint: { "fixture" }, screenPermission: { _ in false }, maintain: {})
     model.load()
-    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-    while model.isLoading && ContinuousClock.now < deadline { await Task.yield() }
-    #expect(model.isAuthorized)
+    try await waitUntil { model.isAuthorized }
     let memory = LongTermMemory(
       scope: .init(workflowID: UUID(), applicationBundleID: nil, language: nil),
       summary: "Rill", evidenceKind: .userStatement, sources: [.init(sourceID: UUID(), revision: 1)])
     let operation = Task {
       if deleting { await model.delete(memory) } else { await model.save(memory) }
     }
-    while await !repository.entered && ContinuousClock.now < deadline { await Task.yield() }
-    #expect(await repository.entered)
+    try await waitUntilEntered(repository)
     model.invalidateAuthorization()
     await repository.release()
     #expect(await operation.value == .saved)
@@ -164,6 +157,21 @@ struct ContextMemoryModelTests {
     await model.shutdown()
     let stored = try #require(try await store.string(forKey: .contextFeatureSettings))
     #expect(try JSONDecoder().decode(ContextFeatureSettings.self, from: Data(stored.utf8)).providerFingerprint == nil)
+  }
+
+  private func waitUntil(
+    sourceLocation: SourceLocation = #_sourceLocation,
+    _ condition: @MainActor () -> Bool
+  ) async throws {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+    while !condition(), ContinuousClock.now < deadline { await Task.yield() }
+    try #require(condition(), sourceLocation: sourceLocation)
+  }
+
+  private func waitUntilEntered(_ repository: ContextUIRepository) async throws {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+    while await !repository.entered, ContinuousClock.now < deadline { await Task.yield() }
+    try #require(await repository.entered)
   }
 }
 
