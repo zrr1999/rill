@@ -19,7 +19,7 @@ public func requireInteractiveDesktop(file: StaticString = #filePath, line: UInt
   guard probe.isKeyWindow else {
     XCTFail(
       "Desktop test environment unavailable: a plain AppKit panel could not acquire keyboard focus. "
-        + "Run just test-desktop in an unlocked interactive macOS session with no competing UI automation. "
+        + "Run just test desktop in an unlocked interactive macOS session with no competing UI automation. "
         + "Desktop behavior was not verified; this is a failed prerequisite, not a skipped or passing test.",
       file: file, line: line)
     return false

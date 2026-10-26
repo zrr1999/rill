@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Quoted text matches Markdown spans, or is a script passed to bash -c.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd -P)"
@@ -341,12 +343,14 @@ for lane in all tests release; do
   esac >"$trace.expected"
   cmp "$trace.expected" "$trace"
 done
-for args in '--lane' '--lane typo'; do
-  if "$BASH" "$PROJECT_DIR/scripts/preflight.sh" $args >"$TEST_ROOT/invalid-lane" 2>&1; then
-    echo "FAIL: invalid lane accepted: $args" >&2
+reject_invalid_lane() {
+  if "$BASH" "$PROJECT_DIR/scripts/preflight.sh" "$@" >"$TEST_ROOT/invalid-lane" 2>&1; then
+    echo "FAIL: invalid lane accepted: $*" >&2
     exit 1
   fi
-done
+}
+reject_invalid_lane --lane
+reject_invalid_lane --lane typo
 echo 'PASS: lane arguments fail closed and clean builds preserve arena ownership'
 
 # Source integrity must hold in each independently successful CI lane too.

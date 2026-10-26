@@ -20,12 +20,12 @@ just test
 
 | 命令 | 用途 |
 | --- | --- |
-| `just fmt` / `just check` | 格式化与静态检查 |
-| `just docs` / `just docs-serve` | 严格构建文档与本地预览 |
+| `just check` | 格式化与静态检查 |
+| `just docs` / `just docs serve` | 严格构建文档与本地预览 |
 | `just test` | 不依赖真实桌面焦点的领域和原生测试 |
-| `just test-desktop` | 在已解锁的交互式桌面验证焦点与键盘路由 |
-| `just test-scripts` / `just test-tools` | 构建发布脚本与内部开发工具的离线测试 |
-| `just ci` / `just ci-clean` | 完整门禁，以及清理构建产物后重跑完整门禁 |
+| `just test desktop` | 在已解锁的交互式桌面验证焦点与键盘路由 |
+| `just test scripts` / `just test tools` | 构建发布脚本与内部开发工具的离线测试 |
+| `just ci` / `just ci clean` | 完整门禁，以及清理构建产物后重跑完整门禁 |
 
 提交前运行 `just ci` 和 `git diff --check`。完整门禁需要可用的交互式桌面。
 

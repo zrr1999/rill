@@ -93,6 +93,8 @@ start_preflight_report() {
   REPORT_DIR="$(mktemp -d "$report_root/run.XXXXXX")"
   source_metadata="$(preflight_source snapshot)"
   read -r SOURCE_REVISION SOURCE_DIRTY SOURCE_FINGERPRINT <<<"$source_metadata"
+  # Backticks below are Markdown code spans in the report.
+  # shellcheck disable=SC2016
   {
     printf '# Rill preflight\n\n'
     printf -- '- Started (UTC): `%s`\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -182,19 +184,6 @@ locked_swift() {
   uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
 }
 
-check_shell_syntax() {
-  local root="$1"
-  local found=false
-  local script=""
-
-  [[ -d "$root/scripts" ]] || error "No scripts directory: $root/scripts"
-  while IFS= read -r -d '' script; do
-    found=true
-    bash -n "$script"
-  done < <(find "$root/scripts" -type f -name '*.sh' -print0)
-  "$found" || error "No shell scripts found under $root/scripts"
-}
-
 check_release_artifact_hygiene() {
   local root="$1"
   local name=""
@@ -269,6 +258,8 @@ run_performance_swift_tests() {
   locked_swift test --skip-build --filter "$PANEL_STRESS_TESTS"
 }
 
+# --skip-build arrives through run_preflight_stage; the direct call passes none.
+# shellcheck disable=SC2120
 run_desktop_swift_tests() {
   echo 'Running desktop tests; an unlocked interactive macOS session is required...'
   locked_swift test "$@" --filter "$DESKTOP_TESTS" --skip "$BENCHMARK_TESTS|RillQualityEvaluations"
@@ -278,7 +269,7 @@ run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
   run_performance_swift_tests
-  info 'Desktop interaction was not tested. Run just test-desktop in an unlocked session; just ci requires both suites.'
+  info 'Desktop interaction was not tested. Run just test desktop in an unlocked session; just ci requires both suites.'
 }
 
 run_script_tests() {
@@ -426,9 +417,6 @@ clean_preflight_builds() {
 }
 
 check_repository() {
-  info "Checking shell syntax..."
-  check_shell_syntax "$PROJECT_DIR"
-
   info "Checking repository release artifact hygiene..."
   check_release_artifact_hygiene "$PROJECT_DIR"
 
@@ -574,7 +562,7 @@ parse_preflight_options() {
       shift
       ;;
     --help | -h)
-      echo "Usage: $0 [--clean] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | syntax [ROOT] | hygiene [ROOT]"
+      echo "Usage: $0 [--clean] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | hygiene [ROOT]"
       exit 0
       ;;
     *) error "Unknown argument: $1" ;;
@@ -594,6 +582,8 @@ test)
   exit
   ;;
 test-desktop)
+  # This entry passes no swift arguments. --skip-build is only added by the staged call.
+  # shellcheck disable=SC2119
   run_desktop_swift_tests
   exit
   ;;
@@ -613,11 +603,6 @@ install-gitleaks)
 commit-messages)
   shift
   check_commit_messages "$@"
-  exit
-  ;;
-syntax)
-  shift
-  check_shell_syntax "${1:-$PROJECT_DIR}"
   exit
   ;;
 hygiene)

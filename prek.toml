@@ -36,6 +36,11 @@ rev = "914e7df21a07ef503a81201c76d2b11c789d3fca"  # frozen: v1.7.12
 hooks = [{ id = "actionlint", stages = ["pre-commit"] }]
 
 [[repos]]
+repo = "https://github.com/shellcheck-py/shellcheck-py"
+rev = "a6564f5d57444e123433a5c9af733e3975c77229"  # frozen: v0.11.0.1-1
+hooks = [{ id = "shellcheck", stages = ["pre-commit"] }]
+
+[[repos]]
 repo = "https://github.com/crate-ci/typos"
 rev = "7f9d0819ca1c008ade73f4b41fa9d258d48f605b"  # frozen: v1.51.1
 hooks = [
@@ -50,10 +55,24 @@ hooks = [
 ]
 
 [[repos]]
-repo = "local"
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "38bfb07c0c64c304f47eb52090f8288150c77730"  # frozen: v0.17.1
 hooks = [
-  { id = "swift-format", name = "swift format", entry = "swift format lint --strict --configuration .swift-format --", language = "system", types = ["swift"], stages = ["pre-commit"] },
-  { id = "ruff-check", name = "Ruff lint", entry = "uv run --locked --project tools ruff check --config tools/pyproject.toml", language = "system", files = "^tools/.*\\.py$", stages = ["pre-commit"] },
-  { id = "ruff-format", name = "Ruff format", entry = "uv run --locked --project tools ruff format --check --config tools/pyproject.toml", language = "system", files = "^tools/.*\\.py$", stages = ["pre-commit"] },
-  { id = "ty", name = "ty", entry = "uv run --locked --project tools ty check --project tools", language = "system", files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", pass_filenames = false, stages = ["pre-commit"] },
+  { id = "ruff-check", args = ["--fix", "--config", "tools/pyproject.toml"], files = "^tools/.*\\.py$", stages = ["pre-commit"] },
+  { id = "ruff-format", args = ["--config", "tools/pyproject.toml"], files = "^tools/.*\\.py$", stages = ["pre-commit"] },
+]
+
+[[repos]]
+repo = "https://github.com/astral-sh/ty-pre-commit"
+rev = "033aa05ea3f6f5f7cd39bcb6a31fd66f6efbed2f"  # frozen: v0.0.89
+hooks = [
+  { id = "ty", args = ["--project", "tools", "--locked"], files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", always_run = false, stages = ["pre-commit"] },
+]
+
+[[repos]]
+repo = "https://github.com/apple/swift-format"
+rev = "15d7877c6b32926948f6520f0156657945955ea3"  # frozen: 604.0.0
+hooks = [
+  { id = "swift-format", args = ["--configuration", ".swift-format"], stages = ["pre-commit"] },
+  { id = "swift-format-lint", args = ["--configuration", ".swift-format"], stages = ["pre-commit"] },
 ]

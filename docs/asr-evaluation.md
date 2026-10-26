@@ -54,7 +54,7 @@ just eval-quality asr --corpus /private/asr/corpus.json \
   --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
   --output /private/asr/quality-report.json --split validation
 
-just bench-performance asr --corpus /private/asr/corpus.json \
+just bench asr --corpus /private/asr/corpus.json \
   --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
   --target release_to_final_ms --output /private/asr/performance-report.json --split validation
 
@@ -79,7 +79,7 @@ ASR 的 CE 在本机显式运行，私有录音不上传 GitHub。三套 LLM 的
 
 ```sh
 scripts/preflight.sh swift release --result-file /private/path/release.json
-just replay-asr --build-receipt /private/path/release.json \
+just replay asr --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state cold_process --repetitions 3 --output /private/path/cold.jsonl
 ```
@@ -105,10 +105,10 @@ corpus 顶层须指定 `evidence_kind`；每条音频增加 `consent: "authorize
 
 ## Release 宿主处理路径
 
-`just replay-product` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、空白规范化、加密 SQLite 提交和隔离输出端运行清单。它不访问麦克风、不粘贴、不下载模型，也不写入用户数据库。配置中的 `replacements` 是 `pattern` / `replacement` 对；没有 LLM 步骤。
+`just replay product` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、空白规范化、加密 SQLite 提交和隔离输出端运行清单。它不访问麦克风、不粘贴、不下载模型，也不写入用户数据库。配置中的 `replacements` 是 `pattern` / `replacement` 对；没有 LLM 步骤。
 
 ```sh
-just replay-product --build-receipt /private/path/release.json \
+just replay product --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state warm --repetitions 3 --output /private/path/host-warm.jsonl
 ```

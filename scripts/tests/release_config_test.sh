@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Assignments and command stubs are consumed by the sourced release script.
+# shellcheck disable=SC2030,SC2031,SC2034,SC2329
 
 set -euo pipefail
 
@@ -276,37 +278,6 @@ use_recorded_swap() {
   build_atomic_swap_helper() { ATOMIC_SWAP_HELPER="fake_atomic_swap"; }
 }
 
-run_shell_syntax_policy_case() {
-  local fixture="$TEST_ROOT/shell-syntax-policy"
-  local output=""
-  local status=0
-
-  mkdir -p "$fixture/scripts"
-  cat >"$fixture/scripts/valid.sh" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-SH
-  cat >"$fixture/scripts/invalid.sh" <<'SH'
-#!/usr/bin/env bash
-if then
-SH
-
-  set +e
-  output="$(bash "$PREFLIGHT_SCRIPT" syntax "$fixture" 2>&1)"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 || "$output" != *"invalid.sh"* ]]; then
-    echo "FAIL: shell syntax gate rejects an invalid release script" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-  rm "$fixture/scripts/invalid.sh"
-  bash "$PREFLIGHT_SCRIPT" syntax "$fixture"
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: shell syntax gate rejects invalid scripts"
-}
-
 run_release_artifact_hygiene_policy_case() {
   local fixture="$TEST_ROOT/release-artifact-hygiene"
   local artifact=""
@@ -335,7 +306,7 @@ run_release_artifact_hygiene_policy_case() {
       printf '%s\n' "$output" >&2
       exit 1
     fi
-    rm -rf "$fixture/$artifact"
+    rm -rf "${fixture:?}/${artifact:?}"
   done
 
   if git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.app ||
@@ -1879,7 +1850,6 @@ run_literal_plist_key_case
 run_speech_worker_bundle_signing_policy_case
 run_distribution_dmg_policy_case
 run_notarization_result_cases
-run_shell_syntax_policy_case
 run_release_artifact_hygiene_policy_case
 run_release_output_staging_policy_case
 run_install_quit_policy_case

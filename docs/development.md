@@ -10,7 +10,7 @@ Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包�
 
 ## 构建与缓存
 
-`just build` 默认只构建 Debug App，适合日常 App/UI 修改。Debug 产物在当前 worktree 的 `.build`，Release 产物在 `.artifacts/build/release`。构建驱动负责加锁和缓存失效；不要在构建时手工删除目录，也不要跨 worktree 复制或软链接构建数据库。
+`just build` 默认只构建 Debug App，适合日常 App/UI 修改。`just build release` 构建全部 arm64 Release 产品。Debug 产物在当前 worktree 的 `.build`，Release 产物在 `.artifacts/build/release`。构建驱动负责加锁和缓存失效；不要在构建时手工删除目录，也不要跨 worktree 复制或软链接构建数据库。
 
 完整依赖图通过 SwiftBuild 编译 String Catalog。`test-domain` 定向入口使用独立构建目录和缩小的依赖图；仅指定测试过滤器不保证缩小首次编译范围。定向领域测试可以使用：
 
@@ -18,14 +18,14 @@ Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包�
 scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 ```
 
-该入口保留锁文件校验，不能替代完整生产依赖图上的 CI 验证。工具链、SDK、依赖声明或构建参数变化时，相应缓存会失效；普通源码修改走增量构建。 `just ci-clean` 使用干净构建，具体 CI 缓存策略见 [工作流配置](../.github/workflows/ci-tests.yml)。
+该入口保留锁文件校验，不能替代完整生产依赖图上的 CI 验证。工具链、SDK、依赖声明或构建参数变化时，相应缓存会失效；普通源码修改走增量构建。 `just ci clean` 使用干净构建，具体 CI 缓存策略见 [工作流配置](../.github/workflows/ci-tests.yml)。
 
 本地 Release 可以复用跨 worktree 的语音 worker 产物。构建驱动校验输入与产物，无法确认或缓存损坏时回退源码构建；CI 和正式公证发布关闭该缓存。
 
 ```bash
-just cache-status
-just cache-clean
-scripts/preflight.sh swift release --worker-cache off
+just cache
+just cache clean
+just build release --worker-cache off
 ```
 
 清理只针对非活动缓存。手动装配时使用构建驱动的 `--result-file` 回执和 `assemble_app_bundle.sh --build-result`，避免从多个构建目录混取产物。回执绑定源码和独立产物快照；App Intents 元数据与 Release 可执行文件一同保存和校验。手动创建的回执快照由调用者在装配结束后清理。
@@ -34,8 +34,8 @@ scripts/preflight.sh swift release --worker-cache off
 
 | 入口 | 覆盖范围 |
 | --- | --- |
-| `just test-stress` | 大记录目录压力用例 |
-| `just test-render` | 原生 UI 渲染证据 |
+| `just test stress` | 大记录目录压力用例 |
+| `just test render` | 原生 UI 渲染证据 |
 
 领域 XCTest 并行运行，原生和桌面 XCTest 串行运行；Swift Testing 保留框架默认并发。预检中的桌面测试复用 Debug 构建。压力用例独立执行，具体分组与启用条件见 [预检脚本](../scripts/preflight.sh)；与 CI 一致的记录压力检查使用 `RILL_RECORD_STRESS=1`。
 

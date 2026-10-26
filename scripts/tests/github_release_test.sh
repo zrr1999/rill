@@ -70,8 +70,11 @@ run
 for argument in build create v1.2.3 --verify-tag --draft --notes-file zrr1999/rill; do
   grep -Fx -- "$argument" "$EVENTS" >/dev/null
 done
-grep -E '/Rill.dmg(\.sha256)?$' "$EVENTS" | test "$(wc -l | tr -d ' ')" = 2
-! grep -Fx -- --clobber "$EVENTS"
+test "$(grep -cE '/Rill.dmg(\.sha256)?$' "$EVENTS")" = 2
+if grep -Fx -- --clobber "$EVENTS"; then
+  echo 'FAIL: notarized upload passes --clobber' >&2
+  exit 1
+fi
 echo 'PASS: notarized build uploads both assets as a draft'
 export UPLOAD_FAILURE=yes
 if run; then echo 'Unexpected upload success'; exit 1; fi
