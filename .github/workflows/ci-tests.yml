@@ -33,7 +33,7 @@ jobs:
         # v10.1.0
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
         with:
-          version: "0.13.1"
+          version: "0.13.5"
 
       - name: Build documentation with locked dependencies
         run: uv run --no-build --locked --script scripts/docs.py build
@@ -47,10 +47,10 @@ jobs:
         run: npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
 
       - name: Install pinned prek
-        uses: j178/prek-action@1382ad72dea72f9d53832f2bcb65b3e87a947204 # v3.0.1
+        uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
         with:
           install-only: true
-          prek-version: "v0.5.5"
+          prek-version: "v0.5.7"
 
       - name: Run repository quality gates
         run: |
@@ -130,7 +130,7 @@ jobs:
         # v10.1.0
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
         with:
-          version: "0.13.1"
+          version: "0.13.5"
 
       - name: Install pinned Gitleaks
         run: |
@@ -290,9 +290,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install pinned uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.13.1"
+          version: "0.13.5"
       - name: Validate performance workload correctness
         run: bash scripts/build_benchmarks.sh
 
