@@ -72,7 +72,7 @@ jobs:
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
       - name: Install verified OSV-Scanner
         run: |
-          curl --fail --silent --show-error --location https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 --output "$RUNNER_TEMP/osv-scanner"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 --output "$RUNNER_TEMP/osv-scanner"
           printf '%s  %s\n' '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b' "$RUNNER_TEMP/osv-scanner" | sha256sum --check
           chmod +x "$RUNNER_TEMP/osv-scanner"
       - name: Audit all Python project and script locks
@@ -141,7 +141,7 @@ jobs:
       - name: Audit action provenance and references
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uvx --from jactionlint==2.3.0 --with shellcheck-py==0.11.0.1 --with pyflakes==3.4.0 bash scripts/check_workflows.sh --online=strict --online-report=workflow-audit.json
+        run: uvx --no-build --from jactionlint==2.3.0 --with shellcheck-py==0.11.0.1 --with pyflakes==3.4.0 bash scripts/check_workflows.sh --online=strict --online-report=workflow-audit.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
