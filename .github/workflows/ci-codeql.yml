@@ -58,7 +58,9 @@ jobs:
               - Sources/CRime/include/rime_api_deprecated.h
       - name: Build application sources with tracing
         if: matrix.language == 'swift'
-        run: scripts/preflight.sh swift build --arch arm64
+        # CodeQL traces source compilation; this arena is never used for an App bundle.
+        # SwiftBuild's Metal resource compilation fails under the macOS tracer.
+        run: scripts/preflight.sh swift build --build-system native --scratch-path .artifacts/build/codeql --arch arm64
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           category: /language:${{ matrix.language }}

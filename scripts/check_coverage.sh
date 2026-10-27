@@ -10,7 +10,12 @@ profile="$(dirname "$report")/default.profdata"
 
 # SwiftPM's JSON exporter can select only the first test bundle; combine all bundles.
 shopt -s nullglob
-binaries=("$products"/*.xctest/Contents/MacOS/*)
+binaries=()
+for binary in "$products"/*.xctest/Contents/MacOS/*; do
+  if [[ -f "$binary" && -x "$binary" ]]; then
+    binaries+=("$binary")
+  fi
+done
 if [[ "${#binaries[@]}" -eq 0 || ! -s "$profile" ]]; then
   echo "Domain test coverage is missing its binaries or merged profile" >&2
   exit 1

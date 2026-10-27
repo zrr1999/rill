@@ -52,6 +52,12 @@ jobs:
           install-only: true
           prek-version: "v0.5.7"
 
+      - name: Fetch architecture map baseline
+        run: |
+          baseline="$(python3 -c 'import json; print(json.load(open("docs/codemap/codemap.json"))["baseline"])')"
+          [[ "$baseline" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags --depth=1 origin "$baseline"
+
       - name: Run repository quality gates
         run: |
           prek --version

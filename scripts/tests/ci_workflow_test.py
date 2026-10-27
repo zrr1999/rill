@@ -8,9 +8,11 @@
 
 import ast
 import itertools
+import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -162,6 +164,67 @@ class CachePolicyTests(unittest.TestCase):
             (root / "xcodebuild").write_text("#!/bin/bash\nexit 7\n")
             with self.assertRaises(subprocess.CalledProcessError):
                 key(first)
+
+
+class CoverageExportTests(unittest.TestCase):
+    def fixture(self, root, *, binaries=True, profile=True):
+        scripts = root / "scripts"
+        scripts.mkdir()
+        shutil.copyfile(ROOT / "scripts/check_coverage.sh", scripts / "check_coverage.sh")
+        products = root / "build/debug"
+        coverage = products / "codecov"
+        coverage.mkdir(parents=True)
+        if profile:
+            (coverage / "default.profdata").write_text("merged profile")
+        executables = []
+        for name in ("A", "B"):
+            directory = products / f"{name}.xctest/Contents/MacOS"
+            directory.mkdir(parents=True)
+            (directory / f"{name}.dSYM").mkdir()
+            (directory / "metadata.json").write_text("{}")
+            if binaries:
+                binary = directory / name
+                binary.write_text("test executable")
+                binary.chmod(0o755)
+                executables.append(str(binary))
+        preflight = scripts / "preflight.sh"
+        preflight.write_text(
+            '#!/bin/bash\nif [[ "$*" == *--show-codecov-path* ]]; then printf "%s\\n" "$COVERAGE_REPORT"; fi\n'
+        )
+        preflight.chmod(0o755)
+        xcrun = root / "xcrun"
+        xcrun.write_text(
+            '#!/usr/bin/env python3\n'
+            'import json, os, sys\n'
+            'with open(os.environ["COVERAGE_CALLS"], "a") as out: out.write(json.dumps(sys.argv[1:]) + "\\n")\n'
+            'print("SF:/project/Sources/Covered.swift")\n'
+        )
+        xcrun.chmod(0o755)
+        calls = root / "calls.jsonl"
+        env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
+                   COVERAGE_REPORT=str(coverage / "package.json"), COVERAGE_CALLS=str(calls))
+        result = subprocess.run(["bash", str(scripts / "check_coverage.sh")],
+                                env=env, text=True, capture_output=True)
+        recorded = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+        return result, recorded, executables
+
+    def test_exports_all_executables_without_debug_symbol_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, calls, executables = self.fixture(Path(directory))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual([call[1] for call in calls], ["export", "show", "report"])
+            for call in calls:
+                self.assertEqual([call[2], call[4]], executables)
+                self.assertEqual(call[3], "-object")
+                self.assertFalse(any(".dSYM" in argument for argument in call))
+
+    def test_missing_binary_or_profile_fails_before_export(self):
+        for binaries, profile in ((False, True), (True, False)):
+            with self.subTest(binaries=binaries, profile=profile), tempfile.TemporaryDirectory() as directory:
+                result, calls, _ = self.fixture(Path(directory), binaries=binaries, profile=profile)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("coverage is missing", result.stderr)
+                self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
