@@ -47,7 +47,7 @@ just build release --worker-cache off
 
 `just check` 只读检查源文件；需要修复格式时显式运行 `just format`。Python 保留 Ruff 与 ty，deptry 检查运行时依赖，Import Linter 约束构建元数据不能依赖评测策略。ast-grep 约束领域模块的偏好存取边界，Semgrep 检查原始评测文件的权限；两者分别维护违规与合法样例。
 
-`just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。Codecov 接收两种实测报告，Sonar 分析应用与辅助源码；上传失败或缺少账号凭据会使对应 CI 步骤失败。
+`just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。Codecov 接收两种实测报告，Sonar 分析应用与辅助源码；上传失败或缺少账号凭据会使对应 CI 步骤失败。
 
 `just mutation` 验证编辑距离评分函数的测试有效性。变异工具使用独立 Python 环境，不改变开发工具的默认解释器。`just reports` 输出 jscpd、Lizard 和 Radon 的结构指标，尚未建立预算的指标与变异结果用于审查，不设统一分数线。报告、外部链接和性能检查沿用每周周期，也支持手动运行。模型评测依赖明确配置的服务和固定合成用例；真实音频与设备验收仍按对应评测文档执行。
 

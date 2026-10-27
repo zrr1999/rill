@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 mkdir -p .artifacts/quality
-scripts/preflight.sh swift test-domain --enable-code-coverage --skip RillQualityEvaluations
-report="$(scripts/preflight.sh swift test-domain --enable-code-coverage --show-codecov-path)"
+scripts/preflight.sh swift test-domain --build-system swiftbuild --enable-code-coverage --skip RillQualityEvaluations
+report="$(scripts/preflight.sh swift test-domain --build-system swiftbuild --enable-code-coverage --show-codecov-path)"
 products="$(dirname "$(dirname "$report")")"
 profile="$(dirname "$report")/default.profdata"
 

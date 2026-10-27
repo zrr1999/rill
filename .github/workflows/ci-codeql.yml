@@ -19,7 +19,7 @@ jobs:
   analyze:
     name: CodeQL (${{ matrix.language }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.language == 'swift' && 90 || 45 }}
     permissions:
       contents: read
       security-events: write
@@ -47,6 +47,11 @@ jobs:
         if: matrix.language == 'swift'
         with:
           version: "0.13.5"
+      - name: Resolve locked packages before tracing
+        if: matrix.language == 'swift'
+        run: |
+          swift package --scratch-path .artifacts/build/codeql --force-resolved-versions resolve
+          git diff --exit-code -- Package.resolved
       - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           languages: ${{ matrix.language }}
