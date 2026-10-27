@@ -54,6 +54,6 @@
 - [可下载的条件工作流](examples/conditional-workflow.toml)
 - [JSON Schema](schemas/workflow-v1.schema.json)
 - [完整隐私与数据流说明](../PRIVACY.md)
-- [第三方依赖许可](../THIRD_PARTY_NOTICES.md)与[本地模型许可](../LOCAL_MODEL_NOTICES.md)
+- 随 App 分发的第三方依赖许可见应用包内 `Contents/Resources/THIRD_PARTY_NOTICES.md`；[本地模型许可](../LOCAL_MODEL_NOTICES.md)
 
 开发环境、架构和发布流程见仓库中的 [贡献指南](https://github.com/zrr1999/rill/blob/main/CONTRIBUTING.md)。

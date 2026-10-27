@@ -22,7 +22,7 @@ just docs
 
 ## 收录范围
 
-`zensical.toml` 的 `project.nav` 是页面清单，也是导航的唯一配置。 `project.extra.docs_assets` 列出页面图片，以及可下载的许可证、工作流示例与 JSON Schema。构建入口把这些文件按仓库相对路径复制到 `.artifacts/docs/source/`，README 自动成为首页。唯一的链接转换是将 `LICENSE` 导出为 `LICENSE.txt` 并调整生成页面中的下载链接，避免预览服务器把无扩展名 URL 当作目录；许可证内容不变。不要手工编辑生成目录。
+`zensical.toml` 的 `project.nav` 是页面清单，也是导航的唯一配置。 `project.extra.docs_assets` 列出页面图片，以及可下载的许可证、工作流示例与 JSON Schema。构建入口把这些文件按仓库相对路径复制到 `.artifacts/docs/source/`，README 自动成为首页。唯一的链接转换是将 `LICENSE` 导出为 `LICENSE.txt` 并调整生成页面中的下载链接，避免预览服务器把无扩展名 URL 当作目录；许可证内容不变。不要手工编辑生成目录。装配时生成的 `THIRD_PARTY_NOTICES.md` 随 App 分发，不作为站点页面。
 
 增加页面时，先在仓库维护正文，再加入 `nav`。页面引用的新图片和下载资源加入 `docs_assets`。代码和工作流配置的链接指向 GitHub 源码，不把源码当站点页面复制。页面白名单包含当前用户操作、参考、隐私/许可及代码地图维护入口。开发契约、发布流程、UI 设计方案、研究和历史 QA 不复制到 staging，因而也不进入站点正文或搜索索引。公共页面链接仓内开发资料时使用完整 GitHub URL，不把未收录文件加入资源列表来绕过边界。删除导航项后必须确认旧 staging 和站点输出已清除，检查搜索产物没有残留。
 
@@ -36,7 +36,7 @@ just docs
 
 这两个脚本不替代搜索或导航状态所有者，仍通过现有控件的 click/change 驱动主题。升级主题后必须复核 shadow root 结构、原生对话框、筛选面板及响应式断点：测试窄屏与宽屏往返、 Enter/Space 每次只切换一次、从搜索输入/筛选/结果退出，以及 normal/reduce 两种动态设置。不要仅凭构建通过判断辅助功能回归已验证，也不要把浏览器模拟的组合事件当作物理键盘或 VoiceOver 验收。
 
-站内链接使用即时导航，页面底部提供上一页/下一页；下载资源仍按普通链接打开。页面操作提供 GitHub 编辑、查看源文件和「复制为 Markdown」（按钮提示目前为英文）。内置 `llmstxt` 插件同时生成 `/llms.txt` 与逐页 Markdown。`project.plugins.llmstxt.sections` 显式列出收录页面，路径失效时严格构建失败；增加使用说明或参考页时，同时加入 `nav` 和该列表。许可、第三方与数据来源清单（含输入法依赖）不收录，也不显示「复制为 Markdown」。
+站内链接使用即时导航，页面底部提供上一页/下一页；下载资源仍按普通链接打开。页面操作提供 GitHub 编辑、查看源文件和「复制为 Markdown」（按钮提示目前为英文）。内置 `llmstxt` 插件同时生成 `/llms.txt` 与逐页 Markdown。`project.plugins.llmstxt.sections` 显式列出收录页面，路径失效时严格构建失败；增加使用说明或参考页时，同时加入 `nav` 和该列表。许可、本地模型与输入法依赖清单不收录，也不显示「复制为 Markdown」。
 
 ## 验证与交付
 

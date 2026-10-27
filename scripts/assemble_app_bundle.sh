@@ -38,6 +38,13 @@ error() {
   exit 1
 }
 
+NOTICES_WORK=""
+cleanup_generated_notices() {
+  if [[ -n "$NOTICES_WORK" && -d "$NOTICES_WORK" ]]; then
+    rm -rf "$NOTICES_WORK"
+  fi
+}
+
 verify_release_executable() {
   local executable="${1-}"
   local REQUIRED_ARCHITECTURE="arm64"
@@ -332,6 +339,7 @@ fi
 require_command ditto
 require_command diff
 require_command cmp
+require_command mktemp
 require_command plutil
 require_command uv
 
@@ -339,14 +347,24 @@ for document in "${PROJECT_DOCUMENTS[@]}"; do
   [[ -s "$PROJECT_DIR/$document" ]] || error "Project document not found or empty: $document"
 done
 
-THIRD_PARTY_NOTICES_SOURCE="$PROJECT_DIR/$THIRD_PARTY_NOTICES_NAME"
 LOCAL_MODEL_NOTICES_SOURCE="$PROJECT_DIR/$LOCAL_MODEL_NOTICES_NAME"
 PRIVACY_NOTICE_SOURCE="$PROJECT_DIR/$PRIVACY_NOTICE_NAME"
 THIRD_PARTY_NOTICES_GENERATOR="$SCRIPT_DIR/generate_third_party_notices.py"
 [[ -f "$THIRD_PARTY_NOTICES_GENERATOR" ]] ||
   error "Third-party notice generator not found: $THIRD_PARTY_NOTICES_GENERATOR"
-uv run --script "$THIRD_PARTY_NOTICES_GENERATOR" --check --checkouts-dir "$CHECKOUTS_DIR"
-[[ -f "$THIRD_PARTY_NOTICES_SOURCE" ]] ||
+[[ -f "$PROJECT_DIR/Package.resolved" ]] ||
+  error "Package.resolved not found: $PROJECT_DIR/Package.resolved"
+[[ -f "$PROJECT_DIR/scripts/third_party_notices_manifest.json" ]] ||
+  error "Third-party notice manifest not found: $PROJECT_DIR/scripts/third_party_notices_manifest.json"
+NOTICES_WORK="$(mktemp -d "${TMPDIR:-/tmp}/rill-third-party-notices.XXXXXX")"
+trap cleanup_generated_notices EXIT
+THIRD_PARTY_NOTICES_SOURCE="$NOTICES_WORK/$THIRD_PARTY_NOTICES_NAME"
+uv run --script "$THIRD_PARTY_NOTICES_GENERATOR" \
+  --resolved "$PROJECT_DIR/Package.resolved" \
+  --manifest "$PROJECT_DIR/scripts/third_party_notices_manifest.json" \
+  --checkouts-dir "$CHECKOUTS_DIR" \
+  --output "$THIRD_PARTY_NOTICES_SOURCE"
+[[ -s "$THIRD_PARTY_NOTICES_SOURCE" ]] ||
   error "Generated third-party notices not found: $THIRD_PARTY_NOTICES_SOURCE"
 [[ -f "$LOCAL_MODEL_NOTICES_SOURCE" ]] ||
   error "Local model notices not found: $LOCAL_MODEL_NOTICES_SOURCE"
@@ -563,7 +581,7 @@ WORKFLOW_DESTINATION="$APP_BUNDLE/Contents/Resources/$WORKFLOW_RESOURCES"
 diff -qr "$WORKFLOW_SOURCE" "$WORKFLOW_DESTINATION" >/dev/null || error "Packaged workflow resources differ from build output"
 [[ -f "$THIRD_PARTY_NOTICES_DESTINATION" ]] || error "Third-party notices were not packaged"
 cmp -s "$THIRD_PARTY_NOTICES_SOURCE" "$THIRD_PARTY_NOTICES_DESTINATION" ||
-  error "Packaged third-party notices differ from the reviewed source"
+  error "Packaged third-party notices differ from the generated notices"
 [[ -f "$LOCAL_MODEL_NOTICES_DESTINATION" ]] || error "Local model notices were not packaged"
 cmp -s "$LOCAL_MODEL_NOTICES_SOURCE" "$LOCAL_MODEL_NOTICES_DESTINATION" ||
   error "Packaged local model notices differ from the reviewed source"

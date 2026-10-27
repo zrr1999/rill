@@ -529,7 +529,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
 
     def test_assembler_rejects_missing_ui_localizations(self) -> None:
         self.fixture.prepare_packaging()
-        self.fixture.generate()
         self.fixture.build_dir = self.fixture.create_build_products()
         ui_bundle = self.fixture.build_dir / "RillMacOS_RillUI.bundle"
         (ui_bundle / "Contents" / "Resources" / "zh-Hans.lproj" / "Localizable.strings").unlink()
@@ -543,7 +542,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
 
     def test_assembler_rejects_missing_or_failed_app_intents_metadata(self) -> None:
         self.fixture.prepare_packaging()
-        self.fixture.generate()
         self.fixture.build_dir = self.fixture.create_build_products()
         metadata = self.fixture.build_dir / "RillApp-primary.swiftconstvalues"
         metadata.unlink()
@@ -563,7 +561,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
 
     def test_assembler_requires_app_intents_localizations(self) -> None:
         self.fixture.prepare_packaging()
-        self.fixture.generate()
         self.fixture.build_dir = self.fixture.create_build_products()
         catalog = self.fixture.build_dir / "RillMacOS_RillApp.bundle/Contents/Resources/zh-Hans.lproj/Localizable.strings"
         catalog.unlink()
@@ -574,7 +571,7 @@ class ThirdPartyNoticesTests(unittest.TestCase):
     def test_assembler_packages_reviewed_resources_and_rejects_drift(self) -> None:
         project_documents = ("LICENSE", "README.md")
         self.fixture.prepare_packaging()
-        self.fixture.generate()
+        self.assertFalse(self.fixture.output.exists())
         assembled = self.fixture.assemble()
         app_bundle = self.fixture.app_bundle
         build_dir = self.fixture.build_dir
@@ -624,6 +621,8 @@ class ThirdPartyNoticesTests(unittest.TestCase):
                 (build_dir / "RillMacOS_RillApp.bundle/Contents/Resources" / intents_relative).read_bytes(),
             )
         packaged = app_bundle / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.md"
+        self.assertFalse(self.fixture.output.exists())
+        self.fixture.generate()
         self.assertEqual(packaged.read_bytes(), self.fixture.output.read_bytes())
         for document in project_documents:
             self.assertEqual(
@@ -754,10 +753,6 @@ fi
         assembled = self.fixture.assemble()
         self.assertEqual(assembled.returncode, 0, assembled.stderr)
 
-        self.fixture.output.unlink()
-        self.expect_rejected("missing or unreadable", bundle_remains=True)
-
-        self.fixture.generate()
         self.fixture.local_model_notices.unlink()
         self.expect_rejected("Local model notices not found", bundle_remains=True)
 
@@ -791,22 +786,47 @@ fi
         self.fixture.app_icon_source.unlink()
         self.expect_rejected("App icon source not found", bundle_remains=True)
 
-    def test_repository_notice_is_current(self) -> None:
+    def test_assembler_rejects_unreviewed_locked_package(self) -> None:
+        self.fixture.prepare_packaging()
+        self.fixture.write_resolved(
+            [
+                {
+                    "identity": "unreviewed",
+                    "kind": "remoteSourceControl",
+                    "location": "https://example.invalid/unreviewed.git",
+                    "state": {"revision": "a" * 40, "version": "9.9.9"},
+                }
+            ]
+        )
+        self.expect_rejected("unreviewed locked packages")
+
+    def test_locked_dependencies_have_reviewed_evidence(self) -> None:
         checkouts = os.environ.get(
             "RILL_TEST_CHECKOUTS_DIR", str(PROJECT_DIR / ".build/checkouts")
         )
-        result = run(
-            [
-                "uv",
-                "run",
-                "--script",
-                str(GENERATOR),
-                "--check",
-                "--checkouts-dir",
-                checkouts,
-            ]
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
+        pins = json.loads((PROJECT_DIR / "Package.resolved").read_text(encoding="utf-8"))[
+            "pins"
+        ]
+        with tempfile.TemporaryDirectory(prefix="rill-generated-notices.") as directory:
+            output = Path(directory) / "THIRD_PARTY_NOTICES.md"
+            result = run(
+                [
+                    "uv",
+                    "run",
+                    "--script",
+                    str(GENERATOR),
+                    "--output",
+                    str(output),
+                    "--checkouts-dir",
+                    checkouts,
+                ]
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            content = output.read_text(encoding="utf-8")
+            self.assertIn("# Rill Third-Party Notices", content)
+            self.assertIn("## Dependency inventory", content)
+            for pin in pins:
+                self.assertIn(f"`{pin['identity']}`", content)
 
 
 def create_bundle(path: Path, identifier: str) -> None:

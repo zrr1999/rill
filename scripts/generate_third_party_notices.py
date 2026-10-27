@@ -7,7 +7,8 @@
 
 The reviewed manifest records license evidence for every dependency. SwiftPM's
 ``Package.resolved`` supplies source-control pins. The generator fails closed
-when either the inventory or any reviewed evidence byte changes.
+when either the inventory or any reviewed evidence byte changes. The rendered
+markdown is a pack-time artifact, not a reviewed source file.
 """
 
 from __future__ import annotations
@@ -45,7 +46,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resolved", type=Path, default=DEFAULT_RESOLVED)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--checkouts-dir", type=Path, default=DEFAULT_CHECKOUTS)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help="Rendered notices path (pack-time artifact; not committed).",
+    )
     parser.add_argument(
         "--check",
         action="store_true",
