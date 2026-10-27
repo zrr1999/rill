@@ -167,7 +167,7 @@ class CachePolicyTests(unittest.TestCase):
 
 
 class CoverageExportTests(unittest.TestCase):
-    def fixture(self, root, *, binaries=True, profile=True):
+    def fixture(self, root, *, binaries=True, profile=True, names=("A", "B")):
         scripts = root / "scripts"
         scripts.mkdir()
         shutil.copyfile(ROOT / "scripts/check_coverage.sh", scripts / "check_coverage.sh")
@@ -177,7 +177,7 @@ class CoverageExportTests(unittest.TestCase):
         if profile:
             (coverage / "default.profdata").write_text("merged profile")
         executables = []
-        for name in ("A", "B"):
+        for name in names:
             directory = products / f"{name}.xctest/Contents/MacOS"
             directory.mkdir(parents=True)
             (directory / f"{name}.dSYM").mkdir()
@@ -203,7 +203,7 @@ class CoverageExportTests(unittest.TestCase):
         calls = root / "calls.jsonl"
         env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
                    COVERAGE_REPORT=str(coverage / "package.json"), COVERAGE_CALLS=str(calls))
-        result = subprocess.run(["bash", str(scripts / "check_coverage.sh")],
+        result = subprocess.run(["/bin/bash", str(scripts / "check_coverage.sh")],
                                 env=env, text=True, capture_output=True)
         recorded = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
         return result, recorded, executables
@@ -225,6 +225,15 @@ class CoverageExportTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("coverage is missing", result.stderr)
                 self.assertEqual(calls, [])
+
+    def test_single_bundle_exports_with_system_bash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, calls, executables = self.fixture(Path(directory), names=("Only",))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(len(calls), 3)
+            for call in calls:
+                self.assertEqual(call[2], executables[0])
+                self.assertNotIn("-object", call)
 
 
 if __name__ == "__main__":
