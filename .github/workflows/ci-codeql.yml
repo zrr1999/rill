@@ -1,0 +1,64 @@
+name: "CI - CodeQL"
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            os: ubuntu-latest
+            build: none
+          - language: python
+            os: ubuntu-latest
+            build: none
+          - language: c-cpp
+            os: ubuntu-latest
+            build: none
+          - language: swift
+            os: macos-26
+            build: manual
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        if: matrix.language == 'swift'
+        with:
+          version: "0.13.5"
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build }}
+          config: |
+            paths-ignore:
+              - tools/tests/semgrep_privacy.py
+              - Sources/CRime/include/rime_api.h
+              - Sources/CRime/include/rime_api_deprecated.h
+      - name: Build application sources with tracing
+        if: matrix.language == 'swift'
+        run: scripts/preflight.sh swift build --arch arm64
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:${{ matrix.language }}

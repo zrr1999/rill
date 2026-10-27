@@ -794,9 +794,11 @@ def main(arguments: list[str] | None = None) -> None:
             parser.add_argument("--scratch-path", "--build-path")
             parser.parse_args(arguments)
             context.clean()
+        elif "--show-bin-path" in arguments:
+            print(context.swift(subcommand, arguments, quiet=True))
         elif any(
             argument in arguments
-            for argument in ("--help", "-h", "--help-hidden", "--show-bin-path")
+            for argument in ("--help", "-h", "--help-hidden")
         ):
             context.swift(subcommand, arguments)
         else:

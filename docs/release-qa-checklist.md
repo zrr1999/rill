@@ -121,7 +121,6 @@ Run these checks on macOS 26.0 and the current supported macOS with the exact in
       encrypted state.
 - [ ] Revoking a permission while recording or delivering fails closed and cleans
       temporary audio.
-
 - [ ] With queued records present, native copy/paste and menu-bar Paste use the
       original system clipboard. Queue changes, capture pause/resume, privacy
       changes, and app exit do not replace clipboard contents.
@@ -244,7 +243,6 @@ Complete the pass in both App languages.
       and Cancel preserves every item. Delete does not escape a Chinese or English
       text/input-method edit, and parent shortcuts stay inactive while a sheet or
       confirmation is present.
-
 - [ ] In the clipboard panel and main Record inspector, preview a captured image,
       open the larger image, then close it with Escape. A second Escape closes
       the quick-panel preview before dismissing the panel; no paste occurs.

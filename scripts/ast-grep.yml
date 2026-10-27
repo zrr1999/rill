@@ -1,0 +1,12 @@
+id: domain-preferences-access
+language: Swift
+severity: error
+message: Domain code uses persistence ports; preferences access belongs to platform adapters.
+note: docs/architecture.md assigns shared values and ports to Core and graph ownership to Records.
+files:
+  - Sources/RillCore/**/*.swift
+  - Sources/RillRecords/**/*.swift
+rule:
+  any:
+    - pattern: UserDefaults.standard
+    - pattern: 'UserDefaults(suiteName: $NAME)'

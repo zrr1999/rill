@@ -116,7 +116,7 @@ start_preflight_report() {
 record_preflight_stage() {
   local status="$1"
   local result="$2"
-  local elapsed=$(( $(date +%s) - STAGE_STARTED ))
+  local elapsed=$(($(date +%s) - STAGE_STARTED))
   printf '| %s | %s | %s | %s |\n' "$CURRENT_STAGE" "$result" "$elapsed" "$status" \
     >>"$REPORT_DIR/summary.md"
   info "Stage $CURRENT_STAGE: $result (${elapsed}s, exit $status)"
@@ -173,8 +173,8 @@ verify_xcode_resource_accessor() {
   done < <(find "$accessor_root" -type f -name resource_bundle_accessor.swift -print)
 
   [[ -n "$accessor" ]] || error "Xcode resource accessor not found for: $bundle_name"
-  grep -Fq "Bundle.main.resourceURL" "$accessor" ||
-    error "Resource accessor does not support app Contents/Resources: $bundle_name"
+  grep -Fq "Bundle.main.resourceURL" "$accessor" \
+    || error "Resource accessor does not support app Contents/Resources: $bundle_name"
   if grep -Fq "let buildPath =" "$accessor"; then
     error "Resource accessor contains a machine-local build path: $bundle_name"
   fi
@@ -248,7 +248,7 @@ run_performance_swift_tests() {
   local discovered_tests stress_filter
   discovered_tests="$(locked_swift test list --skip-build)"
   for stress_filter in "$STORAGE_STRESS_TESTS" "$PANEL_STRESS_TESTS"; do
-    if ! grep -E "$stress_filter" <<< "$discovered_tests" >/dev/null; then
+    if ! grep -E "$stress_filter" <<<"$discovered_tests" >/dev/null; then
       error "Required performance tests were not discovered: $stress_filter"
     fi
   done
@@ -370,7 +370,7 @@ check_commit_messages() {
   local revision=""
   local message_file=""
 
-  if (( $# > 2 )); then
+  if (($# > 2)); then
     echo "usage: $0 commit-messages [BASE [HEAD]]" >&2
     exit 2
   fi
@@ -440,7 +440,6 @@ check_repository() {
 
   clean_preflight_builds
 
-
   info "Checking performance benchmark workloads..."
   bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only
 }
@@ -492,8 +491,8 @@ check_release() {
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
 
   for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
-    cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" ||
-      error "Packaged project document does not match $document"
+    cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" \
+      || error "Packaged project document does not match $document"
   done
   uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
@@ -503,15 +502,15 @@ check_release() {
     info "Saving the verified preflight app for native interaction QA..."
     mkdir -p "$RILL_PREFLIGHT_APP_DIR"
     local archive="Rill-preflight-$SOURCE_REVISION.zip"
-    [[ ! -e "$RILL_PREFLIGHT_APP_DIR/$archive" && ! -L "$RILL_PREFLIGHT_APP_DIR/$archive" ]] ||
-      error "Preflight app archive already exists: $RILL_PREFLIGHT_APP_DIR/$archive"
+    [[ ! -e "$RILL_PREFLIGHT_APP_DIR/$archive" && ! -L "$RILL_PREFLIGHT_APP_DIR/$archive" ]] \
+      || error "Preflight app archive already exists: $RILL_PREFLIGHT_APP_DIR/$archive"
     ditto -c -k --sequesterRsrc --keepParent \
       "$PACKAGE_SMOKE_ROOT/Rill.app" "$RILL_PREFLIGHT_APP_DIR/$archive"
     (
       cd "$RILL_PREFLIGHT_APP_DIR"
-      shasum -a 256 "$archive" > "$archive.sha256"
+      shasum -a 256 "$archive" >"$archive.sha256"
       printf 'source_revision=%s\nsource_dirty=%s\nsource_fingerprint=%s\nbuild_kind=preflight\nsigning=ad-hoc\n' \
-        "$SOURCE_REVISION" "$SOURCE_DIRTY" "$SOURCE_FINGERPRINT" > "$archive.source.txt"
+        "$SOURCE_REVISION" "$SOURCE_DIRTY" "$SOURCE_FINGERPRINT" >"$archive.source.txt"
     )
   fi
   cleanup
@@ -551,13 +550,16 @@ run_preflight() {
 parse_preflight_options() {
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
-    --clean) CLEAN_BUILD=true; WORKER_CACHE="off" ;;
+    --clean)
+      CLEAN_BUILD=true
+      WORKER_CACHE="off"
+      ;;
     --lane)
       [[ "$#" -ge 2 ]] || error "Missing value for --lane"
       PREFLIGHT_LANE="$2"
       case "$PREFLIGHT_LANE" in
-        all | tests | release) ;;
-        *) error "Unknown preflight lane: $PREFLIGHT_LANE" ;;
+      all | tests | release) ;;
+      *) error "Unknown preflight lane: $PREFLIGHT_LANE" ;;
       esac
       shift
       ;;

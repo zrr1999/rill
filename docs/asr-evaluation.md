@@ -96,7 +96,6 @@ corpus 顶层须指定 `evidence_kind`；每条音频增加 `consent: "authorize
 
 250 ms 保护等待在公开接口没有可靠退出保证前保留。
 
-
 回放也接受 `preview_profile: "realtime" | "agent" | "subtitle"`，以真实时间发送 100 ms PCM 帧，保留不足一帧的尾部；完成预览后仍用同一完整 WAV 离线识别。 `worker_first_hypothesis_ms` 和 `worker_first_confirmed_ms` 从 worker started 后开始发送 PCM 计时，它们可能包含控制标记，是原始 worker 候选时间，不是用户可见字幕或 Fn 时间；`stream_prepare_ms`、`preview_retire_ms` 单独报告。流式热词仍标记 unsupported。profile 失败保留为失败结果，不改走无预览冒充成功。
 
 `--cache-state idle_recovery --idle-seconds 30` 测量 worker 模型驻留后的闲置恢复；配置 `idle_release_model: true` 通过现有公开 release 请求比较释放策略。这不是 App 自动闲置策略的验收。warm/idle 每个 worker 先做一次明示的未计分推理，只使用清单内获授权音频。cold_model 测量释放后包含加载的识别请求，first_inference 则先单独记录 `model_prepare_ms`，再测首次推理。cold_process 包含 worker 首次请求等待，不将进程创建 API 返回时间当作模型已就绪。

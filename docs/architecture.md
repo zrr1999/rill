@@ -156,7 +156,6 @@ Temporary audio file removal, timeout isolation and retry cleanup are owned by `
 
 归档源码统一使用 Corpus 命名。现有 `BenchmarkRecordings` 目录、`audio.benchmark-archive-enabled` 设置值、`benchmark_recordings` / `benchmark_recordings_key` 加密上下文、验证标记和 `benchmark-recording.*` 诊断事件值是持久化身份，保留原值；这不是第二套运行时模型。
 
-
 `DiagnosticEventName` 是诊断生产端的固定事件类型；字符串只在 JSON/SQLite 边界出现，未知持久化事件转换为 invalid sentinel，保留旧格式兼容。敏感内容仍由既有清洗器限制。 `CorpusRecordingArchiveModel` 单独拥有设置写入、元数据选择、授权和导出任务； Platform 的 `CorpusExporter` 负责认证读取、私有暂存和原子发布。历史维护周期任务归 `RunHistoryModel`，时钟显式注入；测试控制 tick 和完成条件。设置可用性、LLM 验证及其代际取消归 `SettingsPersistenceModel`，工作流解释的任务、失效和回执校验归 `WorkflowLibraryModel`；视图直接发出功能命令，不再经过 AppModel 转发。
 
 语音资源准备与查询命令进一步收敛：`VoiceRunModel` 拥有唤醒词和本地 ASR 准备任务、取消与进度发布；模型切换和退出使旧任务失去发布资格。生产组合根完整注入唤醒词、TTS 选择、验证与播放服务，删除没有产品调用方的独立 TTS 下载入口。本地 ASR 准备只保留一个任务身份，取消后的工作仍由既有任务所有者保留；终止退出遵守原有非阻塞策略，不把取消或句柄释放当成底层推理已退出。
@@ -165,9 +164,7 @@ Temporary audio file removal, timeout isolation and retry cleanup are owned by `
 
 工作区、全局搜索与快捷面板使用同一 `RecordSearch` 游标规则。工作区保留每页 100 条、快捷面板保留每页 50 条的策略；工作区只在整轮查询完成后发布匹配集合。查询、筛选和预览选择通过显式命令驱动，批量重置只启动一次查询，不使用 `didSet` 副作用链。
 
-
 字幕快照、节流与隐藏任务由 `VoiceRunModel` 统一拥有。退出入口同步清空浮层，取消旧计时器，拒绝晚到字幕和队列刷新；取消隐藏不能清除同一运行的新录音状态。隐私值和加载/保存状态归 `SettingsPersistenceModel`，整份快照共用按键写入协调器；未开始的旧快照合并为最新值，已开始的写入先结束。AppModel 仅协调隐私变化对历史、词库上下文和工作流解释的失效。活动保留期限只有 RunHistoryModel 一份状态，更新期限和查询失效在同一个命令中完成。 Record 输出由 `SessionCoordinator` 执行，交付结算和无内容回执由 `RecordStore` 负责；具体约束见 [Record 架构](record-architecture.md)。
-
 
 Record 复制、剪贴板采集控制和快捷键录制通过必需的 `RecordInteractionServices` 在 AppModel 构造时注入。首次设置快照读取前先发布当前关闭状态与快捷键；恢复后以单调 revision 发布生效值。AppContainer 不再保存同一组转发闭包，App 启动不再补装可静默失效的默认实现。窗口展示回调仍由窗口生命周期安装；测试替身只在测试工厂定义。
 

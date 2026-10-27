@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+from io import StringIO
 import multiprocessing
 import os
 from pathlib import Path
@@ -28,6 +30,23 @@ def try_lock(path, connection):
 
 
 class BuildDriverTests(unittest.TestCase):
+    def test_product_path_query_keeps_compiler_warnings_out_of_stdout(self):
+        compiler = self.root / "swift"
+        compiler.write_text(
+            f"#!{sys.executable}\n"
+            "import sys\n"
+            "print('warning: native build is deprecated', file=sys.stderr)\n"
+            "print('/tmp/product path/release')\n"
+        )
+        compiler.chmod(0o755)
+        output = StringIO()
+        with (
+            patch.dict(os.environ, {"PATH": f"{self.root}{os.pathsep}{os.environ['PATH']}"}),
+            redirect_stdout(output),
+        ):
+            build.main(["build", "--show-bin-path", "--package-path", str(self.root)])
+        self.assertEqual(output.getvalue(), "/tmp/product path/release\n")
+
     def test_full_build_rejects_inherited_domain_profile(self):
         with patch.dict(os.environ, {"RILL_BUILD_PROFILE": "domain-tests"}):
             with self.assertRaises(build.BuildError):

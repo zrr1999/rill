@@ -315,19 +315,19 @@ fi
 [[ -n "$BUILD_NUMBER" ]] || error "--build-number is required"
 [[ -n "$BUILD_KIND" ]] || error "--build-kind is required"
 [[ -n "$SOURCE_REVISION" ]] || error "--source-revision is required"
-[[ -n "$SOURCE_DIRTY" ]] ||
-  error "--source-dirty is required"
+[[ -n "$SOURCE_DIRTY" ]] \
+  || error "--source-dirty is required"
 [[ -n "$VERSION_LABEL" ]] || error "--version-label is required"
 [[ "$APP_BUNDLE" == *.app ]] || error "--app-bundle must end in .app"
-[[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
-  error "--version must be a numeric semantic version"
+[[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+  || error "--version must be a numeric semantic version"
 [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || error "--build-number must be numeric"
 [[ "$BUILD_KIND" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || error "--build-kind is invalid"
 [[ "$SOURCE_REVISION" =~ ^[[:xdigit:]]{40,64}$ ]] || error "--source-revision is invalid"
-[[ "$SOURCE_DIRTY" == "true" || "$SOURCE_DIRTY" == "false" ]] ||
-  error "--source-dirty must be true or false"
-[[ "$VERSION_LABEL" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]{0,127}$ ]] ||
-  error "--version-label is invalid"
+[[ "$SOURCE_DIRTY" == "true" || "$SOURCE_DIRTY" == "false" ]] \
+  || error "--source-dirty must be true or false"
+[[ "$VERSION_LABEL" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]{0,127}$ ]] \
+  || error "--version-label is invalid"
 
 require_command ditto
 require_command diff
@@ -343,27 +343,27 @@ THIRD_PARTY_NOTICES_SOURCE="$PROJECT_DIR/$THIRD_PARTY_NOTICES_NAME"
 LOCAL_MODEL_NOTICES_SOURCE="$PROJECT_DIR/$LOCAL_MODEL_NOTICES_NAME"
 PRIVACY_NOTICE_SOURCE="$PROJECT_DIR/$PRIVACY_NOTICE_NAME"
 THIRD_PARTY_NOTICES_GENERATOR="$SCRIPT_DIR/generate_third_party_notices.py"
-[[ -f "$THIRD_PARTY_NOTICES_GENERATOR" ]] ||
-  error "Third-party notice generator not found: $THIRD_PARTY_NOTICES_GENERATOR"
+[[ -f "$THIRD_PARTY_NOTICES_GENERATOR" ]] \
+  || error "Third-party notice generator not found: $THIRD_PARTY_NOTICES_GENERATOR"
 uv run --script "$THIRD_PARTY_NOTICES_GENERATOR" --check --checkouts-dir "$CHECKOUTS_DIR"
-[[ -f "$THIRD_PARTY_NOTICES_SOURCE" ]] ||
-  error "Generated third-party notices not found: $THIRD_PARTY_NOTICES_SOURCE"
-[[ -f "$LOCAL_MODEL_NOTICES_SOURCE" ]] ||
-  error "Local model notices not found: $LOCAL_MODEL_NOTICES_SOURCE"
-[[ -f "$PRIVACY_NOTICE_SOURCE" ]] ||
-  error "Technical privacy notice not found: $PRIVACY_NOTICE_SOURCE"
+[[ -f "$THIRD_PARTY_NOTICES_SOURCE" ]] \
+  || error "Generated third-party notices not found: $THIRD_PARTY_NOTICES_SOURCE"
+[[ -f "$LOCAL_MODEL_NOTICES_SOURCE" ]] \
+  || error "Local model notices not found: $LOCAL_MODEL_NOTICES_SOURCE"
+[[ -f "$PRIVACY_NOTICE_SOURCE" ]] \
+  || error "Technical privacy notice not found: $PRIVACY_NOTICE_SOURCE"
 [[ -f "$APP_ICON_SOURCE" ]] || error "App icon source not found: $APP_ICON_SOURCE"
 [[ -f "$SCRIPT_DIR/render_app_icon_renditions.swift" ]] || error "App icon rendition renderer not found"
 
 for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
   localized_info_source="$APP_BUNDLE_RESOURCES_ROOT/$localization.lproj/InfoPlist.strings"
-  [[ -f "$localized_info_source" ]] ||
-    error "Localized Info.plist strings not found: $localization"
-  plutil -lint "$localized_info_source" >/dev/null ||
-    error "Invalid localized Info.plist strings: $localization"
+  [[ -f "$localized_info_source" ]] \
+    || error "Localized Info.plist strings not found: $localization"
+  plutil -lint "$localized_info_source" >/dev/null \
+    || error "Invalid localized Info.plist strings: $localization"
   for localized_key in "${INFO_PLIST_LOCALIZATION_KEYS[@]}"; do
-    plutil -extract "$localized_key" raw -o - "$localized_info_source" >/dev/null ||
-      error "Missing $localized_key in localized Info.plist strings: $localization"
+    plutil -extract "$localized_key" raw -o - "$localized_info_source" >/dev/null \
+      || error "Missing $localized_key in localized Info.plist strings: $localization"
   done
 done
 
@@ -384,10 +384,10 @@ EXECUTABLE_SOURCE="$BUILD_DIR/$APP_EXECUTABLE_PRODUCT"
 SPEECH_WORKER_SOURCE="$BUILD_DIR/$SPEECH_WORKER_PRODUCT"
 INPUT_METHOD_SOURCE="$BUILD_DIR/$INPUT_METHOD_PRODUCT"
 [[ -x "$INPUT_METHOD_SOURCE" ]] || error "Input method executable not found: $INPUT_METHOD_SOURCE"
-[[ -x "$EXECUTABLE_SOURCE" ]] ||
-  error "Release executable not found or not executable: $EXECUTABLE_SOURCE"
-[[ -x "$SPEECH_WORKER_SOURCE" ]] ||
-  error "Speech worker not found or not executable: $SPEECH_WORKER_SOURCE"
+[[ -x "$EXECUTABLE_SOURCE" ]] \
+  || error "Release executable not found or not executable: $EXECUTABLE_SOURCE"
+[[ -x "$SPEECH_WORKER_SOURCE" ]] \
+  || error "Speech worker not found or not executable: $SPEECH_WORKER_SOURCE"
 verify_release_executable "$EXECUTABLE_SOURCE"
 verify_release_executable "$SPEECH_WORKER_SOURCE"
 verify_release_executable "$INPUT_METHOD_SOURCE"
@@ -404,10 +404,10 @@ dependency_bundle_count=0
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   bundle_name="$(basename "$source_bundle")"
   bundle_info_plist="$source_bundle/Contents/Info.plist"
-  [[ -f "$bundle_info_plist" ]] ||
-    error "Resource bundle is not an Xcode build product: $bundle_name"
-  plutil -lint "$bundle_info_plist" >/dev/null ||
-    error "Invalid resource bundle Info.plist: $bundle_name"
+  [[ -f "$bundle_info_plist" ]] \
+    || error "Resource bundle is not an Xcode build product: $bundle_name"
+  plutil -lint "$bundle_info_plist" >/dev/null \
+    || error "Invalid resource bundle Info.plist: $bundle_name"
   if [[ "$bundle_name" == "$OWN_RESOURCE_BUNDLE" ]]; then
     own_bundle_found=true
     for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
@@ -432,8 +432,8 @@ done
 
 $own_bundle_found || error "Required app resource bundle not found: $OWN_RESOURCE_BUNDLE"
 $ui_bundle_found || error "Required UI resource bundle not found: $UI_RESOURCE_BUNDLE"
-$mlx_bundle_found ||
-  error "Required MLX resource bundle not found: $MLX_RESOURCE_BUNDLE"
+$mlx_bundle_found \
+  || error "Required MLX resource bundle not found: $MLX_RESOURCE_BUNDLE"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p \
@@ -470,14 +470,14 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   fi
 
   ditto "$source_bundle" "$resource_destination"
-  [[ -n "$(find "$resource_destination" -mindepth 1 -print -quit)" ]] ||
-    error "Resource bundle is empty: $bundle_name"
+  [[ -n "$(find "$resource_destination" -mindepth 1 -print -quit)" ]] \
+    || error "Resource bundle is empty: $bundle_name"
 done
 
 for document in "${PROJECT_DOCUMENTS[@]}"; do
   ditto "$PROJECT_DIR/$document" "$APP_BUNDLE/Contents/Resources/$document"
-  cmp -s "$PROJECT_DIR/$document" "$APP_BUNDLE/Contents/Resources/$document" ||
-    error "Packaged project document differs from the repository source: $document"
+  cmp -s "$PROJECT_DIR/$document" "$APP_BUNDLE/Contents/Resources/$document" \
+    || error "Packaged project document differs from the repository source: $document"
 done
 
 THIRD_PARTY_NOTICES_DESTINATION="$APP_BUNDLE/Contents/Resources/$THIRD_PARTY_NOTICES_NAME"
@@ -486,8 +486,8 @@ LOCAL_MODEL_NOTICES_DESTINATION="$APP_BUNDLE/Contents/Resources/$LOCAL_MODEL_NOT
 ditto "$LOCAL_MODEL_NOTICES_SOURCE" "$LOCAL_MODEL_NOTICES_DESTINATION"
 PRIVACY_NOTICE_DESTINATION="$APP_BUNDLE/Contents/Resources/$PRIVACY_NOTICE_NAME"
 ditto "$PRIVACY_NOTICE_SOURCE" "$PRIVACY_NOTICE_DESTINATION"
-cmp -s "$PRIVACY_NOTICE_SOURCE" "$PRIVACY_NOTICE_DESTINATION" ||
-  error "Packaged technical privacy notice differs from the repository source"
+cmp -s "$PRIVACY_NOTICE_SOURCE" "$PRIVACY_NOTICE_DESTINATION" \
+  || error "Packaged technical privacy notice differs from the repository source"
 APP_ICON_DESTINATION="$APP_BUNDLE/Contents/Resources/$APP_ICON_NAME"
 generate_app_icon "$APP_ICON_SOURCE" "$APP_ICON_DESTINATION"
 
@@ -500,8 +500,8 @@ for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
   intents_catalog_source="$BUILD_DIR/$OWN_RESOURCE_BUNDLE/Contents/Resources/$localization.lproj/Localizable.strings"
   intents_catalog_destination="$APP_BUNDLE/Contents/Resources/$localization.lproj/Localizable.strings"
   ditto "$intents_catalog_source" "$intents_catalog_destination"
-  cmp -s "$intents_catalog_source" "$intents_catalog_destination" ||
-    error "App Intents localization copy does not match the release snapshot: $localization"
+  cmp -s "$intents_catalog_source" "$intents_catalog_destination" \
+    || error "App Intents localization copy does not match the release snapshot: $localization"
 done
 
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
@@ -530,31 +530,31 @@ plist_value() {
 [[ "$(plist_value CFBundleVersion)" == "$BUILD_NUMBER" ]] || error "Invalid build number"
 [[ "$(plist_value RillBuildKind)" == "$BUILD_KIND" ]] || error "Invalid build kind"
 [[ "$(plist_value RillSourceRevision)" == "$SOURCE_REVISION" ]] || error "Invalid source revision"
-[[ "$(plutil -extract RillSourceDirty raw -o - "$INFO_PLIST")" == "$SOURCE_DIRTY" ]] ||
-  error "Invalid source dirty flag"
+[[ "$(plutil -extract RillSourceDirty raw -o - "$INFO_PLIST")" == "$SOURCE_DIRTY" ]] \
+  || error "Invalid source dirty flag"
 [[ "$(plist_value RillVersionLabel)" == "$VERSION_LABEL" ]] || error "Invalid version label"
 [[ "$(plist_value LSMinimumSystemVersion)" == "$MIN_MACOS" ]] || error "Invalid minimum macOS version"
 [[ -x "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ]] || error "Assembled executable is not executable"
-[[ -x "$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT" ]] ||
-  error "Assembled speech worker is not executable"
+[[ -x "$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT" ]] \
+  || error "Assembled speech worker is not executable"
 [[ -s "$APP_ICON_DESTINATION" ]] || error "Packaged app icon is missing or empty"
 
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   bundle_name="$(basename "$source_bundle")"
   if [[ "$bundle_name" == "$MLX_RESOURCE_BUNDLE" ]]; then
     resource_destination="$APP_BUNDLE/Contents/Helpers/$bundle_name"
-    [[ ! -e "$APP_BUNDLE/Contents/Resources/$bundle_name" ]] ||
-      error "MLX resource bundle must be owned by the speech worker"
+    [[ ! -e "$APP_BUNDLE/Contents/Resources/$bundle_name" ]] \
+      || error "MLX resource bundle must be owned by the speech worker"
   else
     resource_destination="$APP_BUNDLE/Contents/Resources/$bundle_name"
   fi
 
   [[ -d "$resource_destination" ]] || error "Missing copied bundle: $bundle_name"
   [[ ! -e "$APP_BUNDLE/$bundle_name" ]] || error "Resource bundle must not be placed in the app root: $bundle_name"
-  plutil -lint "$resource_destination/Contents/Info.plist" >/dev/null ||
-    error "Packaged resource bundle has an invalid Info.plist: $bundle_name"
-  diff -qr "$source_bundle" "$resource_destination" >/dev/null ||
-    error "Packaged resource bundle differs from build output: $bundle_name"
+  plutil -lint "$resource_destination/Contents/Info.plist" >/dev/null \
+    || error "Packaged resource bundle has an invalid Info.plist: $bundle_name"
+  diff -qr "$source_bundle" "$resource_destination" >/dev/null \
+    || error "Packaged resource bundle differs from build output: $bundle_name"
 done
 
 WORKFLOW_SOURCE="$BUILD_DIR/$WORKFLOW_RESOURCES"
@@ -562,21 +562,21 @@ WORKFLOW_DESTINATION="$APP_BUNDLE/Contents/Resources/$WORKFLOW_RESOURCES"
 [[ -d "$WORKFLOW_SOURCE" && -d "$WORKFLOW_DESTINATION" ]] || error "Built-in workflow resources were not packaged"
 diff -qr "$WORKFLOW_SOURCE" "$WORKFLOW_DESTINATION" >/dev/null || error "Packaged workflow resources differ from build output"
 [[ -f "$THIRD_PARTY_NOTICES_DESTINATION" ]] || error "Third-party notices were not packaged"
-cmp -s "$THIRD_PARTY_NOTICES_SOURCE" "$THIRD_PARTY_NOTICES_DESTINATION" ||
-  error "Packaged third-party notices differ from the reviewed source"
+cmp -s "$THIRD_PARTY_NOTICES_SOURCE" "$THIRD_PARTY_NOTICES_DESTINATION" \
+  || error "Packaged third-party notices differ from the reviewed source"
 [[ -f "$LOCAL_MODEL_NOTICES_DESTINATION" ]] || error "Local model notices were not packaged"
-cmp -s "$LOCAL_MODEL_NOTICES_SOURCE" "$LOCAL_MODEL_NOTICES_DESTINATION" ||
-  error "Packaged local model notices differ from the reviewed source"
+cmp -s "$LOCAL_MODEL_NOTICES_SOURCE" "$LOCAL_MODEL_NOTICES_DESTINATION" \
+  || error "Packaged local model notices differ from the reviewed source"
 
 for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
   localized_info_source="$APP_BUNDLE_RESOURCES_ROOT/$localization.lproj/InfoPlist.strings"
   localized_info_destination="$APP_BUNDLE/Contents/Resources/$localization.lproj/InfoPlist.strings"
-  [[ -f "$localized_info_destination" ]] ||
-    error "Localized Info.plist strings were not packaged: $localization"
-  plutil -lint "$localized_info_destination" >/dev/null ||
-    error "Packaged localized Info.plist strings are invalid: $localization"
-  cmp -s "$localized_info_source" "$localized_info_destination" ||
-    error "Packaged localized Info.plist strings differ from source: $localization"
+  [[ -f "$localized_info_destination" ]] \
+    || error "Localized Info.plist strings were not packaged: $localization"
+  plutil -lint "$localized_info_destination" >/dev/null \
+    || error "Packaged localized Info.plist strings are invalid: $localization"
+  cmp -s "$localized_info_source" "$localized_info_destination" \
+    || error "Packaged localized Info.plist strings differ from source: $localization"
 done
 
 "$APP_BUNDLE/Contents/MacOS/$APP_NAME" --validate-workflows "$WORKFLOW_DESTINATION"
@@ -608,8 +608,8 @@ extract_app_intents_metadata() (
     --swift-const-vals-list "$list" \
     --dependency-file "$dependency" \
     --force || error "App Intents metadata extraction failed"
-  [[ -d "$APP_BUNDLE/Contents/Resources/Metadata.appintents" ]] ||
-    error "App Intents metadata bundle was not written"
+  [[ -d "$APP_BUNDLE/Contents/Resources/Metadata.appintents" ]] \
+    || error "App Intents metadata bundle was not written"
 )
 
 extract_app_intents_metadata

@@ -10,11 +10,11 @@ set -euo pipefail
 check_selected_job() {
   local name="$1" scope="$2" result="$3"
   case "$scope:$result" in
-    true:success|false:skipped) return 0 ;;
-    *)
-      echo "$name has invalid scope/result: ${scope:-missing}/${result:-missing}." >&2
-      return 1
-      ;;
+  true:success | false:skipped) return 0 ;;
+  *)
+    echo "$name has invalid scope/result: ${scope:-missing}/${result:-missing}." >&2
+    return 1
+    ;;
   esac
 }
 
