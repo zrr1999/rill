@@ -3,6 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 mkdir -p .artifacts/quality
+# SwiftBuild prunes pins outside the domain graph even with forced resolved versions.
+lock_snapshot="$(mktemp)"
+cp Package.resolved "$lock_snapshot"
+trap 'cp "$lock_snapshot" Package.resolved; rm -f "$lock_snapshot"' EXIT
 scripts/preflight.sh swift test-domain --build-system swiftbuild --enable-code-coverage --skip RillQualityEvaluations
 report="$(scripts/preflight.sh swift test-domain --build-system swiftbuild --enable-code-coverage --show-codecov-path)"
 products="$(dirname "$(dirname "$report")")"

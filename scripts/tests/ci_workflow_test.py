@@ -167,9 +167,11 @@ class CachePolicyTests(unittest.TestCase):
 
 
 class CoverageExportTests(unittest.TestCase):
-    def fixture(self, root, *, binaries=True, profile=True, names=("A", "B")):
+    def fixture(self, root, *, binaries=True, profile=True, names=("A", "B"), test_exit=0):
         scripts = root / "scripts"
         scripts.mkdir()
+        lockfile = root / "Package.resolved"
+        lockfile.write_text("full dependency graph\n")
         shutil.copyfile(ROOT / "scripts/check_coverage.sh", scripts / "check_coverage.sh")
         products = root / "build/debug"
         coverage = products / "codecov"
@@ -189,7 +191,9 @@ class CoverageExportTests(unittest.TestCase):
                 executables.append(str(binary))
         preflight = scripts / "preflight.sh"
         preflight.write_text(
-            '#!/bin/bash\nif [[ "$*" == *--show-codecov-path* ]]; then printf "%s\\n" "$COVERAGE_REPORT"; fi\n'
+            '#!/bin/bash\nprintf "domain dependency graph\\n" > Package.resolved\n'
+            'if [[ "$*" == *--show-codecov-path* ]]; then printf "%s\\n" "$COVERAGE_REPORT"; fi\n'
+            'exit "$COVERAGE_TEST_EXIT"\n'
         )
         preflight.chmod(0o755)
         xcrun = root / "xcrun"
@@ -202,10 +206,12 @@ class CoverageExportTests(unittest.TestCase):
         xcrun.chmod(0o755)
         calls = root / "calls.jsonl"
         env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
-                   COVERAGE_REPORT=str(coverage / "package.json"), COVERAGE_CALLS=str(calls))
+                   COVERAGE_REPORT=str(coverage / "package.json"), COVERAGE_CALLS=str(calls),
+                   COVERAGE_TEST_EXIT=str(test_exit))
         result = subprocess.run(["/bin/bash", str(scripts / "check_coverage.sh")],
                                 env=env, text=True, capture_output=True)
         recorded = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+        self.assertEqual(lockfile.read_text(), "full dependency graph\n")
         return result, recorded, executables
 
     def test_exports_all_executables_without_debug_symbol_directories(self):
@@ -234,6 +240,12 @@ class CoverageExportTests(unittest.TestCase):
             for call in calls:
                 self.assertEqual(call[2], executables[0])
                 self.assertNotIn("-object", call)
+
+    def test_failed_test_run_restores_lockfile_without_export(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, calls, _ = self.fixture(Path(directory), test_exit=7)
+            self.assertEqual(result.returncode, 7, result.stderr)
+            self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
