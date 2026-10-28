@@ -11,7 +11,7 @@ Attach evidence from the exact candidate commit before beginning device QA:
   bundle and signing smoke checks, and the complete Swift test suite.
 - `scripts/preflight.sh commit-messages`: complete messages validated with the
   pinned ZenDev profile.
-- `uv run --script scripts/check_dependency_security.py --live-osv`: current
+- `uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv`: current
   advisory results for the exact locked dependency revisions.
 - The corresponding successful GitHub checks and the final DMG SHA-256.
 

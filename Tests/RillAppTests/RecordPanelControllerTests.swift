@@ -8,10 +8,6 @@ import XCTest
 @testable import RillCore
 @testable import RillUI
 
-private struct RecordPanelReduceMotionTestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 @MainActor
 final class RecordPanelControllerReduceMotionTests: XCTestCase {
   private func makeModel() -> AppModel {

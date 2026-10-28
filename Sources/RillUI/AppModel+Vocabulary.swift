@@ -2,7 +2,6 @@ import Foundation
 import RillCore
 import RillKnowledge
 import RillRecords
-import RillSpeech
 import RillWorkflows
 
 extension AppModel {

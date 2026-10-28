@@ -5,16 +5,14 @@ import XCTest
 import XCTest
 
 private actor WorkflowPolicyProbe {
-  private var contextCaptureCount = 0
   private var recognitionCount = 0
   private var actionCount = 0
 
-  func recordContextCapture() { contextCaptureCount += 1 }
   func recordRecognition() { recognitionCount += 1 }
   func recordAction() { actionCount += 1 }
 
-  func snapshot() -> (context: Int, recognition: Int, action: Int) {
-    (contextCaptureCount, recognitionCount, actionCount)
+  func snapshot() -> (recognition: Int, action: Int) {
+    (recognitionCount, actionCount)
   }
 }
 
@@ -25,15 +23,6 @@ private actor WorkflowPolicyOptionsProbe {
     return .empty
   }
   func snapshot() -> Int { count }
-}
-
-private struct WorkflowPolicyContextProvider: ContextProvider {
-  let probe: WorkflowPolicyProbe
-
-  func captureContext() async -> ContextSnapshot {
-    await probe.recordContextCapture()
-    return .empty
-  }
 }
 
 private struct WorkflowPolicyRecognizer: SpeechRecognizer {
@@ -142,7 +131,6 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
     XCTAssertNotNil(failure.runID)
     XCTAssertEqual(failure.stage, .preparing)
     XCTAssertEqual(failure.code, .configuration)
-    XCTAssertEqual(counts.context, 0)
     XCTAssertEqual(counts.recognition, 0)
     XCTAssertEqual(counts.action, 0)
     XCTAssertEqual(optionsCount, 0)

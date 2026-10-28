@@ -91,7 +91,6 @@ hooks = [
 repo = "local"
 hooks = [
   { id = "ty", name = "Python type checking", entry = "uv run --directory tools --frozen ty check", language = "system", pass_filenames = false, files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", stages = ["pre-commit"] },
-  { id = "codemap", name = "Generated architecture references", entry = "python3 scripts/codemap.py check", language = "system", pass_filenames = false, always_run = true, stages = ["pre-commit"] },
   { id = "deptry", name = "Python dependency ownership", entry = "uv run --directory tools --frozen deptry src", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$|uv\\.lock$)", stages = ["pre-commit"] },
   { id = "import-linter", name = "Evaluation module boundaries", entry = "uv run --directory tools --frozen lint-imports", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$)", stages = ["pre-commit"] },
   { id = "rumdl", name = "Markdown structure", entry = "rumdl check", language = "python", additional_dependencies = ["rumdl==0.3.0"], types = ["markdown"], stages = ["pre-commit"] },

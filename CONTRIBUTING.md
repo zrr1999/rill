@@ -4,7 +4,7 @@
 
 准备 macOS、Xcode 及其 Command Line Tools 和 Metal Toolchain，以及 [uv](https://docs.astral.sh/uv/)、[just](https://just.systems/) 和 Git。
 
-平台与 Swift 要求见 [Package.swift](Package.swift)，工具链检查见 [scripts/preflight.sh](scripts/preflight.sh)。各命令使用仓库配置和锁文件声明的工具版本。
+平台与 Swift 要求见 [Package.swift](Package.swift)，工具链检查见 [scripts/preflight.sh](scripts/preflight.sh)。Swift、文档和 Python 工具使用仓库配置和锁文件声明的版本。`just install` 与 `just check` 通过 uv 的独立工具环境解析 prek，不在 justfile 锁版本；CI 的工具版本以工作流配置为准。
 
 在仓库根目录安装 hooks，然后构建和测试：
 
@@ -22,10 +22,10 @@ just test
 | --- | --- |
 | `just check` / `just format` | 只读静态检查与显式格式修复 |
 | `just docs` / `just docs serve` | 严格构建文档与本地预览 |
-| `just test` | 不依赖真实桌面焦点的领域和原生测试 |
+| `just test` | 不依赖真实桌面焦点的领域和原生测试；不启用压力与渲染证据 |
 | `just test desktop` | 在已解锁的交互式桌面验证焦点与键盘路由 |
 | `just test scripts` / `just test tools` | 构建发布脚本与内部开发工具的离线测试 |
-| `just ci` / `just ci clean` | 完整门禁，以及清理构建产物后重跑完整门禁 |
+| `just ci` / `just ci clean` | 完整门禁。与 GitHub tests lane 一样启用一万条记录压力和 UI 渲染证据；`ci clean` 在清理构建产物后重跑 |
 | `just coverage` | Python 与 Swift 领域测试覆盖率 |
 | `just benchmark` | 运行 ASR、面板或 Record workload 性能基准 |
 

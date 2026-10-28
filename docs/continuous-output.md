@@ -82,7 +82,7 @@ Run the current benchmark suite and the separate clipboard-capture checks with:
 
 ```sh
 just benchmark workloads
-RILL_CLIPBOARD_LATENCY=1 scripts/swift_locked.sh test \
+RILL_CLIPBOARD_LATENCY=1 scripts/preflight.sh swift test \
   --filter 'RecordBuffer|RecordBufferTextOutput|ClipboardCaptureLatency|BufferHotkey|BufferFilePromise'
 just ci
 ```

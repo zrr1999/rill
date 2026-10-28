@@ -26,11 +26,7 @@ final class CandidateWindow {
     let visible =
       NSScreen.screens.first { $0.frame.intersects(caret) }?.visibleFrame ?? NSScreen.main?
       .visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
-    let content = NSVisualEffectView()
-    content.material = .popover
-    content.state = .active
-    content.wantsLayer = true
-    content.layer?.cornerRadius = 9
+    let content = candidateContentView()
     let stack = NSStackView()
     stack.orientation = .vertical
     stack.alignment = .leading
@@ -47,8 +43,10 @@ final class CandidateWindow {
       button.font = .systemFont(ofSize: 20)
       button.cell?.lineBreakMode = .byTruncatingTail
       button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-      button.contentTintColor = index == snapshot.selected ? .controlAccentColor : .labelColor
-      button.setAccessibilityLabel(candidate.text)
+      let isSelected = index == snapshot.selected
+      button.contentTintColor = isSelected ? .controlAccentColor : .labelColor
+      button.setAccessibilityLabel(button.title)
+      button.setAccessibilitySelected(isSelected)
       button.toolTip = candidate.text
       preferredWidth = max(preferredWidth, button.intrinsicContentSize.width + 18)
       stack.addArrangedSubview(button)
@@ -74,4 +72,31 @@ final class CandidateWindow {
 
   func hide() { panel.orderOut(nil) }
   @objc private func choose(_ sender: NSButton) { selected?(sender.tag) }
+
+  private func candidateContentView() -> NSView {
+    let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+    let increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    if reduceTransparency || increaseContrast {
+      return OpaqueCandidateSurface()
+    }
+    let content = NSVisualEffectView()
+    content.material = .popover
+    content.state = .active
+    content.wantsLayer = true
+    content.layer?.cornerRadius = 9
+    return content
+  }
+}
+
+/// Opaque fallback for Reduce Transparency and Increase Contrast. The semantic
+/// color is resolved while drawing so an appearance change does not keep a
+/// stale layer color. The radius matches the existing candidate chrome.
+@MainActor
+private final class OpaqueCandidateSurface: NSView {
+  override var isOpaque: Bool { false }
+
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor.controlBackgroundColor.setFill()
+    NSBezierPath(roundedRect: bounds, xRadius: 9, yRadius: 9).fill()
+  }
 }

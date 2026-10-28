@@ -11,7 +11,7 @@ Rill 的正式版本由 Git 标签决定。开发构建使用 `0.0.0-dev+<commit
    按[合并门禁](#合并门禁)核对仓库 rules 中的检查要求，
    并限制直接推送和绕过。
 4. 从候选提交运行 `just ci clean`、`scripts/preflight.sh commit-messages` 和
-   `uv run --script scripts/check_dependency_security.py --live-osv`。
+   `uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv`。
    保存日志、版本信息和预期跳过项，并确认该提交的 GitHub CI 通过。
 5. 维护者授权发布后，为该提交创建并推送唯一的语义版本标签。
 
