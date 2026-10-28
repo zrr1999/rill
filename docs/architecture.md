@@ -1,18 +1,146 @@
 # Architecture
 
-Rill separates domain contracts, runtime decisions, external effects, and UI state. `Package.swift` defines the module graph; `AppBootstrap` assembles the concrete implementations.
+Rill separates domain contracts, runtime decisions, external effects, and UI state. [Package.swift](../Package.swift) defines the module graph; [AppBootstrap](../Sources/RillApp/AppBootstrap.swift) assembles the concrete implementations.
 
-## Explore and verify the architecture
+## Where to start
 
-Open [the interactive code map](codemap/index.md) for the complete source inventory, module callers, injected runtime relationships, and four end-to-end traces. Its 20 primary nodes follow actual source targets and group external dependencies. The map distinguishes build dependencies from runtime data flow: RecordStore uses Core persistence ports wired to SQLite in AppBootstrap, so a runtime RecordStore → SQLite relationship does not mean a RillRecords → RillPersistence import.
+Runtime relationships can cross injected ports without a module import:
+`RecordStore` uses Core persistence ports that AppBootstrap connects to SQLite.
 
-`codemap.lock` binds source and test evidence to exact SHA-256 bytes and a Git baseline. Run `python3 scripts/codemap.py check` after source changes; rebuild only after reviewing changed claims and updating the inventory. The map links test declarations; check CI for test outcomes.
+For common changes, follow these entry points and then the owning contract:
 
-The four traces cover local-model dictation, clipboard reuse, optional LLM cleanup/receipts, and the independently running input method.
+- **Local dictation:** [SessionCoordinator](../Sources/RillWorkflows/SessionCoordinator.swift)
+  owns admission and the frozen run. Speech uses the separate
+  [worker](../Sources/RillSpeechWorker/Main.swift); ordered outputs belong to
+  [WorkflowOutputExecutor](../Sources/RillWorkflows/WorkflowOutputExecutor.swift).
+  See [workflow execution](workflow-toml.md) for authorization and output semantics.
+- **Clipboard reuse:** [SystemClipboardCaptureController](../Sources/RillClipboard/SystemClipboardCaptureController.swift)
+  admits capture, [RecordStore](../Sources/RillRecords/RecordStore.swift) owns the
+  committed graph, and [RecordInteractionController](../Sources/RillRecords/RecordInteractionController.swift)
+  serializes explicit delivery. See [Record architecture](record-architecture.md).
+- **Optional text processing:** [WorkflowTextExecutor](../Sources/RillWorkflows/WorkflowTextExecutor.swift)
+  executes authorized steps; [WorkflowRunReceiptRecorder](../Sources/RillWorkflows/WorkflowRunReceiptRecorder.swift)
+  commits terminal history and receipts together. See the state ownership and
+  workflow sections below before changing cancellation or recovery.
+- **Independent input method:** [RillInputMethodMain](../Sources/RillInputMethod/RillInputMethodMain.swift)
+  starts the input source; [RillInputController](../Sources/RillInputMethodKit/RillInputController.swift)
+  owns composition and commits through InputMethodKit. See
+  [input method development](input-method-development.md) for process boundaries
+  and native acceptance.
+
+Validation commands live in [CONTRIBUTING.md](../CONTRIBUTING.md#验证); native
+acceptance requirements are in the [release QA checklist](release-qa-checklist.md).
+
+## Runtime data flow
+
+Build-time imports (next section) and runtime data flow are different. AppBootstrap
+can wire ports across modules that do not import each other. A runtime
+`RecordStore → SQLite` edge does not imply a `RillRecords → RillPersistence`
+import.
+
+```mermaid
+flowchart LR
+    App[RillApp] -->|inject services and builtin workflows| UI[RillUI]
+    UI -->|start authorized runs and output choices| WF[RillWorkflows]
+    Platform[RillPlatform] -->|admitted live audio| WF
+    Knowledge[RillKnowledge] -->|vocabulary and hotword context| WF
+    WF -->|final recognition| Speech[RillSpeech]
+    Speech -->|supervised worker IPC| Worker[RillSpeechWorker]
+    Worker -->|local inference| MLX[RillMLXRuntime]
+    WF -->|frozen service config| Providers[RillProviders]
+    WF -->|save final text| Records[RillRecords]
+    Clipboard[RillClipboard] -->|stable authorized capture| Records
+    Records -->|Core persistence ports| Persistence[RillPersistence]
+    Records -->|explicit delivery| Platform
+    UI -->|settings and control| IPC[RillInputMethodIPC]
+    IPC -->|local control messages| IMK[RillInputMethodKit]
+    IME[RillInputMethod] -->|run input source| IMK
+    IMK -->|keys and commits| Rime[CRime]
+```
+
+Evidence for each edge lives in the source linked from the paths below; the usual
+assembly root is [AppBootstrap.swift](../Sources/RillApp/AppBootstrap.swift).
+
+## End-to-end paths
+
+These four paths are the former code-map flows, kept as navigation and review
+checklists. Native acceptance still needs an unlocked macOS session; see the
+[release QA checklist](release-qa-checklist.md).
+
+### Local dictation
+
+Native check: prepare a local ASR model, enable target-app output on the current
+Fn workflow, hold Fn, speak non-sensitive text, then confirm the saved record and
+the target app.
+
+1. [AuthorizedLiveAudioSession](../Sources/RillWorkflows/AuthorizedLiveAudioSession.swift)
+   admits microphone and hotkey capture after authorization (`RillPlatform` → `RillWorkflows`).
+2. [SessionCoordinator](../Sources/RillWorkflows/SessionCoordinator.swift) and
+   [WorkflowPlanCompiler](../Sources/RillWorkflows/WorkflowPlanCompiler.swift)
+   freeze the authorized workflow and compile recognition plus selected outputs.
+3. [MLXAudioSwiftWorkerRecognizer](../Sources/RillSpeech/MLXAudioSwiftWorkerRecognizer.swift)
+   sends audio to the supervised helper (`RillWorkflows` → `RillSpeech` →
+   `RillSpeechWorker` → `RillMLXRuntime`).
+4. [WorkflowOutputExecutor](../Sources/RillWorkflows/WorkflowOutputExecutor.swift)
+   runs enabled outputs in declaration order; builtin dictation saves first, then
+   optional insert / staging
+   ([speechRecognition.toml](../Sources/RillPlatform/Resources/BuiltinWorkflows/speechRecognition.toml)).
+5. [RecordStore](../Sources/RillRecords/RecordStore.swift) commits the Record
+   through persistence ports, then publishes.
+6. AppBootstrap-supplied platform output inserts into an authorized target; on
+   failure the saved record remains.
+
+### Clipboard reuse
+
+Native check: enable capture, copy non-sensitive text, find it under All Records,
+then explicitly deliver it into a test field.
+
+1. [SystemClipboardCaptureController](../Sources/RillClipboard/SystemClipboardCaptureController.swift)
+   observes change counts and admits a stable, authorized snapshot.
+2. [RecordStore](../Sources/RillRecords/RecordStore.swift) ingests, deduplicates,
+   and updates memberships; [SQLitePersistenceStore](../Sources/RillPersistence/SQLitePersistenceStore.swift)
+   commits the graph.
+3. UI surfaces the record; [RecordInteractionController](../Sources/RillRecords/RecordInteractionController.swift)
+   serializes explicit delivery through the injected platform output port.
+
+### Optional text processing (Smart Cleanup)
+
+Native check: with an authorized global LLM service, enable the Smart Cleanup Fn
+workflow, dictate test text, then inspect the saved result and run receipt.
+
+1. UI configures the model service and enables
+   [smartCleanup.toml](../Sources/RillPlatform/Resources/BuiltinWorkflows/smartCleanup.toml)
+   with optional outputs
+   ([AppModel+WorkflowActions](../Sources/RillUI/AppModel+WorkflowActions.swift)).
+2. [WorkflowTextExecutor](../Sources/RillWorkflows/WorkflowTextExecutor.swift)
+   and [PrivacyRunGate](../Sources/RillWorkflows/PrivacyRunGate.swift) validate
+   capability and authorization against a frozen model snapshot.
+3. Provider adapters such as
+   [OpenAITextRewriteTransformer](../Sources/RillProviders/OpenAITextRewriteTransformer.swift)
+   perform the remote call (`RillWorkflows` → `RillProviders`).
+4. [WorkflowRunReceiptRecorder](../Sources/RillWorkflows/WorkflowRunReceiptRecorder.swift)
+   commits terminal run body and receipt in one generation via persistence.
+
+### Independent input method
+
+Native check: select the installed Rill input source, type pinyin and choose a
+candidate while the main app is quit; confirm committed text.
+
+1. [RillInputMethodMain](../Sources/RillInputMethod/RillInputMethodMain.swift)
+   starts the input-source process.
+2. [RillInputController](../Sources/RillInputMethodKit/RillInputController.swift)
+   owns composition; [CRime](../Sources/CRime/RillRime.c) handles keys through
+   librime; commits go to the InputMethodKit client.
+3. Optional host control uses
+   [LocalInputMethodChannel](../Sources/RillInputMethodIPC/LocalInputMethodChannel.swift)
+   (`RillUI` → `RillInputMethodIPC` → `RillInputMethodKit`). Process boundaries
+   and install acceptance:
+   [input method development](input-method-development.md).
 
 ## Module dependencies
 
-Arrows point from a consumer to its dependencies.
+Arrows point from a consumer to its build-time dependencies (`Package.swift`).
+Runtime wiring across ports is in [Runtime data flow](#runtime-data-flow) above.
 
 ```mermaid
 flowchart TD
