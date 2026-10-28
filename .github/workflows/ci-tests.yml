@@ -384,8 +384,8 @@ jobs:
       - shell: bash
         run: |
           mkdir -p .artifacts/quality
-          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --directory tools --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee .artifacts/quality/mutation.log
-          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --directory tools --python 3.13 --frozen --group quality mutmut export-cicd-stats
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee .artifacts/quality/mutation.log
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality mutmut export-cicd-stats
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:

@@ -194,9 +194,9 @@ jobs:
       - shell: bash
         run: |
           mkdir -p .artifacts/quality
-          npx --yes jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src
-          uvx lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml
-          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json
+          npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src
+          uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json
         if: ${{ !cancelled() }}
       - shell: bash
         run: |
