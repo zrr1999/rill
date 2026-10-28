@@ -17,6 +17,11 @@ a branch or PR, resolve the intended comparison and record the revisions used.
 Separate pre-existing behavior from regressions introduced by the change. If the
 scope or source is incomplete, state the resulting limit on the review.
 
+Check the diff against the PR's stated purpose. Flag unrelated fixes, refactors,
+or CI maintenance for separate delivery; keep required local refactoring, tests,
+and docs with the behavior they support. Check that the description explains the
+final change and material evidence without retelling the implementation process.
+
 Read [architecture](../../../docs/architecture.md) for ownership and dependency
 boundaries and [CONTRIBUTING.md](../../../CONTRIBUTING.md) for validation rules.
 Follow the affected domain contract only as needed:
@@ -49,11 +54,12 @@ implementation can justify an interface; a long file alone does not justify
 splitting a transaction owner. Generic design slogans, wrapper counts, and
 personal formatting preferences are not findings.
 
-Check that tests observe the affected contract through a reachable caller. For
-races, look for controlled suspension, barriers, or leases that expose the bad
-ordering. Assertions that mirror implementation details or only match source
-text do not establish behavior. Run targeted checks when they can resolve a
-specific uncertainty, and distinguish executed evidence from source inspection.
+Check existing coverage before requesting new tests. Identify a plausible wrong
+implementation that each added regression would reject through a reachable
+caller. For races, look for controlled suspension, barriers, or leases that
+expose the bad ordering. Assertions that mirror implementation details or only
+match source text do not establish behavior. Run targeted checks when they can
+resolve a specific uncertainty, and distinguish execution from source inspection.
 
 ## Admit and report findings
 
@@ -69,7 +75,8 @@ critical failure, P1 for a serious failure in common use, P2 for a bounded defec
 and P3 for a smaller but concrete issue; calibrate to reachability and impact.
 Each finding should explain its trigger, mechanism, consequence, and repair
 direction. For structural findings, include the deletion test and concrete cost.
-Keep optional simplifications and missing verification separate from defects.
+Keep scope and description feedback, optional simplifications, and missing
+verification separate from defects.
 
 If none are confirmed, say so. Close with the reviewed scope, checks actually
 performed, and material gaps. Passing unit tests is not evidence of physical
