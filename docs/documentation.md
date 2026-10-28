@@ -66,7 +66,7 @@ npx 将工具缓存到 npm 缓存目录，不在仓库生成 `package.json`、�
 | Worker 名称 | `rill-docs`，必须与 `wrangler.toml` 一致 |
 | 根目录 | `/` |
 | 生产分支 | `main` |
-| 构建命令 | `python -m pip install uv==0.12.17 && uv run --no-build --locked --script scripts/docs.py build` |
+| 构建命令 | `python -m pip install uv==0.13.1 && uv run --no-build --locked --script scripts/docs.py build` |
 | 部署命令 | `npx --yes --ignore-scripts wrangler@4.136.3 deploy` |
 | 非生产分支命令 | `npx --yes --ignore-scripts wrangler@4.136.3 versions upload` |
 | 非生产分支构建 | 需要预览的分支均包含托管配置后启用 |
