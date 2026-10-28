@@ -1738,7 +1738,7 @@
     },
     {
       "path": "Tests/RillAppTests/ClipboardPanelControllerTests.swift",
-      "sha256": "411d1c11e1ee6f41eeadcf476079044df6375238228ae47e8a1ffcdd1a4cea72"
+      "sha256": "df7c71d65d126a9c87d4a3a87d5d3dbb130a5ac257a0ab0979e09772bd8a6ac8"
     },
     {
       "path": "Tests/RillAppTests/ContextMemoryControllerTests.swift",

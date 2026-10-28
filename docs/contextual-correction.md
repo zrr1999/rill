@@ -70,7 +70,7 @@ The targeted tests cover freezing without waiting, ignored cancellation, indepen
 
 ```sh
 # Supply DEEPSEEK_API_KEY securely in this process environment.
-just eval-quality context-correction
+uv run --locked --project tools rill-eval-quality context-correction
 RILL_CONTEXT_MAC_PROBE=1 scripts/preflight.sh swift test --filter ScreenContextCaptureTests
 ```
 
@@ -80,7 +80,7 @@ The vocabulary-only corpus in `Evals/VocabularyCorrection/cases.json` contains 4
 
 ```sh
 # Supply DEEPSEEK_API_KEY securely in this process environment.
-just eval-quality vocabulary-correction
+uv run --locked --project tools rill-eval-quality vocabulary-correction
 ```
 
 The report at `.artifacts/evals/vocabulary-correction/<run-id>/observations.json` contains per-call output, exact matches, fallback flags, reported token usage, reference counts. The separate performance summary contains P50/P95 request latency. Missing token usage stays null. Exact matches ignore only surrounding whitespace, preserving identifier case and punctuation; manual review must distinguish harmless formatting from semantic overcorrection. These request measurements do not measure microphone-to-insertion latency or ASR accuracy. The normal run history continues to record ASR and LLM time separately.

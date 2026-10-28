@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Fail closed: only scope-selected skips are valid, and scope requires successful docs.
+# Fail closed: only scope-selected skips are valid, and scope selection and tool tests must succeed.
 set -euo pipefail
 
-[[ "${DOCS_RESULT:-}" == success ]] || {
-  echo "Documentation and change scope must succeed (got ${DOCS_RESULT:-missing})." >&2
+[[ "${SCOPE_RESULT:-}" == success ]] || {
+  echo "Change scope selection must succeed (got ${SCOPE_RESULT:-missing})." >&2
+  exit 1
+}
+
+[[ "${TOOLS_RESULT:-}" == success ]] || {
+  echo "Development tool tests must succeed (got ${TOOLS_RESULT:-missing})." >&2
   exit 1
 }
 

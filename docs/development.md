@@ -23,8 +23,8 @@ scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 本地 Release 可以复用跨 worktree 的语音 worker 产物。构建驱动校验输入与产物，无法确认或缓存损坏时回退源码构建；CI 和正式公证发布关闭该缓存。
 
 ```bash
-just cache
-just cache clean
+scripts/preflight.sh swift cache status
+scripts/preflight.sh swift cache clean
 just build release --worker-cache off
 ```
 
@@ -49,7 +49,7 @@ just build release --worker-cache off
 
 `just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。Codecov 接收两种实测报告，Sonar 分析应用与辅助源码；上传失败或缺少账号凭据会使对应 CI 步骤失败。
 
-`just mutation` 验证编辑距离评分函数的测试有效性。变异工具使用独立 Python 环境，不改变开发工具的默认解释器。`just reports` 输出 jscpd、Lizard 和 Radon 的结构指标，尚未建立预算的指标与变异结果用于审查，不设统一分数线。报告、外部链接和性能检查沿用每周周期，也支持手动运行。模型评测依赖明确配置的服务和固定合成用例；真实音频与设备验收仍按对应评测文档执行。
+[测试工作流](../.github/workflows/ci-tests.yml) 中的变异任务验证编辑距离评分函数的测试有效性，并使用独立 Python 环境。[静态检查工作流](../.github/workflows/ci-static-checks.yml) 维护结构指标与外部链接报告；具体工具命令以对应 job 为准。尚未建立预算的指标与变异结果用于审查，不设统一分数线。报告、外部链接和性能检查沿用每周周期，也支持手动运行。模型评测依赖明确配置的服务和固定合成用例；真实音频与设备验收仍按对应评测文档执行。
 
 ## GitHub Actions
 
@@ -59,7 +59,7 @@ Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci
 
 jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Pyflakes；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。受信任的主分支 CI 执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；依赖审计分别查询 Swift 锁定提交和全部 Python 锁文件。
 
-仓库规则使用实际检查名称：[Policy - PR](../.github/workflows/policy-pr.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求文档检查、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。修改检查名称时同步核对仓库规则，合并步骤见[发布文档](releasing.md#合并门禁)。
+仓库规则使用实际检查名称：[Policy - PR](../.github/workflows/policy-pr.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。文档构建与只读门禁归入 [CI - Static Checks](../.github/workflows/ci-static-checks.yml) 的 `Static checks` 必需检查。修改检查名称时同步核对仓库规则，合并步骤见[发布文档](releasing.md#合并门禁)。
 
 ## 预检报告与故障定位
 

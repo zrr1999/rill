@@ -56,10 +56,11 @@ def evaluate(expression, values):
 
 
 class AggregateTests(unittest.TestCase):
-    def result(self, docs, app, preflight, scope, workload):
+    def result(self, selection, app, preflight, scope, workload, tools="success"):
         env = dict(os.environ)
         env.update(
-            DOCS_RESULT=docs,
+            SCOPE_RESULT=selection,
+            TOOLS_RESULT=tools,
             APP_SCOPE=app,
             PREFLIGHT_RESULT=preflight,
             WORKLOAD_SCOPE=scope,
@@ -88,6 +89,12 @@ class AggregateTests(unittest.TestCase):
                 docs=docs, app=app, preflight=preflight, scope=scope, workload=workload
             ):
                 self.assertEqual(self.result(docs, app, preflight, scope, workload) == 0, expected)
+
+
+    def test_tool_tests_must_succeed_even_when_application_jobs_are_skipped(self):
+        for result in ("failure", "cancelled", "skipped", ""):
+            with self.subTest(result=result):
+                self.assertNotEqual(self.result("success", "false", "skipped", "false", "skipped", result), 0)
 
 
 class CachePolicyTests(unittest.TestCase):

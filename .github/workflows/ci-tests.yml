@@ -6,19 +6,21 @@ on:
     branches:
       - main
   workflow_dispatch:
+  schedule:
+    - cron: "30 1 * * 1"
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-tests-${{ github.ref }}
+  group: ci-tests-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  docs:
-    name: Documentation and change scope
+  scope:
+    name: Select test scope
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
       app: ${{ steps.scope.outputs.app }}
       performance_workloads: ${{ steps.scope.outputs.performance_workloads }}
@@ -28,47 +30,6 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Install pinned uv
-        # v10.1.0
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-        with:
-          version: "0.13.5"
-
-      - name: Build documentation with locked dependencies
-        run: uv run --no-build --locked --script scripts/docs.py build
-
-      - name: Install Node.js for Cloudflare validation
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "22"
-
-      - name: Validate Cloudflare static assets without deploying
-        run: npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
-
-      - name: Install pinned prek
-        uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
-        with:
-          install-only: true
-          prek-version: "v0.5.7"
-
-      - name: Fetch architecture map baseline
-        run: |
-          baseline="$(python3 -c 'import json; print(json.load(open("docs/codemap/codemap.json"))["baseline"])')"
-          [[ "$baseline" =~ ^[0-9a-f]{40}$ ]]
-          git fetch --no-tags --depth=1 origin "$baseline"
-
-      - name: Run repository quality gates
-        run: |
-          prek --version
-          prek validate-config prek.toml
-          prek -c prek.toml run --all-files
-
-      - name: Test evaluation tools without model or provider access
-        run: uv run --no-build --locked --project tools pytest tools/tests
-
-      - name: Test CI aggregation and cache policy
-        run: python3 scripts/tests/ci_workflow_test.py
 
       - name: Select the application verification lane
         id: scope
@@ -99,21 +60,36 @@ jobs:
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "performance_workloads=$performance_workloads" >> "$GITHUB_OUTPUT"
 
-      - name: Install pinned Gitleaks for documentation-only changes
-        if: ${{ steps.scope.outputs.app == 'false' }}
-        run: |
-          tool_dir="$RUNNER_TEMP/gitleaks-bin"
-          bash scripts/preflight.sh install-gitleaks --destination "$tool_dir"
-          echo "$tool_dir" >> "$GITHUB_PATH"
+  tool-tests:
+    name: Development tool tests
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
 
-      - name: Scan secrets for documentation-only changes
-        if: ${{ steps.scope.outputs.app == 'false' }}
-        run: bash scripts/check_secrets.sh
+      - name: Install pinned uv
+        # v10.1.0
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: "0.13.5"
+
+      - name: Test evaluation tools without model or provider access
+        run: uv run --no-build --locked --project tools pytest tools/tests
+
+      - name: Test CI aggregation and cache policy
+        run: python3 scripts/tests/ci_workflow_test.py
 
   preflight-lanes:
     name: Preflight (${{ matrix.lane }})
-    needs: docs
-    if: ${{ needs.docs.outputs.app == 'true' }}
+    needs:
+      - scope
+      - tool-tests
+    if: ${{ github.event_name != 'schedule' && needs.scope.outputs.app == 'true' }}
     runs-on: macos-26
     timeout-minutes: 45
     strategy:
@@ -286,8 +262,10 @@ jobs:
           key: ${{ steps.cache-key.outputs.primary }}
 
   record-workloads:
-    needs: docs
-    if: ${{ needs.docs.outputs.performance_workloads == 'true' }}
+    needs:
+      - scope
+      - tool-tests
+    if: ${{ github.event_name != 'schedule' && needs.scope.outputs.performance_workloads == 'true' }}
     name: Record workload validation
     runs-on: macos-26
     timeout-minutes: 20
@@ -305,8 +283,12 @@ jobs:
   # Preserve the existing required-check name while joining every selected job.
   preflight:
     name: Release preflight
-    needs: [docs, preflight-lanes, record-workloads]
-    if: ${{ always() }}
+    needs:
+      - scope
+      - tool-tests
+      - preflight-lanes
+      - record-workloads
+    if: ${{ always() && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -316,9 +298,102 @@ jobs:
           persist-credentials: false
       - name: Require all selected verification jobs
         env:
-          DOCS_RESULT: ${{ needs.docs.result }}
-          APP_SCOPE: ${{ needs.docs.outputs.app }}
+          APP_SCOPE: ${{ needs.scope.outputs.app }}
           PREFLIGHT_RESULT: ${{ needs.preflight-lanes.result }}
-          WORKLOAD_SCOPE: ${{ needs.docs.outputs.performance_workloads }}
+          WORKLOAD_SCOPE: ${{ needs.scope.outputs.performance_workloads }}
           WORKLOAD_RESULT: ${{ needs.record-workloads.result }}
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          TOOLS_RESULT: ${{ needs.tool-tests.result }}
         run: bash scripts/check_ci_results.sh
+  coverage:
+    name: Coverage and Sonar Analysis
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.59.0"
+      - name: Collect Python and Swift domain coverage
+        id: coverage
+        run: just coverage
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: domain-coverage
+          path: .artifacts/quality/
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Upload measured coverage
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: .artifacts/quality/swift.lcov,.artifacts/quality/python-coverage.xml
+          disable_search: true
+          use_oidc: true
+          fail_ci_if_error: true
+      - name: Analyze application and helper sources
+        if: ${{ !cancelled() && steps.coverage.outcome == 'success' }}
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  preview-simulation:
+    name: Record preview CPU simulation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: SwiftyLab/setup-swift@d60245579ea3836a3f2fa65ebbe1e8891d577c76 # v1.14.2
+        with:
+          swift-version: "6.2.1"
+      - name: Build and validate preview workloads
+        run: bash scripts/build_benchmarks.sh --codspeed --preview-only
+      - name: Measure CPU simulation with CodSpeed
+        uses: CodSpeedHQ/action@78102a468f96d8e0ccb92d0ec49425753fc42062 # v5.6.0
+        with:
+          mode: simulation
+          runner-version: "5.6.0"
+          run: .artifacts/benchmarks/record-text
+    needs: scope
+    if: needs.scope.outputs.performance_workloads == 'true'
+  mutation:
+    name: Mutation Tests
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+          python-version: "3.13"
+      - shell: bash
+        run: |
+          mkdir -p .artifacts/quality
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --directory tools --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee .artifacts/quality/mutation.log
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --directory tools --python 3.13 --frozen --group quality mutmut export-cicd-stats
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: mutation-report
+          path: |
+            .artifacts/quality/mutation.log
+            tools/mutants/mutmut-cicd-stats.json
+          include-hidden-files: true
+          if-no-files-found: error

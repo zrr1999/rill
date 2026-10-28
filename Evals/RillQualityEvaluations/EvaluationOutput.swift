@@ -13,7 +13,7 @@ enum EvaluationOutput {
   static func save(_ value: some Encodable, settings: OpenAISettings) throws {
     let path = try #require(
       ProcessInfo.processInfo.environment["RILL_EVAL_OUTPUT"],
-      "Run quality evaluations through just eval-quality")
+      "Run quality evaluations through uv run --locked --project tools rill-eval-quality")
     let url = URL(fileURLWithPath: path)
     // The runner creates a fresh 0700 directory before any provider request.
     let encoder = JSONEncoder()

@@ -27,7 +27,7 @@ just test
 | `just test scripts` / `just test tools` | 构建发布脚本与内部开发工具的离线测试 |
 | `just ci` / `just ci clean` | 完整门禁，以及清理构建产物后重跑完整门禁 |
 | `just coverage` | Python 与 Swift 领域测试覆盖率 |
-| `just mutation` / `just reports` / `just links` | 定向变异、结构指标与外部链接报告 |
+| `just benchmark` | 运行 ASR、面板或 Record workload 性能基准 |
 
 提交前运行 `just ci` 和 `git diff --check`。完整门禁需要可用的交互式桌面。
 
