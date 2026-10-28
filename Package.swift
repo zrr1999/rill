@@ -89,9 +89,9 @@ let package = Package(
     ),
     .target(name: "RillRecords", dependencies: ["RillCore"]),
     .target(name: "RillKnowledge", dependencies: ["RillCore"]),
-    .target(name: "RillSpeech", dependencies: ["RillCore", "RillPlatform", "RillSpeechContracts"]),
+    .target(name: "RillSpeech", dependencies: ["RillCore", "RillSpeechContracts"]),
     .target(name: "RillClipboard", dependencies: ["RillCore", "RillPlatform", "RillRecords"]),
-    .target(name: "RillWorkflows", dependencies: ["RillSpeechContracts", "RillCore", "RillSpeech", "RillRecords", "RillKnowledge"]),
+    .target(name: "RillWorkflows", dependencies: ["RillCore", "RillRecords", "RillKnowledge"]),
     .target(
       name: "RillPersistence",
       dependencies: ["RillCore", .product(name: "GRDB", package: "GRDB.swift")],
@@ -101,7 +101,7 @@ let package = Package(
     ),
     .target(
       name: "RillUI",
-      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"],
+      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge"],
       resources: [.process("Resources")]),
     .executableTarget(
       name: "RillApp",
@@ -126,7 +126,6 @@ let package = Package(
       name: "RillSpeechWorker",
       dependencies: [
         "RillSpeechContracts",
-        "RillCore",
         "RillMLXRuntime",
       ]
     ),
@@ -136,7 +135,7 @@ let package = Package(
       path: "Tests/RillDomainTestSupport"),
     .target(
       name: "RillTestSupport",
-      dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI", "RillDomainTestSupport"],
+      dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI"],
       path: "Tests/RillTestSupport"),
     .testTarget(name: "RillKnowledgeTests", dependencies: ["RillKnowledge"]),
     .testTarget(name: "RillInputMethodTests", dependencies: ["RillInputMethodIPC", "RillInputMethodContracts", "RillInputMethodKit"]),
@@ -187,7 +186,7 @@ let package = Package(
       name: "RillUITests",
       dependencies: [
         "RillTestSupport", "RillDomainTestSupport", "RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillPlatform", "RillWorkflows",
-        "RillRecords", "RillKnowledge", "RillSpeech", "RillUI",
+        "RillRecords", "RillKnowledge", "RillUI",
       ]
     ),
     .testTarget(
