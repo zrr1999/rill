@@ -49,10 +49,25 @@ cues or output that can become stale during a MainActor hop.
 
 ## Prove a repair
 
+Inspect existing coverage before adding a regression. For worker termination and
+queue handoff failures, start with:
+
+- [SpeechWorkerSupervisorTests](../../../Tests/RillProvidersTests/SpeechWorkerSupervisorTests.swift):
+  `testCancellationDoesNotReturnUntilTermIgnoringWorkerIsReaped` and
+  `testProtocolFailureRetiresDesynchronizedWorkerAndNextRequestUsesNewPID` cover
+  process cleanup and recovery with a fresh worker.
+- [CapturedAudioProcessingQueueLifecycleTests](../../../Tests/RillRuntimeTests/CapturedAudioProcessingQueueLifecycleTests.swift):
+  `testRunCancellationDuringAcceptedTransferWindowCleansExactlyOnce` and
+  `testShutdownDuringAcceptedTransferWindowSettlesAllWaitersAndCleanup` exercise
+  ownership transfer with `QueueOwnershipTransferGate`.
+
 Use a controlled fake, barrier, or lease to hold the suspect operation at the
 boundary, trigger cancellation/replacement/shutdown, and then release it. Observe
 the user-visible outcome plus resource cleanup and pending-task ownership.
-Prefer this to longer timeouts, retries, or sleeps that merely hide ordering.
+When replacement is involved, also verify the new run can complete. State which
+incorrect ordering the regression rejects; extend an existing case when it
+already reaches that boundary. Prefer this to longer timeouts, retries, or
+sleeps that merely hide ordering.
 
 Repair the owner or transition responsible for the failure and verify the
 production caller uses it. Run targeted regression checks through the locked

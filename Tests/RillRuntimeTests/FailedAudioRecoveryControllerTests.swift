@@ -7,10 +7,6 @@ import RillDomainTestSupport
 import Foundation
 import XCTest
 
-private struct RecoveryControllerContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private enum RecoveryControllerTestError: Error {
   case failed
 }
@@ -84,14 +80,6 @@ private actor RecoveryExecutionBoundaryProbe {
       optionsCount,
       recognitionCount
     )
-  }
-}
-
-private struct RecoveryExecutionBoundaryContextProvider: ContextProvider {
-  let probe: RecoveryExecutionBoundaryProbe
-
-  func captureContext() async -> ContextSnapshot {
-    await probe.readContext()
   }
 }
 

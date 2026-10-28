@@ -95,10 +95,6 @@ private actor ReuseOutputProbe {
   var values: [String] = []
   func record(_ text: String) { values.append(text) }
 }
-private struct ReuseContextProvider: ContextProvider {
-  let context: ContextSnapshot
-  func captureContext() async -> ContextSnapshot { context }
-}
 private struct ReuseOutputAction: OutputAction {
   let id = RecordActionID.focusedApplicationInsert
   let probe: ReuseOutputProbe

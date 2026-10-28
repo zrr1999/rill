@@ -4,7 +4,6 @@ import RillCore
 import RillWorkflows
 import RillRecords
 import RillKnowledge
-import RillSpeech
 
 public enum VocabularyCorrectionSaveOutcome: Sendable, Equatable {
   case created(ruleID: UUID)

@@ -6,10 +6,6 @@ import RillDomainTestSupport
 import Foundation
 import XCTest
 
-private struct RegressionContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor RegressionActionProbe {
   private var values: [String] = []
 

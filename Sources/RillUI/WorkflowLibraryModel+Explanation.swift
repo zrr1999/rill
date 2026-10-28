@@ -3,7 +3,6 @@ import RillCore
 import RillWorkflows
 import RillRecords
 import RillKnowledge
-import RillSpeech
 
 extension WorkflowLibraryModel {
   public func explainWorkflowBeforeRun(_ requestedWorkflow: WorkflowDefinition) {

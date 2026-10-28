@@ -3,7 +3,6 @@ import RillCore
 import RillWorkflows
 import RillRecords
 import RillKnowledge
-import RillSpeech
 
 extension AppModel {
   /// Starts the irreversible clipboard-mutation shutdown boundary.

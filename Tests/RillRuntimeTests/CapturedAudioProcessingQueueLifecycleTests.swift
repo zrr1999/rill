@@ -8,13 +8,8 @@ import Foundation
 import XCTest
 
 private actor AudioLifecycleExecutionProbe {
-  private var contextCount = 0
   private var recognitionCount = 0
   private var actionCount = 0
-
-  func recordContext() {
-    contextCount += 1
-  }
 
   func recordRecognition() {
     recognitionCount += 1
@@ -24,8 +19,8 @@ private actor AudioLifecycleExecutionProbe {
     actionCount += 1
   }
 
-  func snapshot() -> (context: Int, recognition: Int, action: Int) {
-    (contextCount, recognitionCount, actionCount)
+  func snapshot() -> (recognition: Int, action: Int) {
+    (recognitionCount, actionCount)
   }
 }
 
@@ -213,15 +208,6 @@ private final class DeferredCancellationCleanupProbe: @unchecked Sendable {
 
   var cancellations: Int {
     lock.withLock { cancellationCount }
-  }
-}
-
-private struct AudioLifecycleContextProvider: ContextProvider {
-  let probe: AudioLifecycleExecutionProbe
-
-  func captureContext() async -> ContextSnapshot {
-    await probe.recordContext()
-    return .empty
   }
 }
 
@@ -466,7 +452,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     let pendingCount = await queue.pendingCount
     XCTAssertEqual(pendingCount, 0)
     XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    XCTAssertEqual(counts.context, 0)
     XCTAssertEqual(counts.recognition, 0)
     XCTAssertEqual(counts.action, 0)
     XCTAssertTrue(preservedBytes.isEmpty)
@@ -525,7 +510,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     XCTAssertEqual(pendingCount, 0)
     XCTAssertEqual(rejectedCleanupCount, 0)
     XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
     XCTAssertEqual(preserveCallCount, 0)
@@ -574,7 +558,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
       [.milliseconds(1), .milliseconds(2), .milliseconds(2), .milliseconds(2)]
     )
     XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
   }
@@ -633,7 +616,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     XCTAssertEqual(cleanup.attempts, 0)
     XCTAssertTrue(cleanup.delays.isEmpty)
     XCTAssertEqual(rejectedCleanupCount, 0)
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
     XCTAssertEqual(preserveCallCount, 0)
@@ -937,7 +919,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     XCTAssertEqual(transfer, .rejected)
     XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
     let execution = await executionProbe.snapshot()
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
 
@@ -983,7 +964,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     let execution = await executionProbe.snapshot()
     XCTAssertEqual(pendingCount, 0)
     XCTAssertEqual(cleanup.attempts, 1)
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
   }
@@ -1029,7 +1009,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     XCTAssertEqual(pendingCount, 0)
     XCTAssertEqual(cleanup.attempts, 1)
     let execution = await executionProbe.snapshot()
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
 
@@ -1081,7 +1060,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     let transfer = await enqueueTask.value
     XCTAssertEqual(transfer, .accepted)
     let execution = await executionProbe.snapshot()
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
   }
@@ -1114,7 +1092,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     let pendingCount = await queue.pendingCount
     XCTAssertEqual(pendingCount, 0)
     let execution = await executionProbe.snapshot()
-    XCTAssertEqual(execution.context, 0)
     XCTAssertEqual(execution.recognition, 0)
     XCTAssertEqual(execution.action, 0)
   }

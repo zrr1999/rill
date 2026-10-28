@@ -37,7 +37,7 @@ just build release --worker-cache off
 | `just test stress` | 大记录目录压力用例 |
 | `just test render` | 原生 UI 渲染证据 |
 
-领域 XCTest 并行运行，原生和桌面 XCTest 串行运行；Swift Testing 保留框架默认并发。预检中的桌面测试复用 Debug 构建。压力用例独立执行，具体分组与启用条件见 [预检脚本](../scripts/preflight.sh)；与 CI 一致的记录压力检查使用 `RILL_RECORD_STRESS=1`。
+领域 XCTest 并行运行，原生和桌面 XCTest 串行运行；Swift Testing 保留框架默认并发。预检中的桌面测试复用 Debug 构建。压力用例独立执行，分组见 [预检脚本](../scripts/preflight.sh)。`just ci` 与 GitHub tests lane 一样设置 `RILL_RECORD_STRESS=1` 和 `RILL_UI_SNAPSHOT_DIR`；只跑目录压力时使用 `just test stress`。
 
 依赖真实键盘焦点的 XCTest 使用 `testDesktop…` 前缀，并在操作应用窗口前调用 `requireInteractiveDesktop()`。它用独立 AppKit panel 探测焦点，失败即记录测试失败，不能跳过后当作通过；探测成功后还须验证被测窗口实际取得焦点。
 
@@ -69,6 +69,6 @@ Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci
   `uv run --script scripts/generate_third_party_notices.py`；装配脚本在打包时
   生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
   依赖都有受审证据，不核对已提交的渲染文本。安全检查使用受审 baseline；联网核对使用
-  `scripts/check_dependency_security.py --live-osv`。按各入口声明的 uv 环境执行。
+  `uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv`。
 - 图标从受审矢量事实源生成，资源、校验值与生成方法见 [图标设计](icon-design.md)。
 - 文档站的依赖与构建入口见 [文档站维护](documentation.md)。
