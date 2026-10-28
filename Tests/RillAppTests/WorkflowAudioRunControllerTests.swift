@@ -1811,10 +1811,6 @@ private func makeWorkflowAudioTestPrivacyGate() -> PrivacyRunGate {
   )
 }
 
-private struct TestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private func makeWorkflowLiveContext(
   bundleIdentifier: String = "com.apple.Notes"
 ) -> ContextSnapshot {

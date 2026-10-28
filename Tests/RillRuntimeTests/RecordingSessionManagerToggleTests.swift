@@ -6,10 +6,6 @@ import XCTest
 @testable import RillCore
 @testable import RillPlatform
 
-private struct ToggleTestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 private actor ToggleRecognitionProbe {
   private var request: RecognitionRequest?
 

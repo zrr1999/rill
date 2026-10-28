@@ -8,10 +8,6 @@ import XCTest
 @testable import RillCore
 @testable import RillUI
 
-struct UITestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
-}
-
 struct UITestRecognizer: SpeechRecognizer {
   let id = "ui.test.recognizer"
   let result: RecognitionResult
