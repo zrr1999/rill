@@ -66,6 +66,7 @@ public final class SettingsPersistenceModel {
   private var failed: [AppSettingKey: RetryableSettingsStoreWrite] = [:]
   private var retrying: Set<AppSettingKey> = []
   var hasUnsavedWrites: Bool { !failed.isEmpty }
+  func hasUnsavedWrite(for key: AppSettingKey) -> Bool { failed[key] != nil }
 
   let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings) async throws -> Void
   let configurationChanged: @MainActor () -> Void

@@ -32004,6 +32004,57 @@
           }
         }
       }
+    },
+    "general.vocabularyCorrectionCreated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correction rule saved for future runs."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纠正规则已保存，将用于后续运行。"
+          }
+        }
+      }
+    },
+    "general.vocabularyCorrectionReused": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The matching correction rule is enabled for future runs."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有的匹配纠正规则已启用，将用于后续运行。"
+          }
+        }
+      }
+    },
+    "vocabulary.ruleSaveFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The correction rule was updated locally, but could not be saved. Retry before leaving this window."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纠正规则已在本次会话中更新，但未能持久保存。请在关闭窗口前重试。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
