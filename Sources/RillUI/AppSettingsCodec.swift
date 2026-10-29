@@ -122,6 +122,9 @@ enum AppSettingsCodec {
     let normalized = normalizeSettings(storedSnapshot)
     var storedSettings = normalized.snapshot.values
     let unavailableSettingKeys = normalized.snapshot.unavailableKeys
+    let legacyWorkflowSettingsPresent = [
+      AppSettingKey.customWorkflows, .workflowLibrary, .workflowEnabledStates,
+    ].contains { !(storedSettings[$0] ?? "").isEmpty }
     var legacyLocalSpeechMigrationValues = normalized.migrations
     var unavailableDomains: Set<StoredSettingsDomain> = []
     if !unavailableSettingKeys.isDisjoint(with: [
@@ -222,6 +225,7 @@ enum AppSettingsCodec {
     storedSettings[.recordRetentionPeriod] = storedSettings[.recordRetentionPeriod] ?? storedSettings[.legacyClipboardHistoryRetentionPeriod]
     return StoredAppSettingsSnapshot(
       values: storedSettings,
+      legacyWorkflowSettingsPresent: legacyWorkflowSettingsPresent,
       persistentSettingsStoreWasAvailable: settingsStore != nil,
       unavailableSettingKeys: unavailableSettingKeys,
       legacyLocalSpeechMigrationValues: legacyLocalSpeechMigrationValues,

@@ -178,6 +178,7 @@ enum StoredSettingsDomain: Sendable, Hashable {
 
 struct StoredAppSettingsSnapshot: Sendable {
   let values: [AppSettingKey: String]
+  let legacyWorkflowSettingsPresent: Bool
   let persistentSettingsStoreWasAvailable: Bool
   let unavailableSettingKeys: Set<AppSettingKey>
   let legacyLocalSpeechMigrationValues: [AppSettingKey: String]
@@ -448,6 +449,7 @@ extension AppModel {
     _ settings: StoredAppSettingsSnapshot,
     workflowFiles: WorkflowFileLoadResult?
   ) {
+    self.workflowLibrary.legacyWorkflowSettingsPresent = settings.legacyWorkflowSettingsPresent
     let storedDomainUnavailable = settings.unavailableDomains.contains(.workflowLibrary)
     if storedDomainUnavailable, workflowFiles == nil {
       markStoredSettingsDomainUnavailable(.workflowLibrary)

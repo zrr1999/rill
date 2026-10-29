@@ -17,6 +17,7 @@ public final class WorkflowLibraryModel {
 
   public internal(set) var builtInWorkflows: [WorkflowDefinition]
   public internal(set) var customWorkflows: [WorkflowDefinition] = []
+  public internal(set) var legacyWorkflowSettingsPresent = false
   public internal(set) var workflows: [WorkflowDefinition]
   public internal(set) var workflowLibraryAvailability: StoredSettingsDomainAvailability =
     .available
