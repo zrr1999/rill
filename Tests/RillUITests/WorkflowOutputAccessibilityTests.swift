@@ -9,6 +9,29 @@ import XCTest
 
 @MainActor
 final class WorkflowOutputAccessibilityTests: NativeAccessibilityTestCase {
+  func testDisabledReasonsAreGroundedInOutputEditState() {
+    XCTAssertEqual(
+      WorkflowOutputDisabledReason.resolve(optional: false, saving: false, invalid: false),
+      .required
+    )
+    XCTAssertEqual(
+      WorkflowOutputDisabledReason.resolve(optional: true, saving: true, invalid: false),
+      .saving
+    )
+    XCTAssertEqual(
+      WorkflowOutputDisabledReason.resolve(optional: false, saving: true, invalid: true),
+      .invalidWorkflow
+    )
+    XCTAssertNil(WorkflowOutputDisabledReason.resolve(optional: true, saving: false, invalid: false))
+    for reason in [
+      WorkflowOutputDisabledReason.required, .saving, .invalidWorkflow
+    ] {
+      for language in AppLanguage.allCases {
+        XCTAssertFalse(L10n.resource(reason.localizationKey).string(for: language).isEmpty)
+      }
+    }
+  }
+
   func testDesktopOutputSwitchesExposeIdentityValueAndAutomaticState() async throws {
     _ = NSApplication.shared
     if !NSApp.isRunning {

@@ -5,6 +5,21 @@ import XCTest
 
 @MainActor
 final class DiagnosticsViewTests: XCTestCase {
+  func testRecoverableTextFallbackIsIdentifiedByTypedDiagnosticCode() {
+    let fallback = DiagnosticEvent(
+      subsystem: .session, level: .warning,
+      event: .sessionTransformFallback,
+      message: "A recoverable text transform failed."
+    )
+    let other = DiagnosticEvent(
+      subsystem: .session, level: .warning,
+      event: .sessionTransformStep,
+      message: "A recoverable text transform failed."
+    )
+    XCTAssertTrue(HistoryRunDiagnosticsView.hasTextCleanupFallback([other, fallback]))
+    XCTAssertFalse(HistoryRunDiagnosticsView.hasTextCleanupFallback([other]))
+  }
+
   func testRepositoryFailureNeverResolvesToOrdinaryEmptyState() {
     guard
       case .failed(let entries) = DiagnosticsView.timelineContent(
