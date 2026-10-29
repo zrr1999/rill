@@ -75,8 +75,12 @@ jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实
 
 - 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，与用户工作流
   共用解析和验证路径；格式与执行契约见 [工作流文档](workflow-toml.md)。
-- 依赖变化后，用 `scripts/generate_third_party_notices.py` 更新许可清单，
-  再运行其 `--check` 模式。安全检查使用受审 baseline；联网核对使用
+- 依赖变化后，同步 `Package.resolved` 与受审许可清单
+  `scripts/third_party_notices_manifest.json`（含证据 SHA-256）。渲染后的
+  `THIRD_PARTY_NOTICES.md` 不入库：本地预览运行
+  `uv run --script scripts/generate_third_party_notices.py`；装配脚本在打包时
+  生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
+  依赖都有受审证据，不核对已提交的渲染文本。安全检查使用受审 baseline；联网核对使用
   `uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv`。
 - 图标从受审矢量事实源生成，资源、校验值与生成方法见 [图标设计](icon-design.md)。
 - 文档站的依赖与构建入口见 [文档站维护](documentation.md)。

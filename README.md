@@ -48,4 +48,4 @@ Copyright (C) 2026 Zhan Rongrui and contributors.
 
 原创代码和文档采用 **AGPL-3.0-only**，完整条款见 [LICENSE](LICENSE)。本程序不提供任何担保，包括适销性或特定用途适用性的默示担保。
 
-第三方代码和模型保留各自许可，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md)。
+第三方代码和模型保留各自许可。Swift 依赖的第三方通知在装配时生成，并随 App 放入 `Contents/Resources/THIRD_PARTY_NOTICES.md`；本地模型见 [LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md)。本地生成方式见[开发参考](https://github.com/zrr1999/rill/blob/main/docs/development.md#生成物与脚本维护)。

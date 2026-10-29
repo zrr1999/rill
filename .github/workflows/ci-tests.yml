@@ -249,8 +249,7 @@ jobs:
       # Only a completed, trusted lane may seed subsequent PR builds. The key is
       # computed independently because clean runs intentionally skip restore.
       - name: Save successful trusted lane build arena
-        if: ${{ success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name ==
-          'workflow_dispatch') && steps.lane.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.lane.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ matrix.cache-path }}
