@@ -90,6 +90,29 @@ private actor ShutdownDrainCompletionProbe {
 
 @MainActor
 final class AppModelSettingsSaveStateTests: XCTestCase {
+  func testCorrectionRuleWriteFailureIsRetryableWithoutDuplicatingTheRule() async throws {
+    let store = FailThenSucceedSettingsStore(
+      failures: [AppSettingsCodec.vocabularyLibrarySettingKey: 1]
+    )
+    let model = makeHarness(settingsStore: store).model
+    await model.waitForInitialVoiceConfiguration()
+    let rule = VocabularyRule(pattern: "mistake", replacement: "correction")
+    guard case .created = model.vocabulary.saveVocabularyCorrectionRule(rule) else {
+      return XCTFail("Expected a newly added correction rule")
+    }
+    await model.flushPendingPersistenceWrites()
+    XCTAssertTrue(model.settings.hasUnsavedWrite(for: AppSettingsCodec.vocabularyLibrarySettingKey))
+    XCTAssertEqual(model.vocabulary.vocabularyRules.count, 1)
+    model.retryUnsavedSettingsSave()
+    await model.flushPendingPersistenceWrites()
+    XCTAssertFalse(model.settings.hasUnsavedWrite(for: AppSettingsCodec.vocabularyLibrarySettingKey))
+    XCTAssertEqual(model.vocabulary.vocabularyRules.count, 1)
+    let snapshot = await store.snapshot(for: AppSettingsCodec.vocabularyLibrarySettingKey)
+    XCTAssertEqual(snapshot.attempts, 2)
+    XCTAssertNotNil(snapshot.value)
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
   func testLegacyLocalModelMigrationFailureIsVisibleAndRetryable() async throws {
     let defaultModel = "qwen3-asr-0.6b-int8"
     let store = FailThenSucceedSettingsStore(
