@@ -31987,6 +31987,23 @@
           }
         }
       }
+    },
+    "run.failedRecoverySettingInvalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The saved failed-recording recovery setting is invalid or unavailable. Recovery remains off until a valid choice is saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存的失败录音恢复设置无效或不可读取。恢复功能保持关闭，直到保存有效选项。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

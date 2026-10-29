@@ -81,6 +81,10 @@ public final class VoiceRunModel {
   public var pendingResolution: CandidateResolutionCase?
   public internal(set) var failedAudioRecoveryReceipts: [FailedAudioRecoveryReceipt] = []
   public internal(set) var failedAudioRecoveryEnabled = false
+  var failedAudioRecoverySettingWarningResource: LocalizedStringResource?
+  public var failedAudioRecoverySettingWarning: String? {
+    failedAudioRecoverySettingWarningResource?.string(for: settings.language)
+  }
   public internal(set) var isUpdatingFailedAudioRecovery = false
   public internal(set) var retryingFailedAudioRecoveryIDs: Set<UUID> = []
   public internal(set) var failedAudioRecoveryUnavailableReasonsByRunID: [UUID: FailedAudioRecoveryError] = [:]

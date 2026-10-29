@@ -75,6 +75,19 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
     await model.stopSettingsReadTasksForApplicationShutdown()
   }
 
+  func testInvalidFailedAudioRecoverySettingStaysOffAndReportsWarning() async {
+    let store = UITestSettingsStore(storage: [.failedAudioRecoveryEnabled: "corrupted"])
+    let model = makeHarness(settingsStore: store).model
+    await model.waitForInitialVoiceConfiguration()
+
+    XCTAssertFalse(model.voice.failedAudioRecoveryEnabled)
+    XCTAssertNotNil(model.voice.failedAudioRecoverySettingWarning)
+    let saved = await store.activitySnapshot()
+    XCTAssertEqual(saved.storage[.failedAudioRecoveryEnabled], "corrupted")
+    XCTAssertNil(saved.setCounts[.failedAudioRecoveryEnabled])
+    await model.stopSettingsReadTasksForApplicationShutdown()
+  }
+
   func testRetiredWorkflowSettingsNeverExecuteOrRecoverOnRetry() async throws {
     for key in [AppSettingKey.workflowLibrary, .customWorkflows, .workflowEnabledStates] {
       let source = "{not-valid-json"

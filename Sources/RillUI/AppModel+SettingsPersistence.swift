@@ -406,15 +406,20 @@ extension AppModel {
   }
 
   func applyStoredFailedAudioRecoverySetting(_ settings: StoredAppSettingsSnapshot) {
-    guard settings.persistentSettingsStoreWasAvailable else {
-      self.voice.failedAudioRecoveryEnabled = false
+    self.voice.failedAudioRecoveryEnabled = false
+    self.voice.failedAudioRecoverySettingWarningResource = nil
+    guard settings.persistentSettingsStoreWasAvailable else { return }
+    guard !settings.unavailableSettingKeys.contains(.failedAudioRecoveryEnabled) else {
+      self.voice.failedAudioRecoverySettingWarningResource = L10n.resource("run.failedRecoverySettingInvalid")
       return
     }
     switch settings.values[.failedAudioRecoveryEnabled] {
     case "true":
       self.voice.failedAudioRecoveryEnabled = true
+    case nil, "", "false":
+      break
     default:
-      self.voice.failedAudioRecoveryEnabled = false
+      self.voice.failedAudioRecoverySettingWarningResource = L10n.resource("run.failedRecoverySettingInvalid")
     }
   }
 
