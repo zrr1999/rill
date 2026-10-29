@@ -31936,6 +31936,57 @@
           }
         }
       }
+    },
+    "workflow.legacySettingsFound": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retired workflow settings were found but are not executed. Export a raw backup for manual review; it may contain private configuration."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检测到旧版工作流设置，已禁止自动执行。可导出原始备份供人工核查；其中可能包含隐私配置。"
+          }
+        }
+      }
+    },
+    "workflow.exportLegacySettings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export backup…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出备份…"
+          }
+        }
+      }
+    },
+    "workflow.exportLegacySettingsFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not export retired workflow settings. Check storage access and the destination, then retry."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导出旧版工作流设置。请检查存储访问权限和保存位置后重试。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

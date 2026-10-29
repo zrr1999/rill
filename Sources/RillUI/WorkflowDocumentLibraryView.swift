@@ -9,6 +9,7 @@ struct WorkflowDocumentLibraryView: View {
   @State private var showsCompactList = true
   @State private var pendingDeletion: WorkflowDefinition?
   @State private var explanation: WorkflowExplanationSheetRequest?
+  @State private var legacyExportFailed = false
 
   private var selection: WorkflowDefinition? { model.workflowLibrary.workflows.first { $0.id == selectedID } }
 
@@ -17,6 +18,31 @@ struct WorkflowDocumentLibraryView: View {
       if let error = model.workflowLibrary.workflowLibraryError {
         Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
           .font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding()
+      }
+      if model.workflowLibrary.legacyWorkflowSettingsPresent {
+        HStack(alignment: .firstTextBaseline, spacing: RillSpacing.dense) {
+          Label(
+            L10n.resource("workflow.legacySettingsFound").string(for: model.settings.language),
+            systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+          )
+          .font(.callout)
+          .foregroundStyle(.orange)
+          Spacer()
+          Button(L10n.resource("workflow.exportLegacySettings").string(for: model.settings.language)) {
+            exportLegacyWorkflowSettings()
+          }
+          .accessibilityIdentifier("workflow.legacy.export")
+        }
+        .padding(RillSpacing.panel)
+        .accessibilityIdentifier("workflow.legacy.warning")
+      }
+      if legacyExportFailed {
+        Label(
+          L10n.resource("workflow.exportLegacySettingsFailed").string(for: model.settings.language),
+          systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+        )
+        .foregroundStyle(.red)
+        .padding(.horizontal, RillSpacing.panel)
       }
       GeometryReader { geometry in
         if geometry.size.width >= 700 {
@@ -289,6 +315,27 @@ struct WorkflowDocumentLibraryView: View {
         [url], withApplicationAt: URL(fileURLWithPath: "/System/Applications/TextEdit.app"),
         configuration: NSWorkspace.OpenConfiguration()
       )
+    }
+  }
+
+  private func exportLegacyWorkflowSettings() {
+    Task { @MainActor in
+      do {
+        let data = try await model.legacyWorkflowSettingsBackup()
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "rill-retired-workflow-settings.json"
+        panel.begin { response in
+          guard response == .OK, let url = panel.url else { return }
+          do {
+            try data.write(to: url, options: .atomic)
+          } catch {
+            Task { @MainActor in legacyExportFailed = true }
+          }
+        }
+      } catch {
+        legacyExportFailed = true
+      }
     }
   }
 
