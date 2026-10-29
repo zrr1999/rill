@@ -179,6 +179,20 @@ struct WorkflowDocumentLibraryView: View {
           LabeledContent(L10n.workflowExplanationCopy(.trigger, language: model.settings.language)) {
             Text(L10n.workflowTrigger(workflow.trigger, gesture: workflow.properties.gesture, language: model.settings.language))
           }
+          if let speechRoute = workflow.plan.setup.speechRoute,
+            !speechRoute.recognizerID.isEmpty
+          {
+            LabeledContent(L10n.resource("workflow.declaredSpeechRoute").string(for: model.settings.language)) {
+              Text(speechRoute.recognizerID)
+                .font(.callout.monospaced())
+                .textSelection(.enabled)
+            }
+            if let speechLanguage = speechRoute.language, !speechLanguage.isEmpty {
+              LabeledContent(L10n.resource("workflow.declaredSpeechLanguage").string(for: model.settings.language)) {
+                Text(speechLanguage).font(.callout)
+              }
+            }
+          }
           VStack(alignment: .leading, spacing: RillSpacing.row) {
             Text(L10n.workflowExplanationCopy(.outputs, language: model.settings.language)).font(.headline)
             WorkflowOutputChoices(model: model, workflow: workflow)

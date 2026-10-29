@@ -9,11 +9,23 @@ struct HistoryRunDiagnosticsView: View {
   @State private var refreshID = UUID()
   @State private var showsAllEvents = false
 
+  static func hasTextCleanupFallback(_ events: [DiagnosticEvent]) -> Bool {
+    events.contains { $0.name == .sessionTransformFallback }
+  }
+
   var body: some View {
     let visibleEvents = events.filter {
       (showsAllEvents ? DiagnosticsTimelineFilter.all : .issues).includes($0)
     }
     return VStack(alignment: .leading, spacing: RillSpacing.compact) {
+      if Self.hasTextCleanupFallback(events) {
+        Label(
+          L10n.resource("history.transformFallback").string(for: model.settings.language),
+          systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+        )
+        .foregroundStyle(.orange)
+        .accessibilityIdentifier("history.run-diagnostics.text-fallback")
+      }
       HStack {
         Text(L10n.historyRunDetail(.diagnostics, language: model.settings.language))
           .font(.caption.weight(.semibold))

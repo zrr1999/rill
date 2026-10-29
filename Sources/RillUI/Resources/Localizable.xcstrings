@@ -32055,6 +32055,108 @@
           }
         }
       }
+    },
+    "workflow.outputInvalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This workflow has invalid configuration. Review its issues before changing outputs."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此工作流配置无效。请先检查配置问题，再修改输出。"
+          }
+        }
+      }
+    },
+    "workflow.outputSaving": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving this output preference…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在保存此输出设置…"
+          }
+        }
+      }
+    },
+    "workflow.outputRequired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This required output cannot be disabled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此输出为必需动作，不可关闭。"
+          }
+        }
+      }
+    },
+    "workflow.declaredSpeechRoute": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configured recognizer"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置的语音识别器"
+          }
+        }
+      }
+    },
+    "workflow.declaredSpeechLanguage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configured speech language"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置的语音语言"
+          }
+        }
+      }
+    },
+    "history.transformFallback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text enhancement was skipped after a recoverable failure; the earlier text was retained. Review diagnostic details before relying on the output."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文本增强因可恢复错误被跳过，已保留此前的文本。使用结果前请查看诊断详情。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
