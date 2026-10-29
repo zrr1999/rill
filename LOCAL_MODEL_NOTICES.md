@@ -39,4 +39,4 @@ The [upstream model card](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/blob/
 
 ## Runtime boundary
 
-`mlx-audio-swift` and its SwiftPM dependency graph are pinned in `Package.resolved` and documented in `THIRD_PARTY_NOTICES.md`. The main application does not perform MLX inference; separate supervised ASR, TTS, and clipboard-search helper processes own their respective model caches.
+`mlx-audio-swift` and its SwiftPM dependency graph are pinned in `Package.resolved` and documented in the generated `THIRD_PARTY_NOTICES.md` shipped in the app bundle. The main application does not perform MLX inference; separate supervised ASR, TTS, and clipboard-search helper processes own their respective model caches.

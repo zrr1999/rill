@@ -19,6 +19,9 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+# Rendered from Package.resolved + scripts/third_party_notices_manifest.json at pack time.
+/THIRD_PARTY_NOTICES.md
+
 # Pull request screenshots
 /.github/pr-screenshots/
 
