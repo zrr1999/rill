@@ -380,14 +380,20 @@ extension AppModel {
     loadHistory()
   }
 
+  func retryRunReceiptLoad() {
+    loadRunReceipts()
+  }
+
   func loadRunReceipts(requiredRunIDs additionalRunIDs: Set<UUID> = []) {
     guard !hasBegunApplicationShutdown else { return }
-    guard let runReceiptRepository else {
-      self.history.workflowRunReceiptsByRunID.removeAll()
-      return
-    }
     self.history.runReceiptLoadGeneration += 1
     let generation = self.history.runReceiptLoadGeneration
+    guard let runReceiptRepository else {
+      self.history.workflowRunReceiptsByRunID.removeAll()
+      self.history.runReceiptLoadState = .loaded
+      return
+    }
+    self.history.runReceiptLoadState = .loading
     let since = history.runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
     let requiredRunIDs = additionalRunIDs.union(
       self.history.historyRecords.compactMap(\.runID)
@@ -421,8 +427,14 @@ extension AppModel {
           receipts.map { ($0.runID, $0) },
           uniquingKeysWith: { existing, _ in existing }
         )
-      } catch {
+        self.history.runReceiptLoadState = .loaded
+      } catch is CancellationError {
         return
+      } catch {
+        guard !Task.isCancelled, !self.hasBegunApplicationShutdown,
+          self.history.runReceiptLoadGeneration == generation
+        else { return }
+        self.history.runReceiptLoadState = .failed(.repositoryUnavailable)
       }
     }
     self.history.historyProjectionLoadTasks[taskID] = task

@@ -43,6 +43,7 @@ public final class RunHistoryModel {
   public internal(set) var lastPreservedActiveRecordCount = 0
   var historyLoadGeneration = 0
   var runReceiptLoadGeneration = 0
+  public internal(set) var runReceiptLoadState: HistoryLoadState = .loaded
   var historyProjectionLoadTasks: [UUID: Task<Void, Never>] = [:]
   var historyRetentionRerunRequested = false
   var historyRetentionSettingsLoadFailure: LocalizedStringResource?

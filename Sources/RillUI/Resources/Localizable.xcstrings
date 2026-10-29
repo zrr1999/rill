@@ -31919,6 +31919,23 @@
           }
         }
       }
+    },
+    "history.receiptLoadFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run action receipts could not be loaded. Action details may be incomplete; retry to refresh them."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法加载运行输出收据，动作详情可能不完整。请重试刷新。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
