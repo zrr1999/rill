@@ -24,7 +24,7 @@ final class WorkflowOutputAccessibilityTests: NativeAccessibilityTestCase {
     )
     XCTAssertNil(WorkflowOutputDisabledReason.resolve(optional: true, saving: false, invalid: false))
     for reason in [
-      WorkflowOutputDisabledReason.required, .saving, .invalidWorkflow
+      WorkflowOutputDisabledReason.required, .saving, .invalidWorkflow,
     ] {
       for language in AppLanguage.allCases {
         XCTAssertFalse(L10n.resource(reason.localizationKey).string(for: language).isEmpty)

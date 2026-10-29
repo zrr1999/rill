@@ -57,11 +57,6 @@ jobs:
           prek validate-config prek.toml
           prek -c prek.toml run --all-files
 
-      - name: Show temporary formatter diff on failure
-        if: failure()
-        run: |
-          git diff --color=never -- Sources/RillUI Tests/RillUITests
-
       - name: Test evaluation tools without model or provider access
         run: uv run --no-build --locked --project tools pytest tools/tests
 
