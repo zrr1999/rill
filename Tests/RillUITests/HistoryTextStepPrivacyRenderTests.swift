@@ -17,8 +17,8 @@ final class HistoryTextStepPrivacyRenderTests: NativeAccessibilityTestCase {
     let step = WorkflowTextStep(
       kind: .llmRewrite,
       outputText: privateBody,
-      durationMilliseconds: 300,
-      tokenUsage: .init(inputTokens: 1, outputTokens: 2)
+      tokenUsage: .init(inputTokens: 1, outputTokens: 2),
+      durationMilliseconds: 300
     )
 
     for language in AppLanguage.allCases {
