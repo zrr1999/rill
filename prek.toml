@@ -38,7 +38,7 @@ hooks = [
     name = "GitHub Actions correctness and security",
     entry = "bash scripts/check_workflows.sh --no-online",
     language = "python",
-    additional_dependencies = ["jactionlint==2.3.0", "shellcheck-py==0.11.0.1", "pyflakes==3.4.0"],
+    additional_dependencies = ["jactionlint==2.3.0", "shellcheck-py==0.11.0.1", "ruff==0.17.1"],
     pass_filenames = false,
     files = '^(\.github/|(.*/)?action\.ya?ml$|prek\.toml$|scripts/check_workflows\.sh$)',
     stages = ["pre-commit"],

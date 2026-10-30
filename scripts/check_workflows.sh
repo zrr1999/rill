@@ -15,4 +15,4 @@ if [[ "${#files[@]}" -eq 0 ]]; then
   echo "No repository workflows or actions found" >&2
   exit 1
 fi
-jactionlint --shellcheck=shellcheck --pyflakes=pyflakes "$@" "${files[@]}"
+jactionlint --shellcheck=shellcheck --ruff=ruff "$@" "${files[@]}"
