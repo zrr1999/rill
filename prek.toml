@@ -100,7 +100,7 @@ hooks = [
 repo = "https://github.com/astral-sh/ty-pre-commit"
 rev = "033aa05ea3f6f5f7cd39bcb6a31fd66f6efbed2f"  # frozen: v0.0.89
 hooks = [
-  { id = "ty", args = ["--project", "tools", "--locked"], files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", always_run = false, stages = ["pre-commit"] },
+  { id = "ty", args = ["--project", "tools", "--locked", "--python", "3.13"], types_or = ["file"], files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", always_run = false, stages = ["pre-commit"] },
 ]
 
 [[repos]]
