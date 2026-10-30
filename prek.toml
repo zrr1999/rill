@@ -90,15 +90,51 @@ hooks = [
 [[repos]]
 repo = "local"
 hooks = [
-  { id = "ty", name = "Python type checking", entry = "uv run --directory tools --frozen ty check", language = "system", pass_filenames = false, files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", stages = ["pre-commit"] },
   { id = "deptry", name = "Python dependency ownership", entry = "uv run --directory tools --frozen deptry src", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$|uv\\.lock$)", stages = ["pre-commit"] },
   { id = "import-linter", name = "Evaluation module boundaries", entry = "uv run --directory tools --frozen lint-imports", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$)", stages = ["pre-commit"] },
-  { id = "rumdl", name = "Markdown structure", entry = "rumdl check", language = "python", additional_dependencies = ["rumdl==0.3.0"], types = ["markdown"], stages = ["pre-commit"] },
-  { id = "vale", name = "Documentation terminology", entry = "vale", language = "python", additional_dependencies = ["vale==3.25.1.0"], require_serial = true, types = ["markdown"], stages = ["pre-commit"] },
   { id = "ast-grep", name = "Domain preferences boundary", entry = "ast-grep scan", language = "python", additional_dependencies = ["ast-grep-cli==0.51.0"], pass_filenames = false, files = "(\\.swift$|^scripts/ast-grep\\.yml$|^sgconfig\\.yml$)", stages = ["pre-commit"] },
   { id = "ast-grep-tests", name = "Structure rule examples", entry = "ast-grep test --skip-snapshot-tests", language = "python", additional_dependencies = ["ast-grep-cli==0.51.0"], pass_filenames = false, files = "(^scripts/ast-grep\\.yml$|^tools/tests/ast-grep\\.yml$|^sgconfig\\.yml$)", stages = ["pre-commit"] },
-  { id = "semgrep", name = "Private evaluation file permissions", entry = "semgrep scan --config .semgrep.yml --metrics=off --error tools/src", language = "python", language_version = "python3.13", additional_dependencies = ["semgrep==1.182.1"], pass_filenames = false, files = "(^tools/src/.*\\.py$|^\\.semgrep\\.yml$)", stages = ["pre-commit"] },
-  { id = "semgrep-tests", name = "Security rule examples", entry = "semgrep --test --config .semgrep.yml tools/tests/semgrep_privacy.py --metrics=off", language = "python", language_version = "python3.13", additional_dependencies = ["semgrep==1.182.1"], pass_filenames = false, files = "(^tools/tests/semgrep_privacy\\.py$|^\\.semgrep\\.yml$)", stages = ["pre-commit"] },
-  { id = "shfmt", name = "Shell script formatting", entry = "shfmt -d -i 2 -bn", language = "python", additional_dependencies = ["shfmt-py==4.2.0"], types = ["shell"], stages = ["pre-commit"] },
-  { id = "renovate-schema", name = "Renovate configuration schema", entry = "check-jsonschema --builtin-schema vendor.renovate", language = "python", additional_dependencies = ["check-jsonschema==0.39.0"], files = "^\\.github/renovate\\.json$", stages = ["pre-commit"] },
+]
+
+[[repos]]
+repo = "https://github.com/astral-sh/ty-pre-commit"
+rev = "033aa05ea3f6f5f7cd39bcb6a31fd66f6efbed2f"  # frozen: v0.0.89
+hooks = [
+  { id = "ty", args = ["--project", "tools", "--locked"], files = "^tools/(src/.*\\.py|pyproject\\.toml|uv\\.lock)$", always_run = false, stages = ["pre-commit"] },
+]
+
+[[repos]]
+repo = "https://github.com/python-jsonschema/check-jsonschema"
+rev = "0.39.0"
+hooks = [
+  { id = "check-jsonschema", alias = "renovate-schema", name = "Renovate configuration schema", files = "^\\.github/renovate\\.json$", stages = ["pre-commit"], args = ["--builtin-schema", "vendor.renovate"] },
+]
+
+[[repos]]
+repo = "https://github.com/semgrep/pre-commit"
+rev = "v1.182.1"
+hooks = [
+  { id = "semgrep", name = "Private evaluation file permissions", language_version = "python3.13", pass_filenames = false, files = "(^tools/src/.*\\.py$|^\\.semgrep\\.yml$)", stages = ["pre-commit"], args = ["scan", "--config", ".semgrep.yml", "--metrics=off", "--error", "tools/src"] },
+  { id = "semgrep", alias = "semgrep-tests", name = "Security rule examples", language_version = "python3.13", pass_filenames = false, files = "(^tools/tests/semgrep_privacy\\.py$|^\\.semgrep\\.yml$)", stages = ["pre-commit"], args = ["--test", "--config", ".semgrep.yml", "tools/tests/semgrep_privacy.py", "--metrics=off"] },
+]
+
+[[repos]]
+repo = "https://github.com/vale-cli/vale"
+rev = "v3.25.1"
+hooks = [
+  { id = "vale", name = "Documentation terminology", require_serial = true, types = ["markdown"], stages = ["pre-commit"], args = [] },
+]
+
+[[repos]]
+repo = "https://github.com/rvben/rumdl-pre-commit"
+rev = "v0.3.0"
+hooks = [
+  { id = "rumdl-check", alias = "rumdl", name = "Markdown structure", types = ["markdown"], stages = ["pre-commit"], args = [] },
+]
+
+[[repos]]
+repo = "https://github.com/scop/pre-commit-shfmt"
+rev = "v3.14.1-1"
+hooks = [
+  { id = "shfmt", name = "Shell script formatting", types = ["shell"], stages = ["pre-commit"], args = ["-d", "-i", "2", "-bn"] },
 ]
