@@ -98,35 +98,9 @@ class AggregateTests(unittest.TestCase):
 
 
 class CachePolicyTests(unittest.TestCase):
-    def test_only_successful_main_lanes_save(self):
-        guard = condition("Save successful trusted lane build arena")
-        for success, ref, event, lane, hit in itertools.product(
-            (True, False),
-            ("refs/heads/main", "refs/heads/feature", "refs/pull/1/merge"),
-            ("push", "pull_request", "workflow_dispatch"),
-            ("success", "failure", "cancelled", "skipped", ""),
-            ("true", "false", ""),
-        ):
-            values = {
-                "success()": success,
-                "github.ref": ref,
-                "github.event_name": event,
-                "steps.lane.outcome": lane,
-                "steps.build-cache.outputs.cache-hit": hit,
-            }
-            expected = (
-                success
-                and ref == "refs/heads/main"
-                and event in ("push", "workflow_dispatch")
-                and lane == "success"
-                and hit != "true"
-            )
-            with self.subTest(values=values):
-                self.assertEqual(evaluate(guard, values), expected)
-
     def test_clean_runs_do_not_restore(self):
         guard = condition("Restore Swift build arena")
-        for event in ("pull_request", "push", "workflow_dispatch"):
+        for event in ("pull_request", "merge_group"):
             self.assertEqual(evaluate(guard, {"github.event_name": event}), event == "pull_request")
 
     def test_toolchain_key_ignores_remount_but_tracks_compiler_contents(self):

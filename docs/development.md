@@ -55,13 +55,13 @@ just build release --worker-cache off
 
 ## GitHub Actions
 
-CI 负责 PR / push 的集成检查，也保留手动预检入口。CE 负责定时及手动持续评估，触发条件、并发组与权限独立配置。
+常规 CI 仅监听目标为 `main` 的 PR 和合并队列，不在合并后的 push 或手动事件中重复运行。合并队列事件执行干净预检；PR 可读取已有构建缓存，CI 不再通过主分支 push 写入缓存。CE 负责定时及手动持续评估，触发条件、并发组与权限独立配置。
 
 Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci-`、`ce-`、`cd-`、 `policy-` 或 `automation-` 前缀，显示名称对应 `CI - <Purpose>`、`CE - <Purpose>`、 `CD - <Purpose>`、`Policy - <Purpose>` 或 `Automation - <Purpose>`。
 
 [Policy - PR](../.github/workflows/policy-pr.yml) 只读校验 PR 元数据，检出 base commit 的模板。有写操作的 PR 自动化放在独立的 [Automation - PR Title](../.github/workflows/automation-pr-title.yml) 中，仅授予所需的 `pull-requests: write` 和 `actions: write`；不检出 PR 代码，也不读取上游运行产物。
 
-jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。受信任的主分支 CI 执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；依赖审计分别查询 Swift 锁定提交和全部 Python 锁文件。
+jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；依赖审计分别查询 Swift 锁定提交和全部 Python 锁文件。
 
 仓库规则使用实际检查名称：[Policy - PR](../.github/workflows/policy-pr.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。文档构建与只读门禁归入 [CI - Static Checks](../.github/workflows/ci-static-checks.yml) 的 `Static checks` 检查；是否列为必需检查以当前仓库规则为准。修改检查名称时同步核对仓库规则，合并步骤见[发布文档](releasing.md#合并门禁)。
 

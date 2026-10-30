@@ -4,10 +4,12 @@ on:
   pull_request:
     branches:
       - main
-  push:
+  merge_group:
     branches:
       - main
-  workflow_dispatch:
+    types:
+      - checks_requested
+
 permissions:
   contents: read
 
@@ -142,7 +144,7 @@ jobs:
           echo "prefix=$CACHE_PREFIX" >> "$GITHUB_OUTPUT"
           echo "primary=${CACHE_PREFIX}${CHECKOUT_SHA}" >> "$GITHUB_OUTPUT"
 
-      # Main/manual runs clean their lane arena; restoring it would only waste time.
+      # Merge-group runs build from a clean arena.
       - name: Restore Swift build arena
         if: ${{ github.event_name == 'pull_request' }}
         id: build-cache
@@ -247,15 +249,6 @@ jobs:
           path: ${{ runner.temp }}/rill-preflight-${{ matrix.lane }}
           retention-days: 14
           if-no-files-found: ignore
-
-      # Only a completed, trusted lane may seed subsequent PR builds. The key is
-      # computed independently because clean runs intentionally skip restore.
-      - name: Save successful trusted lane build arena
-        if: ${{ success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.lane.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ matrix.cache-path }}
-          key: ${{ steps.cache-key.outputs.primary }}
 
     if: needs.scope.outputs.app == 'true'
   record-workloads:
