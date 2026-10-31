@@ -103,6 +103,23 @@ class CachePolicyTests(unittest.TestCase):
         for event in ("pull_request", "merge_group"):
             self.assertEqual(evaluate(guard, {"github.event_name": event}), event == "pull_request")
 
+    def test_only_successful_pr_runs_save_cache_on_miss(self):
+        guard = condition("Save verified Swift build arena")
+        for event, success, hit in itertools.product(
+            ("pull_request", "merge_group", "push", "workflow_dispatch"),
+            (True, False),
+            ("true", "false", ""),
+        ):
+            with self.subTest(event=event, success=success, hit=hit):
+                self.assertEqual(
+                    evaluate(guard, {
+                        "github.event_name": event,
+                        "success()": success,
+                        "steps.build-cache.outputs.cache-hit": hit,
+                    }),
+                    event == "pull_request" and success and hit != "true",
+                )
+
     def test_toolchain_key_ignores_remount_but_tracks_compiler_contents(self):
         step = block("Identify the build toolchain")
         script = textwrap.dedent(step.split("        run: |\n", 1)[1])

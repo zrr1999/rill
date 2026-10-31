@@ -55,7 +55,7 @@ just build release --worker-cache off
 
 ## GitHub Actions
 
-常规 CI 仅监听目标为 `main` 的 PR 和合并队列，不在合并后的 push 或手动事件中重复运行。合并队列事件执行干净预检；PR 可读取已有构建缓存，CI 不再通过主分支 push 写入缓存。CE 负责定时及手动持续评估，触发条件、并发组与权限独立配置。
+常规 CI 仅监听目标为 `main` 的 PR 和合并队列，不在合并后的 push 或手动事件中重复运行。合并队列事件执行干净预检；PR 在预检成功后保存构建缓存，供同一 PR 的后续更新和重试恢复。缓存按预检 lane、工具链和依赖区分，失败的预检不写入缓存。CE 负责定时及手动持续评估，触发条件、并发组与权限独立配置。
 
 Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci-`、`ce-`、`cd-`、 `policy-` 或 `automation-` 前缀，显示名称对应 `CI - <Purpose>`、`CE - <Purpose>`、 `CD - <Purpose>`、`Policy - <Purpose>` 或 `Automation - <Purpose>`。
 
