@@ -10,6 +10,9 @@ It has no lettering or fine bevel details. Its opaque 1024 px PNG feeds the
 existing ICNS renderer, which adds the transparent rounded body, shadow, and
 optical crops for 16–1024 px renditions.
 
+The PNG is losslessly recompressed; every decoded sRGB pixel matches the prior
+reviewed source. The SVG sources are minified; the packaged PDF exports are unchanged.
+
 ## Menu bar
 
 The 20 × 18 pt monochrome PDF is drawn specifically for the menu bar, with
@@ -60,9 +63,9 @@ SVG sources, exports, this provenance, and the updated PNG hash in
 
 | File | Reviewed SHA-256 |
 | --- | --- |
-| `Rill.svg` | `8d68b101dba2818f6312a38f92d3128be91e6ed1483d87cbc4ef9fac89fe494e` |
-| `AppIcon-1024-routed-voice-cursor.png` | `c6c6bd3647ca2cc2ae860c27832d2f8150c5832320ed7b4b7b95eae902fe2642` |
-| `RillMenuBar.svg` | `7b0c39721acffe472f39125ed3db33a7d7b64a7d7c53571ddfec8b4189361388` |
+| `Rill.svg` | `05f907de2bdf780c7fd9caf1f0c022e7f1d74bc242b1929e70ae780575ae437f` |
+| `AppIcon-1024-routed-voice-cursor.png` | `4ad22514f382e1a0ffed41e6e20f529f6b940d216cb2144873e5282bfca84aa3` |
+| `RillMenuBar.svg` | `2b6bfcf96c7d1cce9bd77db00b86c9a10ce2f094a9a2856ead51de820db10601` |
 | `RillMenuBarTemplate.pdf` | `868bc83786453d77c52659e1d545f3c6780da0548dc4d1f350824dfe22304480` |
 | `RillMenuBarRecordsTemplate.pdf` | `b048f2ae23909b39d5d9d01232dd6f98ae62aac9f8174ac20b6c79aa8384c749` |
 | `RillInputMethodTemplate.tiff` | `d92e8d16f7b662390481e0b613acb2d8e6925183f118f1c0c6ba6e9e8015b7fb` |
