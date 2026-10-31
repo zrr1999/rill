@@ -1,0 +1,152 @@
+name: "CI - Static Checks"
+
+on:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+    branches:
+      - main
+    types:
+      - checks_requested
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-static-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.5"
+
+      - name: Build documentation with locked dependencies
+        run: uv run --no-build --locked --script scripts/docs.py build
+
+      - name: Install Node.js for Cloudflare validation
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Validate Cloudflare static assets without deploying
+        run: npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
+
+      - name: Install pinned prek
+        uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
+        with:
+          install-only: true
+          prek-version: "v0.5.7"
+
+      - name: Run repository quality gates
+        run: |
+          prek --version
+          prek validate-config prek.toml
+          prek -c prek.toml run --all-files
+
+      - name: Install pinned Gitleaks
+        run: |
+          tool_dir="$RUNNER_TEMP/gitleaks-bin"
+          bash scripts/preflight.sh install-gitleaks --destination "$tool_dir"
+          echo "$tool_dir" >> "$GITHUB_PATH"
+
+      - name: Scan secrets
+        run: bash scripts/check_secrets.sh
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.language == 'swift' && 90 || 45 }}
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            os: ubuntu-latest
+            build: none
+          - language: python
+            os: ubuntu-latest
+            build: none
+          - language: c-cpp
+            os: ubuntu-latest
+            build: none
+          - language: swift
+            os: macos-26
+            build: manual
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        if: matrix.language == 'swift'
+        with:
+          version: "0.13.5"
+      - name: Resolve locked packages before tracing
+        if: matrix.language == 'swift'
+        run: |
+          swift package --scratch-path .artifacts/build/codeql --force-resolved-versions resolve
+          git diff --exit-code -- Package.resolved
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build }}
+          config: |
+            paths-ignore:
+              - tools/tests/semgrep_privacy.py
+              - Sources/CRime/include/rime_api.h
+              - Sources/CRime/include/rime_api_deprecated.h
+      - name: Build application sources with tracing
+        if: matrix.language == 'swift'
+        # CodeQL traces source compilation; this arena is never used for an App bundle.
+        # SwiftBuild's Metal resource compilation fails under the macOS tracer.
+        run: scripts/preflight.sh swift build --build-system native --scratch-path .artifacts/build/codeql --arch arm64
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:${{ matrix.language }}
+  dependencies:
+    name: Dependency Vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+      - name: Audit locked Swift revisions
+        run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
+      - name: Install verified OSV-Scanner
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 --output "$RUNNER_TEMP/osv-scanner"
+          printf '%s  %s\n' '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b' "$RUNNER_TEMP/osv-scanner" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+      - name: Audit all Python project and script locks
+        run: |
+          arguments=(--lockfile tools/uv.lock)
+          while IFS= read -r -d '' path; do
+            arguments+=(--lockfile "uv.lock:$path")
+          done < <(git ls-files -z 'scripts/*.py.lock' 'scripts/**/*.py.lock')
+          "$RUNNER_TEMP/osv-scanner" scan source "${arguments[@]}" --format json --output-file python-osv.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: dependency-audit
+          path: python-osv.json
+          if-no-files-found: error

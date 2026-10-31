@@ -79,7 +79,7 @@ gh workflow run cd-release.yml --ref main -f tag=v1.2.3
 
 ```bash
 SIGN_IDENTITY="Developer ID Application" NOTARY_PROFILE="Rill" \
-  just release github v1.2.3 /absolute/path/release-notes.md
+  bash scripts/release.sh github v1.2.3 /absolute/path/release-notes.md
 ```
 
 此命令会实际提交 Apple 公证并写入 GitHub，只有维护者授权本次候选后才执行。它先核对干净 HEAD、本地标签与 GitHub 标签的 commit，拒绝已有 Release，随后调用 `scripts/release.sh --notarize` 完成现有全量预检、构建、签名与公证。上传前再次核对 HEAD、远端标签与 SHA-256；[GitHub CLI](https://cli.github.com/manual/gh_release_create) 的 `--verify-tag --draft` 确保不自动造标签、不直接公开发布。目标仓库明确为 `zrr1999/rill`，fork 维护者需要先修改脚本中的目标。

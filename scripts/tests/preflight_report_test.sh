@@ -156,9 +156,9 @@ SH
 all_stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests release working-diff)
 for lane in all tests release; do
   case "$lane" in
-    all) stages=("${all_stages[@]}") ;;
-    tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
-    release) stages=(toolchain repository release working-diff) ;;
+  all) stages=("${all_stages[@]}") ;;
+  tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
+  release) stages=(toolchain repository release working-diff) ;;
   esac
   for failed_stage in none "${stages[@]}"; do
     fixture="$TEST_ROOT/$lane-$failed_stage"
@@ -257,14 +257,14 @@ source_case() {
   git -C "$repository" add .
   git -C "$repository" -c commit.gpgsign=false commit --quiet -m fixture
   case "$initial" in
-    dirty)
-      printf 'dirty\n' >"$repository/tracked file.txt"
-      dirty=true
-      ;;
-    untracked)
-      printf 'untracked\n' >"$repository/untracked file.txt"
-      dirty=true
-      ;;
+  dirty)
+    printf 'dirty\n' >"$repository/tracked file.txt"
+    dirty=true
+    ;;
+  untracked)
+    printf 'untracked\n' >"$repository/untracked file.txt"
+    dirty=true
+    ;;
   esac
   env RILL_PREFLIGHT_REPORT_DIR="$fixture/reports" \
     FIXTURE_PROJECT_DIR="$repository" FIXTURE_TRACE="$fixture/trace" \
@@ -337,9 +337,9 @@ for lane in all tests release; do
     clean_preflight_builds
   ' _ "$PROJECT_DIR" "$lane" >"$trace"
   case "$lane" in
-    all) printf 'clean\nclean --configuration release\n' ;;
-    tests) printf 'clean\n' ;;
-    release) printf 'clean --configuration release\n' ;;
+  all) printf 'clean\nclean --configuration release\n' ;;
+  tests) printf 'clean\n' ;;
+  release) printf 'clean --configuration release\n' ;;
   esac >"$trace.expected"
   cmp "$trace.expected" "$trace"
 done
@@ -356,8 +356,8 @@ echo 'PASS: lane arguments fail closed and clean builds preserve arena ownership
 # Source integrity must hold in each independently successful CI lane too.
 for lane in tests release; do
   case "$lane" in
-    tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
-    release) stages=(toolchain repository release working-diff) ;;
+  tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
+  release) stages=(toolchain repository release working-diff) ;;
   esac
   export FIXTURE_LANE="$lane"
   source_case "$lane-stable" none none clean after

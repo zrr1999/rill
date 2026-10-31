@@ -1,0 +1,186 @@
+name: CE - Repository Quality
+on:
+  schedule:
+    - cron: 30 1 * * 1
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dependencies:
+    name: Dependency Vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+      - name: Audit locked Swift revisions
+        run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
+      - name: Install verified OSV-Scanner
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 --output "$RUNNER_TEMP/osv-scanner"
+          printf '%s  %s\n' '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b' "$RUNNER_TEMP/osv-scanner" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+      - name: Audit all Python project and script locks
+        run: |
+          arguments=(--lockfile tools/uv.lock)
+          while IFS= read -r -d '' path; do
+            arguments+=(--lockfile "uv.lock:$path")
+          done < <(git ls-files -z 'scripts/*.py.lock' 'scripts/**/*.py.lock')
+          "$RUNNER_TEMP/osv-scanner" scan source "${arguments[@]}" --format json --output-file python-osv.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: dependency-audit
+          path: python-osv.json
+          if-no-files-found: error
+
+  workflow-audit:
+    name: Online Workflow Audit
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+      - name: Audit action provenance and references
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uvx --no-build --from jactionlint==2.3.0 --with shellcheck-py==0.11.0.1 --with ruff==0.17.1 bash
+          scripts/check_workflows.sh --online=strict --online-report=workflow-audit.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: workflow-audit
+          path: workflow-audit.json
+          if-no-files-found: error
+  reports:
+    name: Structure and External Links
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+          python-version: "3.13"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.59.0"
+      - shell: bash
+        run: |
+          mkdir -p .artifacts/quality
+          npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src
+          uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json
+        if: ${{ !cancelled() }}
+      - shell: bash
+        run: |
+          git ls-files -z '*.md' ':(exclude).agents/notes/**' | xargs -0 uvx --from lychee-bin==0.24.2 lychee --scheme https --scheme http --exclude '^https://github.com/zrr1999/rill/settings/' --timeout 20 --max-retries 1 --no-progress --format json --output .artifacts/quality/links.json
+        if: ${{ !cancelled() }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: quality-reports
+          path: |
+            .artifacts/quality/
+          include-hidden-files: true
+          if-no-files-found: error
+  coverage:
+    name: Coverage
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.59.0"
+      - name: Collect Python and Swift domain coverage
+        run: just coverage
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: domain-coverage
+          path: .artifacts/quality/
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Upload measured coverage
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: .artifacts/quality/swift.lcov,.artifacts/quality/python-coverage.xml
+          disable_search: true
+          use_oidc: true
+          fail_ci_if_error: true
+
+  preview-simulation:
+    name: Record preview CPU simulation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: SwiftyLab/setup-swift@d60245579ea3836a3f2fa65ebbe1e8891d577c76 # v1.14.2
+        with:
+          swift-version: "6.2.1"
+      - name: Build and validate preview workloads
+        run: bash scripts/build_benchmarks.sh --codspeed --preview-only
+      - name: Measure CPU simulation with CodSpeed
+        uses: CodSpeedHQ/action@78102a468f96d8e0ccb92d0ec49425753fc42062 # v5.6.0
+        with:
+          mode: simulation
+          runner-version: "5.6.0"
+          run: .artifacts/benchmarks/record-text
+  mutation:
+    name: Mutation Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.5"
+          python-version: "3.13"
+      - shell: bash
+        run: |
+          mkdir -p .artifacts/quality
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee .artifacts/quality/mutation.log
+          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality mutmut export-cicd-stats
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: mutation-report
+          path: |
+            .artifacts/quality/mutation.log
+            tools/mutants/mutmut-cicd-stats.json
+          include-hidden-files: true
+          if-no-files-found: error

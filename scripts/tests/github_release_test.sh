@@ -4,10 +4,10 @@ PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd -P)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 mkdir -p "$TEST_ROOT/scripts" "$TEST_ROOT/bin"
-printf 'Candidate notes\n' > "$TEST_ROOT/notes.md"
+printf 'Candidate notes\n' >"$TEST_ROOT/notes.md"
 export EVENTS="$TEST_ROOT/events"
 export PATH="$TEST_ROOT/bin:$PATH"
-cat > "$TEST_ROOT/bin/git" <<'MOCK'
+cat >"$TEST_ROOT/bin/git" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
@@ -18,7 +18,7 @@ case "$*" in
   *) exit 90 ;;
 esac
 MOCK
-cat > "$TEST_ROOT/bin/gh" <<'MOCK'
+cat >"$TEST_ROOT/bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
@@ -33,7 +33,7 @@ case "$*" in
   *) exit 91 ;;
 esac
 MOCK
-cat > "$TEST_ROOT/scripts/notarize.sh" <<'MOCK'
+cat >"$TEST_ROOT/scripts/notarize.sh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$*" == --notarize ]] || exit 92
@@ -45,23 +45,29 @@ if [[ "${BAD_HASH:-}" == yes ]]; then printf 'tampered\n' >> "$RELEASE_OUTPUT_DI
 MOCK
 chmod +x "$TEST_ROOT/bin/"* "$TEST_ROOT/scripts/"*.sh
 export RILL_NOTARIZE_SCRIPT="$TEST_ROOT/scripts/notarize.sh"
-run() { bash "$PROJECT_DIR/scripts/release.sh" github "${TAG:-v1.2.3}" "$TEST_ROOT/notes.md" > "$TEST_ROOT/output" 2>&1; }
+run() { bash "$PROJECT_DIR/scripts/release.sh" github "${TAG:-v1.2.3}" "$TEST_ROOT/notes.md" >"$TEST_ROOT/output" 2>&1; }
 for scenario in invalid-tag local-mismatch dirty remote-mismatch api-failure existing build-failure bad-hash drift; do
   rm -f "$EVENTS"
   unset TAG LOCAL_COMMIT DIRTY REMOTE_OBJECT API_FAILURE EXISTING BUILD_FAILURE BAD_HASH DRIFT
   case "$scenario" in
-    invalid-tag) export TAG='v1.2.3;exit' ;;
-    local-mismatch) export LOCAL_COMMIT=other ;;
-    dirty) export DIRTY=' M README.md' ;;
-    remote-mismatch) export REMOTE_OBJECT=other ;;
-    api-failure) export API_FAILURE=yes ;;
-    existing) export EXISTING=123 ;;
-    build-failure) export BUILD_FAILURE=yes ;;
-    bad-hash) export BAD_HASH=yes ;;
-    drift) export DRIFT=yes ;;
+  invalid-tag) export TAG='v1.2.3;exit' ;;
+  local-mismatch) export LOCAL_COMMIT=other ;;
+  dirty) export DIRTY=' M README.md' ;;
+  remote-mismatch) export REMOTE_OBJECT=other ;;
+  api-failure) export API_FAILURE=yes ;;
+  existing) export EXISTING=123 ;;
+  build-failure) export BUILD_FAILURE=yes ;;
+  bad-hash) export BAD_HASH=yes ;;
+  drift) export DRIFT=yes ;;
   esac
-  if run; then echo "Unexpected success: $scenario"; exit 1; fi
-  if [[ -f "$EVENTS" ]] && grep -q '^create$' "$EVENTS"; then echo "Unexpected upload: $scenario"; exit 1; fi
+  if run; then
+    echo "Unexpected success: $scenario"
+    exit 1
+  fi
+  if [[ -f "$EVENTS" ]] && grep -q '^create$' "$EVENTS"; then
+    echo "Unexpected upload: $scenario"
+    exit 1
+  fi
   echo "PASS: $scenario prevents upload"
 done
 unset DRIFT
@@ -77,7 +83,10 @@ if grep -Fx -- --clobber "$EVENTS"; then
 fi
 echo 'PASS: notarized build uploads both assets as a draft'
 export UPLOAD_FAILURE=yes
-if run; then echo 'Unexpected upload success'; exit 1; fi
+if run; then
+  echo 'Unexpected upload success'
+  exit 1
+fi
 candidate="$(sed -n 's/^Candidate directory: //p' "$TEST_ROOT/output")"
 test -s "$candidate/Rill.dmg"
 test -s "$candidate/release-notes.md"

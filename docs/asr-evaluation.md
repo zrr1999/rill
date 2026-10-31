@@ -50,15 +50,15 @@
 质量评测与性能基准共用同一份 corpus 和两份原始回放 JSONL，分别输出报告：
 
 ```bash
-just eval-quality asr --corpus /private/asr/corpus.json \
+uv run --locked --project tools rill-eval-quality asr --corpus /private/asr/corpus.json \
   --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
   --output /private/asr/quality-report.json --split validation
 
-just bench asr --corpus /private/asr/corpus.json \
+just benchmark asr --corpus /private/asr/corpus.json \
   --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
   --target release_to_final_ms --output /private/asr/performance-report.json --split validation
 
-just accept-asr --quality-report /private/asr/quality-report.json \
+uv run --locked --project tools rill-accept-asr --quality-report /private/asr/quality-report.json \
   --performance-report /private/asr/performance-report.json \
   --goal performance --output /private/asr/acceptance-report.json
 ```
@@ -79,7 +79,7 @@ ASR 的 CE 在本机显式运行，私有录音不上传 GitHub。三套 LLM 的
 
 ```sh
 scripts/preflight.sh swift release --result-file /private/path/release.json
-just replay asr --build-receipt /private/path/release.json \
+uv run --locked --project tools rill-replay-asr --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state cold_process --repetitions 3 --output /private/path/cold.jsonl
 ```
@@ -96,7 +96,6 @@ corpus 顶层须指定 `evidence_kind`；每条音频增加 `consent: "authorize
 
 250 ms 保护等待在公开接口没有可靠退出保证前保留。
 
-
 回放也接受 `preview_profile: "realtime" | "agent" | "subtitle"`，以真实时间发送 100 ms PCM 帧，保留不足一帧的尾部；完成预览后仍用同一完整 WAV 离线识别。 `worker_first_hypothesis_ms` 和 `worker_first_confirmed_ms` 从 worker started 后开始发送 PCM 计时，它们可能包含控制标记，是原始 worker 候选时间，不是用户可见字幕或 Fn 时间；`stream_prepare_ms`、`preview_retire_ms` 单独报告。流式热词仍标记 unsupported。profile 失败保留为失败结果，不改走无预览冒充成功。
 
 `--cache-state idle_recovery --idle-seconds 30` 测量 worker 模型驻留后的闲置恢复；配置 `idle_release_model: true` 通过现有公开 release 请求比较释放策略。这不是 App 自动闲置策略的验收。warm/idle 每个 worker 先做一次明示的未计分推理，只使用清单内获授权音频。cold_model 测量释放后包含加载的识别请求，first_inference 则先单独记录 `model_prepare_ms`，再测首次推理。cold_process 包含 worker 首次请求等待，不将进程创建 API 返回时间当作模型已就绪。
@@ -105,10 +104,10 @@ corpus 顶层须指定 `evidence_kind`；每条音频增加 `consent: "authorize
 
 ## Release 宿主处理路径
 
-`just replay product` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、空白规范化、加密 SQLite 提交和隔离输出端运行清单。它不访问麦克风、不粘贴、不下载模型，也不写入用户数据库。配置中的 `replacements` 是 `pattern` / `replacement` 对；没有 LLM 步骤。
+`uv run --locked --project tools rill-replay-product` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、空白规范化、加密 SQLite 提交和隔离输出端运行清单。它不访问麦克风、不粘贴、不下载模型，也不写入用户数据库。配置中的 `replacements` 是 `pattern` / `replacement` 对；没有 LLM 步骤。
 
 ```sh
-just replay product --build-receipt /private/path/release.json \
+uv run --locked --project tools rill-replay-product --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state warm --repetitions 3 --output /private/path/host-warm.jsonl
 ```

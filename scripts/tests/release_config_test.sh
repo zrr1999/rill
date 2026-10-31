@@ -309,8 +309,8 @@ run_release_artifact_hygiene_policy_case() {
     rm -rf "${fixture:?}/${artifact:?}"
   done
 
-  if git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.app ||
-    git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.dmg; then
+  if git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.app \
+    || git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.dmg; then
     echo "FAIL: repository-root release-looking artifacts are hidden by .gitignore" >&2
     exit 1
   fi
@@ -365,8 +365,8 @@ run_release_output_staging_policy_case() {
       -f "$FINAL_DMG_PATH" &&
       -f "$FINAL_DMG_SHA256_PATH" &&
       ! -e "$RELEASE_TEMP_DIR/Rill.app" &&
-      ! -e "$RELEASE_TEMP_DIR/Rill.dmg" ]] ||
-      {
+      ! -e "$RELEASE_TEMP_DIR/Rill.dmg" ]] \
+      || {
         echo "FAIL: verified release artifacts were not atomically published" >&2
         exit 1
       }
@@ -427,8 +427,8 @@ run_install_quit_policy_case() {
   if [[ "$status" -eq 0 ||
     "$output" != *"未强制终止进程"* ||
     "$(wc -l <"$quit_log" | xargs)" -ne 1 ||
-    -s "$forced_termination_log" ]] ||
-    ! awk -v waited="$waited_seconds" 'BEGIN { exit !(waited >= 20) }'; then
+    -s "$forced_termination_log" ]] \
+    || ! awk -v waited="$waited_seconds" 'BEGIN { exit !(waited >= 20) }'; then
     echo "FAIL: installation requests a graceful quit and waits at least 20 seconds" >&2
     printf 'status=%s waited=%s\n%s\n' "$status" "$waited_seconds" "$output" >&2
     [[ ! -s "$forced_termination_log" ]] || cat "$forced_termination_log" >&2
@@ -542,8 +542,8 @@ run_install_staging_verification_failure_case() {
   if [[ "$status" -eq 0 ||
     "$output" != *"安装 staging 中的 App 验证失败；旧版保持不变"* ||
     "$(<"$target_app/version")" != "old" ||
-    -s "$swap_log" ]] ||
-    find "$applications_dir" -maxdepth 1 -type d \
+    -s "$swap_log" ]] \
+    || find "$applications_dir" -maxdepth 1 -type d \
       -name '.rill-install.*' -print -quit | grep -q .; then
     echo "FAIL: staging verification failure preserves the installed app" >&2
     printf '%s\n' "$output" >&2
@@ -588,9 +588,9 @@ run_install_post_swap_rollback_case() {
   if [[ "$status" -eq 0 ||
     "$output" != *"安装后验证失败；已原子恢复旧版 App"* ||
     "$(<"$target_app/version")" != "old" ||
-    "$(wc -l <"$swap_log" | xargs)" -ne 2 ]] ||
-    [[ "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" ]] ||
-    find "$applications_dir" -maxdepth 1 -type d \
+    "$(wc -l <"$swap_log" | xargs)" -ne 2 ]] \
+    || [[ "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" ]] \
+    || find "$applications_dir" -maxdepth 1 -type d \
       -name '.rill-install.*' -print -quit | grep -q .; then
     echo "FAIL: post-swap verification failure atomically restores the old app" >&2
     printf '%s\n' "$output" >&2
@@ -628,8 +628,8 @@ run_install_success_case() {
   )
 
   if [[ "$(<"$target_app/version")" != "new" ||
-  "$(wc -l <"$swap_log" | xargs)" -ne 1 ]] ||
-    find "$applications_dir" -maxdepth 1 -type d \
+  "$(wc -l <"$swap_log" | xargs)" -ne 1 ]] \
+    || find "$applications_dir" -maxdepth 1 -type d \
       -name '.rill-install.*' -print -quit | grep -q .; then
     echo "FAIL: a verified app replaces the old app and removes staging" >&2
     cat "$swap_log" >&2
@@ -700,8 +700,8 @@ run_install_interruption_recovery_case() {
     )"
     if [[ "$status" -eq 0 ||
       "$(<"$verification_count")" -ne 2 ||
-      "$(wc -l <"$swap_log" | xargs)" -lt 1 ]] ||
-      [[ "$target_version" != "old" && "$recovery_version" != "old" ]]; then
+      "$(wc -l <"$swap_log" | xargs)" -lt 1 ]] \
+      || [[ "$target_version" != "old" && "$recovery_version" != "old" ]]; then
       echo "FAIL: $signal after swap restores or preserves the old app" >&2
       printf 'status=%s target=%s recovery=%s\n%s\n' \
         "$status" "$target_version" "$recovery_version" "$output" >&2
@@ -912,10 +912,10 @@ run_existing_install_concurrent_identity_case() {
     "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" ||
     ! -f "$target_app/version" ||
     "$(<"$target_app/version")" != "concurrent" ||
-    -e "$target_app/Rill.app" ]] ||
-    find "$applications_dir" -maxdepth 1 -type d \
-      -name '.rill-install.*' -print -quit | grep -q . ||
-    find "$applications_dir" -type f -name version \
+    -e "$target_app/Rill.app" ]] \
+    || find "$applications_dir" -maxdepth 1 -type d \
+      -name '.rill-install.*' -print -quit | grep -q . \
+    || find "$applications_dir" -type f -name version \
       -exec grep -l '^new$' {} \; -quit | grep -q .; then
     echo "FAIL: an existing-target identity race restores the concurrent target" >&2
     printf '%s\n' "$output" >&2
@@ -1595,7 +1595,10 @@ run_notarization_result_cases() {
     expected_status=1
     expected_fragment="公证未获接受"
     case "$scenario" in
-    accepted) expected_status=0; expected_fragment="公证已接受" ;;
+    accepted)
+      expected_status=0
+      expected_fragment="公证已接受"
+      ;;
     explicit-keychain)
       keychain="$fixture/release signing.keychain-db"
       touch "$keychain"
@@ -1629,8 +1632,8 @@ run_notarization_result_cases() {
     ) >"$fixture/output" 2>&1
     status=$?
     set -e
-    if [[ "$status" -ne "$expected_status" ]] ||
-      ! grep -Fq "$expected_fragment" "$fixture/output"; then
+    if [[ "$status" -ne "$expected_status" ]] \
+      || ! grep -Fq "$expected_fragment" "$fixture/output"; then
       echo "FAIL: notarization $scenario" >&2
       cat "$fixture/output" >&2
       exit 1
