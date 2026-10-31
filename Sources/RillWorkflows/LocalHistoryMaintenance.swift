@@ -117,7 +117,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
   public init(
     recordHistory: any RecordHistoryMaintaining,
     runHistory: any HistoryMaintaining,
-    runReceipts: any WorkflowRunReceiptMaintaining = InMemoryWorkflowRunReceiptRepository(),
+    runReceipts: any WorkflowRunReceiptMaintaining,
     diagnosticHistory: any DiagnosticHistoryMaintaining,
     settingsStore: any SettingsStore,
     physicalPurger: any StorageResiduePurging,
