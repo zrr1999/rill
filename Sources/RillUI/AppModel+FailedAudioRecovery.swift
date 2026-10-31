@@ -49,6 +49,7 @@ public extension AppModel {
         )
         await MainActor.run {
           self?.voice.failedAudioRecoveryEnabled = isEnabled
+          self?.voice.failedAudioRecoverySettingWarningResource = nil
         }
         do {
           try await refreshAction(isEnabled)

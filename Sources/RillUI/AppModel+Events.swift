@@ -5,90 +5,6 @@ import RillWorkflows
 import RillRecords
 import RillKnowledge
 
-private enum EventFeedPrivacyBodyKind {
-  case recognition
-  case resolution
-  case transformation
-  case processingStep(WorkflowTextStep)
-  case action(String)
-  case runCompleted
-  case failure
-
-  var fullPrefix: LocalizedStringResource {
-    switch self {
-    case .processingStep(let step):
-      return HistoryTextStepPresentation.logHeaderResource(step)
-    case .recognition:
-      return L10n.resource("AppModel.Events.Recognition.prefix")
-    case .resolution:
-      return L10n.resource("AppModel.Events.Resolution.completed.prefix")
-    case .transformation:
-      return L10n.resource("AppModel.Events.Transformation.applied.prefix")
-    case .action(let actionID):
-      return L10n.resource("event.actionPrefix", defaultValue: "Action \(actionID): ")
-    case .runCompleted:
-      return L10n.resource("AppModel.Events.Run.completed.prefix")
-    case .failure:
-      return L10n.resource("AppModel.Events.Failure.prefix")
-    }
-  }
-
-  var summaryPrefix: LocalizedStringResource {
-    switch self {
-    case .processingStep:
-      return fullPrefix
-    case .recognition:
-      return L10n.resource("AppModel.Events.Recognition.summary.prefix")
-    case .resolution:
-      return L10n.resource("AppModel.Events.Resolution.summary.prefix")
-    case .transformation:
-      return L10n.resource("AppModel.Events.Transformation.summary.prefix")
-    case .action(let actionID):
-      return L10n.resource("event.actionSummary", defaultValue: "Action \(actionID) result summary: ")
-    case .runCompleted:
-      return L10n.resource("AppModel.Events.Run.result.summary.prefix")
-    case .failure:
-      return L10n.resource("AppModel.Events.Failure.summary.prefix")
-    }
-  }
-
-  var hiddenSummary: LocalizedStringResource {
-    switch self {
-    case .processingStep:
-      return fullPrefix
-    case .recognition:
-      return L10n.resource("AppModel.Events.Recognition.completed")
-    case .resolution:
-      return L10n.resource("AppModel.Events.Resolution.completed")
-    case .transformation:
-      return L10n.resource("AppModel.Events.Text.transformation.completed")
-    case .action(let actionID):
-      return L10n.resource("event.actionFinished", defaultValue: "Action \(actionID) finished.")
-    case .runCompleted:
-      return L10n.resource("AppModel.Events.Run.completed")
-    case .failure:
-      return L10n.resource("AppModel.Events.Run.failed")
-    }
-  }
-}
-
-private func actionResultPresentation(_ result: ActionResult) -> LocalizedStringResource {
-  switch result {
-  case .injected:
-    L10n.resource("AppModel.Events.Text.was.inserted")
-  case .copiedToClipboard:
-    L10n.resource("AppModel.Events.Text.was.copied.to.the.clipboard")
-  case .storedRecord:
-    L10n.resource("AppModel.Events.Text.was.stored.as.a.record")
-  case .externalOutput:
-    L10n.resource("AppModel.Events.External.output.completed")
-  case .skipped:
-    L10n.resource("AppModel.Events.An.output.action.was.skipped.Review.the.workflow.then.retry.if.needed")
-  case .failed:
-    L10n.resource("AppModel.Events.An.output.action.failed.Open.Diagnostics.for.a.safe.summary.then.retry")
-  }
-}
-
 extension AppModel {
   public func refreshDiagnostics() {
     loadDiagnostics()
@@ -114,13 +30,6 @@ extension AppModel {
     self.history.diagnosticEvents = Array(
       Self.sortedDiagnosticEvents(self.history.diagnosticEvents + events).prefix(200)
     )
-    for event in events {
-      if event.name == .sessionTransformFallback {
-        append(L10n.resource("event.notice.Text.cleanup.was.skipped.the.complete.text.before.cleanup.was.retained"))
-        continue
-      }
-      append(L10n.resource("event.diagnostic", defaultValue: "[\(L10n.subsystemResource(event.subsystem))] \(event.message)"))
-    }
   }
 
   static func sortedDiagnosticEvents(_ events: [DiagnosticEvent]) -> [DiagnosticEvent] {
@@ -151,7 +60,6 @@ extension AppModel {
       voice.lastLiveSubtitleMeterRefreshAt = nil
     }
     voice.refreshLiveSubtitlePresentation()
-    append(L10n.resource("event.notice.Recording.stopped"))
   }
 
   func startListening() {
@@ -252,7 +160,6 @@ extension AppModel {
       voice.begin(run)
       self.voice.workflowAudioRunState = .idle
       lastFailureResource = nil
-      append(L10n.resource("event.runStarted", defaultValue: "Run started: \(L10n.workflowNameResource(run.workflow))"))
     case .runReceiptRepositoryChanged(let change):
       history.noteNewRunAvailableForHistoryBrowsing()
       // The event is only an invalidation edge. A clear may have removed
@@ -263,15 +170,8 @@ extension AppModel {
       loadRunReceipts(requiredRunIDs: [change.runID])
     case .runStageChanged(let identity, let stage):
       voice.updateStage(stage, from: identity)
-    case .contextCaptured(_, let context):
-      let appName = context.focus.applicationName ?? "Unknown"
-      append(L10n.resource("event.contextCaptured", defaultValue: "Context captured from \(appName)"))
     case .recognitionCompleted(let identity, let recognition):
       voice.updateText(recognition.bestText, from: identity)
-      guard pendingRuns.isEmpty else { break }
-      appendPrivacyProtectedBody(
-        body: recognition.bestText, kind: .recognition
-      )
     case .liveSubtitleUpdated(let snapshot):
       voice.applyLiveSubtitleUpdate(snapshot)
     case .recordingReleaseChanged(let runID, let isReleased):
@@ -296,38 +196,15 @@ extension AppModel {
       self.voice.failedAudioRecoveryError = failedAudioRecoveryUnavailableMessage(reason)
     case .candidateResolutionRequested(let candidateCase):
       self.voice.pendingResolution = candidateCase
-      append(L10n.resource("event.notice.Candidate.resolution.requested"))
     case .candidateResolutionFinished(let identity, _, let resolvedText):
       if self.voice.pendingResolution?.runID == identity.runID { self.voice.pendingResolution = nil }
       voice.updateText(resolvedText, from: identity)
-      guard pendingRuns.isEmpty else { break }
-      appendPrivacyProtectedBody(
-        body: resolvedText, kind: .resolution
-      )
-    case .runTextStepRecorded(let runID, let step):
-      guard pendingRuns[runID]?.trigger.isVoiceCapture == true else { return }
-      if let text = step.outputText {
-        appendPrivacyProtectedBody(
-          body: text, kind: .processingStep(step)
-        )
-      } else {
-        let summary = EventFeedPrivacyBodyKind.processingStep(step).hiddenSummary
-        append(summary)
-      }
     case .transformationApplied(let identity, _, let text):
       voice.updateText(text, from: identity)
-      guard pendingRuns.isEmpty else { break }
-      appendPrivacyProtectedBody(
-        body: text, kind: .transformation
-      )
-    case .actionExecuted(_, _, let result):
-      let presentation = actionResultPresentation(result)
-      append(presentation)
     case .recordBufferOutputRequested:
       recordWorkspace.buffers.outputAction(nil)
     case .recordBufferInputFailed:
       let message = L10n.resource("AppModel.Events.A.copied.item.was.saved.in.All.Records.but.was.not.added")
-      append(message)
       recordWorkspace.buffers.showMessageAction?(message)
     case .recordPanelRequested:
       showRecordPanel()
@@ -337,7 +214,6 @@ extension AppModel {
         loadHistory()
       case .sessionOnly(let record):
         cacheHistoryRecord(record)
-        append(L10n.resource("event.notice.History.persistence.is.unavailable.This.run.is.visible.only.for.the.current"))
       }
     case .runCompleted(let summary):
       let ownsPresentation = self.voice.activeRunID == summary.runID
@@ -352,16 +228,6 @@ extension AppModel {
         }
       }
       if ownsPresentation { lastFailureResource = nil }
-      if summary.trigger.isVoiceCapture {
-        appendPrivacyProtectedBody(
-          body: summary.finalText, kind: .runCompleted
-        )
-      } else {
-        // Record payloads already have their own store.
-        // Their closed invocation kind is authoritative even when the
-        // selected workflow happens to declare a speech recognizer.
-        append(L10n.resource("event.notice.Non.voice.run.completed"))
-      }
       voice.scheduleLiveSubtitleHide()
     case .runDiscarded(let runID):
       let ownsPresentation = self.voice.activeRunID == runID
@@ -396,7 +262,6 @@ extension AppModel {
       if self.voice.pendingResolution?.runID == summary.runID {
         self.voice.pendingResolution = nil
       }
-      append(L10n.resource(summary.wasPartiallyCompleted ? "event.partiallyCancelled" : "event.cancelled"))
       voice.scheduleLiveSubtitleHide()
     case .runFailed(let failedRunID, _, let message):
       let failurePresentation = RunFailurePresentation.localizedText(for: message)
@@ -417,7 +282,6 @@ extension AppModel {
         }
       }
       if let failedRunID { voice.finish(failedRunID) }
-      append(failurePresentation)
       voice.scheduleLiveSubtitleHide()
     case .diagnostic(let event):
       applyDiagnosticEvents([event])
@@ -436,27 +300,6 @@ extension AppModel {
     voice.workflowAudioCaptureRunID = nil
     self.voice.workflowAudioRunState = .idle
     return true
-  }
-
-  func append(_ resource: LocalizedStringResource) {
-    append(EventFeedEntry(resource))
-  }
-
-  private func appendPrivacyProtectedBody(
-    body: String, kind: EventFeedPrivacyBodyKind
-  ) {
-    append(
-      EventFeedEntry(
-        privacyProtectedBody: body,
-        fullPrefix: kind.fullPrefix,
-        summaryPrefix: kind.summaryPrefix,
-        hiddenSummary: kind.hiddenSummary
-      )
-    )
-  }
-
-  private func append(_ entry: EventFeedEntry) {
-    history.append(entry)
   }
 
   private func cacheHistoryRecord(_ record: WorkflowResultRecord) {
@@ -528,7 +371,6 @@ extension AppModel {
           self.reconcileRunDerivedPresentation(with: [])
         }
         self.history.historyLoadState = .failed(.repositoryUnavailable)
-        self.append(L10n.resource("event.notice.History.repository.is.unavailable"))
       }
     }
     self.history.historyProjectionLoadTasks[taskID] = task
@@ -538,14 +380,20 @@ extension AppModel {
     loadHistory()
   }
 
+  func retryRunReceiptLoad() {
+    loadRunReceipts()
+  }
+
   func loadRunReceipts(requiredRunIDs additionalRunIDs: Set<UUID> = []) {
     guard !hasBegunApplicationShutdown else { return }
-    guard let runReceiptRepository else {
-      self.history.workflowRunReceiptsByRunID.removeAll()
-      return
-    }
     self.history.runReceiptLoadGeneration += 1
     let generation = self.history.runReceiptLoadGeneration
+    guard let runReceiptRepository else {
+      self.history.workflowRunReceiptsByRunID.removeAll()
+      self.history.runReceiptLoadState = .loaded
+      return
+    }
+    self.history.runReceiptLoadState = .loading
     let since = history.runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
     let requiredRunIDs = additionalRunIDs.union(
       self.history.historyRecords.compactMap(\.runID)
@@ -579,14 +427,14 @@ extension AppModel {
           receipts.map { ($0.runID, $0) },
           uniquingKeysWith: { existing, _ in existing }
         )
+        self.history.runReceiptLoadState = .loaded
+      } catch is CancellationError {
+        return
       } catch {
-        guard !Task.isCancelled,
-          !self.hasBegunApplicationShutdown,
+        guard !Task.isCancelled, !self.hasBegunApplicationShutdown,
           self.history.runReceiptLoadGeneration == generation
-        else {
-          return
-        }
-        self.append(L10n.resource("event.notice.Run.receipt.repository.is.unavailable"))
+        else { return }
+        self.history.runReceiptLoadState = .failed(.repositoryUnavailable)
       }
     }
     self.history.historyProjectionLoadTasks[taskID] = task
@@ -623,7 +471,6 @@ extension AppModel {
         RunFailurePresentation.localizedText(for: $0.failureMessage)
       }
     self.voice.pendingResolution = nil
-    self.history.eventFeed.removeAll()
     voice.reset()
     voice.applyCurrentCaptureLiveSubtitleSnapshot(nil)
     voice.workflowAudioCaptureRunID = nil

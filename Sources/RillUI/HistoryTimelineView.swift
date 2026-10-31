@@ -260,6 +260,23 @@ public struct HistoryTimelineView: View {
         equals: .scopeSummary
       )
 
+      if case .failed = model.history.runReceiptLoadState {
+        HStack(alignment: .firstTextBaseline, spacing: RillSpacing.dense) {
+          Label(
+            L10n.resource("history.receiptLoadFailed").string(for: model.settings.language),
+            systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+          )
+          .font(.callout)
+          .foregroundStyle(.orange)
+          Spacer()
+          Button(L10n.text(.historyRetryLoad, language: model.settings.language)) {
+            model.retryRunReceiptLoad()
+          }
+          .accessibilityIdentifier("history.receipts.retry")
+        }
+        .accessibilityIdentifier("history.receipts.error")
+      }
+
       if let error = model.voice.failedAudioRecoveryError {
         Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
           .font(.callout)

@@ -36,7 +36,6 @@ public final class VoiceRunModel {
   let prepareLocalSpeech: @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws -> String
   let releaseLocalSpeech: @Sendable () -> Void
   let stopLocalSpeech: @Sendable () async -> Void
-  let appendEvent: @MainActor (EventFeedEntry) -> Void
 
   init(
     settings: SettingsPersistenceModel, resources: VoiceResourceServices,
@@ -46,8 +45,7 @@ public final class VoiceRunModel {
       @escaping @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws
       -> String,
     releaseLocalSpeech: @escaping @Sendable () -> Void,
-    stopLocalSpeech: @escaping @Sendable () async -> Void,
-    appendEvent: @escaping @MainActor (EventFeedEntry) -> Void
+    stopLocalSpeech: @escaping @Sendable () async -> Void
   ) {
     self.settings = settings
     self.resources = resources
@@ -56,7 +54,6 @@ public final class VoiceRunModel {
     self.prepareLocalSpeech = prepareLocalSpeech
     self.releaseLocalSpeech = releaseLocalSpeech
     self.stopLocalSpeech = stopLocalSpeech
-    self.appendEvent = appendEvent
     downloadedTTSModelIdentifiers = resources.downloadedTTSModelIdentifiers.intersection(
       supportedTTSModelIDs)
     synchronizeTTSSelection()
@@ -84,6 +81,10 @@ public final class VoiceRunModel {
   public var pendingResolution: CandidateResolutionCase?
   public internal(set) var failedAudioRecoveryReceipts: [FailedAudioRecoveryReceipt] = []
   public internal(set) var failedAudioRecoveryEnabled = false
+  var failedAudioRecoverySettingWarningResource: LocalizedStringResource?
+  public var failedAudioRecoverySettingWarning: String? {
+    failedAudioRecoverySettingWarningResource?.string(for: settings.language)
+  }
   public internal(set) var isUpdatingFailedAudioRecovery = false
   public internal(set) var retryingFailedAudioRecoveryIDs: Set<UUID> = []
   public internal(set) var failedAudioRecoveryUnavailableReasonsByRunID: [UUID: FailedAudioRecoveryError] = [:]

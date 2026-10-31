@@ -48,6 +48,13 @@ extension SettingsView {
           || !model.voice.retryingFailedAudioRecoveryIDs.isEmpty
       )
 
+      if let warning = model.voice.failedAudioRecoverySettingWarning {
+        Label(warning, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+          .font(.caption)
+          .foregroundStyle(.orange)
+          .accessibilityIdentifier("settings.failed-audio.invalid-stored-value")
+      }
+
       Text(
         L10n.string(
           .settingsFailedAudioRecoveryDescription,
