@@ -175,7 +175,7 @@ public struct RecordQuickPanelView: View {
             placeholder: text(.search), onMove: model.moveSelection, onSubmit: pasteSelection,
             onDigit: { if let subject = model.subject(at: $0) { onPaste(subject) } }, onCancel: onClose
           )
-          .frame(height: 30).padding(.horizontal, 15)
+          .frame(minHeight: 30).padding(.horizontal, 15)
           resultList
         }.rillScaledWidth(RecordPanelAppearance.sidebarWidth, minimum: 180, maximum: 240)
           .rillGlass(in: RecordPanelAppearance.paneShape)
@@ -474,9 +474,10 @@ struct RecordSearchField: NSViewRepresentable {
     field.sendsSearchStringImmediately = true
     field.drawsBackground = false
     field.controlSize = .small
-    field.font = .systemFont(ofSize: 12)
+    field.font = .preferredFont(forTextStyle: .callout)
     field.onDigit = onDigit
     field.setAccessibilityIdentifier("records.quick-search")
+    field.setAccessibilityLabel(placeholder)
     return field
   }
   func updateNSView(_ field: SearchField, context: Context) {
@@ -484,6 +485,8 @@ struct RecordSearchField: NSViewRepresentable {
     field.isEnabled = context.environment.isEnabled
     if field.stringValue != text { field.stringValue = text }
     field.placeholderString = placeholder
+    field.font = .preferredFont(forTextStyle: .callout)
+    field.setAccessibilityLabel(placeholder)
     field.onDigit = onDigit
   }
   final class SearchField: NSSearchField {

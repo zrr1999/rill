@@ -78,10 +78,11 @@ public struct DiagnosticsView: View {
         }
         timelineRows(entries)
       case .empty:
-        Text(L10n.text(.diagnosticsEmpty, language: model.settings.language))
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .accessibilityIdentifier("diagnostics.timeline.empty")
+        ContentUnavailableView(
+          L10n.text(.diagnosticsEmpty, language: model.settings.language),
+          systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue
+        )
+        .accessibilityIdentifier("diagnostics.timeline.empty")
       case .events(let entries):
         timelineRows(entries)
       }
