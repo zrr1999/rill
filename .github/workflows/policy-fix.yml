@@ -1,15 +1,15 @@
-name: "Policy - PR Title"
+name: "Policy - Fix"
 
 on:
   # Read PR metadata and default-branch TOML without checking out PR code.
   workflow_run: # zizmor: ignore[dangerous-triggers]
-    workflows: ["Policy - PR"]
+    workflows: ["Policy - Check"]
     types: [completed]
 
 permissions: {}
 
 concurrency:
-  group: policy-pr-title-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  group: policy-fix-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
