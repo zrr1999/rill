@@ -49,7 +49,7 @@ just build release --worker-cache off
 
 `just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。
 
-`Coverage` 作业负责采集覆盖率并上传到 Codecov。`Sonar Analysis` 在静态 CI 和仓库 CE 中独立分析应用与辅助源码，不依赖覆盖率作业或读取其报告；Sonar 配置排除覆盖率评估，继续检查代码质量与安全。两个作业分别报告结果，Sonar 授权或分析失败不会改变覆盖率作业的结果。
+`Coverage` 作业负责采集覆盖率并上传到 Codecov。SonarQube Cloud 统一使用自动分析，通过 GitHub 集成读取源码并发布独立检查；源码与测试范围由根目录的 `.sonarcloud.properties` 配置。CI 和 CE 不再运行 SonarScanner，也不需要 `SONAR_TOKEN`。自动分析不接收覆盖率报告，覆盖率由 Codecov 和本地报告负责。
 
 [仓库持续评估](../.github/workflows/ce-repository-quality.yml) 独立维护每周和手动触发的质量检查，包括结构指标、外部链接、覆盖率、性能与变异测试。变异任务使用独立 Python 环境，验证编辑距离评分函数的测试有效性；具体工具命令以对应 job 为准。尚未建立预算的指标与变异结果用于审查，不设统一分数线。[模型持续评估](../.github/workflows/ce-quality.yml) 保留自己的触发条件，依赖明确配置的服务和固定合成用例；真实音频与设备验收仍按对应评测文档执行。
 

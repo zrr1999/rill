@@ -136,20 +136,6 @@ jobs:
           use_oidc: true
           fail_ci_if_error: true
 
-  sonar:
-    name: Sonar Analysis
-    runs-on: macos-26
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Analyze application and helper sources
-        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
   preview-simulation:
     name: Record preview CPU simulation
     runs-on: ubuntu-24.04
