@@ -31,9 +31,9 @@ hooks = [
 ]
 
 [[repos]]
-repo = "https://github.com/rhysd/actionlint"
-rev = "914e7df21a07ef503a81201c76d2b11c789d3fca"  # frozen: v1.7.12
-hooks = [{ id = "actionlint", stages = ["pre-commit"] }]
+repo = "https://github.com/jdx/jactionlint"
+rev = "baa8d685e2b27ff5821558c9eeabb2051c1da61b"  # frozen: v2.4.0
+hooks = [{ id = "jactionlint-shellcheck", stages = ["pre-commit"] }]
 
 [[repos]]
 repo = "https://github.com/shellcheck-py/shellcheck-py"
