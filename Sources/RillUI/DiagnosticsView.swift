@@ -89,23 +89,6 @@ public struct DiagnosticsView: View {
     .rillCard()
   }
 
-  static func timelineEvents(
-    from events: [DiagnosticEvent],
-    filter: DiagnosticsTimelineFilter = .activity
-  ) -> [DiagnosticEvent] {
-    timelineEntries(from: events, filter: filter).map(\.event)
-  }
-
-  static func timelineEntries(
-    from events: [DiagnosticEvent],
-    filter: DiagnosticsTimelineFilter = .activity
-  ) -> [DiagnosticTimelineEntry] {
-    DiagnosticTimelineEntry.build(
-      from: events.filter(filter.includes),
-      limit: 20
-    )
-  }
-
   static func timelineContent(
     loadState: DiagnosticsLoadState,
     events: [DiagnosticEvent],

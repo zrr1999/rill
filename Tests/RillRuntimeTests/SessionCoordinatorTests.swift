@@ -815,7 +815,6 @@ final class SessionCoordinatorTests: XCTestCase {
     XCTAssertFalse(
       events.contains { event in
         if case .runFailed = event { return true }
-        if case .runTextStepRecorded = event { return true }
         if case .runReceiptRepositoryChanged = event { return true }
         if case .runHistoryUpdated = event { return true }
         return false
@@ -828,11 +827,6 @@ final class SessionCoordinatorTests: XCTestCase {
     XCTAssertFalse(
       events.contains { event in
         if case .transformationApplied = event { return true }
-        return false
-      })
-    XCTAssertFalse(
-      events.contains { event in
-        if case .actionExecuted = event { return true }
         return false
       })
     XCTAssertFalse(
@@ -957,13 +951,8 @@ final class SessionCoordinatorTests: XCTestCase {
     await coordinator.deliverNextRecord(actionID: "probe.action")
     let events = await collector.value
 
-    XCTAssertTrue(
-      events.contains { event in
-        if case .actionExecuted(run: _, actionID: "probe.action", result: .skipped("captured")) = event {
-          return true
-        }
-        return false
-      })
+    let deliveredValues = await probe.snapshot()
+    XCTAssertEqual(deliveredValues, ["stack item"])
     XCTAssertTrue(
       events.contains { event in
         if case .runCompleted(let summary) = event {
@@ -1919,6 +1908,8 @@ final class SessionCoordinatorTests: XCTestCase {
 
   func testVoiceAssistantDoesNotEchoRecognizedTextWhenRewriteFails() async throws {
     let eventBus = EventBus()
+    let repository = InMemoryWorkflowRunReceiptRepository()
+    let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
     let probe = ActionProbe()
     let workflow = WorkflowDefinition(
@@ -1948,7 +1939,8 @@ final class SessionCoordinatorTests: XCTestCase {
       actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
       candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
       eventBus: eventBus,
-      diagnostics: diagnostics
+      diagnostics: diagnostics,
+      runReceiptRecorder: recorder
     )
     let capturedAudio = try CapturedAudio(
       durationSeconds: 15,
@@ -1966,14 +1958,16 @@ final class SessionCoordinatorTests: XCTestCase {
     guard case .failed(let summary) = result else {
       return XCTFail("Expected voice assistant rewrite failure to remain strict")
     }
-    var recordedSteps: [WorkflowTextStep] = []
+    var failedHistory: WorkflowResultRecord?
     for await event in stream {
-      if case .runTextStepRecorded(let runID, let step) = event {
-        XCTAssertEqual(runID, summary.runID)
-        recordedSteps.append(step)
-      }
+      if case .runHistoryUpdated(.sessionOnly(let record)) = event { failedHistory = record }
       if case .runFailed = event { break }
     }
+    let history = try XCTUnwrap(failedHistory)
+    XCTAssertEqual(history.runID, summary.runID)
+    XCTAssertEqual(history.outcome, .failed)
+    XCTAssertNil(history.finalText)
+    let recordedSteps = try XCTUnwrap(history.correctionSource?.processingSteps)
     XCTAssertEqual(recordedSteps.first?.outputText, "question")
     XCTAssertEqual(recordedSteps.last?.kind, .llmRewrite)
     XCTAssertEqual(recordedSteps.last?.result, .failed)
@@ -2123,13 +2117,6 @@ final class SessionCoordinatorTests: XCTestCase {
     }
     XCTAssertEqual(failure.stage, .delivering)
     XCTAssertEqual(failure.code, .processing)
-    XCTAssertTrue(
-      events.contains { event in
-        if case .actionExecuted(run: _, actionID: "reported.failure", result: .failed(failureCanary)) = event {
-          return true
-        }
-        return false
-      })
     XCTAssertFalse(
       events.contains { event in
         if case .runCompleted = event { return true }
@@ -2194,17 +2181,6 @@ final class SessionCoordinatorTests: XCTestCase {
     XCTAssertEqual(deliveredValues, ["input"])
     XCTAssertEqual(receipt.termination, .partiallyCompleted(code: .processing))
     XCTAssertEqual(receipt.actionDetails.map(\.result), [.injected])
-    XCTAssertTrue(
-      events.contains { event in
-        if case .actionExecuted(
-          run: _,
-          actionID: "selected.record.action",
-          result: .injected
-        ) = event {
-          return true
-        }
-        return false
-      })
     XCTAssertTrue(
       events.contains { event in
         if case .runFailed(_, _, let message) = event {

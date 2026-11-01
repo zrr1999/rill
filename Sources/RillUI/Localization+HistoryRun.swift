@@ -17,25 +17,6 @@ extension L10n {
     }
   }
 
-  static func workflowRunTermination(
-    _ termination: WorkflowRunTermination,
-    language: AppLanguage
-  ) -> String {
-    switch termination {
-    case .completed:
-      return L10n.catalogString("Localization.HistoryRun.Completed", language: language)
-    case .partiallyCompleted:
-      return L10n.catalogString("Localization.HistoryRun.Partially.completed", language: language)
-    case .failed:
-      return L10n.catalogString("Localization.HistoryRun.Failed", language: language)
-    case .cancelled:
-      return L10n.catalogString("Localization.HistoryRun.Cancelled", language: language)
-    case let .skipped(reason):
-      let outcome = L10n.catalogString("Localization.HistoryRun.Skipped", language: language)
-      return "\(outcome) — \(workflowRunSkipReason(reason, language: language))"
-    }
-  }
-
   static func workflowRunSkipReason(
     _ reason: WorkflowRunSkipCode,
     language: AppLanguage
@@ -87,21 +68,6 @@ extension L10n {
     }
   }
 
-  static func historyRunDurationBucket(
-    _ bucket: WorkflowRunDurationBucket,
-    language: AppLanguage
-  ) -> String {
-    switch bucket {
-    case .under250ms: return catalogString("historyRunDurationBucket.under250ms", language: language)
-    case .ms250To999: return catalogString("historyRunDurationBucket.ms250To999", language: language)
-    case .s1To4: return catalogString("historyRunDurationBucket.s1To4", language: language)
-    case .s5To14: return catalogString("historyRunDurationBucket.s5To14", language: language)
-    case .s15To59: return catalogString("historyRunDurationBucket.s15To59", language: language)
-    case .m1Plus: return catalogString("historyRunDurationBucket.m1Plus", language: language)
-    case .unavailable: return catalogString("historyRunDurationBucket.unavailable", language: language)
-    }
-  }
-
   static func historyProcessingDuration(_ milliseconds: UInt64, language: AppLanguage) -> String {
     historyProcessingDurationResource(milliseconds).string(for: language)
   }
@@ -115,9 +81,6 @@ extension L10n {
     return resource("history.duration.seconds", defaultValue: "\(seconds) s")
   }
 
-  /// Timeline status is a reason-free rollup of `WorkflowRunTermination`;
-  /// the skipped case cannot carry the receipt's skip reason here, so the
-  /// labels stay plain instead of routing through `workflowRunTermination`.
   static func historyRunStatus(
     _ status: HistoryTimelineStatus,
     language: AppLanguage

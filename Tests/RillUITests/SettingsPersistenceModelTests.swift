@@ -70,7 +70,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
       [
         .workflowLibrary: .init(category: .workflows) { "migrated-workflows" },
         .vocabularyLibrary: .init(category: .vocabulary) { "migrated-vocabulary" },
-      ], onFailure: {})
+      ])
     await model.writes.flush()
     XCTAssertTrue(model.hasUnsavedWrites)
     let failed = await store.activitySnapshot()
@@ -78,9 +78,8 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
     model.submit(
       key: .workflowLibrary, category: .workflows, debounce: .zero,
-      operation: { try await $0.setString("user-edit", forKey: .workflowLibrary) },
-      onFailure: { XCTFail("The user edit should succeed") })
-    model.retry(onFailure: { XCTFail("The remaining migration should retry") })
+      operation: { try await $0.setString("user-edit", forKey: .workflowLibrary) })
+    model.retry()
     await model.writes.flush()
     let saved = await store.activitySnapshot()
     XCTAssertEqual(saved.storage[.workflowLibrary], "user-edit")
@@ -96,9 +95,9 @@ final class SettingsPersistenceModelTests: XCTestCase {
       [
         .workflowLibrary: .init(category: .workflows) { "workflows" },
         .vocabularyLibrary: .init(category: .vocabulary) { "vocabulary" },
-      ], onFailure: {})
+      ])
     await model.writes.flush()
-    model.retry(onFailure: { XCTFail("Retry should succeed") })
+    model.retry()
     await model.writes.flush()
     let saved = await store.activitySnapshot()
     XCTAssertEqual(
@@ -117,17 +116,16 @@ final class SettingsPersistenceModelTests: XCTestCase {
     let gate = SettingsWriteGate()
     model.submit(
       key: .interfaceLanguage, category: .interface, debounce: .zero,
-      operation: { _ in throw UITestSettingsStoreError.requestedFailure }, onFailure: {})
+      operation: { _ in throw UITestSettingsStoreError.requestedFailure })
     await model.writes.flush()
     model.submit(
       key: .interfaceLanguage, category: .interface, debounce: .zero,
       operation: { store in
         await gate.suspend()
         try await store.setString("newest", forKey: .interfaceLanguage)
-      }, onFailure: { XCTFail("The replacement write should succeed") })
+      })
     await gate.waitUntilEntered()
-    model.retry(onFailure: { XCTFail("The failed snapshot must not be retried over a newer write") }
-    )
+    model.retry()
     await gate.resume()
     await model.writes.flush()
     let stored = try await store.string(forKey: .interfaceLanguage)

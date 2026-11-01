@@ -194,6 +194,10 @@ flowchart TD
 
 `VoiceRunModel`, `WorkflowLibraryModel`, `VocabularyLibraryModel`, `RunHistoryModel`, `SettingsPersistenceModel` and `InputMethodFeatureModel` own observable feature state. Views read those owners directly; compatibility state facades have been removed. `AppModel` still connects application events, settings commands and lifecycle effects across features. The composition root supplies production dependencies explicitly; test factories belong to test-only targets.
 
+History views read terminal bodies and ordered processing steps from run history records. Diagnostic views consume diagnostic events, while each feature owns its current errors and retry state. Runtime notifications connect these consumers; receipts and action results remain the evidence for completed work.
+
+Receipt reloads have their own generation-guarded loading/error state and a visible retry action; a failed read is never presented as a complete empty action list. Retired workflow settings are detected and can be exported as raw data but are never decoded into executable workflows. Invalid stored failed-audio recovery settings remain disabled with an explicit warning. Correction-rule dialogs wait for the tracked settings write and expose retry/success before reporting a durable save. Workflow explanations remain the authoritative read-only preview for execution readiness and privacy conditions; the library only shows declared route metadata and grounded output-toggle availability.
+
 System effects enter through ports or closures. For example, `RecordingSessionManager` and `WorkflowAudioRunController` own the validity of their `RecordingCueToken` values, while App supplies the shared sound and haptic effect. Validation and playback scheduling share one synchronous boundary after the MainActor hop. Clipboard capture receives only a Record ingestion port. `RecordInteractionController` owns delivery serialization and its shutdown drain separately from the clipboard polling lifecycle.
 
 ## State and lifetime ownership

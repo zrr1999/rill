@@ -79,21 +79,6 @@ enum HistoryTextStepPresentation {
       defaultValue: "Tokens · Input \(count(usage.inputTokens)) · Output \(count(usage.outputTokens)) · Total \(count(usage.totalTokens))")
   }
 
-  static func logHeader(_ step: WorkflowTextStep, language: AppLanguage) -> String {
-    logHeaderResource(step).string(for: language)
-  }
-
-  static func logHeaderResource(_ step: WorkflowTextStep) -> LocalizedStringResource {
-    var header = L10n.resource("history.step.header", defaultValue: "\(titleResource(step.kind)) · \(statusResource(step))\n")
-    if let milliseconds = step.durationMilliseconds {
-      header = L10n.resource("history.step.headerLine", defaultValue: "\(header)\(durationResource(milliseconds))\n")
-    }
-    if step.kind == .llmRewrite || step.kind == .llmAnswer {
-      header = L10n.resource("history.step.headerLine", defaultValue: "\(header)\(tokenUsageResource(step.tokenUsage))\n")
-    }
-    return header
-  }
-
   static func title(_ kind: WorkflowProcessStepKind, language: AppLanguage) -> String {
     titleResource(kind).string(for: language)
   }
