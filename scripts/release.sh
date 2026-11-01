@@ -15,7 +15,10 @@ set -euo pipefail
 
 if [[ "${1-}" == "github" ]]; then
   shift
-  error() { echo "error: $*" >&2; exit 1; }
+  error() {
+    echo "error: $*" >&2
+    exit 1
+  }
   if [[ $# != 2 ]]; then
     error "Usage: bash scripts/release.sh github vMAJOR.MINOR.PATCH NOTES.md"
   fi
@@ -393,8 +396,8 @@ install_coordinates_match() {
     || return 1
   target_identity="$(install_path_identity "$INSTALL_TRANSACTION_TARGET")" \
     || return 1
-  [[ "$candidate_identity" == "$expected_candidate" \
-    && "$target_identity" == "$expected_target" ]]
+  [[ "$candidate_identity" == "$expected_candidate" &&
+    "$target_identity" == "$expected_target" ]]
 }
 
 rollback_install_transaction_if_needed() {
@@ -415,8 +418,8 @@ rollback_install_transaction_if_needed() {
     target_identity="$(
       install_path_identity "$INSTALL_TRANSACTION_TARGET" 2>/dev/null || true
     )"
-    if [[ "$candidate_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" \
-      && "$target_identity" == "$INSTALL_TRANSACTION_OLD_IDENTITY" ]]; then
+    if [[ "$candidate_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" &&
+      "$target_identity" == "$INSTALL_TRANSACTION_OLD_IDENTITY" ]]; then
       INSTALL_TRANSACTION_STATE="rolled-back"
       return 0
     fi
@@ -425,9 +428,9 @@ rollback_install_transaction_if_needed() {
     # than INSTALL_TRANSACTION_OLD_IDENTITY. As long as target still has our
     # exact candidate identity, swapping the pair back restores the true
     # pre-swap coordinates without guessing which installer owned them.
-    if [[ -n "$candidate_identity" \
-      && "$candidate_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" \
-      && "$target_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
+    if [[ -n "$candidate_identity" &&
+      "$candidate_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" &&
+      "$target_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
       if "$ATOMIC_SWAP_HELPER" \
         "$INSTALL_TRANSACTION_CANDIDATE" \
         "$INSTALL_TRANSACTION_TARGET" \
@@ -451,13 +454,13 @@ rollback_install_transaction_if_needed() {
     target_identity="$(
       install_path_identity "$INSTALL_TRANSACTION_TARGET" 2>/dev/null || true
     )"
-    if [[ "$candidate_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" \
-      && "$target_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
+    if [[ "$candidate_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" &&
+      "$target_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
       INSTALL_TRANSACTION_STATE="rolled-back"
       return 0
     fi
-    if [[ -z "$candidate_identity" \
-      && "$target_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
+    if [[ -z "$candidate_identity" &&
+      "$target_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
       if "$ATOMIC_INSTALL_HELPER" \
         "$INSTALL_TRANSACTION_TARGET" \
         "$INSTALL_TRANSACTION_CANDIDATE" \
@@ -548,8 +551,8 @@ install_verified_app() {
       error "无法以排他原子操作发布首次安装的 App；目标可能已由其他安装创建"
     fi
     target_identity="$(install_path_identity "$target_app" 2>/dev/null || true)"
-    if [[ -e "$candidate_app" \
-      || "$target_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
+    if [[ -e "$candidate_app" ||
+      "$target_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
       if rollback_install_transaction_if_needed; then
         error "首次安装发布后的文件身份不一致；已撤销本次安装"
       fi
@@ -578,8 +581,8 @@ install_verified_app() {
     fi
   else
     target_identity="$(install_path_identity "$target_app" 2>/dev/null || true)"
-    if [[ -e "$candidate_app" \
-      || "$target_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
+    if [[ -e "$candidate_app" ||
+      "$target_identity" != "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]; then
       if rollback_install_transaction_if_needed; then
         error "首次安装验证后文件身份发生并发变化；已撤销本次安装"
       fi
@@ -762,8 +765,8 @@ revalidate_notarized_release_source() {
     || error "公证发布来源在${phase}发生 commit 漂移"
   [[ "$tree" == "$VALIDATED_RELEASE_TREE" ]] \
     || error "公证发布来源在${phase}发生 tree 漂移"
-  [[ "$dependency_blob" == "$VALIDATED_RELEASE_DEPENDENCY_BLOB" \
-    && "$worktree_dependency_blob" == "$VALIDATED_RELEASE_DEPENDENCY_BLOB" ]] \
+  [[ "$dependency_blob" == "$VALIDATED_RELEASE_DEPENDENCY_BLOB" &&
+    "$worktree_dependency_blob" == "$VALIDATED_RELEASE_DEPENDENCY_BLOB" ]] \
     || error "公证发布来源在${phase}发生第三方依赖清单漂移"
   info "发布来源复核通过（${phase}）"
 }
@@ -989,8 +992,8 @@ is_developer_id_application_identity() {
 validate_release_configuration() {
   local requested_identity="$SIGN_IDENTITY"
 
-  if [[ -n "${RILL_RELEASE_SOURCE_SNAPSHOT-}" \
-    || -n "${RILL_RELEASE_SOURCE_COMMIT-}" ]]; then
+  if [[ -n "${RILL_RELEASE_SOURCE_SNAPSHOT-}" ||
+    -n "${RILL_RELEASE_SOURCE_COMMIT-}" ]]; then
     error "RILL_RELEASE_SOURCE_SNAPSHOT/COMMIT 是保留的内部变量，不能由调用方设置"
   fi
   if ! $DO_NOTARIZE && [[ -n "$SOURCE_SNAPSHOT_CAPABILITY" ]]; then
@@ -1018,8 +1021,8 @@ validate_release_configuration() {
       error "NOTARY_PROFILE 不能包含换行符"
     fi
     if [[ -n "$NOTARY_KEYCHAIN" ]]; then
-      [[ "$NOTARY_KEYCHAIN" == /* && -f "$NOTARY_KEYCHAIN" ]] || \
-        error "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+      [[ "$NOTARY_KEYCHAIN" == /* && -f "$NOTARY_KEYCHAIN" ]] \
+        || error "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
     fi
     validate_notarized_release_source
   fi
@@ -1211,8 +1214,8 @@ verify_signed_app() {
     com.apple.security.cs.allow-unsigned-executable-memory \
     com.apple.security.cs.disable-library-validation; do
     unsafe_entitlement_value="$(plist_extract_literal_raw "$unsafe_entitlement" "$signed_entitlements" 2>/dev/null || true)"
-    [[ "$unsafe_entitlement_value" != "true" ]] || \
-      error "发布签名包含不安全的 entitlement: $unsafe_entitlement"
+    [[ "$unsafe_entitlement_value" != "true" ]] \
+      || error "发布签名包含不安全的 entitlement: $unsafe_entitlement"
   done
 
   application_identifier="$(plist_extract_literal_raw com.apple.application-identifier "$signed_entitlements" 2>/dev/null || true)"
@@ -1309,8 +1312,8 @@ notarize_artifact() {
   fi
   notary_status="$(plutil -extract status raw -o - "$notary_result" 2>/dev/null || true)"
   notary_id="$(plutil -extract id raw -o - "$notary_result" 2>/dev/null || true)"
-  [[ "$notary_status" == "Accepted" ]] || \
-    error "公证未获接受（状态: ${notary_status:-unknown}，请求: ${notary_id:-unknown}）"
+  [[ "$notary_status" == "Accepted" ]] \
+    || error "公证未获接受（状态: ${notary_status:-unknown}，请求: ${notary_id:-unknown}）"
   info "公证已接受（请求: ${notary_id}）"
 }
 

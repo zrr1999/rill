@@ -9,12 +9,21 @@ public struct VocabularyCorrectionSheet: View {
     case persistence
   }
 
+  private enum SavedRuleFeedback: Equatable {
+    case created
+    case reused
+  }
+
   @Environment(\.dismiss) private var dismiss
   @Bindable private var model: AppModel
   private let historyRecordID: UUID?
   private let textCorrectionSubject: RecordTextCorrectionSubject?
   @State private var correctionOperationID = UUID()
   @State private var isSavingText = false
+  @State private var isSavingRule = false
+  @State private var pendingRule: VocabularyRule?
+  @State private var pendingFeedback: SavedRuleFeedback?
+  @State private var savedRuleFeedback: SavedRuleFeedback?
   @State private var draft: VocabularyCorrectionDraft
   @State private var saveIssue: SaveIssue?
   @State private var targetCollectionID: UUID?
@@ -55,7 +64,7 @@ public struct VocabularyCorrectionSheet: View {
         .padding(16)
     }
     .frame(minWidth: 520, idealWidth: 620, minHeight: 420, idealHeight: 600)
-    .interactiveDismissDisabled(isSavingText)
+    .interactiveDismissDisabled(isSavingText || isSavingRule)
     .onChange(of: model.settings.privacyPolicySettings.historyPreviewMode) { _, mode in
       if mode == .disabled {
         dismiss()
@@ -87,7 +96,7 @@ public struct VocabularyCorrectionSheet: View {
         Text(L10n.string(.vocabularyCorrectionCorrectedText, language: model.settings.language))
           .font(.headline)
         TextEditor(text: correctedTextBinding)
-          .disabled(isSavingText)
+          .disabled(isSavingText || isSavingRule || savedRuleFeedback != nil)
           .font(.body)
           .frame(minHeight: 110)
           .padding(6)
@@ -234,11 +243,20 @@ public struct VocabularyCorrectionSheet: View {
         }
       }
     case .persistence:
-      Label(
-        L10n.string(.vocabularyCorrectionSaveFailed, language: model.settings.language),
-        systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
-      )
-      .foregroundStyle(.red)
+      VStack(alignment: .leading, spacing: 8) {
+        Label(
+          L10n.resource("vocabulary.ruleSaveFailed").string(for: model.settings.language),
+          systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+        )
+        .foregroundStyle(.red)
+        if let pendingRule, let pendingFeedback {
+          Button(L10n.text(.settingsSaveRetry, language: model.settings.language)) {
+            finishRuleSave(pendingRule, feedback: pendingFeedback, retry: true)
+          }
+          .disabled(isSavingRule)
+          .accessibilityIdentifier("vocabulary.correction.retry-save")
+        }
+      }
     case .notReady:
       Label(
         L10n.overlayText(.correctionSettingsLoading, language: model.settings.language),
@@ -246,7 +264,18 @@ public struct VocabularyCorrectionSheet: View {
       )
       .foregroundStyle(.secondary)
     case nil:
-      EmptyView()
+      if let savedRuleFeedback {
+        Label(
+          L10n.resource(
+            savedRuleFeedback == .created
+              ? "general.vocabularyCorrectionCreated"
+              : "general.vocabularyCorrectionReused"
+          ).string(for: model.settings.language),
+          systemImage: RillSystemSymbol.checkmarkCircle.rawValue
+        )
+        .foregroundStyle(.green)
+        .accessibilityIdentifier("vocabulary.correction.saved")
+      }
     }
   }
 
@@ -256,15 +285,23 @@ public struct VocabularyCorrectionSheet: View {
         dismiss()
       }
       .keyboardShortcut(.cancelAction)
-      .disabled(isSavingText)
+      .disabled(isSavingText || isSavingRule)
 
       Spacer()
 
-      Button(L10n.string(.vocabularyCorrectionSave, language: model.settings.language)) {
-        saveRule()
+      if savedRuleFeedback != nil {
+        Button(L10n.workspace(.done, language: model.settings.language)) {
+          dismiss()
+        }
+        .buttonStyle(.borderedProminent)
+        .accessibilityIdentifier("vocabulary.correction.done")
+      } else {
+        Button(L10n.string(.vocabularyCorrectionSave, language: model.settings.language)) {
+          saveRule()
+        }
+        .disabled(draft.proposedRule == nil || model.settings.isLoading || isSavingText || isSavingRule)
+        .accessibilityIdentifier("vocabulary.correction.remember")
       }
-      .disabled(draft.proposedRule == nil || model.settings.isLoading || isSavingText)
-      .accessibilityIdentifier("vocabulary.correction.remember")
 
       if textCorrectionSubject != nil {
         Button(L10n.string(.vocabularyCorrectionSaveText, language: model.settings.language)) {
@@ -273,7 +310,7 @@ public struct VocabularyCorrectionSheet: View {
         .buttonStyle(.borderedProminent)
         .keyboardShortcut(.defaultAction)
         .disabled(
-          isSavingText || model.recordWorkspace.isMutating
+          isSavingText || isSavingRule || savedRuleFeedback != nil || model.recordWorkspace.isMutating
             || draft.correctedText == draft.originalText
             || draft.correctedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         )
@@ -383,8 +420,7 @@ public struct VocabularyCorrectionSheet: View {
   }
 
   private func saveRule() {
-    guard let rule = draft.proposedRule else {
-      saveIssue = .invalid
+    guard !isSavingRule, savedRuleFeedback == nil, let rule = draft.proposedRule else {
       return
     }
 
@@ -393,23 +429,41 @@ public struct VocabularyCorrectionSheet: View {
       targetCollectionID.flatMap { compatibleIDs.contains($0) ? $0 : nil }
     switch model.vocabulary.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
     case .created:
-      recordMemoryCorrection(rule)
-      model.append(
-        L10n.resource("general.vocabularyCorrectionCreated")
-      )
-      dismiss()
+      finishRuleSave(rule, feedback: .created)
     case .reused:
-      recordMemoryCorrection(rule)
-      model.append(
-        L10n.resource("general.vocabularyCorrectionReused")
-      )
-      dismiss()
+      finishRuleSave(rule, feedback: .reused)
     case .conflict:
       saveIssue = .conflict
     case .invalid:
       saveIssue = .invalid
     case .notReady:
       saveIssue = .notReady
+    }
+  }
+
+  /// An in-memory rule is not a durable save. Remain on the sheet until
+  /// the settings write succeeds, or offer a retry without duplicating it.
+  private func finishRuleSave(
+    _ rule: VocabularyRule, feedback: SavedRuleFeedback, retry: Bool = false
+  ) {
+    guard !isSavingRule else { return }
+    isSavingRule = true
+    saveIssue = nil
+    pendingRule = rule
+    pendingFeedback = feedback
+    if retry { model.retryUnsavedSettingsSave() }
+    Task { @MainActor in
+      await model.settings.writes.flush()
+      isSavingRule = false
+      guard !model.isApplicationShuttingDown else { return }
+      if model.settings.hasUnsavedWrite(for: AppSettingsCodec.vocabularyLibrarySettingKey) {
+        saveIssue = .persistence
+        return
+      }
+      recordMemoryCorrection(rule)
+      pendingRule = nil
+      pendingFeedback = nil
+      savedRuleFeedback = feedback
     }
   }
 

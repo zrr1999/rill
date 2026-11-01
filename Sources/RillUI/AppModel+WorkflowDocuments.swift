@@ -5,6 +5,23 @@ import RillRecords
 import RillKnowledge
 
 extension AppModel {
+  /// Read-only backup of retired workflow settings. Never decodes or executes them.
+  func legacyWorkflowSettingsBackup() async throws -> Data {
+    guard let settingsStore else {
+      throw NSError(domain: "Rill.LegacyWorkflowExport", code: 1)
+    }
+    var values: [String: String] = [:]
+    for key in [AppSettingKey.customWorkflows, .workflowLibrary, .workflowEnabledStates] {
+      if let value = try await settingsStore.string(forKey: key), !value.isEmpty {
+        values[key.rawValue] = value
+      }
+    }
+    return try JSONSerialization.data(
+      withJSONObject: ["format": "rill-retired-workflow-settings", "values": values],
+      options: [.prettyPrinted, .sortedKeys]
+    )
+  }
+
   func startWorkflowFileMonitoring() {
     guard self.workflowLibrary.workflowFileMonitorTask == nil, let workflowFileStore else { return }
     self.workflowLibrary.workflowFileMonitorTask = Task { @MainActor [weak self] in

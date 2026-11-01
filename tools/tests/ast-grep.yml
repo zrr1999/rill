@@ -1,0 +1,7 @@
+id: domain-preferences-access
+valid:
+  - 'let stored = persistence.load()'
+  - 'let text = "UserDefaults.standard"'
+invalid:
+  - 'let stored = UserDefaults.standard.string(forKey: "key")'
+  - 'let stored = UserDefaults(suiteName: "domain")'

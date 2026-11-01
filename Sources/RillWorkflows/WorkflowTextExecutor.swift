@@ -286,7 +286,6 @@ struct WorkflowTextExecutor: Sendable {
         ))
     }
     await runReceiptRecorder?.recordTextStep(runID: session.runID, step: step)
-    await eventBus.publish(.runTextStepRecorded(runID: session.runID, step: step))
     return step
   }
 

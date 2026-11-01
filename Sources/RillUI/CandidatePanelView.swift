@@ -78,19 +78,7 @@ public struct CandidatePanelView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(RillSpacing.dense)
-                .background {
-                  RoundedRectangle(cornerRadius: RillRadius.section, style: .continuous)
-                    .fill(
-                      isSelected
-                        ? AnyShapeStyle(Color(nsColor: .selectedContentBackgroundColor))
-                        : AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
-                    )
-                }
-                .foregroundStyle(
-                  isSelected
-                    ? AnyShapeStyle(Color(nsColor: .alternateSelectedControlTextColor))
-                    : AnyShapeStyle(.primary)
-                )
+                .rillSelection(isSelected, cornerRadius: RillRadius.section)
               }
               .buttonStyle(RillHoverButtonStyle(kind: .stroke(cornerRadius: RillRadius.section)))
               .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -125,8 +113,7 @@ public struct CandidatePanelView: View {
         .keyboardShortcut(.defaultAction)
       }
     }
-    .padding(RillSpacing.panel)
-    .rillGlass(in: RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous))
+    .rillCard()
   }
 
   private func currentSelection(for set: CandidateSet) -> UUID? {

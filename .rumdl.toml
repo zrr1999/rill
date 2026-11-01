@@ -1,0 +1,10 @@
+[global]
+disable = ["MD013"]  # Preserve semantic paragraphs, including Chinese prose.
+
+[MD033]
+allowed-elements = ["br"]  # Generated license tables retain separate provenance links.
+
+[per-file-ignores]
+".github/pull_request_template.md" = ["MD041"]  # The PR template begins with required H2 sections.
+"DESIGN.md" = ["MD025", "MD036"]  # Separate original intent and generated design system sections.
+"PRIVACY.md" = ["MD025"]  # Chinese and English privacy statements retain their own titles.

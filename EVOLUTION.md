@@ -51,7 +51,7 @@ Rill 最初以 VoxType 为名，探索原生 macOS 的语音输入与剪贴板�
 计划通过传输无关、可版本化的 `interaction.v0` 交换文本任务、状态、审批和
 文本/语音资源引用；同机 Unix socket 与异机安全传输共用语义。
 跨机实现之前先证明文本任务闭环，跟踪于
-[Spark issue #32](https://github.com/zendev-lab/spark/issues/32)。
+[Spark issue #32](https://github.com/zendev-lab/ulota/issues/32)。
 
 这一阶段要求唤醒词分发绑定精确大小、SHA-256、`left-64` 文件清单和 ModelScope
 revision 的许可证据，安装收据绑定同一证据。保留本地归因和 Apache-2.0 文本；

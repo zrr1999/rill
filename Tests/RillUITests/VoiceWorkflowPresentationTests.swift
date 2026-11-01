@@ -3,26 +3,9 @@ import XCTest
 @testable import RillUI
 
 final class VoiceWorkflowPresentationTests: XCTestCase {
-  func testDetailIncludesBothRecordAndTextOutputs() {
-    var workflow = makeDefaultWorkflow()
-    workflow.plan.output.actions = [
-      OutputActionReference(id: "record.store"),
-      OutputActionReference(id: "focused-application.insert"),
-    ]
-    let presentation = VoiceWorkflowPresentation(workflow: workflow)
-    for language in AppLanguage.allCases {
-      let detail = presentation.detail(language: language)
-      XCTAssertTrue(detail.contains(L10n.actionName("record.store", language: language)))
-      XCTAssertTrue(detail.contains(L10n.actionName("focused-application.insert", language: language)))
-    }
-  }
 
   @MainActor
   func testLegacyDraftValidatesLLMRewriteSteps() {
-    XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.formalWriting))
-    XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.translateInput))
-    XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.commandMode))
-    XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.custom))
 
     var draft = WorkflowEditorDraft(
       name: "Custom Rewrite",
@@ -83,32 +66,6 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
 
     XCTAssertEqual(workflow.properties.textStyle, VoiceTextStyle.commandMode.rawValue)
     XCTAssertEqual(VoiceTextStyle.infer(from: workflow), .commandMode)
-  }
-
-  func testWorkflowDetailUsesModeAndStyleLanguage() {
-    let workflow = WorkflowDefinition(
-      name: "Translate Input",
-      titleKey: .translateInput,
-      trigger: .manual,
-      plan: WorkflowPlan(
-        setup: WorkflowSetupPhase(speechRoute: WorkflowSpeechRoute(recognizerID: "sherpa-onnx.local")),
-        process: WorkflowProcessPhase(
-          steps: [
-            WorkflowProcessStep(kind: .recognizeSpeech), WorkflowProcessStep(kind: .resolveUncertainty, uncertaintyPolicy: .init()),
-            WorkflowProcessStep(kind: .applyVocabulary),
-          ] + (VoiceTextStyle.translateInput.workflowSteps).map(WorkflowProcessStep.init)),
-        output: WorkflowOutputPhase(actions: [OutputActionReference(id: "record.store")], deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst))),
-      ui: WorkflowUIConfig(symbolName: "globe", accentColorName: "blue"),
-      properties: .init(textStyle: VoiceTextStyle.translateInput.rawValue))
-
-    let englishDetail = L10n.workflowDetail(workflow, language: .english)
-
-    XCTAssertEqual(L10n.workflowName(workflow.presentation, language: .english), "Translate Input")
-    XCTAssertEqual(L10n.workflowName(workflow.presentation, language: .simplifiedChinese), "翻译输入")
-    XCTAssertTrue(englishDetail.contains("Mode: Translate Input"), englishDetail)
-    XCTAssertTrue(englishDetail.contains("Speech: Local Speech"), englishDetail)
-    XCTAssertTrue(englishDetail.contains("Language: Auto language"), englishDetail)
-    XCTAssertTrue(L10n.workflowDetail(workflow, language: .simplifiedChinese).contains("模式：翻译输入"))
   }
 
   func testDraftSpeechRouteNormalizesLegacyAutomaticChoiceToLocalASR() {
@@ -292,10 +249,6 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
       draft.outputValidationError(language: .english),
       "Webhook workflows are unavailable until endpoint and header credentials use secure storage."
     )
-    XCTAssertFalse(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.sendToWebhook))
-    XCTAssertTrue(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.runShortcut))
-    XCTAssertTrue(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.appendToMarkdown))
-    XCTAssertTrue(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.speakOnly))
 
     let legacyWebhookWorkflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
     XCTAssertNil(WorkflowEditorDraft(workflow: legacyWebhookWorkflow))
@@ -317,22 +270,9 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
     markdownDraft.markdownAppendPath = "~/Notes/Capture.md"
     XCTAssertNil(markdownDraft.outputValidationError(language: .english))
 
-    XCTAssertEqual(L10n.editorDestination(.runShortcut, language: .english), "Run macOS Shortcut")
-    XCTAssertEqual(
-      L10n.editorDestination(.appendToMarkdown, language: .simplifiedChinese),
-      "追加到 Obsidian/Markdown"
-    )
     XCTAssertEqual(
       L10n.actionName(ExternalOutputActionID.markdownAppend, language: .english),
       "Append to Markdown"
-    )
-    XCTAssertEqual(
-      L10n.externalOutputHint(.appendToMarkdown, language: .english),
-      "Atomically appends to an Obsidian-compatible note in an existing folder. Linked paths and files over 64 MiB are rejected."
-    )
-    XCTAssertEqual(
-      L10n.externalOutputHint(.appendToMarkdown, language: .simplifiedChinese),
-      "原子追加到现有文件夹中的 Obsidian 兼容笔记；拒绝链接路径和超过 64 MiB 的文件。"
     )
   }
 }

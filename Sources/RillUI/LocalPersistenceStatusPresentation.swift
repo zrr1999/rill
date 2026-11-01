@@ -43,9 +43,6 @@ struct LocalPersistenceStatusPresentation: Sendable, Equatable {
 }
 
 enum LocalPersistenceBannerFocusPolicy {
-  /// A newly visible warning must never replace the current first responder.
-  static let requestsFocusOnAppearance = false
-
   /// Focused navigation is allowed only after the user activates the banner
   /// action. The typed settings request then owns the destination focus.
   static let actionDestination = SettingsSection.storage

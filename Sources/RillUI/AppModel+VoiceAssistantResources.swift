@@ -104,9 +104,6 @@ extension AppModel {
       self.workflowLibrary.workflowLibraryErrorPresentation = nil
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
-      append(
-        L10n.resource("run.wakePhrasesUpdatedFormat", defaultValue: "Wake phrases updated: \(editableWorkflow.name)")
-      )
       savedWorkflowID = editableWorkflow.id
     } else if let sourceWorkflow {
       guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
@@ -139,9 +136,6 @@ extension AppModel {
       self.workflowLibrary.workflowLibraryErrorPresentation = nil
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
-      append(
-        L10n.resource("run.builtInWakeWorkflowUpdatedFormat", defaultValue: "Built-in wake workflow updated: \(customizedWorkflow.name)")
-      )
       savedWorkflowID = customizedWorkflow.id
     } else {
       var draft =

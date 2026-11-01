@@ -29,4 +29,4 @@
 
 - 填写该 commit 的 CI 链接、最终包真机验收记录和未完成项目。
 - 公开发布前移除占位文字，确认所有发布必需项完成。
-- 安全报告入口：https://github.com/zrr1999/rill/security/policy
+- 安全报告入口：<https://github.com/zrr1999/rill/security/policy>

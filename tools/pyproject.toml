@@ -14,11 +14,31 @@ rill-replay-asr = "rill_dev.evaluation.asr_replay:main"
 rill-replay-product = "rill_dev.evaluation.product_replay:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.17", "ty>=0.0.69"]
+dev = ["deptry==0.25.1", "hypothesis==6.170.12", "import-linter==2.15", "pytest>=8", "pytest-cov==7.0.0", "ruff>=0.17", "ty>=0.0.69"]
+quality = ["mutmut==3.8.0", "radon==6.0.1"]
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14"]
 build-backend = "uv_build"
+
+[tool.coverage.run]
+source = ["rill_dev"]
+branch = true
+relative_files = true
+
+[tool.importlinter]
+root_package = "rill_dev"
+
+[[tool.importlinter.contracts]]
+name = "Build metadata stays independent of evaluation policy"
+type = "forbidden"
+source_modules = ["rill_dev.repository"]
+forbidden_modules = ["rill_dev.evaluation"]
+
+[tool.mutmut]
+source_paths = ["src/"]
+only_mutate = ["src/rill_dev/evaluation/asr_quality.py"]
+pytest_add_cli_args_test_selection = ["tests/test_asr_distance.py", "tests/test_asr_analysis.py"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"

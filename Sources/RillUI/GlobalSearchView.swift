@@ -349,44 +349,39 @@ private struct GlobalSearchResultRow: View {
       HStack(alignment: .top, spacing: RillSpacing.card) {
         Image(systemName: result.symbolName)
           .frame(width: Self.iconSize, height: Self.iconSize)
-          .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .accentColor)
+          .foregroundStyle(Color.accentColor)
           .accessibilityHidden(true)
 
         VStack(alignment: .leading, spacing: 3) {
           Text(result.title)
             .font(.body.weight(.semibold))
-            .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
+            .foregroundStyle(.primary)
             .lineLimit(1)
           if let detail = result.detail {
             Text(detail)
               .font(.caption)
-              .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
+              .foregroundStyle(.secondary)
               .lineLimit(1)
           }
           if let preview = result.preview {
             Text(preview)
               .font(.callout)
-              .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
+              .foregroundStyle(.secondary)
               .lineLimit(2)
           }
         }
 
         Spacer(minLength: 8)
         Image(systemName: RillSystemSymbol.arrowForward.rawValue)
-          .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
+          .foregroundStyle(.secondary)
           .accessibilityHidden(true)
       }
       .padding(RillSpacing.card)
       .frame(maxWidth: .infinity, alignment: .leading)
       .contentShape(Rectangle())
+      .rillSelection(isSelected, cornerRadius: RillRadius.chip)
     }
     .buttonStyle(.plain)
-    .background {
-      if isSelected {
-        RoundedRectangle(cornerRadius: RillRadius.chip)
-          .fill(Color(nsColor: .selectedContentBackgroundColor))
-      }
-    }
     .onHover { isHovered in
       if isHovered {
         onHighlight(result.id)

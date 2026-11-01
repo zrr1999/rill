@@ -104,11 +104,6 @@ final class LocalPersistenceStatusPresentationTests: XCTestCase {
     }
   }
 
-  func testBannerNeverRequestsFocusAndOnlyExplicitActionTargetsStorageSettings() {
-    XCTAssertFalse(LocalPersistenceBannerFocusPolicy.requestsFocusOnAppearance)
-    XCTAssertEqual(LocalPersistenceBannerFocusPolicy.actionDestination, .storage)
-  }
-
   func testHistoryFailureReplacesInvalidRetryWithStorageSettingsAction() {
     let ready = HistoryLoadFailurePresentation.make(
       persistenceStatus: .ready,

@@ -172,6 +172,7 @@ public struct MainShellView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  @Environment(\.colorSchemeContrast) private var contrast
   @Bindable private var model: AppModel
   @AccessibilityFocusState private var accessibilityFocusedSidebarDestination: SidebarDestination?
   @State private var search = GlobalSearchModel()
@@ -295,7 +296,11 @@ public struct MainShellView: View {
       if model.isApplicationShuttingDown {
         ZStack {
           Rectangle()
-            .fill(reduceTransparency ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor)) : AnyShapeStyle(.ultraThinMaterial))
+            .fill(
+              reduceTransparency || contrast == .increased
+                ? AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
+                : AnyShapeStyle(.ultraThinMaterial)
+            )
 
           VStack(spacing: MainShellLayoutMetrics.shutdownOverlaySpacing) {
             ProgressView()
