@@ -202,7 +202,7 @@ public actor AuthorizedLiveAudioSession {
     }
 
     monitorTask = Task { [weak self, monitorInterval] in
-      while !Task.isCancelled {
+      while true {
         do {
           try await Task.sleep(for: monitorInterval)
         } catch {

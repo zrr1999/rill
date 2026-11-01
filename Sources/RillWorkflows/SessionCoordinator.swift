@@ -179,6 +179,8 @@ public actor SessionCoordinator {
     state
   }
 
+  var queuedRunCountForTesting: Int { runLaneWaiters.count }
+
   public func shutdownRecordDeliverySettlements() async {
     bufferCleanupIsShuttingDown = true
     let cleanupTasks = Array(speechBufferCleanupTasks.values)

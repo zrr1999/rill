@@ -60,6 +60,12 @@ final class EventBusTests: XCTestCase {
       await bus.publish(.audioProcessingQueueUpdated(snapshot))
       await bus.publishBarrier(sentinel)
     }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+    while await bus.pendingLifecycleEventCount == 0, ContinuousClock.now < deadline {
+      await Task.yield()
+    }
+    let pendingCount = await bus.pendingLifecycleEventCount
+    XCTAssertEqual(pendingCount, 1)
     var iterator = bus.lifecycleDeliveryStream.makeAsyncIterator()
     let boundary = await iterator.next()
     let finalState = await iterator.next()
@@ -162,7 +168,7 @@ final class EventBusTests: XCTestCase {
   }
 
   func testOrdinaryStreamCoalescesEveryHighFrequencyStateProjectionByType() async {
-    let eventBus = EventBus()
+    let eventBus = EventBus(maxBufferedEvents: 3)
     let stream = await eventBus.stream()
     var iterator = stream.makeAsyncIterator()
     let runID = UUID()
