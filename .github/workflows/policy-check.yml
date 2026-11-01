@@ -1,4 +1,4 @@
-name: "Policy - PR"
+name: "Policy - Check"
 
 on:
   pull_request:
@@ -16,7 +16,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: policy-pr-${{ github.event.pull_request.number || github.ref }}
+  group: policy-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
