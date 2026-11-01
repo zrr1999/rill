@@ -1023,6 +1023,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: fileURL) }
     let runID = UUID()
     let transferGate = QueueOwnershipTransferGate()
+    let cancellationProbe = DeferredCancellationCleanupProbe(fileURL: fileURL)
     let executionProbe = AudioLifecycleExecutionProbe()
     let queue = await makeQueue(
       recognitionShouldFail: false,
@@ -1031,9 +1032,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         await transferGate.suspendAfterTransfer()
       }
     )
-    let deferredCapture = DeferredCapturedAudio.resolved(
-      try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-    )
+    let deferredCapture = cancellationProbe.makeDeferredCapture()
     let authorizationLease = makeAudioProcessingTestLease(
       runID: runID,
       workflow: makeWorkflow()
@@ -1051,6 +1050,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     async let secondShutdown: Void = queue.shutdown()
     _ = await (firstShutdown, secondShutdown)
 
+    XCTAssertEqual(cancellationProbe.cancellations, 1)
     XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     let pendingCount = await queue.pendingCount
     let cleanupCount = await queue.rejectedCleanupCount

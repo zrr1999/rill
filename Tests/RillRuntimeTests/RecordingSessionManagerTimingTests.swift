@@ -118,21 +118,30 @@ private actor RecordingTimingAudioCaptureService: AudioCaptureService {
 
   private let audio: CapturedAudio
   private let rejectsStart: Bool
+  private let beforeStart: (@Sendable () async -> Void)?
+  private let beforeFirstCancellation: (@Sendable () async -> Void)?
   private var activeRunID: UUID?
   private var startCallCount = 0
   private var finishCallCount = 0
   private var cancelCallCount = 0
   private var cancellationWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
-  init(audio: CapturedAudio, rejectsStart: Bool = false) {
+  init(
+    audio: CapturedAudio, rejectsStart: Bool = false,
+    beforeStart: (@Sendable () async -> Void)? = nil,
+    beforeFirstCancellation: (@Sendable () async -> Void)? = nil
+  ) {
     self.audio = audio
     self.rejectsStart = rejectsStart
+    self.beforeStart = beforeStart
+    self.beforeFirstCancellation = beforeFirstCancellation
   }
 
   func startCapture(_ request: AudioCaptureRequest) async throws {
     startCallCount += 1
-    if rejectsStart { throw CocoaError(.featureUnsupported) }
+    await beforeStart?()
     activeRunID = request.runID
+    if rejectsStart { throw CocoaError(.featureUnsupported) }
   }
 
   func finishCapture() async throws -> CapturedAudio {
@@ -149,12 +158,14 @@ private actor RecordingTimingAudioCaptureService: AudioCaptureService {
 
   func cancelCapture() async {
     cancelCallCount += 1
+    if cancelCallCount == 1 { await beforeFirstCancellation?() }
     activeRunID = nil
     resumeCancellationWaiters()
   }
 
   func cancelCapture(runID: UUID) async {
     cancelCallCount += 1
+    if cancelCallCount == 1 { await beforeFirstCancellation?() }
     if activeRunID == runID { activeRunID = nil }
     resumeCancellationWaiters()
   }
@@ -557,7 +568,9 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
 }
 
 private func makeAudioCaptureService(
-  testName: String, rejectsStart: Bool = false
+  testName: String, rejectsStart: Bool = false,
+  beforeStart: (@Sendable () async -> Void)? = nil,
+  beforeFirstCancellation: (@Sendable () async -> Void)? = nil
 ) throws -> RecordingTimingAudioCaptureService {
   let audio = try CapturedAudio(
     durationSeconds: 1,
@@ -568,7 +581,9 @@ private func makeAudioCaptureService(
     ),
     inlineData: Data(testName.utf8)
   )
-  return RecordingTimingAudioCaptureService(audio: audio, rejectsStart: rejectsStart)
+  return RecordingTimingAudioCaptureService(
+    audio: audio, rejectsStart: rejectsStart, beforeStart: beforeStart,
+    beforeFirstCancellation: beforeFirstCancellation)
 }
 
 private func makeManager(
@@ -913,6 +928,45 @@ struct RecordingSessionManagerReleaseDelayTests {
     #expect(await audio.snapshot().startCallCount == 1)
     #expect(await audio.snapshot().isInputRunning == false)
     #expect(await manager.currentState() == .idle)
+    await manager.stopForApplicationShutdown()
+  }
+
+  @Test(arguments: [false, true], [false, true])
+  func lateStartupCompletionCleansCaptureAcrossCancellation(
+    rejectsStart: Bool, completesCancellationFirst: Bool
+  ) async throws {
+    let (starts, continuation) = AsyncStream<CheckedContinuation<Void, Never>>.makeStream()
+    var pending = starts.makeAsyncIterator()
+    let (cancellations, cancellationContinuation) = AsyncStream<CheckedContinuation<Void, Never>>.makeStream()
+    var pendingCancellation = cancellations.makeAsyncIterator()
+    let audio = try makeAudioCaptureService(
+      testName: #function, rejectsStart: rejectsStart,
+      beforeStart: { await withCheckedContinuation { continuation.yield($0) } },
+      beforeFirstCancellation: { await withCheckedContinuation { cancellationContinuation.yield($0) } })
+    let manager = makeManager(audioCaptureService: audio, diagnostics: nil)
+    let start = Task { await manager.toggleLongRecording() }
+    let blockedStart = try #require(await pending.next())
+
+    let cancellation = Task { await manager.cancelCurrentRecording() }
+    let blockedCancellation = try #require(await pendingCancellation.next())
+    #expect(await audio.snapshot().cancelCallCount == 1)
+    if completesCancellationFirst {
+      blockedCancellation.resume()
+      await cancellation.value
+      #expect(await manager.currentState() == .idle)
+    }
+
+    blockedStart.resume()
+    #expect(await start.value == false)
+    if !completesCancellationFirst {
+      blockedCancellation.resume()
+      await cancellation.value
+    }
+    #expect(await audio.snapshot().cancelCallCount == (completesCancellationFirst ? 2 : 1))
+    #expect(await audio.snapshot().isInputRunning == false)
+    #expect(await manager.currentState() == .idle)
+    continuation.finish()
+    cancellationContinuation.finish()
     await manager.stopForApplicationShutdown()
   }
 
