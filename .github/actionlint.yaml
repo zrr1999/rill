@@ -1,0 +1,6 @@
+# actionlint v1.7.12 does not know this GitHub-hosted label yet.
+# rhysd/actionlint#756 added it on main and has no release. This key is
+# actionlint's extension point; the runner is not self-hosted.
+self-hosted-runner:
+  labels:
+    - xcode-27
