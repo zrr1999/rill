@@ -41,7 +41,7 @@ actual_source_sha256="$(shasum -a 256 "$SOURCE_PNG" | awk '{ print $1 }')"
   echo "FAIL: app icon source SHA-256 does not match the reviewed asset" >&2
   exit 1
 }
-source_bytes="$(wc -c < "$SOURCE_PNG" | tr -d '[:space:]')"
+source_bytes="$(wc -c <"$SOURCE_PNG" | tr -d '[:space:]')"
 [[ "$source_bytes" -le "$MAX_SOURCE_BYTES" ]] || {
   echo "FAIL: app icon source exceeds the 500 KiB repository limit" >&2
   exit 1

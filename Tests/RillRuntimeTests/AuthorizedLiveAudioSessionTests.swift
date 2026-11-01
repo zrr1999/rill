@@ -16,6 +16,10 @@ private actor LiveContextStore {
   func replace(_ value: ContextSnapshot) { self.value = value }
 }
 
+private enum LivePolicyReadAction {
+  @TaskLocal static var action: (@Sendable () -> Void)?
+}
+
 private actor LiveSettingsStore {
   enum State {
     case available(PrivacyPolicySettings)
@@ -29,6 +33,7 @@ private actor LiveSettingsStore {
   }
 
   func read() throws -> PrivacyPolicySettings {
+    LivePolicyReadAction.action?()
     switch state {
     case .available(let settings):
       return settings
@@ -192,6 +197,13 @@ final class AuthorizedLiveAudioSessionTests: XCTestCase {
     _ = fixture.session.audioLifetime.revoke(.serviceFailure)
 
     do {
+      try await fixture.session.startMonitoring()
+      XCTFail("An invalidated capture must not restart its privacy monitor.")
+    } catch let error as LiveAudioSessionError {
+      XCTAssertEqual(error, .authorizationInvalidated(.policyBlocked))
+    }
+
+    do {
       _ = try await lease.claim(
         triggerEvent: WorkflowTriggerEvent(
           binding: .manual,
@@ -203,6 +215,26 @@ final class AuthorizedLiveAudioSessionTests: XCTestCase {
     } catch let error as PrivacyRunGate.GateError {
       XCTAssertEqual(error, .audioProcessingAuthorizationInvalid)
     }
+
+    let finalizingFixture = try await makeFixture()
+    try await finalizingFixture.session.startMonitoring()
+    try await finalizingFixture.session.sealCapture()
+    let finalizingLease = try await finalizingFixture.session.processingLeaseForEnqueue()
+    XCTAssertTrue(finalizingLease.acceptQueueOwnership())
+    let claim = try await finalizingLease.claim(triggerEvent: nil)
+
+    do {
+      _ = try await LivePolicyReadAction.$action.withValue({ finalizingLease.cancel() }) {
+        try await claim.finalize()
+      }
+      XCTFail("A capture revoked during final policy validation must not be authorized.")
+    } catch let error as PrivacyRunGate.GateError {
+      XCTAssertEqual(error, .audioProcessingAuthorizationInvalid)
+    }
+    XCTAssertEqual(
+      finalizingFixture.session.audioLifetime.state,
+      .revoked(.captureCancelled)
+    )
   }
 
   func testControllerCancellationBeforeQueueTransferRejectsLeaseOwnership() async throws {

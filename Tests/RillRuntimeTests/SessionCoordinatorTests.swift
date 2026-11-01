@@ -2537,12 +2537,14 @@ extension SessionCoordinatorTests {
       CapturedAudioProcessingQueue.OwnershipTransferResult.accepted
     )
 
-    for _ in 0..<50 {
-      if await queue.pendingCount == 1 { break }
-      await Task.yield()
+    for _ in 0..<200 {
+      if await coordinator.queuedRunCountForTesting == 1 { break }
+      try await Task.sleep(for: .milliseconds(5))
     }
+    let queuedRunCount = await coordinator.queuedRunCountForTesting
     let pendingWhileFirstRunIsActive = await queue.pendingCount
     let secondOutputWhileFirstRunIsActive = await secondRunProbe.snapshot()
+    XCTAssertEqual(queuedRunCount, 1)
     XCTAssertEqual(pendingWhileFirstRunIsActive, 1)
     XCTAssertTrue(secondOutputWhileFirstRunIsActive.isEmpty)
 
@@ -2563,8 +2565,10 @@ extension SessionCoordinatorTests {
 
     let completedSecondOutputs = await secondRunProbe.snapshot()
     let finalPendingCount = await queue.pendingCount
+    let finalQueuedRunCount = await coordinator.queuedRunCountForTesting
     XCTAssertEqual(completedSecondOutputs, ["recognized"])
     XCTAssertEqual(finalPendingCount, 0)
+    XCTAssertEqual(finalQueuedRunCount, 0)
     await queue.shutdown()
   }
 

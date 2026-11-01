@@ -34,11 +34,11 @@ Other content retains the existing normalization rule.
 
 ```sh
 # Set DEEPSEEK_API_KEY securely in the process environment.
-just eval-quality vocabulary-correction
-just eval-quality context-correction
+uv run --locked --project tools rill-eval-quality vocabulary-correction
+uv run --locked --project tools rill-eval-quality context-correction
 
 # Set OPENAI_API_KEY, OPENAI_BASE_URL and OPENAI_MODEL securely.
-just eval-quality text-rewrite
+uv run --locked --project tools rill-eval-quality text-rewrite
 ```
 
 These commands send the selected corpus to the configured provider. They do not
@@ -107,9 +107,9 @@ ASR remains local: the repository contains collection slots, not an authorized,
 annotated audio dataset. [ASR evaluation and replay](../docs/asr-evaluation.md)
 documents corpus export, Release receipts, cache conditions and timing boundaries.
 
-Use `just eval-quality asr` and `just bench asr --target METRIC` on the
+Use `uv run --locked --project tools rill-eval-quality asr` and `just benchmark asr --target METRIC` on the
 same raw runs. Quality needs human references, not memory measurements; performance
 needs comparable valid work and its target metric, not human references. Both can
-report small or synthetic experiments. `just accept-asr --goal quality|performance`
+report small or synthetic experiments. `uv run --locked --project tools rill-accept-asr --goal quality|performance`
 separately applies the microphone corpus, repetition, quality and performance
 admission policy. A pass is not native macOS or release acceptance.

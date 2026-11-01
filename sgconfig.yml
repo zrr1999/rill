@@ -1,0 +1,4 @@
+ruleDirs:
+  - scripts
+testConfigs:
+  - testDir: tools/tests

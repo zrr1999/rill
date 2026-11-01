@@ -1,0 +1,20 @@
+rules:
+  - id: private-evaluation-permissions
+    languages: [python]
+    severity: ERROR
+    message: Raw evaluation data must remain private to its owner.
+    metadata:
+      references:
+        - Evals/README.md
+    paths:
+      include:
+        - /tools/src/rill_dev/evaluation/**
+    patterns:
+      - pattern-either:
+          - pattern: os.open($PATH, $FLAGS, $MODE, ...)
+          - pattern: $PATH.chmod($MODE)
+          - pattern: os.chmod($PATH, $MODE)
+          - pattern: $PATH.mkdir(..., mode=$MODE, ...)
+      - metavariable-comparison:
+          metavariable: $MODE
+          comparison: $MODE & 0o077 != 0

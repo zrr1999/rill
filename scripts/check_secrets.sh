@@ -123,8 +123,8 @@ verify_current_source_snapshot() {
       fi
       continue
     fi
-    if [[ -L "$source_file" || ! -f "$source_file" \
-      || -L "$snapshot_file" || ! -f "$snapshot_file" ]]; then
+    if [[ -L "$source_file" || ! -f "$source_file" ||
+      -L "$snapshot_file" || ! -f "$snapshot_file" ]]; then
       error "Current source content changed during secret scanning; retry the scan"
       return
     fi

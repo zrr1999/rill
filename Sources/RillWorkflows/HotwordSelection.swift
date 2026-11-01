@@ -143,7 +143,7 @@ public final class HotwordSelection {
     let start = ContinuousClock.now
     // Privacy changes and capture cancellation also interrupt a blocked network call.
     let monitor = Task { [weak self] in
-      while !Task.isCancelled {
+      while true {
         do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
         guard let self, self.authorization == authorization else { return }
         guard self.credentialIsCurrent else {
