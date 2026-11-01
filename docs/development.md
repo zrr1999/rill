@@ -51,6 +51,8 @@ Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci
 
 仓库规则使用实际检查名称：[Policy - PR](../.github/workflows/policy-pr.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求文档检查、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。修改检查名称时同步核对仓库规则，合并步骤见[发布文档](releasing.md#合并门禁)。
 
+Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-27` 镜像，以 macOS 27 SDK 编译完整依赖图。Record workload 和质量评测不编译这张图，继续使用 `macos-26`。
+
 ## 预检报告与故障定位
 
 完整预检在 `.artifacts/preflight/run.*/` 保存 `summary.md`、`source.json` 和阶段日志。从摘要中的首个失败阶段开始定位。 CI 同时上传报告，初始化失败时应直接检查对应 Actions 步骤。
