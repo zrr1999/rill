@@ -47,7 +47,7 @@ just build release --worker-cache off
 
 `just check` 只读检查源文件；需要修复格式时显式运行 `just format`。Python 保留 Ruff 与 ty，deptry 检查运行时依赖，Import Linter 约束构建元数据不能依赖评测策略。ast-grep 约束领域模块的偏好存取边界，Semgrep 检查原始评测文件的权限；两者分别维护违规与合法样例。
 
-`just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。
+`just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式，并使用原子计数器避免并发测试丢失覆盖率计数。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。
 
 `Coverage` 作业负责采集覆盖率并上传到 Codecov。SonarQube Cloud 统一使用自动分析，通过 GitHub 集成读取源码并发布独立检查；源码与测试范围由根目录的 `.sonarcloud.properties` 配置。CI 和 CE 不再运行 SonarScanner，也不需要 `SONAR_TOKEN`。自动分析不接收覆盖率报告，覆盖率由 Codecov 和本地报告负责。
 

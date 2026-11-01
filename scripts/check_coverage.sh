@@ -7,8 +7,14 @@ mkdir -p .artifacts/quality
 lock_snapshot="$(mktemp)"
 cp Package.resolved "$lock_snapshot"
 trap 'cp "$lock_snapshot" Package.resolved; rm -f "$lock_snapshot"' EXIT
-scripts/preflight.sh swift test-domain --build-system swiftbuild --enable-code-coverage --skip RillQualityEvaluations
-report="$(scripts/preflight.sh swift test-domain --build-system swiftbuild --enable-code-coverage --show-codecov-path)"
+# Concurrent tests share profiling counters, including counters used in subtraction.
+coverage_arguments=(
+  --build-system swiftbuild --enable-code-coverage
+  -Xswiftc -Xllvm -Xswiftc -instrprof-atomic-counter-update-all
+  -Xcc -fprofile-update=atomic
+)
+scripts/preflight.sh swift test-domain "${coverage_arguments[@]}" --skip RillQualityEvaluations
+report="$(scripts/preflight.sh swift test-domain "${coverage_arguments[@]}" --show-codecov-path)"
 products="$(dirname "$(dirname "$report")")"
 profile="$(dirname "$report")/default.profdata"
 
