@@ -78,32 +78,16 @@ public struct DiagnosticsView: View {
         }
         timelineRows(entries)
       case .empty:
-        Text(L10n.text(.diagnosticsEmpty, language: model.settings.language))
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .accessibilityIdentifier("diagnostics.timeline.empty")
+        ContentUnavailableView(
+          L10n.text(.diagnosticsEmpty, language: model.settings.language),
+          systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue
+        )
+        .accessibilityIdentifier("diagnostics.timeline.empty")
       case .events(let entries):
         timelineRows(entries)
       }
     }
     .rillCard()
-  }
-
-  static func timelineEvents(
-    from events: [DiagnosticEvent],
-    filter: DiagnosticsTimelineFilter = .activity
-  ) -> [DiagnosticEvent] {
-    timelineEntries(from: events, filter: filter).map(\.event)
-  }
-
-  static func timelineEntries(
-    from events: [DiagnosticEvent],
-    filter: DiagnosticsTimelineFilter = .activity
-  ) -> [DiagnosticTimelineEntry] {
-    DiagnosticTimelineEntry.build(
-      from: events.filter(filter.includes),
-      limit: 20
-    )
   }
 
   static func timelineContent(

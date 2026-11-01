@@ -89,11 +89,6 @@ public struct VoiceActivityIndicator: View {
     return Array(repeating: 0, count: padding) + samples
   }
 
-  static func meterAnimation(reduceMotion: Bool) -> Animation? {
-    reduceMotion ? nil : .linear(duration: meterAnimationDuration)
-  }
-
-  static let meterTargetInterval: TimeInterval = 0.04
   // Let each target overlap the next 25 Hz meter sample. The native layer view
   // restarts from the current presentation value, producing one continuous
   // display-clock interpolation instead of a sequence of SwiftUI layout jumps.

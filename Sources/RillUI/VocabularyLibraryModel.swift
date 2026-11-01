@@ -22,17 +22,14 @@ public final class VocabularyLibraryModel {
   private let source: VocabularyRuleSource
 
   private let didChange: @MainActor ([VocabularyCollectionBinding]) -> Void
-  private let saveFailed: @MainActor () -> Void
 
   init(
     settings: SettingsPersistenceModel, source: VocabularyRuleSource,
-    didChange: @escaping @MainActor ([VocabularyCollectionBinding]) -> Void,
-    saveFailed: @escaping @MainActor () -> Void
+    didChange: @escaping @MainActor ([VocabularyCollectionBinding]) -> Void
   ) {
     self.settings = settings
     self.source = source
     self.didChange = didChange
-    self.saveFailed = saveFailed
   }
 
   private var canEdit: Bool {
@@ -69,7 +66,7 @@ public final class VocabularyLibraryModel {
         try await store.setString(
           String(decoding: encoder.encode(document), as: UTF8.self),
           forKey: AppSettingsCodec.vocabularyLibrarySettingKey)
-      }, onFailure: saveFailed)
+      })
   }
 
   func addVocabularyRule(

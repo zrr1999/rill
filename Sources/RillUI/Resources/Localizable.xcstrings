@@ -18,363 +18,6 @@
         }
       }
     },
-    "AppModel.Events.An.output.action.failed.Open.Diagnostics.for.a.safe.summary.then.retry": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "An output action failed. Open Diagnostics for a safe summary, then retry."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "一个输出动作失败。请在诊断中查看安全摘要后重试。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.An.output.action.was.skipped.Review.the.workflow.then.retry.if.needed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "An output action was skipped. Review the workflow, then retry if needed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "一个输出动作已跳过。请检查工作流，必要时重试。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.External.output.completed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "External output completed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "外部输出已完成。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Failure.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failure: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "失败："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Failure.summary.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failure summary: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "失败摘要："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Recognition.completed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recognition completed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "识别已完成。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Recognition.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recognition: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "识别结果："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Recognition.summary.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recognition summary: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "识别摘要："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Resolution.completed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Resolution completed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "消歧已完成。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Resolution.completed.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Resolution completed: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "消歧完成："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Resolution.summary.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Resolution summary: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "消歧摘要："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Run.completed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run completed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流已完成。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Run.completed.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run completed: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流完成："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Run.failed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run failed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流失败。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Run.result.summary.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run result summary: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "运行结果摘要："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Text.transformation.completed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Text transformation completed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文本处理已完成。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Text.was.copied.to.the.clipboard": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Text was copied to the clipboard."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文本已复制到剪贴板。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Text.was.inserted": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Text was inserted."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文本已输入。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Text.was.stored.as.a.record": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Text was stored as a record."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文本已存为记录。"
-          }
-        }
-      }
-    },
-    "AppModel.Events.Transformation.applied.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transformation applied: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文本处理完成："
-          }
-        }
-      }
-    },
-    "AppModel.Events.Transformation.summary.prefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transformation summary: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文本处理摘要："
-          }
-        }
-      }
-    },
     "AppModel.HistoryMaintenance.Cleanup.completed.but.its.pending.marker.could.not.be.removed.Retry.cleanup": {
       "extractionState": "manual",
       "localizations": {
@@ -511,40 +154,6 @@
         }
       }
     },
-    "AppModel.SettingsPersistence.Downloaded.model.metadata.could.not.be.loaded.and.was.ignored": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Downloaded model metadata could not be loaded and was ignored."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已下载模型的元数据无法加载，已忽略。"
-          }
-        }
-      }
-    },
-    "AppModel.SettingsPersistence.One.or.more.stored.settings.could.not.be.read.Affected.features.remain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "One or more stored settings could not be read. Affected features remain unavailable or use safe defaults."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "一个或多个已保存设置无法读取；受影响功能保持不可用或使用安全默认值。"
-          }
-        }
-      }
-    },
     "AppModel.SettingsPersistence.Saved.speech.provider.settings.are.unavailable": {
       "extractionState": "manual",
       "localizations": {
@@ -558,23 +167,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已保存的语音服务设置不可用。"
-          }
-        }
-      }
-    },
-    "AppModel.SettingsPersistence.The.LLM.Provider.credential.could.not.be.read.from.secure.storage": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The LLM Provider credential could not be read from secure storage."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法从安全存储读取 LLM Provider 凭据。"
           }
         }
       }
@@ -609,23 +201,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法加载已保存的工作流库。为保护现有数据，编辑保持停用。请修复存储后重试。"
-          }
-        }
-      }
-    },
-    "AppModel.SettingsPersistence.Vocabulary.rules.could.not.be.loaded.and.were.ignored": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vocabulary rules could not be loaded and were ignored."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "词汇规则无法加载，已忽略。"
           }
         }
       }
@@ -1344,57 +919,6 @@
         }
       }
     },
-    "L10n.Append.to.Obsidian.Markdown": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Append to Obsidian/Markdown"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "追加到 Obsidian/Markdown"
-          }
-        }
-      }
-    },
-    "L10n.Automatic": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatic"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动"
-          }
-        }
-      }
-    },
-    "L10n.Best.Quality.Large.v3": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Best Quality — Large v3"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最佳质量 — Large v3"
-          }
-        }
-      }
-    },
     "L10n.Copy.to.Clipboard": {
       "extractionState": "manual",
       "localizations": {
@@ -1412,23 +936,6 @@
         }
       }
     },
-    "L10n.Custom": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Custom"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自定义"
-          }
-        }
-      }
-    },
     "L10n.Disabled": {
       "extractionState": "manual",
       "localizations": {
@@ -1442,40 +949,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "禁用"
-          }
-        }
-      }
-    },
-    "L10n.English.Only.Distilled.Large.v3": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "English Only — Distilled Large v3"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "仅英语 — Distilled Large v3"
-          }
-        }
-      }
-    },
-    "L10n.Fast.Tiny": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fast — Tiny"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "快速 — Tiny"
           }
         }
       }
@@ -1510,40 +983,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "规则"
-          }
-        }
-      }
-    },
-    "L10n.Local.Speech": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Speech"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地识别"
-          }
-        }
-      }
-    },
-    "L10n.Local.Streaming.Speech": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Streaming Speech"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地流式识别"
           }
         }
       }
@@ -1701,23 +1140,6 @@
         }
       }
     },
-    "L10n.Paste.into.Active.App": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Paste into Active App"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "输入到当前应用"
-          }
-        }
-      }
-    },
     "L10n.Paste.into.App": {
       "extractionState": "manual",
       "localizations": {
@@ -1769,40 +1191,6 @@
         }
       }
     },
-    "L10n.Run.macOS.Shortcut": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run macOS Shortcut"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "运行 macOS 快捷指令"
-          }
-        }
-      }
-    },
-    "L10n.Save.to.Clipboard.Queue": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save to Clipboard Queue"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保存到剪贴板队列"
-          }
-        }
-      }
-    },
     "L10n.Save.to.Queue": {
       "extractionState": "manual",
       "localizations": {
@@ -1816,23 +1204,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "保存记录"
-          }
-        }
-      }
-    },
-    "L10n.Speak.Only": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Speak Only"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "仅朗读"
           }
         }
       }
@@ -2262,57 +1633,6 @@
         }
       }
     },
-    "Localization.ExternalOutput.Atomically.appends.to.an.Obsidian.compatible.note.in.an.existing.folder.Linked.paths.and": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Atomically appends to an Obsidian-compatible note in an existing folder. Linked paths and files over 64 MiB are rejected."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "原子追加到现有文件夹中的 Obsidian 兼容笔记；拒绝链接路径和超过 64 MiB 的文件。"
-          }
-        }
-      }
-    },
-    "Localization.ExternalOutput.Runs.a.macOS.Shortcut.and.passes.the.final.text.as.input": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Runs a macOS Shortcut and passes the final text as input."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "运行 macOS 快捷指令，并把最终文本作为输入。"
-          }
-        }
-      }
-    },
-    "Localization.ExternalOutput.Webhook.output.is.unavailable.until.its.endpoint.and.headers.use.secure.storage": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook output is unavailable until its endpoint and headers use secure storage."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook 端点和请求头迁入安全存储前，此输出不可用。"
-          }
-        }
-      }
-    },
     "Localization.HistoryRun.Cancelled": {
       "extractionState": "manual",
       "localizations": {
@@ -2377,23 +1697,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "失败"
-          }
-        }
-      }
-    },
-    "Localization.HistoryRun.Partially.completed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Partially completed"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "部分完成"
           }
         }
       }
@@ -4064,23 +3367,6 @@
         }
       }
     },
-    "VoiceWorkflowPresentation.Mode.Speech.Language.Trigger.Output": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mode: %1$@ · Speech: %2$@ · Language: %3$@ · Trigger: %4$@ · Output: %5$@ · %6$@: %7$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "模式：%1$@ · 识别：%2$@ · 语言：%3$@ · 触发：%4$@ · 输出：%5$@ · %6$@：%7$@"
-          }
-        }
-      }
-    },
     "WorkflowStepPresentation.Answer": {
       "extractionState": "manual",
       "localizations": {
@@ -4502,109 +3788,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "范围 %1$@-%2$@"
-          }
-        }
-      }
-    },
-    "clipboard.accessibilityValue": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%2$@, %1$lld saved item"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%2$@, %1$lld saved items"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans": {
-          "variations": {
-            "plural": {
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%2$@，%1$lld 个已保存条目"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "clipboard.delete.description.many": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This permanently removes all %@ saved records represented by this row. This action can't be undone."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这会永久移除该行所代表的全部 %@ 条已保存记录，且无法撤销。"
-          }
-        }
-      }
-    },
-    "clipboard.delete.description.one": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This permanently removes the saved record. This action can't be undone."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这会永久移除已保存的记录，且无法撤销。"
-          }
-        }
-      }
-    },
-    "clipboard.delete.title.many": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete these %@ merged records?"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除这 %@ 条已合并的记录？"
-          }
-        }
-      }
-    },
-    "clipboard.delete.title.one": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete this record?"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "删除这条记录？"
           }
         }
       }
@@ -5152,295 +4335,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "警告"
-          }
-        }
-      }
-    },
-    "editorRecognizer.automatic": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatic"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动"
-          }
-        }
-      }
-    },
-    "editorRecognizer.localSpeech": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Speech"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地识别"
-          }
-        }
-      }
-    },
-    "event.actionFinished": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Action %@ finished."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "动作 %@ 已结束。"
-          }
-        }
-      }
-    },
-    "event.actionPrefix": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Action %@: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "动作 %@："
-          }
-        }
-      }
-    },
-    "event.actionSummary": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Action %@ result summary: "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "动作 %@ 结果摘要："
-          }
-        }
-      }
-    },
-    "event.cancelled": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run cancelled."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流已取消。"
-          }
-        }
-      }
-    },
-    "event.contextCaptured": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Context captured from %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已捕获上下文：%@"
-          }
-        }
-      }
-    },
-    "event.diagnostic": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "[%1$@] %2$@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "[%1$@] %2$@"
-          }
-        }
-      }
-    },
-    "event.notice.Candidate.resolution.requested": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Candidate resolution requested"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已请求候选词消歧"
-          }
-        }
-      }
-    },
-    "event.notice.History.persistence.is.unavailable.This.run.is.visible.only.for.the.current": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "History persistence is unavailable. This run is visible only for the current session."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "历史记录持久化不可用；这次运行仅在当前会话中可见。"
-          }
-        }
-      }
-    },
-    "event.notice.History.repository.is.unavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "History repository is unavailable."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "历史记录仓库不可用。"
-          }
-        }
-      }
-    },
-    "event.notice.Non.voice.run.completed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Non-voice run completed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "非语音工作流已完成。"
-          }
-        }
-      }
-    },
-    "event.notice.Recording.stopped": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recording stopped."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "录音已停止。"
-          }
-        }
-      }
-    },
-    "event.notice.Run.receipt.repository.is.unavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run receipt repository is unavailable."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "运行收据仓库不可用。"
-          }
-        }
-      }
-    },
-    "event.notice.Text.cleanup.was.skipped.the.complete.text.before.cleanup.was.retained": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Text cleanup was skipped; the complete text before cleanup was retained."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未完成智能整理，已保留整理前的完整文本。"
-          }
-        }
-      }
-    },
-    "event.partiallyCancelled": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run cancelled after partial completion."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流在部分完成后已取消。"
-          }
-        }
-      }
-    },
-    "event.runStarted": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Run started: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流开始：%@"
           }
         }
       }
@@ -7468,23 +6362,6 @@
         }
       }
     },
-    "general.vocabularyCorrectionCreated": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Correction rule saved for future runs."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "纠正规则已保存，将用于后续运行。"
-          }
-        }
-      }
-    },
     "general.vocabularyCorrectionDescription": {
       "extractionState": "manual",
       "localizations": {
@@ -7583,23 +6460,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "原始识别文本"
-          }
-        }
-      }
-    },
-    "general.vocabularyCorrectionReused": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The matching correction rule is enabled for future runs."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已有的匹配纠正规则已启用，将用于后续运行。"
           }
         }
       }
@@ -8199,23 +7059,6 @@
         }
       }
     },
-    "general.voiceModeOutputNone": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No output"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无输出"
-          }
-        }
-      }
-    },
     "general.workflowAdvancedTextSteps": {
       "extractionState": "manual",
       "localizations": {
@@ -8229,23 +7072,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "高级文本步骤"
-          }
-        }
-      }
-    },
-    "general.workflowLanguageAuto": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Auto language"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动语言"
           }
         }
       }
@@ -8399,40 +7225,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "处理耗时：%@"
-          }
-        }
-      }
-    },
-    "history.step.header": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ · %2$@\n"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ · %2$@\n"
-          }
-        }
-      }
-    },
-    "history.step.headerLine": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@%2$@\n"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@%2$@\n"
           }
         }
       }
@@ -8977,125 +7769,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音转文字"
-          }
-        }
-      }
-    },
-    "historyRunDurationBucket.m1Plus": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 min or more"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 分钟以上"
-          }
-        }
-      }
-    },
-    "historyRunDurationBucket.ms250To999": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "250–999 ms"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "250–999 毫秒"
-          }
-        }
-      }
-    },
-    "historyRunDurationBucket.s15To59": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "15–59 s"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "15–59 秒"
-          }
-        }
-      }
-    },
-    "historyRunDurationBucket.s1To4": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1–4 s"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1–4 秒"
-          }
-        }
-      }
-    },
-    "historyRunDurationBucket.s5To14": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "5–14 s"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "5–14 秒"
-          }
-        }
-      }
-    },
-    "historyRunDurationBucket.unavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "duration unavailable"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "耗时不可用"
-          }
-        }
-      }
-    },
-    "historyRunDurationBucket.under250ms": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "under 250 ms"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "少于 250 毫秒"
           }
         }
       }
@@ -11862,40 +10535,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消"
-          }
-        }
-      }
-    },
-    "interface.eventFeed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Activity"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "活动"
-          }
-        }
-      }
-    },
-    "interface.eventFeedEmpty": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No events yet. Run a workflow to see activity here."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "暂无事件。运行工作流后，活动将显示在此处。"
           }
         }
       }
@@ -15317,40 +13956,6 @@
         }
       }
     },
-    "localSpeechEngine.mlxAudioSwift": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MLX Local"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MLX 本地"
-          }
-        }
-      }
-    },
-    "localSpeechEngine.sherpaOnnx": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Legacy Local"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "旧版本地"
-          }
-        }
-      }
-    },
     "models.compatible": {
       "extractionState": "manual",
       "localizations": {
@@ -16354,23 +14959,6 @@
         }
       }
     },
-    "privacy.automaticRouteHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Global engine; cloud may confirm."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全局引擎；云端可能确认。"
-          }
-        }
-      }
-    },
     "privacy.bundleIdentifier": {
       "extractionState": "manual",
       "localizations": {
@@ -16626,23 +15214,6 @@
         }
       }
     },
-    "privacy.localRouteHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local route: recognition stays on this Mac."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地路径：识别留在本机。"
-          }
-        }
-      }
-    },
     "privacy.missingBundleIdentifier": {
       "extractionState": "manual",
       "localizations": {
@@ -16792,23 +15363,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "撤销"
-          }
-        }
-      }
-    },
-    "privacy.routeDetailLabel": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Privacy"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "隐私"
           }
         }
       }
@@ -19754,35 +18308,6 @@
         }
       }
     },
-    "record.recordCountFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%d record"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%d records"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d 条记录"
-          }
-        }
-      }
-    },
     "record.recordFallback": {
       "extractionState": "manual",
       "localizations": {
@@ -21257,23 +19782,6 @@
         }
       }
     },
-    "run.builtInWakeWorkflowUpdatedFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Built-in wake workflow updated: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内置唤醒工作流已更新：%@"
-          }
-        }
-      }
-    },
     "run.builtInWorkflowOverrideRemoveFailedFormat": {
       "extractionState": "manual",
       "localizations": {
@@ -21287,23 +19795,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法删除内置工作流覆盖文件：%@"
-          }
-        }
-      }
-    },
-    "run.builtInWorkflowRestoredFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Built-in workflow restored: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内置工作流已恢复默认：%@"
           }
         }
       }
@@ -21338,23 +19829,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "已保存的剪贴板历史留存设置损坏；保存有效时长前，剪贴板清理保持暂停。"
-          }
-        }
-      }
-    },
-    "run.configurationStorageUnavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Configuration storage is unavailable. Settings and privacy controls could not be loaded."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "配置存储不可用，无法加载设置与隐私控制。"
           }
         }
       }
@@ -21478,40 +19952,6 @@
         }
       }
     },
-    "run.credentialSaveFailed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A speech-provider credential could not be saved. Review credential access in Settings."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "语音服务凭据无法保存，请在设置页面检查凭据访问状态。"
-          }
-        }
-      }
-    },
-    "run.diagnosticsRepositoryUnavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diagnostics repository is unavailable."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "诊断仓库不可用。"
-          }
-        }
-      }
-    },
     "run.failedRecordingNotRetainedFormat": {
       "extractionState": "manual",
       "localizations": {
@@ -21525,108 +19965,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法保留失败录音。%@"
-          }
-        }
-      }
-    },
-    "run.failedRecoverySettingInvalid": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid failed recording recovery setting was ignored; recovery remains off."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已忽略无效的失败录音恢复设置；恢复功能保持关闭。"
-          }
-        }
-      }
-    },
-    "run.historyRetentionInvalid.clipboard": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid clipboard history retention setting was ignored; cleanup for that domain is paused."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "剪贴板历史留存设置无效；该域清理已暂停。"
-          }
-        }
-      }
-    },
-    "run.historyRetentionInvalid.runs": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invalid run and diagnostic history retention setting was ignored; cleanup for that domain is paused."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "运行与诊断历史留存设置无效；该域清理已暂停。"
-          }
-        }
-      }
-    },
-    "run.historyRetentionReadFailed.clipboard": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A stored clipboard history retention setting could not be read; cleanup for that domain is paused."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法读取已保存的剪贴板历史留存设置；该域清理已暂停。"
-          }
-        }
-      }
-    },
-    "run.historyRetentionReadFailed.runs": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A stored run and diagnostic history retention setting could not be read; cleanup for that domain is paused."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法读取已保存的运行与诊断历史留存设置；该域清理已暂停。"
-          }
-        }
-      }
-    },
-    "run.localHistoryUpdatedFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local history updated: removed %@, preserved %@ active clipboard item(s)."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地历史已更新：移除 %@ 条，保留 %@ 条仍在使用的剪贴板内容。"
           }
         }
       }
@@ -21682,40 +20020,6 @@
         }
       }
     },
-    "run.localSpeechModelMemoryReleased": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Released the local speech model from memory. It will load again on the next local recognition."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已释放本地语音模型内存；下次本地识别时会重新加载。"
-          }
-        }
-      }
-    },
-    "run.localSpeechModelReadyFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local speech model is ready: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地语音模型已准备就绪：%@"
-          }
-        }
-      }
-    },
     "run.maintenanceServiceUnavailable": {
       "extractionState": "manual",
       "localizations": {
@@ -21729,40 +20033,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地历史维护服务不可用，没有移除任何历史记录。"
-          }
-        }
-      }
-    },
-    "run.openAISettingsAvailableAgain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "LLM Provider settings and credential access are available again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "LLM Provider 设置与凭据访问已恢复。"
-          }
-        }
-      }
-    },
-    "run.openAISettingsStillUnavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "LLM Provider settings or credential access are still unavailable."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "LLM Provider 设置或凭据访问仍不可用。"
           }
         }
       }
@@ -21818,23 +20088,6 @@
         }
       }
     },
-    "run.privacySaveFailedRetry": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Privacy settings could not be saved. Retry from the Privacy section in Settings."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "隐私设置无法保存，请在设置页面的隐私区域重试。"
-          }
-        }
-      }
-    },
     "run.privacySaveFailedSessionOnly": {
       "extractionState": "manual",
       "localizations": {
@@ -21886,40 +20139,6 @@
         }
       }
     },
-    "run.protectedSettingsReloaded": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Protected settings were loaded again without overwriting stored data."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已重新加载受保护设置，且未覆盖已保存数据。"
-          }
-        }
-      }
-    },
-    "run.protectedSettingsStillUnavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Protected settings are still unavailable. No workflow, model, or vocabulary data was changed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "受保护设置仍不可用；工作流、模型与词汇数据均未更改。"
-          }
-        }
-      }
-    },
     "run.recordDeliveryFocusFailure": {
       "extractionState": "manual",
       "localizations": {
@@ -21933,23 +20152,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "记录投递已中止，因为 Rill 未能把焦点切回目标 App。"
-          }
-        }
-      }
-    },
-    "run.recordingStartedAutoStop": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recording started. It will finish after you stop speaking; click again to stop now."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已开始录音。停止说话后会自动结束；再次点击可立即停止。"
           }
         }
       }
@@ -22192,23 +20394,6 @@
         }
       }
     },
-    "run.retentionSaveFailedNotice": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "History retention settings could not be saved. Cleanup was not started."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "历史留存设置无法保存，未启动清理。"
-          }
-        }
-      }
-    },
     "run.retentionSaveFailedRepair": {
       "extractionState": "manual",
       "localizations": {
@@ -22396,57 +20581,6 @@
         }
       }
     },
-    "run.savedSettingsAvailableAgain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved settings are available again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已保存的设置现已恢复可用。"
-          }
-        }
-      }
-    },
-    "run.savedSettingsStillUnavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved settings are still unavailable."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已保存的设置仍不可用。"
-          }
-        }
-      }
-    },
-    "run.settingsSaveFailedRetry": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Some settings could not be saved. Retry from Settings."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "部分设置无法保存，请在设置页面重试。"
-          }
-        }
-      }
-    },
     "run.speechRoutingSettingsUnavailable": {
       "extractionState": "manual",
       "localizations": {
@@ -22477,23 +20611,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "唤醒听写"
-          }
-        }
-      }
-    },
-    "run.wakePhrasesUpdatedFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wake phrases updated: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "唤醒短语已更新：%@"
           }
         }
       }
@@ -22617,23 +20734,6 @@
         }
       }
     },
-    "run.workflowRemovedFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Workflow removed: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流已删除：%@"
-          }
-        }
-      }
-    },
     "run.workflowRoutingUnresolvable": {
       "extractionState": "manual",
       "localizations": {
@@ -22647,23 +20747,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法安全解析工作流路由。"
-          }
-        }
-      }
-    },
-    "run.workflowSavedFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Workflow saved: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作流已保存：%@"
           }
         }
       }
@@ -29367,23 +27450,6 @@
         }
       }
     },
-    "workflow.workflowOpenAIModelHintFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "LLM Provider model: %@. Change it in Settings → Speech Engine."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "LLM Provider 模型：%@。可在“设置 → 语音引擎”中切换。"
-          }
-        }
-      }
-    },
     "workflow.workflowOpenFolder": {
       "extractionState": "manual",
       "localizations": {
@@ -29499,40 +27565,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "浮层"
-          }
-        }
-      }
-    },
-    "workflow.workflowPrivacyShortAutomatic": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cloud may confirm"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "可能经云端确认"
-          }
-        }
-      }
-    },
-    "workflow.workflowPrivacyShortLocal": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stays on this Mac"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "识别留在本机"
           }
         }
       }
@@ -30191,23 +28223,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "在工作流 Setup 中复用的热词与替换词集合。"
-          }
-        }
-      }
-    },
-    "workflow.workflowVocabularySummaryFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d hotwords · %d replacements"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%d 个热词 · %d 个替换词"
           }
         }
       }
@@ -33759,22 +31774,6 @@
         }
       }
     },
-    "workflow.legacy.unsupported": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Old settings workflows are unsupported. Their data is preserved. Import a new schema_version = 1 TOML file to run."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "旧设置中的工作流格式已不受支持，原数据仍然保留。请导入新的 schema_version = 1 TOML 文件以运行。"
-          }
-        }
-      }
-    },
     "workflowName.bufferDictation": {
       "localizations": {
         "en": {
@@ -33917,6 +31916,244 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地语音资源与系统语音回退"
+          }
+        }
+      }
+    },
+    "history.receiptLoadFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run action receipts could not be loaded. Action details may be incomplete; retry to refresh them."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法加载运行输出收据，动作详情可能不完整。请重试刷新。"
+          }
+        }
+      }
+    },
+    "workflow.legacySettingsFound": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retired workflow settings were found but are not executed. Export a raw backup for manual review; it may contain private configuration."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检测到旧版工作流设置，已禁止自动执行。可导出原始备份供人工核查；其中可能包含隐私配置。"
+          }
+        }
+      }
+    },
+    "workflow.exportLegacySettings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export backup…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出备份…"
+          }
+        }
+      }
+    },
+    "workflow.exportLegacySettingsFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not export retired workflow settings. Check storage access and the destination, then retry."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导出旧版工作流设置。请检查存储访问权限和保存位置后重试。"
+          }
+        }
+      }
+    },
+    "run.failedRecoverySettingInvalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The saved failed-recording recovery setting is invalid or unavailable. Recovery remains off until a valid choice is saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存的失败录音恢复设置无效或不可读取。恢复功能保持关闭，直到保存有效选项。"
+          }
+        }
+      }
+    },
+    "general.vocabularyCorrectionCreated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correction rule saved for future runs."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纠正规则已保存，将用于后续运行。"
+          }
+        }
+      }
+    },
+    "general.vocabularyCorrectionReused": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The matching correction rule is enabled for future runs."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有的匹配纠正规则已启用，将用于后续运行。"
+          }
+        }
+      }
+    },
+    "vocabulary.ruleSaveFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The correction rule was updated locally, but could not be saved. Retry before leaving this window."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纠正规则已在本次会话中更新，但未能持久保存。请在关闭窗口前重试。"
+          }
+        }
+      }
+    },
+    "workflow.outputInvalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This workflow has invalid configuration. Review its issues before changing outputs."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此工作流配置无效。请先检查配置问题，再修改输出。"
+          }
+        }
+      }
+    },
+    "workflow.outputSaving": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving this output preference…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在保存此输出设置…"
+          }
+        }
+      }
+    },
+    "workflow.outputRequired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This required output cannot be disabled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此输出为必需动作，不可关闭。"
+          }
+        }
+      }
+    },
+    "workflow.declaredSpeechRoute": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configured recognizer"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置的语音识别器"
+          }
+        }
+      }
+    },
+    "workflow.declaredSpeechLanguage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configured speech language"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置的语音语言"
+          }
+        }
+      }
+    },
+    "history.transformFallback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text enhancement was skipped after a recoverable failure; the earlier text was retained. Review diagnostic details before relying on the output."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文本增强因可恢复错误被跳过，已保留此前的文本。使用结果前请查看诊断详情。"
           }
         }
       }

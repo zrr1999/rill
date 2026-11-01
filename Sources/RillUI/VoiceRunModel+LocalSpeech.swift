@@ -40,9 +40,6 @@ extension VoiceRunModel {
         localSpeechPreparationProgress = 1
         localSpeechPreparedModelIdentifier = model
         didPrepare(model)
-        appendEvent(
-          EventFeedEntry(
-            L10n.resource("run.localSpeechModelReadyFormat", defaultValue: "Local speech model is ready: \(model)")))
       } catch {
         guard let self, owner.isActive(id: id), !Task.isCancelled,
           !settings.hasBegunApplicationShutdown
@@ -68,18 +65,12 @@ extension VoiceRunModel {
     localSpeechPreparationTaskOwner.cancelActive()
     releaseLocalSpeech()
     localSpeechPreparationFailure = nil
-    appendEvent(
-      EventFeedEntry(
-        L10n.resource("run.localSpeechModelMemoryReleased")))
   }
 
   private func applyLocalSpeechPreparationFailure(_ error: Error) {
     let stage = (error as? LocalSpeechPreparationFailure)?.stage ?? .generic
     let presentation = L10n.localSpeechPreparationFailure(stage)
     localSpeechPreparationFailure = presentation
-    appendEvent(
-      EventFeedEntry(
-        presentation))
   }
 
   private func updateLocalSpeechPreparationProgress(_ progress: Progress, operationID: UUID) {

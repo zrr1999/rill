@@ -47,17 +47,6 @@ final class VoiceActivityIndicatorTests: XCTestCase {
     )
   }
 
-  func testReduceMotionDisablesMeterAnimation() {
-    XCTAssertNil(VoiceActivityIndicator.meterAnimation(reduceMotion: true))
-    XCTAssertNotNil(VoiceActivityIndicator.meterAnimation(reduceMotion: false))
-    XCTAssertEqual(VoiceActivityIndicator.meterTargetInterval, 0.04, accuracy: 0.001)
-    XCTAssertEqual(VoiceActivityIndicator.meterAnimationDuration, 0.08, accuracy: 0.001)
-    XCTAssertGreaterThan(
-      VoiceActivityIndicator.meterAnimationDuration,
-      VoiceActivityIndicator.meterTargetInterval
-    )
-  }
-
   func testMeterWidthMatchesBarGeometry() {
     XCTAssertEqual(
       VoiceActivityIndicator.meterWidth(barCount: 12, barWidth: 2, barSpacing: 2),

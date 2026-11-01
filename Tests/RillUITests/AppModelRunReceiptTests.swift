@@ -125,6 +125,10 @@ private actor SwitchableRunReceiptRepository: WorkflowRunReceiptRepository {
     queryShouldFail = true
   }
 
+  func allowQueries() {
+    queryShouldFail = false
+  }
+
   func observedQueryCount() -> Int {
     queryCount
   }
@@ -446,6 +450,35 @@ final class AppModelRunReceiptTests: XCTestCase {
       harness.model.recentVoiceResultRecords.map(\.runID),
       [legacyVoiceRunID]
     )
+  }
+
+  func testReceiptReadFailureShowsRecoverableStateWithoutLeakingRepositoryError() async throws {
+    let receipt = try makeReceipt(trigger: .recordUse)
+    let repository = SwitchableRunReceiptRepository(receipts: [receipt])
+    let harness = makeHarness(runReceiptRepository: repository)
+    let initiallyLoaded = await waitUntil {
+      harness.model.workflowRunReceipt(for: receipt.runID) == receipt
+        && harness.model.history.runReceiptLoadState == .loaded
+    }
+    XCTAssertTrue(initiallyLoaded)
+    await repository.failFutureQueries()
+    harness.model.loadRunReceipts(requiredRunIDs: [receipt.runID])
+    let failed = await waitUntil {
+      if case .failed(.repositoryUnavailable) = harness.model.history.runReceiptLoadState {
+        return true
+      }
+      return false
+    }
+    XCTAssertTrue(failed)
+    XCTAssertEqual(harness.model.workflowRunReceipt(for: receipt.runID), receipt)
+
+    await repository.allowQueries()
+    harness.model.retryRunReceiptLoad()
+    let recovered = await waitUntil {
+      harness.model.history.runReceiptLoadState == .loaded
+        && harness.model.workflowRunReceipt(for: receipt.runID) == receipt
+    }
+    XCTAssertTrue(recovered)
   }
 
   func testCompletedExplicitClearRemovesCachedReceiptWhenReloadFails() async throws {

@@ -14,12 +14,12 @@ concurrency:
 
 jobs:
   title:
-    timeout-minutes: 10
     name: Normalize PR title
     if: >-
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write

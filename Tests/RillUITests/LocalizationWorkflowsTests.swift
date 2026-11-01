@@ -49,28 +49,12 @@ final class LocalizationWorkflowsTests: XCTestCase {
 
   func testWorkflowParameterizedCopy() {
     XCTAssertEqual(
-      L10n.workflowOpenAIModelHint("gpt-5", language: .english),
-      "LLM Provider model: gpt-5. Change it in Settings → Speech Engine."
-    )
-    XCTAssertEqual(
-      L10n.workflowOpenAIModelHint("gpt-5", language: .simplifiedChinese),
-      "LLM Provider 模型：gpt-5。可在“设置 → 语音引擎”中切换。"
-    )
-    XCTAssertEqual(
       L10n.workflowUnsupportedStepError("snippetReplacement", language: .english),
       "The snippetReplacement step is not available without a configured production transformer."
     )
     XCTAssertEqual(
       L10n.workflowUnsupportedStepError("snippetReplacement", language: .simplifiedChinese),
       "尚未配置生产级 transformer，不能使用 snippetReplacement 步骤。"
-    )
-    XCTAssertEqual(
-      L10n.workflowVocabularySummary(hotwordCount: 2, replacementCount: 3, language: .english),
-      "2 hotwords · 3 replacements"
-    )
-    XCTAssertEqual(
-      L10n.workflowVocabularySummary(hotwordCount: 2, replacementCount: 3, language: .simplifiedChinese),
-      "2 个热词 · 3 个替换词"
     )
   }
 

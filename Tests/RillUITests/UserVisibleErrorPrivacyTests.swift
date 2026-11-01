@@ -162,7 +162,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     assertSentinelIsAbsent(from: harness.model)
   }
 
-  func testRuntimeFailureAndActionResultAreSanitizedBeforeReachingUIState() async throws {
+  func testRuntimeFailureIsSanitizedBeforeReachingUIState() async throws {
     let harness = makeHarness()
     await waitForListenerSetup(harness)
 
@@ -179,13 +179,6 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
       expectedFailure
     )
 
-    await harness.eventBus.publish(
-      .actionExecuted(run: .init(runID: UUID()), actionID: "provider.action", result: .failed(sentinel))
-    )
-    await waitForEventProcessing(harness)
-
-    let entry = try XCTUnwrap(harness.model.history.eventFeed.last)
-    XCTAssertEqual(entry.english, "An output action failed. Open Diagnostics for a safe summary, then retry.")
     assertSentinelIsAbsent(from: harness.model)
   }
 
@@ -346,7 +339,6 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         model.history.historyRetentionSettingsError,
       ]
       .compactMap { $0 }
-      + model.history.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] }
 
     XCTAssertFalse(
       visibleText.contains { $0.contains(sentinel) },

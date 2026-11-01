@@ -59,24 +59,6 @@ final class HistoryRunPresentationTests: XCTestCase {
     }
   }
 
-  func testEverySkippedTerminationIncludesItsSpecificReasonInReceiptDetails() {
-    for reason in WorkflowRunSkipCode.allCases {
-      let englishReason = L10n.workflowRunSkipReason(reason, language: .english)
-      let chineseReason = L10n.workflowRunSkipReason(reason, language: .simplifiedChinese)
-      XCTAssertEqual(
-        L10n.workflowRunTermination(.skipped(reason: reason), language: .english),
-        "Skipped — \(englishReason)"
-      )
-      XCTAssertEqual(
-        L10n.workflowRunTermination(
-          .skipped(reason: reason),
-          language: .simplifiedChinese
-        ),
-        "已跳过 — \(chineseReason)"
-      )
-    }
-  }
-
   func testSkippedReasonIsIncludedInAccessibilityLabel() {
     for reason in WorkflowRunSkipCode.allCases {
       XCTAssertEqual(

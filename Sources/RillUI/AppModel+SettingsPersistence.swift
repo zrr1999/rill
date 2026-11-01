@@ -165,29 +165,6 @@ struct RetryableSettingsStoreWrite: Sendable {
   }
 }
 
-enum StoredSettingsLoadWarning: Sendable {
-  case legacyWorkflowFormatUnsupported
-  case storedValuesUnavailable
-  case downloadedModelMetadata
-  case vocabularyRules
-  case openAICredential
-
-  var presentation: LocalizedStringResource {
-    switch self {
-    case .legacyWorkflowFormatUnsupported:
-      L10n.resource("workflow.legacy.unsupported")
-    case .storedValuesUnavailable:
-      L10n.resource("AppModel.SettingsPersistence.One.or.more.stored.settings.could.not.be.read.Affected.features.remain")
-    case .downloadedModelMetadata:
-      L10n.resource("AppModel.SettingsPersistence.Downloaded.model.metadata.could.not.be.loaded.and.was.ignored")
-    case .vocabularyRules:
-      L10n.resource("AppModel.SettingsPersistence.Vocabulary.rules.could.not.be.loaded.and.were.ignored")
-    case .openAICredential:
-      L10n.resource("AppModel.SettingsPersistence.The.LLM.Provider.credential.could.not.be.read.from.secure.storage")
-    }
-  }
-}
-
 public enum StoredSettingsDomainAvailability: Sendable, Equatable {
   case available
   case unavailable
@@ -201,6 +178,7 @@ enum StoredSettingsDomain: Sendable, Hashable {
 
 struct StoredAppSettingsSnapshot: Sendable {
   let values: [AppSettingKey: String]
+  let legacyWorkflowSettingsPresent: Bool
   let persistentSettingsStoreWasAvailable: Bool
   let unavailableSettingKeys: Set<AppSettingKey>
   let legacyLocalSpeechMigrationValues: [AppSettingKey: String]
@@ -213,7 +191,6 @@ struct StoredAppSettingsSnapshot: Sendable {
   let vocabularyLibraryNeedsMigration: Bool
   let privacyPolicySettings: PrivacyPolicySettings
   let privacySettingsWereInvalid: Bool
-  let loadWarnings: [StoredSettingsLoadWarning]
   let unavailableDomains: Set<StoredSettingsDomain>
 }
 
@@ -332,9 +309,6 @@ extension AppModel {
           reason: "Configuration storage could not be loaded."
         )
         self.settings.privacySettingsLoadFailure = L10n.resource("run.privacyLoadBlockedRetry")
-        self.append(
-          L10n.resource("run.configurationStorageUnavailable")
-        )
       }
     }
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
@@ -380,10 +354,6 @@ extension AppModel {
       excluding: settingsModifiedDuringLoad
     )
     loadFailedAudioRecoveryReceipts()
-    for warning in settings.loadWarnings {
-      let presentation = warning.presentation
-      append(presentation)
-    }
     performLocalHistoryRetention(startPeriodicMaintenanceAfterCompletion: true)
     if shouldPrepareLocalSpeechModel {
       prepareLocalSpeechModel()
@@ -436,20 +406,20 @@ extension AppModel {
   }
 
   func applyStoredFailedAudioRecoverySetting(_ settings: StoredAppSettingsSnapshot) {
-    guard settings.persistentSettingsStoreWasAvailable else {
-      self.voice.failedAudioRecoveryEnabled = false
+    self.voice.failedAudioRecoveryEnabled = false
+    self.voice.failedAudioRecoverySettingWarningResource = nil
+    guard settings.persistentSettingsStoreWasAvailable else { return }
+    guard !settings.unavailableSettingKeys.contains(.failedAudioRecoveryEnabled) else {
+      self.voice.failedAudioRecoverySettingWarningResource = L10n.resource("run.failedRecoverySettingInvalid")
       return
     }
     switch settings.values[.failedAudioRecoveryEnabled] {
     case "true":
       self.voice.failedAudioRecoveryEnabled = true
     case nil, "", "false":
-      self.voice.failedAudioRecoveryEnabled = false
+      break
     default:
-      self.voice.failedAudioRecoveryEnabled = false
-      append(
-        L10n.resource("run.failedRecoverySettingInvalid")
-      )
+      self.voice.failedAudioRecoverySettingWarningResource = L10n.resource("run.failedRecoverySettingInvalid")
     }
   }
 
@@ -464,9 +434,6 @@ extension AppModel {
       } else {
         self.history.runHistoryRetentionSettingIsInvalid = true
       }
-      append(
-        L10n.runHistoryRetentionReadFailed(isRecordSetting: isRecordSetting)
-      )
       return .forever
     }
     guard let rawValue, !rawValue.isEmpty else {
@@ -478,9 +445,6 @@ extension AppModel {
       } else {
         self.history.runHistoryRetentionSettingIsInvalid = true
       }
-      append(
-        L10n.runHistoryRetentionInvalid(isRecordSetting: isRecordSetting)
-      )
       return .forever
     }
     return period
@@ -490,6 +454,7 @@ extension AppModel {
     _ settings: StoredAppSettingsSnapshot,
     workflowFiles: WorkflowFileLoadResult?
   ) {
+    self.workflowLibrary.legacyWorkflowSettingsPresent = settings.legacyWorkflowSettingsPresent
     let storedDomainUnavailable = settings.unavailableDomains.contains(.workflowLibrary)
     if storedDomainUnavailable, workflowFiles == nil {
       markStoredSettingsDomainUnavailable(.workflowLibrary)
@@ -807,9 +772,6 @@ extension AppModel {
           self.synchronizeLocalSpeechSettingsSource()
         }
         self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
-        self.append(
-          L10n.resource("run.savedSettingsAvailableAgain")
-        )
       } catch is CancellationError {
         return
       } catch {
@@ -821,9 +783,6 @@ extension AppModel {
           return
         }
         self.settings.retryingUnavailableScalarSettingsDomains.remove(domain)
-        self.append(
-          L10n.resource("run.savedSettingsStillUnavailable")
-        )
       }
     }
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
@@ -888,9 +847,6 @@ extension AppModel {
         self.settings.setCredentialAvailability(AppSettingsCodec.openAICredentialAvailability(for: credential))
         self.publishLanguageModelSettings()
         self.workflowLibraryChangedAction()
-        self.append(
-          L10n.resource("run.openAISettingsAvailableAgain")
-        )
       } catch is CancellationError {
         return
       } catch {
@@ -905,9 +861,6 @@ extension AppModel {
         self.settings.setCredentialAvailability(.inaccessible)
         self.publishLanguageModelSettings()
         self.workflowLibraryChangedAction()
-        self.append(
-          L10n.resource("run.openAISettingsStillUnavailable")
-        )
       }
     }
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
@@ -1134,9 +1087,6 @@ extension AppModel {
         }
         self.settings.isRetryingUnavailableSettingsDomains = false
         self.refreshUnavailableStoredSettingsDomainErrors()
-        self.append(
-          L10n.resource("run.protectedSettingsStillUnavailable")
-        )
       }
     }
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
@@ -1156,7 +1106,6 @@ extension AppModel {
       refreshUnavailableStoredSettingsDomainErrors()
     }
 
-    var recoveredAnyDomain = false
     if retryWorkflowLibrary {
       guard let workflowFiles = recovered.workflowFiles else { return }
       self.workflowLibrary.installFileLoad(workflowFiles, in: workflowFileStore?.configurationDirectoryURL)
@@ -1167,7 +1116,6 @@ extension AppModel {
           workflowFiles.issues, language: language)
       }
       rebuildWorkflowLibrary()
-      recoveredAnyDomain = true
     }
     if retryDownloadedModelMetadata,
       let recoveredModels = recovered.downloadedLocalSpeechModels
@@ -1180,19 +1128,11 @@ extension AppModel {
         }
       self.voice.downloadedLocalSpeechModelsAvailability = .available
       self.voice.downloadedLocalSpeechModelsError = nil
-      recoveredAnyDomain = true
     }
     if retryVocabularyRules, let vocabularyRules = recovered.vocabularyRules {
       self.vocabulary.availability = .available
       self.vocabulary.error = nil
       vocabulary.restoreLegacyRules(vocabularyRules)
-      recoveredAnyDomain = true
-    }
-
-    if recoveredAnyDomain {
-      append(
-        L10n.resource("run.protectedSettingsReloaded")
-      )
     }
   }
 
@@ -1247,9 +1187,6 @@ extension AppModel {
           return
         }
         self.history.diagnosticsLoadState = .failed
-        self.append(
-          L10n.resource("run.diagnosticsRepositoryUnavailable")
-        )
       }
     }
     self.history.historyProjectionLoadTasks[taskID] = task
@@ -1360,9 +1297,6 @@ extension AppModel {
         self.settings.setCredentialAvailability(.inaccessible)
         self.publishLanguageModelSettings()
       }
-      append(
-        L10n.resource("run.credentialSaveFailed")
-      )
       return
     }
 
@@ -1392,9 +1326,6 @@ extension AppModel {
           self.publishLanguageModelSettings()
           self.workflowLibraryChangedAction()
         }
-        self.append(
-          L10n.resource("run.credentialSaveFailed")
-        )
       }
     }
   }
@@ -1405,19 +1336,11 @@ extension AppModel {
     debounceDuration: Duration = .zero,
     operation: @escaping SettingsStoreWriteOperation
   ) {
-    settings.submit(key: key, category: category, debounce: debounceDuration, operation: operation) { [weak self] in
-      self?.appendSettingsSaveFailureEvent()
-    }
+    settings.submit(key: key, category: category, debounce: debounceDuration, operation: operation)
   }
 
   public func retryUnsavedSettingsSave() {
-    settings.retry { [weak self] in self?.appendSettingsSaveFailureEvent() }
-  }
-
-  func appendSettingsSaveFailureEvent() {
-    append(
-      L10n.resource("run.settingsSaveFailedRetry")
-    )
+    settings.retry()
   }
 
   public func flushPendingPersistenceWrites() async {
@@ -1682,10 +1605,7 @@ extension AppModel {
   }
 
   func persistPrivacyPolicySettings() {
-    settings.persistPrivacyPolicySettings { [weak self] in
-      self?.append(
-        L10n.resource("run.privacySaveFailedRetry"))
-    }
+    settings.persistPrivacyPolicySettings()
   }
 
   func retryPrivacySettingsSave() {

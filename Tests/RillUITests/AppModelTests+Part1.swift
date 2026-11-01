@@ -502,7 +502,7 @@ extension AppModelTests {
   func testTrustedModelSelectionDuringInitialReadSurvivesAndReplacesStaleStorage() async {
     let settingsStore = UITestSettingsStore(
       storage: [
-        .localSpeechModel: LegacyWhisperModelOption.distilLargeV3Compact.rawValue
+        .localSpeechModel: "distil-whisper_distil-large-v3_594MB"
       ],
       suspendBatchReads: true
     )
