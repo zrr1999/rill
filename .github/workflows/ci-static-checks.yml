@@ -40,7 +40,7 @@ jobs:
       - name: Install Node.js for Cloudflare validation
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "26"
 
       - name: Validate Cloudflare static assets without deploying
         run: npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
