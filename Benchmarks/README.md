@@ -1,7 +1,7 @@
 # Performance benchmarks
 
 Quality evaluation corpora and manual CE belong to [Evals](../Evals/README.md).
-Paired ASR performance reports use `just benchmark asr --target METRIC`;
+Paired ASR performance reports use `mise run benchmark asr --target METRIC`;
 see the [ASR run contract](../docs/asr-evaluation.md).
 
 The suite runs production Record code with synthetic, offline data. It does not
@@ -27,13 +27,13 @@ memory logs are diagnostics, not evidence of a regression or improvement.
 Build and validate the Record CPU and storage workloads on macOS:
 
 ```sh
-just benchmark workloads
+mise run benchmark workloads
 ```
 
 Build and measure the portable preview workloads on Linux:
 
 ```sh
-just benchmark workloads --codspeed --preview-only
+mise run benchmark workloads --codspeed --preview-only
 codspeed run --mode simulation -- .artifacts/benchmarks/record-text
 ```
 
@@ -52,12 +52,12 @@ surround one batch after one warmup; URI construction, aggregate validation and
 logging stay outside the window. Each preview checks its result inside the
 workload. No walltime samples or walltime result JSON are emitted by this suite.
 
-`just benchmark workloads` needs neither the download nor a CodSpeed login. `just ci` includes
+`mise run benchmark workloads` needs neither the download nor a CodSpeed login. `mise run ci` includes
 fast preview validation and tests buffer behavior through the Runtime tests.
 
 ## Native panel measurement
 
-`just ci` sets `RILL_RECORD_STRESS=1` and checks the initial panel presentation and two
+`mise run ci` sets `RILL_RECORD_STRESS=1` and checks the initial panel presentation and two
 reopenings with 10,000 summaries. Each visit must expose 50 results and give the
 search field its internal text responder. The two-second readiness timeout is a
 liveness guard. The build does not apply a percentile latency budget to
@@ -66,7 +66,7 @@ shared-runner samples.
 On an otherwise idle Mac with an unlocked desktop, run:
 
 ```sh
-just benchmark panel
+mise run benchmark panel
 ```
 
 This explicitly runs an optimized Release test after 10 warmup visits and records

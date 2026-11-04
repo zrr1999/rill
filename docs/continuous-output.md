@@ -81,10 +81,10 @@ The optimized Stack/Queue workloads now run in CodSpeed alongside the text previ
 Run the current benchmark suite and the separate clipboard-capture checks with:
 
 ```sh
-just benchmark workloads
+mise run benchmark workloads
 RILL_CLIPBOARD_LATENCY=1 scripts/preflight.sh swift test \
   --filter 'RecordBuffer|RecordBufferTextOutput|ClipboardCaptureLatency|BufferHotkey|BufferFilePromise'
-just ci
+mise run ci
 ```
 
 Native application compatibility remains **unverified**. No application is claimed to support image/file drop or text insertion based only on these tests. On an unlocked Mac, use an isolated data directory and the exact candidate artifact to verify Chinese IME, emoji, long multiline text, selection replacement, focus changes, drag acceptance/cancellation, and an external copy during every output kind. Record general-pasteboard content and changeCount before and after, and verify that only deliberate external copies change them. Never submit sample chat messages or forms. See the [macOS acceptance checklist](release-qa-checklist.md).

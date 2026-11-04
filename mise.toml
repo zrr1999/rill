@@ -1,0 +1,154 @@
+[tasks.default]
+description = "List the available repository commands"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 0 ]] || { echo "Usage: mise run default" >&2; exit 2; }
+mise tasks ls
+'''
+
+[tasks.install]
+description = "Install the pre-commit and commit-message hooks"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 0 ]] || { echo "Usage: mise run install" >&2; exit 2; }
+uvx --isolated prek install --prepare-hooks
+'''
+
+[tasks.check]
+description = "Run read-only formatting and static checks"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 0 ]] || { echo "Usage: mise run check" >&2; exit 2; }
+uvx --isolated prek validate-config prek.toml
+uvx --isolated prek -c prek.toml run --all-files
+'''
+
+[tasks.format]
+description = "Apply explicit Python, Swift, and shell formatting fixes"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 0 ]] || { echo "Usage: mise run format" >&2; exit 2; }
+uv run --project tools ruff check --fix tools
+uv run --project tools ruff format tools
+uvx --isolated prek run swift-format --hook-stage manual --all-files
+uvx --from shfmt-py==4.2.0 shfmt -w -i 2 -bn scripts/*.sh scripts/tests/*.sh
+'''
+
+[tasks.coverage]
+description = "Collect Python and Swift domain coverage without provider evaluations"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 0 ]] || { echo "Usage: mise run coverage" >&2; exit 2; }
+uv run --project tools --frozen pytest --cov=tools/src/rill_dev --cov-config=tools/pyproject.toml --cov-report=xml:.artifacts/quality/python-coverage.xml --cov-report=term-missing tools/tests
+bash scripts/check_coverage.sh
+'''
+
+[tasks.docs]
+description = "Build documentation, or serve a local preview (serve [PORT])"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-build}" in
+  build)
+    if [[ $# -gt 1 ]]; then
+      echo "Usage: mise run docs [build|serve [PORT]]" >&2
+      exit 2
+    fi
+    uv run --no-build --locked --script scripts/docs.py build
+    ;;
+  serve)
+    if [[ $# -gt 2 ]]; then
+      echo "Usage: mise run docs [build|serve [PORT]]" >&2
+      exit 2
+    fi
+    uv run --no-build --locked --script scripts/docs.py serve --port "${2:-8000}"
+    ;;
+  *)
+    echo "Usage: mise run docs [build|serve [PORT]]" >&2
+    exit 2
+    ;;
+esac
+'''
+
+[tasks.build]
+description = "Build one Debug product, or all arm64 Release products (release [arguments...])"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+target="${1-RillApp}"
+if [[ $# -gt 0 ]]; then shift; fi
+if [[ "$target" == release ]]; then
+  scripts/preflight.sh swift release "$@"
+elif [[ $# -eq 0 ]]; then
+  scripts/preflight.sh swift build --product "$target"
+else
+  echo "Usage: mise run build [PRODUCT] | mise run build release [arguments...]" >&2
+  exit 2
+fi
+'''
+
+[tasks.test]
+description = "Run domain/native tests, or one suite: desktop, scripts, tools, render, stress"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $# -gt 1 ]]; then
+  echo "Usage: mise run test [default|desktop|scripts|tools|render|stress]" >&2
+  exit 2
+fi
+case "${1-default}" in
+  default) scripts/preflight.sh test ;;
+  desktop) scripts/preflight.sh test-desktop ;;
+  scripts) scripts/preflight.sh test-scripts ;;
+  tools) uv run --locked --project tools pytest tools/tests ;;
+  render)
+    RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" \
+      scripts/preflight.sh swift test --filter 'Render|UIRenderEvidence'
+    ;;
+  stress)
+    RILL_RECORD_STRESS=1 scripts/preflight.sh swift test --filter RecordCatalogStressTests
+    ;;
+  *)
+    echo "Supported test suites: default, desktop, scripts, tools, render, stress" >&2
+    exit 2
+    ;;
+esac
+'''
+
+[tasks.ci]
+description = "Run the full local CI gate (clean rebuilds without worker artifact reuse)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  "") [[ $# -eq 0 ]] || { echo "Usage: mise run ci [clean]" >&2; exit 2; }
+      clean=() ;;
+  clean) [[ $# -eq 1 ]] || { echo "Usage: mise run ci [clean]" >&2; exit 2; }
+      clean=(--clean) ;;
+  *) echo "Usage: mise run ci [clean]" >&2; exit 2 ;;
+esac
+mise run check
+mise run docs
+RILL_RECORD_STRESS=1 RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" \
+  bash scripts/preflight.sh "${clean[@]}"
+'''
+
+[tasks.benchmark]
+description = "Run one performance suite: asr, panel, workloads"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+suite="${1:-}"
+if [[ $# -gt 0 ]]; then shift; fi
+case "$suite" in
+  asr) uv run --locked --project tools rill-bench-asr "$@" ;;
+  panel) bash scripts/benchmark_panel.sh "$@" ;;
+  workloads) bash scripts/build_benchmarks.sh "$@" ;;
+  *) echo "Supported performance suites: asr, panel, workloads" >&2; exit 2 ;;
+esac
+'''

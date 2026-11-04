@@ -269,7 +269,7 @@ run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
   run_performance_swift_tests
-  info 'Desktop interaction was not tested. Run just test desktop in an unlocked session; just ci requires both suites.'
+  info 'Desktop interaction was not tested. Run mise run test desktop in an unlocked session; mise run ci requires both suites.'
 }
 
 run_script_tests() {

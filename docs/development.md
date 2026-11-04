@@ -8,9 +8,11 @@ Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包�
 
 独立 Python 入口可通过 inline metadata 及配套 `.py.lock` 声明运行环境；修改声明后用 `uv lock --script <path>` 更新对应锁文件。内部评测与回放工具由 `tools/pyproject.toml` 和 `tools/uv.lock` 管理，通过 `uv run --locked --project tools` 调用。
 
+仓库任务定义在 [mise.toml](../mise.toml)，通过 `mise tasks ls` 查看，使用 `mise run <任务> [参数...]` 执行，无需激活 shell。任务从仓库根目录运行，也可以在子目录调用。mise 负责调度任务；Xcode 工具链和 uv 锁定依赖继续由上述入口管理。GitHub Actions 中的任务入口复用同一份配置，分 lane 预检继续直接调用底层脚本。
+
 ## 构建与缓存
 
-`just build` 默认只构建 Debug App，适合日常 App/UI 修改。`just build release` 构建全部 arm64 Release 产品。Debug 产物在当前 worktree 的 `.build`，Release 产物在 `.artifacts/build/release`。构建驱动负责加锁和缓存失效；不要在构建时手工删除目录，也不要跨 worktree 复制或软链接构建数据库。
+`mise run build` 默认只构建 Debug App，适合日常 App/UI 修改。`mise run build release` 构建全部 arm64 Release 产品。Debug 产物在当前 worktree 的 `.build`，Release 产物在 `.artifacts/build/release`。构建驱动负责加锁和缓存失效；不要在构建时手工删除目录，也不要跨 worktree 复制或软链接构建数据库。
 
 完整依赖图通过 SwiftBuild 编译 String Catalog。`test-domain` 定向入口使用独立构建目录和缩小的依赖图；仅指定测试过滤器不保证缩小首次编译范围。定向领域测试可以使用：
 
@@ -18,14 +20,14 @@ Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包�
 scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 ```
 
-该入口保留锁文件校验，不能替代完整生产依赖图上的 CI 验证。工具链、SDK、依赖声明或构建参数变化时，相应缓存会失效；普通源码修改走增量构建。 `just ci clean` 使用干净构建，具体 CI 缓存策略见 [工作流配置](../.github/workflows/ci-tests.yml)。
+该入口保留锁文件校验，不能替代完整生产依赖图上的 CI 验证。工具链、SDK、依赖声明或构建参数变化时，相应缓存会失效；普通源码修改走增量构建。 `mise run ci clean` 使用干净构建，具体 CI 缓存策略见 [工作流配置](../.github/workflows/ci-tests.yml)。
 
 本地 Release 可以复用跨 worktree 的语音 worker 产物。构建驱动校验输入与产物，无法确认或缓存损坏时回退源码构建；CI 和正式公证发布关闭该缓存。
 
 ```bash
 scripts/preflight.sh swift cache status
 scripts/preflight.sh swift cache clean
-just build release --worker-cache off
+mise run build release --worker-cache off
 ```
 
 清理只针对非活动缓存。手动装配时使用构建驱动的 `--result-file` 回执和 `assemble_app_bundle.sh --build-result`，避免从多个构建目录混取产物。回执绑定源码和独立产物快照；App Intents 元数据与 Release 可执行文件一同保存和校验。手动创建的回执快照由调用者在装配结束后清理。
@@ -34,10 +36,10 @@ just build release --worker-cache off
 
 | 入口 | 覆盖范围 |
 | --- | --- |
-| `just test stress` | 大记录目录压力用例 |
-| `just test render` | 原生 UI 渲染证据 |
+| `mise run test stress` | 大记录目录压力用例 |
+| `mise run test render` | 原生 UI 渲染证据 |
 
-领域 XCTest 并行运行，原生和桌面 XCTest 串行运行；Swift Testing 保留框架默认并发。预检中的桌面测试复用 Debug 构建。压力用例独立执行，分组见 [预检脚本](../scripts/preflight.sh)。`just ci` 与 GitHub tests lane 一样设置 `RILL_RECORD_STRESS=1` 和 `RILL_UI_SNAPSHOT_DIR`；只跑目录压力时使用 `just test stress`。
+领域 XCTest 并行运行，原生和桌面 XCTest 串行运行；Swift Testing 保留框架默认并发。预检中的桌面测试复用 Debug 构建。压力用例独立执行，分组见 [预检脚本](../scripts/preflight.sh)。`mise run ci` 与 GitHub tests lane 一样设置 `RILL_RECORD_STRESS=1` 和 `RILL_UI_SNAPSHOT_DIR`；只跑目录压力时使用 `mise run test stress`。
 
 依赖真实键盘焦点的 XCTest 使用 `testDesktop…` 前缀，并在操作应用窗口前调用 `requireInteractiveDesktop()`。它用独立 AppKit panel 探测焦点，失败即记录测试失败，不能跳过后当作通过；探测成功后还须验证被测窗口实际取得焦点。
 
@@ -45,9 +47,9 @@ just build release --worker-cache off
 
 ## 质量检查与报告
 
-`just check` 只读检查源文件；需要修复格式时显式运行 `just format`。Python 保留 Ruff 与 ty，deptry 检查运行时依赖，Import Linter 约束构建元数据不能依赖评测策略。ast-grep 约束领域模块的偏好存取边界，Semgrep 检查原始评测文件的权限；两者分别维护违规与合法样例。
+`mise run check` 只读检查源文件；需要修复格式时显式运行 `mise run format`。Python 保留 Ruff 与 ty，deptry 检查运行时依赖，Import Linter 约束构建元数据不能依赖评测策略。ast-grep 约束领域模块的偏好存取边界，Semgrep 检查原始评测文件的权限；两者分别维护违规与合法样例。
 
-`just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式，并使用原子计数器避免并发测试丢失覆盖率计数。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。
+`mise run coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式，并使用原子计数器避免并发测试丢失覆盖率计数。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。
 
 `Coverage` 作业负责采集覆盖率并上传到 Codecov。SonarQube Cloud 统一使用自动分析，通过 GitHub 集成读取源码并发布独立检查；源码与测试范围由根目录的 `.sonarcloud.properties` 配置。CI 和 CE 不再运行 SonarScanner，也不需要 `SONAR_TOKEN`。自动分析不接收覆盖率报告，覆盖率由 Codecov 和本地报告负责。
 
