@@ -8,10 +8,6 @@ on:
         required: true
         type: string
 
-env:
-  UV_CACHE_DIR: ${{ github.workspace }}/.artifacts/uv-cache
-  PREK_HOME: ${{ github.workspace }}/.artifacts/prek-cache
-
 permissions:
   contents: read
 
@@ -83,14 +79,7 @@ jobs:
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           version: "2026.11.0"
-
-      - name: Restore Python and hook caches
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .artifacts/uv-cache
-            .artifacts/prek-cache
-          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+          cache: false
 
       - name: Generate draft release notes
         env:
