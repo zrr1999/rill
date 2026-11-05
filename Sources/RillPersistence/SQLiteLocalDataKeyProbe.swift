@@ -59,7 +59,9 @@ public enum SQLiteLocalDataKeyProbe {
     defer { snapshot.remove() }
 
     var database: OpaquePointer?
-    let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
+    // Only the disposable clone is writable, so SQLite can recreate WAL sidecars
+    // after a clean shutdown or recover its copied journal before inspection.
+    let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
     guard
       sqlite3_open_v2(snapshot.databaseURL.path, &database, flags, nil) == SQLITE_OK,
       let database
@@ -233,7 +235,7 @@ public enum SQLiteLocalDataKeyProbe {
   }
 }
 
-private final class SQLiteReadOnlySnapshot {
+final class SQLiteReadOnlySnapshot {
   private static let sidecarSuffixes = ["", "-wal", "-shm", "-journal"]
 
   let databaseURL: URL

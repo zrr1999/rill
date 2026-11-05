@@ -6,6 +6,82 @@ import XCTest
 @testable import RillPersistence
 
 final class SQLiteLocalDataKeyProbeTests: XCTestCase {
+  func testColdStartInspectsCheckpointedWALDatabaseWithoutCreatingLiveSidecars() throws {
+    for isBound in [false, true] {
+      let databaseURL = try makeDatabaseURL()
+      defer { try? FileManager.default.removeItem(at: databaseURL.deletingLastPathComponent()) }
+      let protector = try makeProtector(byte: 0x66)
+      if isBound {
+        try autoreleasepool {
+          _ = try SQLitePersistenceStore(
+            databaseURL: databaseURL,
+            localDataProtector: protector
+          )
+        }
+      } else {
+        try createUnboundDatabase(at: databaseURL, version: 3, persistSidecars: false)
+      }
+      try removeEmptyWALSidecars(at: databaseURL)
+      let before = try storageSnapshot(at: databaseURL)
+      XCTAssertEqual(Set(before.keys), [""])
+
+      XCTAssertEqual(
+        try SQLitePersistenceStore.requiresExistingDataProtectionKey(databaseURL: databaseURL),
+        isBound
+      )
+      XCTAssertEqual(try storageSnapshot(at: databaseURL), before)
+      XCTAssertEqual(
+        try SQLiteLocalDataKeyProbe.probe(
+          databaseURL: databaseURL,
+          localDataProtector: protector
+        ),
+        isBound ? .boundAndValid : .unbound
+      )
+      XCTAssertEqual(try storageSnapshot(at: databaseURL), before)
+      if isBound {
+        assertValidationFailure(databaseURL: databaseURL, protectorByte: 0x67)
+        XCTAssertEqual(try storageSnapshot(at: databaseURL), before)
+      }
+    }
+  }
+
+  func testStartupInspectionReadsProtectionMarkerFromUncheckpointedWALWithoutWrites() throws {
+    let databaseURL = try makeDatabaseURL()
+    defer { try? FileManager.default.removeItem(at: databaseURL.deletingLastPathComponent()) }
+    try createUnboundDatabase(at: databaseURL, version: 3, persistSidecars: false)
+    let checkpointedBytes = try Data(contentsOf: databaseURL)
+    let protector = try makeProtector(byte: 0x77)
+    let database = try openReadWriteDatabase(at: databaseURL)
+    defer { sqlite3_close(database) }
+    try execute(
+      """
+      PRAGMA wal_autocheckpoint = 0;
+      CREATE TABLE local_data_protection (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        key_verification TEXT NOT NULL,
+        cleanup_pending INTEGER NOT NULL
+      );
+      """,
+      on: database
+    )
+    try insertMarker(envelope: markerEnvelope(protector: protector), into: database)
+    let before = try storageSnapshot(at: databaseURL)
+    XCTAssertEqual(before[""]?.bytes, checkpointedBytes)
+    XCTAssertGreaterThan(try XCTUnwrap(before["-wal"]).bytes.count, 0)
+
+    XCTAssertTrue(
+      try SQLitePersistenceStore.requiresExistingDataProtectionKey(databaseURL: databaseURL)
+    )
+    XCTAssertEqual(try storageSnapshot(at: databaseURL), before)
+    XCTAssertEqual(
+      try SQLiteLocalDataKeyProbe.probe(databaseURL: databaseURL, localDataProtector: protector),
+      .boundAndValid
+    )
+    XCTAssertEqual(try storageSnapshot(at: databaseURL), before)
+    assertValidationFailure(databaseURL: databaseURL, protectorByte: 0x78)
+    XCTAssertEqual(try storageSnapshot(at: databaseURL), before)
+  }
+
   func testFreshV0ThroughV3AreUnboundWithoutTouchingSQLiteFiles() throws {
     for version in 0...3 {
       let databaseURL = try makeDatabaseURL()
@@ -147,7 +223,11 @@ private func makeDatabaseURL() throws -> URL {
   return directoryURL.appendingPathComponent("rill.sqlite", isDirectory: false)
 }
 
-private func createUnboundDatabase(at databaseURL: URL, version: Int) throws {
+private func createUnboundDatabase(
+  at databaseURL: URL,
+  version: Int,
+  persistSidecars: Bool = true
+) throws {
   let database = try openReadWriteDatabase(at: databaseURL)
   defer { sqlite3_close(database) }
   try execute(
@@ -160,7 +240,7 @@ private func createUnboundDatabase(at databaseURL: URL, version: Int) throws {
     """,
     on: database
   )
-  try persistWAL(on: database)
+  if persistSidecars { try persistWAL(on: database) }
 }
 
 private func createDowngradedV4Database(
@@ -353,6 +433,17 @@ private func persistWAL(on database: OpaquePointer?) throws {
   else {
     throw ProbeTestError.sqlFailed
   }
+}
+
+private func removeEmptyWALSidecars(at databaseURL: URL) throws {
+  let fileManager = FileManager.default
+  let walURL = URL(fileURLWithPath: databaseURL.path + "-wal")
+  if fileManager.fileExists(atPath: walURL.path) {
+    guard try Data(contentsOf: walURL).isEmpty else { throw ProbeTestError.sqlFailed }
+    try fileManager.removeItem(at: walURL)
+  }
+  let shmURL = URL(fileURLWithPath: databaseURL.path + "-shm")
+  if fileManager.fileExists(atPath: shmURL.path) { try fileManager.removeItem(at: shmURL) }
 }
 
 private func openReadWriteDatabase(at databaseURL: URL) throws -> OpaquePointer? {
