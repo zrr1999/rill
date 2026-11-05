@@ -150,9 +150,13 @@ struct SQLitePersistenceSession {
       }
     }
 
+    let snapshot = try SQLiteReadOnlySnapshot(databaseURL: databaseURL)
+    defer { snapshot.remove() }
+
+    // Let SQLite recreate missing WAL sidecars only in the private snapshot.
     var handle: OpaquePointer?
-    let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
-    guard sqlite3_open_v2(databaseURL.path, &handle, flags, nil) == SQLITE_OK,
+    let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+    guard sqlite3_open_v2(snapshot.databaseURL.path, &handle, flags, nil) == SQLITE_OK,
       let handle
     else {
       let message = Self.lastErrorMessage(from: handle)
