@@ -5,7 +5,7 @@ Deterministic implementation tests stay in
 `Tests` and `tools/tests`, including corpus validation and scorer regression tests.
 
 The replay and analysis implementation is the internal `rill_dev.evaluation`
-package in `tools/`. `mise run test tools` runs its offline tests using the locked
+package in `tools/`. `mise run test:tools` runs its offline tests using the locked
 Python environment; it neither loads models nor calls providers. The commands below are the supported entry points.
 
 | Suite | Corpus | Quality rule | Execution |
@@ -106,7 +106,7 @@ ASR remains local: the repository contains collection slots, not an authorized,
 annotated audio dataset. [ASR evaluation and replay](../docs/asr-evaluation.md)
 documents corpus export, Release receipts, cache conditions and timing boundaries.
 
-Use `uv run --locked --project tools rill-eval-quality asr` and `mise run benchmark asr --target METRIC` on the
+Use `uv run --locked --project tools rill-eval-quality asr` and `mise run benchmark:asr --target METRIC` on the
 same raw runs. Quality needs human references, not memory measurements; performance
 needs comparable valid work and its target metric, not human references. Both can
 report small or synthetic experiments. `uv run --locked --project tools rill-accept-asr --goal quality|performance`

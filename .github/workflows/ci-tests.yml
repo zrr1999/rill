@@ -10,6 +10,10 @@ on:
     types:
       - checks_requested
 
+env:
+  UV_CACHE_DIR: ${{ github.workspace }}/.artifacts/uv-cache
+  PREK_HOME: ${{ github.workspace }}/.artifacts/prek-cache
+
 permissions:
   contents: read
 
@@ -72,13 +76,21 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
       - name: Test evaluation tools without model or provider access
-        run: uv run --no-build --locked --project tools pytest tools/tests
+        run: mise run test:tools
 
       - name: Test CI aggregation and cache policy
         run: python3 scripts/tests/ci_workflow_test.py
@@ -106,16 +118,18 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
 
-      - name: Install pinned Gitleaks
-        run: |
-          tool_dir="$RUNNER_TEMP/gitleaks-bin"
-          bash scripts/preflight.sh install-gitleaks --destination "$tool_dir"
-          echo "$tool_dir" >> "$GITHUB_PATH"
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
       - name: Identify the build toolchain
         id: toolchain
@@ -189,24 +203,22 @@ jobs:
           uv run --quiet --no-project --python '>=3.11' python --version
 
       - name: Query live OSV for locked SwiftPM commits
-        run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
+        run: mise run audit:swift
 
       - name: Run preflight
         id: lane
         env:
           LANE: ${{ matrix.lane }}
           EVENT_NAME: ${{ github.event_name }}
-          RILL_UI_SNAPSHOT_DIR: ${{ github.workspace }}/.artifacts/ui-renders
           RILL_PREFLIGHT_APP_DIR: ${{ github.workspace }}/.artifacts/preflight-app
-          RILL_RECORD_STRESS: "1"
           RILL_PREFLIGHT_REPORT_DIR: ${{ runner.temp }}/rill-preflight-${{ matrix.lane }}
           RILL_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           RILL_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [[ "$EVENT_NAME" == pull_request ]]; then
-            bash scripts/preflight.sh --lane "$LANE"
+            mise run preflight --lane "$LANE"
           else
-            bash scripts/preflight.sh --clean --lane "$LANE"
+            mise run preflight --clean --lane "$LANE"
           fi
 
       - name: Save verified Swift build arena
@@ -269,12 +281,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Validate performance workload correctness
-        run: bash scripts/build_benchmarks.sh
+        run: mise run benchmark:workloads
 
   # Preserve the existing required-check name while joining every selected job.
     if: needs.scope.outputs.performance_workloads == 'true'
@@ -314,14 +335,19 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-        with:
-          version: "0.13.5"
-      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           version: "2026.11.0"
-          install: false
-          cache: false
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Collect Python and Swift domain coverage
         run: mise run coverage
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

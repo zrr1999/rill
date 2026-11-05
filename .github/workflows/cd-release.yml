@@ -8,6 +8,10 @@ on:
         required: true
         type: string
 
+env:
+  UV_CACHE_DIR: ${{ github.workspace }}/.artifacts/uv-cache
+  PREK_HOME: ${{ github.workspace }}/.artifacts/prek-cache
+
 permissions:
   contents: read
 
@@ -75,16 +79,18 @@ jobs:
           [[ "$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG" | cut -f 1)" == "$EXPECTED_OBJECT" ]]
           [[ -z "$(git status --porcelain --untracked-files=all)" ]]
 
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
 
-      - name: Install pinned Gitleaks
-        run: |
-          tool_dir="$RUNNER_TEMP/gitleaks-bin"
-          bash scripts/preflight.sh install-gitleaks --destination "$tool_dir"
-          echo "$tool_dir" >> "$GITHUB_PATH"
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
       - name: Generate draft release notes
         env:

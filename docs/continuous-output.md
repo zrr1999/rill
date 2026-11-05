@@ -81,7 +81,7 @@ The optimized Stack/Queue workloads now run in CodSpeed alongside the text previ
 Run the current benchmark suite and the separate clipboard-capture checks with:
 
 ```sh
-mise run benchmark workloads
+mise run benchmark:workloads
 RILL_CLIPBOARD_LATENCY=1 scripts/preflight.sh swift test \
   --filter 'RecordBuffer|RecordBufferTextOutput|ClipboardCaptureLatency|BufferHotkey|BufferFilePromise'
 mise run ci

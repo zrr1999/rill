@@ -54,7 +54,7 @@ uv run --locked --project tools rill-eval-quality asr --corpus /private/asr/corp
   --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
   --output /private/asr/quality-report.json --split validation
 
-mise run benchmark asr --corpus /private/asr/corpus.json \
+mise run benchmark:asr --corpus /private/asr/corpus.json \
   --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
   --target release_to_final_ms --output /private/asr/performance-report.json --split validation
 
