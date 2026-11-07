@@ -1,4 +1,5 @@
 import AppKit
+import RillInputMethodIPC
 import SwiftUI
 import XCTest
 @testable import RillCore
@@ -10,6 +11,37 @@ import XCTest
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.
 @MainActor
 final class UIRenderEvidenceTests: XCTestCase {
+  func testRenderInputMethodAppearance() async throws {
+    guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+      throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+    }
+    let output = URL(fileURLWithPath: directory, isDirectory: true)
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: temporary) }
+    let model = InputMethodAppearanceModel(
+      store: InputMethodAppearanceStore(file: temporary.appendingPathComponent("appearance.json")))
+    model.loadIfNeeded()
+    for language in AppLanguage.allCases {
+      for dark in [false, true] {
+        for large in [false, true] {
+          model.draft.fontSize = large ? 48 : 20
+          model.draft.numberFormat = large ? "({n})" : "{n}."
+          model.draft.fontName = large ? "STSongti-SC-Regular" : nil
+          let content = Form {
+            Section(L10n.inputMethod(.sectionTitle, language: language)) {
+              InputMethodAppearanceSettingsView(model: model, language: language, isExpanded: true)
+            }
+          }.formStyle(.grouped)
+          let name = "candidate-settings-\(language.rawValue)-\(dark ? "dark" : "light")-\(large ? "large" : "default")"
+          try await render(
+            content, size: NSSize(width: 520, height: 660), dark: dark, language: language,
+            to: output.appendingPathComponent(name + ".png"))
+        }
+      }
+    }
+  }
+
   func testRenderCollectionCorrection() async throws {
     guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
       throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")

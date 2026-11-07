@@ -138,6 +138,13 @@ Use the macOS system font and platform Chinese fallback. There is no separate di
 
 The editor's exact font and text insets come from [BufferDraftTextEditor](Sources/RillUI/BufferDraftTextEditor.swift). SwiftUI supporting variants also use `.subheadline.weight(.medium)`, `.caption2`, and semibold captions where needed; they are native roles rather than another application-wide size scale.
 
+Input-method candidates default to the 20pt system font. Their text, numbers and
+comments may use a user-selected installed font and size from 10–48pt. This is a
+candidate-panel preference; settings controls retain system typography and the
+panel retains its semantic colors and selected-candidate accessibility state.
+Candidate lists that exceed the visible display height scroll, keeping the
+selected row in view.
+
 **The Stable Label Rule.** Preserve functional labels and counts at their intrinsic width. Truncate the next-item preview, not the Drafts entry name; allow longer English and Chinese labels to wrap where the control permits it.
 
 ## Layout
