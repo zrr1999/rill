@@ -10,6 +10,7 @@ import RillKnowledge
 @MainActor
 @Observable
 public final class InputMethodFeatureModel {
+  let appearance = InputMethodAppearanceModel()
   public private(set) var state = TypingVocabularyState()
   public private(set) var isReady = false
   public private(set) var isInstalling = false

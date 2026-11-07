@@ -1,8 +1,10 @@
 import AppKit
+import RillInputMethodContracts
 
 @MainActor
 final class CandidateWindow {
   private let panel: NSPanel
+  private var placement = CandidateWindowPlacement()
   var selected: ((Int) -> Void)?
 
   init() {
@@ -18,59 +20,98 @@ final class CandidateWindow {
     panel.isReleasedWhenClosed = false
   }
 
-  func show(_ snapshot: RimeSession.Snapshot, at caret: NSRect) {
+  func show(
+    _ snapshot: RimeSession.Snapshot, at caret: NSRect,
+    fallbackCaret: (() -> NSRect)? = nil,
+    appearance: InputMethodAppearance = .defaults
+  ) {
     guard !snapshot.candidates.isEmpty else {
       hide()
       return
     }
-    let visible =
-      NSScreen.screens.first { $0.frame.intersects(caret) }?.visibleFrame ?? NSScreen.main?
-      .visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
+    let screens = NSScreen.screens.map {
+      CandidateWindowPlacement.Screen(frame: $0.frame, visibleFrame: $0.visibleFrame)
+    }
+    guard let anchor = placement.resolve(caret, screens: screens, fallbackCaret: fallbackCaret) else {
+      hide()
+      return
+    }
+    let visible = anchor.visibleFrame
     let content = candidateContentView()
     let stack = NSStackView()
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 2
     stack.edgeInsets = NSEdgeInsets(top: 7, left: 9, bottom: 7, right: 9)
+    let font =
+      appearance.fontName.flatMap { NSFont(name: $0, size: appearance.fontSize) }
+      ?? .systemFont(ofSize: appearance.fontSize)
     var preferredWidth: CGFloat = 120
     for (index, candidate) in snapshot.candidates.enumerated() {
       let button = NSButton(
-        title: "\(index + 1)  \(candidate.text)  \(candidate.comment)", target: self,
+        title: appearance.candidateTitle(at: index, text: candidate.text, comment: candidate.comment), target: self,
         action: #selector(choose(_:)))
       button.tag = index
       button.isBordered = false
       button.alignment = .left
-      button.font = .systemFont(ofSize: 20)
+      button.font = font
       button.cell?.lineBreakMode = .byTruncatingTail
       button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
       let isSelected = index == snapshot.selected
       button.contentTintColor = isSelected ? .controlAccentColor : .labelColor
-      button.setAccessibilityLabel(button.title)
+      button.setAccessibilityLabel(
+        InputMethodAppearance.defaults.candidateTitle(
+          at: index, text: candidate.text, comment: candidate.comment))
       button.setAccessibilitySelected(isSelected)
       button.toolTip = candidate.text
       preferredWidth = max(preferredWidth, button.intrinsicContentSize.width + 18)
       stack.addArrangedSubview(button)
       button.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -18).isActive = true
     }
-    content.addSubview(stack)
     stack.translatesAutoresizingMaskIntoConstraints = false
+    let width = stack.widthAnchor.constraint(equalToConstant: min(preferredWidth, 560, visible.width - 16))
+    width.isActive = true
+    let fittingSize = stack.fittingSize
+    let size = NSSize(width: fittingSize.width, height: min(fittingSize.height, visible.height - 16))
+    let body: NSView
+    if fittingSize.height > size.height {
+      let scroll = NSScrollView(frame: NSRect(origin: .zero, size: size))
+      scroll.drawsBackground = false
+      scroll.hasVerticalScroller = true
+      scroll.autohidesScrollers = true
+      scroll.scrollerStyle = .overlay
+      stack.frame = NSRect(origin: .zero, size: fittingSize)
+      scroll.documentView = stack
+      width.isActive = false
+      stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
+      body = scroll
+    } else {
+      body = stack
+    }
+    content.addSubview(body)
+    body.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-      stack.topAnchor.constraint(equalTo: content.topAnchor),
-      stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-      stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-      stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-      stack.widthAnchor.constraint(equalToConstant: min(preferredWidth, 560, visible.width - 16)),
+      body.topAnchor.constraint(equalTo: content.topAnchor),
+      body.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+      body.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+      body.trailingAnchor.constraint(equalTo: content.trailingAnchor),
     ])
     panel.contentView = content
-    let size = stack.fittingSize
-    let x = min(max(caret.minX, visible.minX), max(visible.minX, visible.maxX - size.width))
-    let below = caret.minY - size.height - 4
-    let y = below >= visible.minY ? below : min(caret.maxY + 4, visible.maxY - size.height)
-    panel.setFrame(NSRect(origin: NSPoint(x: x, y: y), size: size), display: true)
+    panel.setFrame(anchor.frame(for: size), display: true)
+    if body is NSScrollView {
+      content.layoutSubtreeIfNeeded()
+      stack.layoutSubtreeIfNeeded()
+      let index = stack.arrangedSubviews.indices.contains(snapshot.selected) ? snapshot.selected : 0
+      let selected = stack.arrangedSubviews[index]
+      selected.scrollToVisible(selected.bounds)
+    }
     panel.orderFrontRegardless()
   }
 
-  func hide() { panel.orderOut(nil) }
+  func hide() {
+    panel.orderOut(nil)
+    placement.reset()
+  }
   @objc private func choose(_ sender: NSButton) { selected?(sender.tag) }
 
   private func candidateContentView() -> NSView {

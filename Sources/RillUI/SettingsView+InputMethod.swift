@@ -54,6 +54,7 @@ struct InputMethodSettingsView: View {
           NSWorkspace.shared.open(url)
         }
       }
+      InputMethodAppearanceSettingsView(model: input.appearance, language: language)
       Toggle(
         L10n.inputMethod(.learnFromTyping, language: language),
         isOn: Binding(get: { input.state.enabled }, set: { input.setEnabled($0) })

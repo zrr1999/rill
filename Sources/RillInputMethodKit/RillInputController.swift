@@ -23,10 +23,12 @@ public final class RillInputController: IMKInputController {
 
   private func activate(_ sender: Any!) {
     guard Self.engine != nil else { return }
+    candidates.hide()
     if let session { rill_rime_clear(session.id) }
     composition = InputMethodComposition()
     inputClient = sender as? any IMKTextInput
     session = RimeSession()
+    InputMethodAppearanceObserver.shared.reload()
     candidates.selected = { [weak self] index in
       guard let self, let session = self.session, let client = self.inputClient else { return }
       if rill_rime_select(session.id, Int32(index)) != 0 { self.update(client) }
@@ -121,12 +123,16 @@ public final class RillInputController: IMKInputController {
       return
     }
     var caret = NSRect.zero
-    let marked = client.markedRange()
-    let selected = client.selectedRange()
-    let index = marked.location != NSNotFound ? marked.location : selected.location
-    _ = client.attributes(
-      forCharacterIndex: index == NSNotFound ? 0 : index, lineHeightRectangle: &caret)
-    candidates.show(snapshot, at: caret)
+    // IMK attributes use an inline-session offset, not a document offset.
+    _ = client.attributes(forCharacterIndex: 0, lineHeightRectangle: &caret)
+    candidates.show(
+      snapshot, at: caret,
+      fallbackCaret: {
+        let marked = client.markedRange()
+        let index = marked.location != NSNotFound ? marked.location : client.selectedRange().location
+        guard index != NSNotFound else { return .zero }
+        return client.firstRect(forCharacterRange: NSRange(location: index, length: 0), actualRange: nil)
+      }, appearance: InputMethodAppearanceObserver.shared.appearance)
   }
 }
 
