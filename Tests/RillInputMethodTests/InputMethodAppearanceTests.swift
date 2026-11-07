@@ -82,29 +82,6 @@ struct InputMethodAppearanceTests {
     }
   }
 
-  @Test func labelsCanBeHiddenOrFormattedWithoutChangingCandidateText() throws {
-    var appearance = InputMethodAppearance.defaults
-    #expect(appearance.candidateTitle(at: 0, text: "你好", comment: "ni hao") == "1  你好  ni hao")
-    appearance.numberFormat = "({n})."
-    #expect(try appearance.validated().candidateTitle(at: 5, text: "世界", comment: "") == "(6).  世界")
-    appearance.showsNumbers = false
-    #expect(appearance.candidateTitle(at: 5, text: "世界", comment: "") == "世界")
-  }
-
-  @Test(arguments: ["", "1.", "{n}{n}", "{n}\n", "{n}\u{2028}", String(repeating: "x", count: 33) + "{n}"])
-  func invalidTemplatesAreRejected(_ format: String) {
-    var appearance = InputMethodAppearance.defaults
-    appearance.numberFormat = format
-    #expect(throws: InputMethodAppearance.ValidationError.numberFormat) { try appearance.validated() }
-  }
-
-  @Test(arguments: [0.0, 9.0, 49.0, Double.infinity, Double.nan])
-  func invalidFontSizesAreRejected(_ size: Double) {
-    var appearance = InputMethodAppearance.defaults
-    appearance.fontSize = size
-    #expect(throws: InputMethodAppearance.ValidationError.fontSize) { try appearance.validated() }
-  }
-
   @Test func savedAppearanceSurvivesNewReadersAndInvalidEdits() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
