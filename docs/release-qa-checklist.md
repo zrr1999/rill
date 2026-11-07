@@ -6,7 +6,7 @@ Copy this checklist for each release candidate. Keep the automated results and d
 
 Attach evidence from the exact candidate commit before beginning device QA:
 
-- `just ci`: maintained prek hooks, generated artifacts, offline dependency policy,
+- `mise run ci`: maintained prek hooks, generated artifacts, offline dependency policy,
   full Git/source secret scans, release-policy tests, an arm64 Release build,
   bundle and signing smoke checks, and the complete Swift test suite.
 - `scripts/preflight.sh commit-messages`: complete messages validated with the

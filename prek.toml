@@ -90,8 +90,8 @@ hooks = [
 [[repos]]
 repo = "local"
 hooks = [
-  { id = "deptry", name = "Python dependency ownership", entry = "uv run --directory tools --frozen deptry src", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$|uv\\.lock$)", stages = ["pre-commit"] },
-  { id = "import-linter", name = "Evaluation module boundaries", entry = "uv run --directory tools --frozen lint-imports", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$)", stages = ["pre-commit"] },
+  { id = "deptry", name = "Python dependency ownership", entry = "mise exec -- uv run --directory tools --frozen deptry src", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$|uv\\.lock$)", stages = ["pre-commit"] },
+  { id = "import-linter", name = "Evaluation module boundaries", entry = "mise exec -- uv run --directory tools --frozen lint-imports", language = "system", pass_filenames = false, files = "^tools/(src/|pyproject\\.toml$)", stages = ["pre-commit"] },
   { id = "ast-grep", name = "Domain preferences boundary", entry = "ast-grep scan", language = "python", additional_dependencies = ["ast-grep-cli==0.51.0"], pass_filenames = false, files = "(\\.swift$|^scripts/ast-grep\\.yml$|^sgconfig\\.yml$)", stages = ["pre-commit"] },
   { id = "ast-grep-tests", name = "Structure rule examples", entry = "ast-grep test --skip-snapshot-tests", language = "python", additional_dependencies = ["ast-grep-cli==0.51.0"], pass_filenames = false, files = "(^scripts/ast-grep\\.yml$|^tools/tests/ast-grep\\.yml$|^sgconfig\\.yml$)", stages = ["pre-commit"] },
 ]
