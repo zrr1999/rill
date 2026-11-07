@@ -30,9 +30,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install pinned uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version: "0.13.5"
+          version: "0.13.7"
 
       - name: Build documentation with locked dependencies
         run: uv run --no-build --locked --script scripts/docs.py build
@@ -49,7 +49,7 @@ jobs:
         uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
         with:
           install-only: true
-          prek-version: "v0.5.7"
+          prek-version: "v0.5.10"
 
       - name: Run repository quality gates
         run: |
@@ -93,16 +93,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: matrix.language == 'swift'
         with:
-          version: "0.13.5"
+          version: "0.13.7"
       - name: Resolve locked packages before tracing
         if: matrix.language == 'swift'
         run: |
           swift package --scratch-path .artifacts/build/codeql --force-resolved-versions resolve
           git diff --exit-code -- Package.resolved
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build }}
@@ -116,7 +116,7 @@ jobs:
         # CodeQL traces source compilation; this arena is never used for an App bundle.
         # SwiftBuild's Metal resource compilation fails under the macOS tracer.
         run: scripts/preflight.sh swift build --build-system native --scratch-path .artifacts/build/codeql --arch arm64
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           category: /language:${{ matrix.language }}
   dependencies:
@@ -127,9 +127,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version: "0.13.5"
+          version: "0.13.7"
       - name: Audit locked Swift revisions
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
       - name: Install verified OSV-Scanner
