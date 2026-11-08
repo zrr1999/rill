@@ -34,6 +34,12 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 
 记录提示点位于 SVG 的 `records-indicator` 元素，半径 1.25 pt。基础版本隐藏该点，有记录版本由生成器样式表启用；两种图标共用一份矢量源。状态判断仍由 `MenuBarSystemSymbolPolicy` 负责，图标适配层只替换就绪和有记录两种图形，不改变录音、权限等状态的优先级。菜单标签继续使用应用名称供辅助功能读取。
 
+## 输入源图标
+
+输入法在系统输入源菜单中使用实心圆角徽标，与相邻输入源保持接近的轮廓和视觉重量。画布为 22 × 18 pt，底板为 22 × 16 pt、圆角半径 4 pt；内部沿用菜单栏的 Rill 符号，缩至 80% 后从底板中镂空，不显示记录提示点。
+
+`render_input_method_icon.swift` 从菜单栏 PDF 生成包含 1x、2x 表示的 template TIFF。符号使用透明镂空，让 macOS 为深浅色和选中状态着色；应用自身的菜单栏图标继续使用无底板线稿。
+
 ## 源文件与维护
 
 编辑 SVG 源文件；校验值和生成命令见 [图标资源说明][asset-readme]。
@@ -42,7 +48,8 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 | --- | --- |
 | [Rill.svg][app-svg] | 应用图标的可编辑矢量源 |
 | [RillMenuBar.svg][menu-svg] | 菜单栏轮廓及可选记录提示点 |
-| `assemble_app_bundle.sh render-brand` | 生成 1024 px PNG 和两种菜单栏 PDF |
+| `assemble_app_bundle.sh render-brand` | 生成 1024 px PNG、两种菜单栏 PDF 和输入源 TIFF |
+| `scripts/render_input_method_icon.swift` | 为 Rill 轮廓添加镂空圆角底板，生成输入源的 1x、2x TIFF |
 | [render_app_icon_renditions.swift][icon-renderer] | 生成带圆角、阴影和光学调整的各尺寸图标 |
 | `assemble_app_bundle.sh app-icon` | 校验受审 PNG 并装配 ICNS |
 

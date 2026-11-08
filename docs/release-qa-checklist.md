@@ -101,10 +101,11 @@ Run these checks on macOS 26.0 and the current supported macOS with the exact in
       background plate, excessive inset, or material that obscures the glyph.
 - [ ] Finder Get Info reports `Rill.icns`, and the installed ICNS SHA-256
       matches the release artifact recorded above.
-- [ ] The installed Rill input source uses the monochrome routed voice cursor
-      in the input menu and source switcher, including the highlighted menu row,
-      in light and dark appearances at 1x and 2x display scales. No generic icon,
-      background tile, clipping, or records indicator appears.
+- [ ] The installed Rill input source uses the monochrome rounded badge with a
+      cutout routed voice cursor in the input menu and source switcher, including
+      the highlighted menu row, in light and dark appearances at 1x and 2x display
+      scales. No generic icon, extra background tile, clipping, or records
+      indicator appears.
 
 ## Clean-account first run
 
