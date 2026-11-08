@@ -5,7 +5,8 @@ guard CommandLine.arguments.count == 3,
   let image = NSImage(contentsOfFile: CommandLine.arguments[1])
 else { fatalError("Usage: render_input_method_icon.swift SOURCE.pdf OUTPUT.tiff") }
 
-let size = image.size
+let size = NSSize(width: 22, height: 18)
+let markSize = NSSize(width: 16, height: 14.4)
 let representations = [1, 2].map { scale in
   let bitmap = NSBitmapImageRep(
     bitmapDataPlanes: nil,
@@ -22,7 +23,24 @@ let representations = [1, 2].map { scale in
   bitmap.size = size
   NSGraphicsContext.saveGraphicsState()
   NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-  image.draw(in: NSRect(origin: .zero, size: size))
+  NSColor.black.setFill()
+  NSBezierPath(
+    roundedRect: NSRect(x: 0, y: 1, width: size.width, height: 16),
+    xRadius: 4,
+    yRadius: 4
+  ).fill()
+  // Template images use alpha as their mask, so the mark must be a cutout.
+  image.draw(
+    in: NSRect(
+      x: (size.width - markSize.width) / 2,
+      y: (size.height - markSize.height) / 2,
+      width: markSize.width,
+      height: markSize.height
+    ),
+    from: .zero,
+    operation: .destinationOut,
+    fraction: 1
+  )
   NSGraphicsContext.restoreGraphicsState()
   return bitmap
 }

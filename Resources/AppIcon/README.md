@@ -33,13 +33,17 @@ The application name remains the menu label for accessibility.
 ## Input source
 
 The standalone input method uses `Resources/AppIcon/RillInputMethodTemplate.tiff`, rasterized from
-`RillMenuBarTemplate.pdf` with 1x and 2x representations. TIFF is the native input
-mode image format documented by Text Input Sources. `assemble_input_method.py`
+`RillMenuBarTemplate.pdf` with 1x and 2x representations. Its 22 × 18 pt canvas
+contains a 22 × 16 pt filled badge with 4 pt corners and the Rill mark cut out
+at 80% of its menu-bar size. The solid silhouette matches neighboring input
+sources; the transparent mark remains legible when macOS tints the template.
+TIFF is the native input mode image format documented by Text Input Sources.
+`assemble_input_method.py`
 copies it under a content-derived filename and sets the application icon, parent
 icon, and the mode's menu, alternate menu, and palette icons to that resource.
 Changing the artwork changes the resource URL, rather than reusing a cached icon.
 `TISIconIsTemplate` lets macOS supply the tint for the current appearance.
-The input source always uses the plain mark, without the App's records indicator.
+The input source always uses the badge, without the App's records indicator.
 The brand regeneration command also regenerates this export; builds consume the
 committed TIFF and need no additional rendering tools.
 
@@ -65,7 +69,7 @@ SVG sources, exports, this provenance, and the updated PNG hash in
 | `RillMenuBar.svg` | `7b0c39721acffe472f39125ed3db33a7d7b64a7d7c53571ddfec8b4189361388` |
 | `RillMenuBarTemplate.pdf` | `868bc83786453d77c52659e1d545f3c6780da0548dc4d1f350824dfe22304480` |
 | `RillMenuBarRecordsTemplate.pdf` | `b048f2ae23909b39d5d9d01232dd6f98ae62aac9f8174ac20b6c79aa8384c749` |
-| `RillInputMethodTemplate.tiff` | `d92e8d16f7b662390481e0b613acb2d8e6925183f118f1c0c6ba6e9e8015b7fb` |
+| `RillInputMethodTemplate.tiff` | `45953cbc8423a5d967448cdca33e560245a616ecdb3942da00d3dabef2f3f3e0` |
 
 The prior generated raster and its image-generation prompts are preserved in
 Git history. `AppIcon-1024.png` remains an unbundled earlier exploration; it is

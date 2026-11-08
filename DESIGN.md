@@ -186,6 +186,11 @@ Reduce Motion disables the custom card/selection transitions, panel fades, meter
 
 The recorder is the explicit local exception to the shared radius scale: its compact capsule and expanded surface use the two recorder radii. Preserve that silhouette and the space reserved for timer, Esc hint, and near-limit action.
 
+The system input source uses a filled 22 × 16pt badge with 4pt corners on a
+22 × 18pt canvas. The Rill mark is a transparent cutout; the system's template
+rendering tints the opaque badge. This matches neighboring input sources;
+the application's own menu-bar icon retains its unboxed outline.
+
 ## Components
 
 ### Native actions and navigation
