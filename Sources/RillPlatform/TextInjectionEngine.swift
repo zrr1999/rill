@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 import Foundation
 import RillCore
 
@@ -258,8 +259,9 @@ public actor TextInjectionEngine {
       let preparedTarget = try await prepareTargetFocus(targetFocus)
       let descriptor = await pasteboard.currentDescriptor()
       if !descriptor.protections.isEmpty {
-        try await injectUsingProtectedClipboardFallback(
+        try await injectUsingKeyboardFallback(
           text,
+          reason: .protectedClipboard,
           protections: descriptor.protections,
           target: preparedTarget
         )
@@ -281,16 +283,22 @@ public actor TextInjectionEngine {
       } catch let error as SystemClipboardPort.ConditionalWriteError {
         switch error {
         case let .protectedClipboard(protections):
-          try await injectUsingProtectedClipboardFallback(
+          try await injectUsingKeyboardFallback(
             text,
+            reason: .protectedClipboard,
             protections: protections,
             target: preparedTarget
           )
           return
         case .changeCountChanged:
           throw InjectionError.clipboardChangedBeforeTemporaryWrite
-        case .unreadableRepresentation, .preservationLimitExceeded:
-          throw InjectionError.clipboardContentsCannotBePreserved
+        case .itemsUnavailable, .unreadableRepresentation, .preservationLimitExceeded:
+          try await injectUsingKeyboardFallback(
+            text,
+            reason: .clipboardCannotBePreserved,
+            target: preparedTarget
+          )
+          return
         }
       }
       try await pasteAndRestore(
@@ -366,7 +374,7 @@ public actor TextInjectionEngine {
         throw InjectionError.protectedClipboardCannotBeReplaced
       case .changeCountChanged:
         throw InjectionError.clipboardChangedBeforeTemporaryWrite
-      case .unreadableRepresentation, .preservationLimitExceeded:
+      case .itemsUnavailable, .unreadableRepresentation, .preservationLimitExceeded:
         throw InjectionError.clipboardContentsCannotBePreserved
       }
     }
@@ -643,6 +651,8 @@ public actor TextInjectionEngine {
 
     for (index, originalChunk) in chunks.enumerated() {
       try await verifyTargetFocus(target)
+      try Task.checkCancellation()
+      guard !applicationShutdownStarted else { throw CancellationError() }
       guard await keyboardChunkSender(originalChunk) else {
         throw InjectionError.unableToCreateKeyboardEvent
       }
@@ -653,23 +663,32 @@ public actor TextInjectionEngine {
     }
   }
 
-  private func injectUsingProtectedClipboardFallback(
+  private enum KeyboardFallbackReason: String {
+    case protectedClipboard = "protected-clipboard"
+    case clipboardCannotBePreserved = "clipboard-cannot-be-preserved"
+  }
+
+  private func injectUsingKeyboardFallback(
     _ text: String,
-    protections: [SystemClipboardProtection],
+    reason: KeyboardFallbackReason,
+    protections: [SystemClipboardProtection] = [],
     target: FocusIdentity?
   ) async throws {
+    var metadata = ["reason": reason.rawValue]
+    if !protections.isEmpty {
+      metadata["protections"] = protections.map(\.rawValue).joined(separator: ",")
+    }
     await recordDiagnostic(
       event: .clipboardInjectKeyboardFallback,
-      message: "Used keyboard injection to preserve a protected clipboard.",
-      metadata: [
-        "protections": protections.map(\.rawValue).joined(separator: ",")
-      ]
+      message: "Using keyboard injection without changing the clipboard.",
+      metadata: metadata
     )
     try await simulateKeyboard(text, target: target)
   }
 
   private static func postKeyboardChunk(_ originalChunk: [UInt16]) -> Bool {
-    guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
+    guard !Task.isCancelled, AXIsProcessTrusted(), !IsSecureEventInputEnabled(),
+      let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
       let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
     else {
       return false

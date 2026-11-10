@@ -50,7 +50,7 @@ final class TextInjectionEngineTests: XCTestCase {
     }
   }
 
-  func testTemporaryPreservationBudgetFailureUsesFixedErrorAndKeepsClipboard() async {
+  func testUnpreservableClipboardUsesKeyboardForTextAndBlocksImages() async throws {
     let fixture = await MainActor.run {
       let name = "dev.rill.tests.\(UUID().uuidString)"
       let systemPasteboard = NSPasteboard(name: .init(name))
@@ -72,18 +72,31 @@ final class TextInjectionEngineTests: XCTestCase {
         originalContents: Self.rawContents(of: systemPasteboard)
       )
     }
+    let keyboard = TextInjectionKeyboardProbe()
+    let diagnostics = TextInjectionDiagnosticProbe()
+    let originalChangeCount = await fixture.controller.currentDescriptor().changeCount
     let engine = TextInjectionEngine(
       pasteboard: fixture.controller,
       accessibilityChecker: { true },
+      diagnosticReporter: { await diagnostics.record(DiagnosticEventSanitizer.sanitize($0)) },
       pasteCommandSender: {
         XCTFail("Paste must not be attempted after preservation rejection.")
         return true
+      },
+      keyboardChunkSender: { chunk in
+        _ = await keyboard.send(chunk)
+        return true
       }
     )
+    let text = "Rill 文字 👋"
+    let runID = UUID()
+    try await engine.inject(text, runID: runID)
 
     do {
-      try await engine.inject("must not win")
-      XCTFail("Expected the preservation budget to reject temporary injection.")
+      try await engine.injectClipboardSnapshot(
+        SystemClipboardSnapshot(plainText: "", imagePNGData: Data([0x89]), changeCount: 0)
+      )
+      XCTFail("Expected the preservation budget to reject image paste.")
     } catch let error as TextInjectionEngine.InjectionError {
       XCTAssertEqual(error, .clipboardContentsCannotBePreserved)
       XCTAssertEqual(
@@ -94,8 +107,16 @@ final class TextInjectionEngineTests: XCTestCase {
       XCTFail("Unexpected error: \(error)")
     }
 
+    let chunks = await keyboard.snapshot()
+    XCTAssertEqual(String(decoding: chunks.flatMap { $0 }, as: UTF16.self), text)
     let unchanged = await rawContents(ofPasteboardNamed: fixture.name)
     XCTAssertEqual(unchanged, fixture.originalContents)
+    let finalChangeCount = await fixture.controller.currentDescriptor().changeCount
+    XCTAssertEqual(finalChangeCount, originalChangeCount)
+    let events = await diagnostics.snapshot()
+    let fallback = try XCTUnwrap(events.first { $0.name == .clipboardInjectKeyboardFallback })
+    XCTAssertEqual(fallback.runID, runID)
+    XCTAssertEqual(fallback.metadata, ["reason": "clipboard-cannot-be-preserved"])
   }
 
   func testKeyboardChunkingSplitsLongTextIntoSupportedEventSizes() {
