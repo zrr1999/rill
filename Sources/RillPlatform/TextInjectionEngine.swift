@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon
 import Foundation
 import RillCore
 
@@ -79,15 +80,7 @@ public actor TextInjectionEngine {
     public static var system: FocusController {
       FocusController(
         currentIdentity: {
-          await MainActor.run {
-            guard let application = NSWorkspace.shared.frontmostApplication else {
-              return nil
-            }
-            return FocusIdentity(
-              bundleIdentifier: application.bundleIdentifier,
-              processIdentifier: application.processIdentifier
-            )
-          }
+          await systemCurrentIdentity()
         },
         activate: { target in
           await MainActor.run {
@@ -114,6 +107,15 @@ public actor TextInjectionEngine {
             return application.activate(options: [])
           }
         }
+      )
+    }
+
+    @MainActor
+    fileprivate static func systemCurrentIdentity() -> FocusIdentity? {
+      guard let application = NSWorkspace.shared.frontmostApplication else { return nil }
+      return FocusIdentity(
+        bundleIdentifier: application.bundleIdentifier,
+        processIdentifier: application.processIdentifier
       )
     }
   }
@@ -182,10 +184,7 @@ public actor TextInjectionEngine {
     self.diagnosticReporter = diagnosticReporter
     self.focusController = focusController
     self.pasteCommandSender = pasteCommandSender
-    self.keyboardChunkSender =
-      keyboardChunkSender ?? { chunk in
-        TextInjectionEngine.postKeyboardChunk(chunk)
-      }
+    self.keyboardChunkSender = keyboardChunkSender
     self.temporaryClipboardRestorer =
       temporaryClipboardRestorer ?? { transaction, expected in
         await pasteboard.restore(transaction, ifChangeCountIs: expected)
@@ -197,7 +196,7 @@ public actor TextInjectionEngine {
   private let diagnosticReporter: (@Sendable (DiagnosticEvent) async -> Void)?
   private let focusController: FocusController
   private let pasteCommandSender: @Sendable () async throws -> Bool
-  private let keyboardChunkSender: @Sendable ([UInt16]) async -> Bool
+  private let keyboardChunkSender: (@Sendable ([UInt16]) async -> Bool)?
   private let temporaryClipboardRestorer:
     @Sendable (
       SystemClipboardPort.TemporaryWriteTransaction,
@@ -222,11 +221,7 @@ public actor TextInjectionEngine {
   private var clipboardRecoveryDrainWaiters: [CheckedContinuation<Void, Never>] = []
 
   static func utf16Chunks(for text: String, maxLength: Int = maximumKeyboardEventLength) -> [[UInt16]] {
-    let utf16 = Array(text.utf16)
-    guard !utf16.isEmpty else { return [] }
-    return stride(from: 0, to: utf16.count, by: maxLength).map { offset in
-      Array(utf16[offset..<Swift.min(offset + maxLength, utf16.count)])
-    }
+    RecordBufferTextOutput.utf16Chunks(text, limit: maxLength)
   }
 
   public func inject(
@@ -258,8 +253,9 @@ public actor TextInjectionEngine {
       let preparedTarget = try await prepareTargetFocus(targetFocus)
       let descriptor = await pasteboard.currentDescriptor()
       if !descriptor.protections.isEmpty {
-        try await injectUsingProtectedClipboardFallback(
+        try await injectUsingKeyboardFallback(
           text,
+          reason: .protectedClipboard,
           protections: descriptor.protections,
           target: preparedTarget
         )
@@ -281,16 +277,22 @@ public actor TextInjectionEngine {
       } catch let error as SystemClipboardPort.ConditionalWriteError {
         switch error {
         case let .protectedClipboard(protections):
-          try await injectUsingProtectedClipboardFallback(
+          try await injectUsingKeyboardFallback(
             text,
+            reason: .protectedClipboard,
             protections: protections,
             target: preparedTarget
           )
           return
         case .changeCountChanged:
           throw InjectionError.clipboardChangedBeforeTemporaryWrite
-        case .unreadableRepresentation, .preservationLimitExceeded:
-          throw InjectionError.clipboardContentsCannotBePreserved
+        case .itemsUnavailable, .unreadableRepresentation, .preservationLimitExceeded:
+          try await injectUsingKeyboardFallback(
+            text,
+            reason: .clipboardCannotBePreserved,
+            target: preparedTarget
+          )
+          return
         }
       }
       try await pasteAndRestore(
@@ -366,7 +368,7 @@ public actor TextInjectionEngine {
         throw InjectionError.protectedClipboardCannotBeReplaced
       case .changeCountChanged:
         throw InjectionError.clipboardChangedBeforeTemporaryWrite
-      case .unreadableRepresentation, .preservationLimitExceeded:
+      case .itemsUnavailable, .unreadableRepresentation, .preservationLimitExceeded:
         throw InjectionError.clipboardContentsCannotBePreserved
       }
     }
@@ -643,8 +645,14 @@ public actor TextInjectionEngine {
 
     for (index, originalChunk) in chunks.enumerated() {
       try await verifyTargetFocus(target)
-      guard await keyboardChunkSender(originalChunk) else {
-        throw InjectionError.unableToCreateKeyboardEvent
+      try Task.checkCancellation()
+      guard !applicationShutdownStarted else { throw CancellationError() }
+      if let keyboardChunkSender {
+        guard await keyboardChunkSender(originalChunk) else {
+          throw InjectionError.unableToCreateKeyboardEvent
+        }
+      } else {
+        try await Self.postKeyboardChunk(originalChunk, target: target)
       }
 
       if index < chunks.count - 1 {
@@ -653,34 +661,57 @@ public actor TextInjectionEngine {
     }
   }
 
-  private func injectUsingProtectedClipboardFallback(
+  private enum KeyboardFallbackReason: String {
+    case protectedClipboard = "protected-clipboard"
+    case clipboardCannotBePreserved = "clipboard-cannot-be-preserved"
+  }
+
+  private func injectUsingKeyboardFallback(
     _ text: String,
-    protections: [SystemClipboardProtection],
+    reason: KeyboardFallbackReason,
+    protections: [SystemClipboardProtection] = [],
     target: FocusIdentity?
   ) async throws {
+    var metadata = ["reason": reason.rawValue]
+    if !protections.isEmpty {
+      metadata["protections"] = protections.map(\.rawValue).joined(separator: ",")
+    }
     await recordDiagnostic(
       event: .clipboardInjectKeyboardFallback,
-      message: "Used keyboard injection to preserve a protected clipboard.",
-      metadata: [
-        "protections": protections.map(\.rawValue).joined(separator: ",")
-      ]
+      message: "Using keyboard injection without changing the clipboard.",
+      metadata: metadata
     )
     try await simulateKeyboard(text, target: target)
   }
 
-  private static func postKeyboardChunk(_ originalChunk: [UInt16]) -> Bool {
+  @MainActor
+  static func postKeyboardChunk(
+    _ chunk: [UInt16],
+    target: FocusIdentity?,
+    currentIdentity: @MainActor () -> FocusIdentity? = { FocusController.systemCurrentIdentity() },
+    canPost: @MainActor () -> Bool = { AXIsProcessTrusted() && !IsSecureEventInputEnabled() },
+    post: @MainActor (CGEvent, Int32) -> Void = { $0.postToPid($1) }
+  ) throws {
+    try Task.checkCancellation()
+    guard canPost() else {
+      throw InjectionError.unableToCreateKeyboardEvent
+    }
+    guard let current = currentIdentity(),
+      let pid = current.processIdentifier, target?.matches(current) ?? true
+    else {
+      throw InjectionError.targetFocusChanged
+    }
     guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
       let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
     else {
-      return false
+      throw InjectionError.unableToCreateKeyboardEvent
     }
 
-    var chunk = originalChunk
-    keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
-    keyUp.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
-    keyDown.post(tap: .cghidEventTap)
-    keyUp.post(tap: .cghidEventTap)
-    return true
+    keyDown.flags = []
+    keyUp.flags = []
+    keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+    post(keyDown, pid)
+    post(keyUp, pid)
   }
 
   private func settleClipboardBeforePaste() async throws {

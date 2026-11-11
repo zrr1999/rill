@@ -80,6 +80,7 @@ public final class SystemClipboardPort: Sendable {
   public enum ConditionalWriteError: Error, Sendable, Equatable {
     case protectedClipboard([SystemClipboardProtection])
     case changeCountChanged
+    case itemsUnavailable
     case unreadableRepresentation(itemIndex: Int, typeName: String)
     case preservationLimitExceeded(TemporaryPreservationLimit)
   }
@@ -419,11 +420,13 @@ public final class SystemClipboardPort: Sendable {
   private func preserveContents(
     ifChangeCountIs expectedChangeCount: Int
   ) throws -> PreservedPasteboardContents {
+    let items = pasteboard.pasteboardItems
     guard pasteboard.changeCount == expectedChangeCount else {
       throw ConditionalWriteError.changeCountChanged
     }
-
-    let pasteboardItems = pasteboard.pasteboardItems ?? []
+    guard let pasteboardItems = items else {
+      throw ConditionalWriteError.itemsUnavailable
+    }
     guard pasteboardItems.count <= temporaryPreservationLimits.maximumItemCount else {
       throw ConditionalWriteError.preservationLimitExceeded(.itemCount)
     }
@@ -465,7 +468,11 @@ public final class SystemClipboardPort: Sendable {
         // streaming read. Validate immediately after materializing
         // each representation so an over-budget value is released
         // instead of being accumulated into the transaction archive.
-        guard let data = item.data(forType: type) else {
+        let representation = item.data(forType: type)
+        guard pasteboard.changeCount == expectedChangeCount else {
+          throw ConditionalWriteError.changeCountChanged
+        }
+        guard let data = representation else {
           throw ConditionalWriteError.unreadableRepresentation(
             itemIndex: itemIndex,
             typeName: type.rawValue

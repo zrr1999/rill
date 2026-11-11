@@ -414,9 +414,11 @@ Use disposable local destinations and remove them after the candidate is signed 
       a consumed history-only item is never reactivated by a later assignment.
 - [ ] Copy a multi-item rich clipboard and large image near the temporary archive
       and image budgets. The main UI remains responsive while ImageIO works,
-      in-budget content restores every original representation, over-budget or
-      invalid content fails before replacement, and an external copy during image
-      processing wins without being overwritten.
+      in-budget content restores every original representation, and an external
+      copy during image processing wins without being overwritten. With an
+      over-budget or unreadable clipboard, dictation and Record text use keyboard
+      insertion into the focused app without replacing the clipboard. Image and
+      file paste must fail before replacement.
 - [ ] Force a clipboard save failure and confirm the main Clipboard page retains
       the warning, automatic retry and the single-flight immediate Retry do not
       duplicate state, successful recovery clears the warning, and the floating
