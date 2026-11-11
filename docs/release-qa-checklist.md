@@ -256,6 +256,11 @@ Complete the pass in both App languages.
 
 ## Speech and privacy paths
 
+- [ ] Choose **Allow and Remember** for a cloud-processing Fn workflow, quit,
+      relaunch, and reinstall the candidate while retaining its data. With the
+      same workflow and service configuration, Fn does not ask again. Revoking
+      that grant or changing the service configuration requires confirmation;
+      **Allow Once** still prompts on the next run.
 - [ ] For `cloud-only`, local setup and preparation remain unavailable across
       restart and never fall back to an ambient cache, legacy loader, or model
       network request.

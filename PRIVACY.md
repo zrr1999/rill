@@ -65,7 +65,7 @@ The host extracts short terms in memory and stores only aggregated suggestions, 
 
 ## Your controls
 
-When cloud confirmation is enabled, the default action is **Allow and Remember**. Rill saves that authorization across restarts and skips later prompts for the same workflow and provider configuration. **Allow Once** applies only to the current run. You can revoke saved authorizations in Settings > Privacy; changing the workflow or provider configuration requires confirmation again.
+When cloud confirmation is enabled, the default action is **Allow and Remember**. Rill saves that authorization across restarts and skips later prompts for the same workflow and provider configuration, including after reinstalling or updating the App while retaining its data. **Allow Once** applies only to the current run. You can revoke saved authorizations in Settings > Privacy; changing the workflow or provider configuration requires confirmation again.
 
 The Settings screen provides controls for the speech provider, OpenAI API key, Responses API Base URL and model ID, explicit configuration verification, cloud confirmation, sensitive applications, Secure Input behavior, history preview exposure, history retention, history clearing, failed-audio recovery, provider credentials, and clipboard capture. Verification sends the API key and fixed non-user content to the configured endpoint and does not record the response text. Clipboard capture can also be paused or bypassed for the next external copy from the menu bar.
 
@@ -148,7 +148,7 @@ Rill 输入法运行在独立进程中。随包的默认方案不依赖 Squirrel
 
 ## 用户控制
 
-开启云端确认时，弹窗默认操作为**允许并记住**。Rill 会在重启后保留授权，同一工作流和服务配置下不再重复询问；**仅这一次**只授权当前运行。可在“设置 > 隐私”中撤销已保存的授权；更改工作流或服务配置后需要重新确认。
+开启云端确认时，弹窗默认操作为**允许并记住**。Rill 会在重启后保留授权，同一工作流和服务配置下不再重复询问，保留应用数据的重装或更新也不会使授权失效；**仅这一次**只授权当前运行。可在“设置 > 隐私”中撤销已保存的授权；更改工作流或服务配置后需要重新确认。
 
 设置页提供语音 provider、OpenAI API Key、Responses API Base URL 与模型 ID、显式配置验证、云端确认、敏感 App、Secure Input 行为、历史预览暴露、历史留存与清除、失败录音恢复、provider 凭据和剪贴板捕获控制。验证会把 API Key 与固定的非用户内容发送到已配置地址，且不记录响应正文。菜单栏还可以暂停剪贴板捕获，或跳过下一次外部复制。
 

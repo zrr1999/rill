@@ -110,6 +110,16 @@ public struct VocabularyCollectionBinding: Identifiable, Codable, Sendable, Equa
       uses: try values.decode(Set<VocabularyBindingUse>.self, forKey: .uses), condition: try values.decode(WorkflowBindingCondition.self, forKey: .condition),
       optional: try values.decodeIfPresent(Bool.self, forKey: .optional) ?? false)
   }
+
+  public func encode(to encoder: any Encoder) throws {
+    var values = encoder.container(keyedBy: CodingKeys.self)
+    try values.encode(id, forKey: .id)
+    try values.encode(collectionID, forKey: .collectionID)
+    // Cloud authorization fingerprints must survive Set hash randomization across launches.
+    try values.encode(uses.sorted { $0.rawValue < $1.rawValue }, forKey: .uses)
+    try values.encode(condition, forKey: .condition)
+    try values.encode(optional, forKey: .optional)
+  }
 }
 
 public struct WakeWordConfiguration: Codable, Sendable, Equatable {
