@@ -50,60 +50,40 @@ final class TextInjectionEngineTests: XCTestCase {
     }
   }
 
-  func testTemporaryPreservationBudgetFailureUsesFixedErrorAndKeepsClipboard() async {
-    let fixture = await MainActor.run {
-      let name = "dev.rill.tests.\(UUID().uuidString)"
-      let systemPasteboard = NSPasteboard(name: .init(name))
-      let item = NSPasteboardItem()
-      item.setData(
-        Data([0x01, 0x02]),
-        forType: .init("com.example.over-budget")
-      )
-      systemPasteboard.clearContents()
-      XCTAssertTrue(systemPasteboard.writeObjects([item]))
-      var limits = SystemClipboardPort.TemporaryPreservationLimits.productDefault
-      limits.maximumRepresentationByteCount = 1
-      return LosslessPasteboardFixture(
-        controller: SystemClipboardPort(
-          pasteboard: systemPasteboard,
-          temporaryPreservationLimits: limits
-        ),
-        name: name,
-        originalContents: Self.rawContents(of: systemPasteboard)
-      )
-    }
-    let engine = TextInjectionEngine(
-      pasteboard: fixture.controller,
-      accessibilityChecker: { true },
-      pasteCommandSender: {
-        XCTFail("Paste must not be attempted after preservation rejection.")
-        return true
-      }
-    )
-
-    do {
-      try await engine.inject("must not win")
-      XCTFail("Expected the preservation budget to reject temporary injection.")
-    } catch let error as TextInjectionEngine.InjectionError {
-      XCTAssertEqual(error, .clipboardContentsCannotBePreserved)
-      XCTAssertEqual(
-        error.localizedDescription,
-        "The current clipboard cannot be preserved losslessly for temporary text injection."
-      )
-    } catch {
-      XCTFail("Unexpected error: \(error)")
-    }
-
-    let unchanged = await rawContents(ofPasteboardNamed: fixture.name)
-    XCTAssertEqual(unchanged, fixture.originalContents)
-  }
-
   func testKeyboardChunkingSplitsLongTextIntoSupportedEventSizes() {
     let text = String(repeating: "a", count: 45)
     let chunks = TextInjectionEngine.utf16Chunks(for: text)
 
     XCTAssertEqual(chunks.map(\.count), [20, 20, 5])
     XCTAssertEqual(chunks.flatMap { $0 }.count, text.utf16.count)
+  }
+
+  @MainActor
+  func testKeyboardEventRetainsUnicodeAndRejectsRelaunchedTarget() throws {
+    let text = "字👋 Rill\n第二行"
+    let target = TextInjectionEngine.FocusIdentity(bundleIdentifier: "com.example.editor", processIdentifier: 42)
+    let chunk = Array(text.utf16)
+    var posted: [(event: CGEvent, pid: Int32)] = []
+    let post: @MainActor (CGEvent, Int32) -> Void = { posted.append(($0, $1)) }
+
+    try TextInjectionEngine.postKeyboardChunk(chunk, target: target, currentIdentity: { target }, canPost: { true }, post: post)
+    XCTAssertEqual(posted.map(\.pid), [42, 42])
+    XCTAssertEqual(posted.map { $0.event.type }, [.keyDown, .keyUp])
+    XCTAssertEqual(posted.map { $0.event.flags }, [[], []])
+    XCTAssertEqual(posted.first.flatMap { NSEvent(cgEvent: $0.event)?.characters }, text)
+
+    let relaunched = TextInjectionEngine.FocusIdentity(bundleIdentifier: "com.example.editor", processIdentifier: 43)
+    XCTAssertThrowsError(
+      try TextInjectionEngine.postKeyboardChunk(chunk, target: target, currentIdentity: { relaunched }, canPost: { true }, post: post)
+    ) { error in
+      XCTAssertEqual(error as? TextInjectionEngine.InjectionError, .targetFocusChanged)
+    }
+    XCTAssertThrowsError(
+      try TextInjectionEngine.postKeyboardChunk(chunk, target: target, currentIdentity: { target }, canPost: { false }, post: post)
+    ) { error in
+      XCTAssertEqual(error as? TextInjectionEngine.InjectionError, .unableToCreateKeyboardEvent)
+    }
+    XCTAssertEqual(posted.count, 2)
   }
 
   func testProtectedClipboardKeyboardFallbackRestoresAndVerifiesTarget() async throws {

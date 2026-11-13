@@ -138,6 +138,13 @@ Use the macOS system font and platform Chinese fallback. There is no separate di
 
 The editor's exact font and text insets come from [BufferDraftTextEditor](Sources/RillUI/BufferDraftTextEditor.swift). SwiftUI supporting variants also use `.subheadline.weight(.medium)`, `.caption2`, and semibold captions where needed; they are native roles rather than another application-wide size scale.
 
+Input-method candidates default to the 20pt system font. Their text, numbers and
+comments may use a user-selected installed font and size from 10–48pt. This is a
+candidate-panel preference; settings controls retain system typography and the
+panel retains its semantic colors and selected-candidate accessibility state.
+Candidate lists that exceed the visible display height scroll, keeping the
+selected row in view.
+
 **The Stable Label Rule.** Preserve functional labels and counts at their intrinsic width. Truncate the next-item preview, not the Drafts entry name; allow longer English and Chinese labels to wrap where the control permits it.
 
 ## Layout
@@ -178,6 +185,11 @@ Reduce Motion disables the custom card/selection transitions, panel fades, meter
 [RillRadius](Sources/RillUI/RillSelection.swift) supplies the chip, badge, row, section, card, and panel radii in frontmatter. Rounded rectangles use continuous corners where specified by the source. Native buttons, lists, fields, and window chrome keep their platform geometry instead of being wrapped in new borders.
 
 The recorder is the explicit local exception to the shared radius scale: its compact capsule and expanded surface use the two recorder radii. Preserve that silhouette and the space reserved for timer, Esc hint, and near-limit action.
+
+The system input source uses a filled 22 × 16pt badge with 4pt corners on a
+22 × 18pt canvas. The Rill mark is a transparent cutout; the system's template
+rendering tints the opaque badge. This matches neighboring input sources;
+the application's own menu-bar icon retains its unboxed outline.
 
 ## Components
 

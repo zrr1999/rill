@@ -14,6 +14,17 @@ Registration must verify that TIS enumerates the selectable mode even when `TISR
 
 ## Reproducible checks
 
+Candidate appearance is a versioned `InputMethodAppearance` value shared by the
+host and helper. `InputMethodAppearanceStore` atomically writes
+`~/Library/Application Support/Rill/input-method-appearance.json`; this file is
+the single source of truth and contains only presentation settings. It sits
+outside the Rime profile so changing appearance before installation does not
+create a partial profile. The helper caches accepted settings, reloads on
+activation and change notifications, uses defaults when the file is absent, and
+keeps its last valid settings on other read, decoding, or validation errors.
+Missing fonts fall back to the system font. Neither Rime
+deployment nor the learning connection is required for appearance changes.
+
 `uv run --script scripts/tests/input_method_test.py PATH/TO/RillInputMethod.app` checks the signed bundle with both a synthetic profile and the bundled default: deployment, plugin loading, six candidates, full-pinyin commits and copied userdb reopening. All resources come from the app. It does not modify real input sources or the user's profile. `RILL_IME_VALIDATION_BUNDLE=/path/to/RillInputMethod.app scripts/preflight.sh swift test --filter RimeProfileInstallerTests` also exercises the production installer with the default data in temporary directories.
 
 The packaged executable also supports `--probe-profile COPIED_PROFILE INPUTS_JSON OUTPUT_JSON` for controlled replay. The JSON input is an array of at most 32 keystroke strings. Always use a disposable copy: replay commits text and can change Rime frequencies. The output contains candidates and commits and must remain private when using personal dictionaries.
@@ -30,11 +41,20 @@ Automation and the headless Rime probe do not establish physical input quality. 
   choice, English/Chinese switching, and existing selected-text preservation.
 - Caps Lock switches modes in both directions, including after changing apps or
   input sources. Shift-letter input preserves case without toggling modes; left
-  and right modifier bindings remain distinct. Imported bilingual schemas return
+  and right modifier bindings remain distinct. Shift-symbol input (such as
+  Shift-/ for a question mark) follows the active keyboard layout, with or without
+  Caps Lock; Control, Option and Command shortcuts retain their key symbols.
+  Imported bilingual schemas return
   Chinese and English candidates for the same input and preserve word casing.
 - Same-app field changes, mouse cursor moves, app/source switches while composing,
   and no late commit to a newly focused client.
 - Light/dark appearance, long candidates, display edges and multiple displays.
+  Candidate placement follows the caret's display, including displays above or
+  left of the primary screen. The IMK line-height query uses an offset relative
+  to the inline session. When that query has no usable position, query the
+  client's document-range rectangle before using the current composition's
+  cached position. Clients that return a caret point without a line height are
+  supported.
 - Fn voice input, normal copy/paste, Rill exit, lost socket, IME restart and userdb
   recovery after normal exit.
 - Learning disabled, empty allowlist, sensitive apps, revoked authorization, repeat

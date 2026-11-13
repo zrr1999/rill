@@ -155,6 +155,7 @@ let package = Package(
       name: "RillRuntimeTests",
       dependencies: [
         "RillDomainTestSupport",
+        "RillInputMethodContracts",
         "RillCore",
         "RillPersistence",
         "RillPlatform",

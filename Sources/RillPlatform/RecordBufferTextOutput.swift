@@ -126,7 +126,7 @@ public final class RecordBufferTextOutput {
     return .unconfirmed
   }
 
-  public static func utf16Chunks(_ text: String, limit: Int = 20) -> [[UInt16]] {
+  nonisolated public static func utf16Chunks(_ text: String, limit: Int = 20) -> [[UInt16]] {
     precondition(limit >= 2)
     var result: [[UInt16]] = []
     var chunk: [UInt16] = []

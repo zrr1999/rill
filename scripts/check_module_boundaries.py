@@ -48,7 +48,7 @@ SYSTEM_IMPORTS = {
     "CRime": set(),
     "RillInputMethodContracts": FOUNDATION_IMPORTS,
     "RillInputMethodIPC": FOUNDATION_IMPORTS | {"Security"},
-    "RillInputMethodKit": FOUNDATION_IMPORTS | {"AppKit", "InputMethodKit", "Carbon", "Combine", "SwiftUI"},
+    "RillInputMethodKit": FOUNDATION_IMPORTS | {"AppKit", "InputMethodKit", "Carbon", "Combine", "CoreGraphics", "IOKit", "SwiftUI"},
     "RillInputMethod": FOUNDATION_IMPORTS | {"AppKit", "InputMethodKit"},
     "RillMLXRuntime": FOUNDATION_IMPORTS,
     "RillSpeechWorker": FOUNDATION_IMPORTS,

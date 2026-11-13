@@ -48,7 +48,7 @@ Native copy, cut, and paste remain owned by the foreground application. Rill asy
 
 Command-Shift-V uses independent buffers and clipboard-free text or native drag output; see [continuous output](continuous-output.md) for its confirmation, reservation, and migration contracts.
 
-Other explicitly requested output uses the shared delivery workflow. Text, images, and files all use its target checks and conditional clipboard transaction; restoration must preserve a newer external copy. Pausing history capture does not disable explicit output.
+Other explicitly requested output uses the shared delivery workflow. The conditional clipboard transaction restores every saved representation unless the clipboard changed after the temporary write. If the original clipboard is protected or cannot be archived, Rill attempts text insertion by keyboard with the same target checks and leaves the clipboard alone. Images and files require a clipboard transaction. Pausing history capture does not disable explicit output.
 
 ## Content previews
 

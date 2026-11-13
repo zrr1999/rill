@@ -2,6 +2,43 @@ import XCTest
 @testable import RillCore
 
 final class PrivacyModelsTests: XCTestCase {
+  func testRememberedCloudAuthorizationSurvivesVocabularySetReconstruction() throws {
+    var workflow = makeWorkflow(recognizerID: "sherpa-onnx.local")
+    workflow.plan.process.steps.append(
+      WorkflowProcessStep(kind: .llmRewrite, prompt: "Polish", reasoning: .some(.none))
+    )
+    workflow.plan.setup.vocabularyBindings = [VocabularyCollectionBinding(collectionID: UUID())]
+    let destinations: [PrivacyProcessingDestination] = [.localSpeech, .cloudText]
+    let providers = ["openai.responses|https://api.openai.com/v1|gpt-5-mini"]
+    let authorization = try CloudProcessingAuthorization(
+      workflow: workflow, processingDestinations: destinations, providerIdentities: providers)
+    let savedAuthorization = try JSONEncoder().encode(authorization)
+    let restoredAuthorization = try JSONDecoder().decode(CloudProcessingAuthorization.self, from: savedAuthorization)
+    let savedWorkflow = try JSONEncoder().encode(workflow)
+
+    // Set storage and iteration order can change when an identical workflow is reloaded.
+    for capacity in 0..<32 {
+      var reloadedWorkflow = try JSONDecoder().decode(WorkflowDefinition.self, from: savedWorkflow)
+      var uses = Set<VocabularyBindingUse>(minimumCapacity: capacity)
+      uses.insert(.textReplacement)
+      uses.insert(.recognitionHints)
+      reloadedWorkflow.plan.setup.vocabularyBindings[0].uses = uses
+      XCTAssertEqual(reloadedWorkflow, workflow)
+      XCTAssertTrue(
+        restoredAuthorization.authorizes(
+          workflow: reloadedWorkflow, processingDestinations: destinations, providerIdentities: providers),
+        "An unchanged workflow lost its remembered authorization with Set capacity \(capacity)"
+      )
+    }
+
+    var changedWorkflow = workflow
+    changedWorkflow.plan.setup.vocabularyBindings[0].uses.remove(.textReplacement)
+    XCTAssertFalse(
+      restoredAuthorization.authorizes(
+        workflow: changedWorkflow, processingDestinations: destinations, providerIdentities: providers)
+    )
+  }
+
   func testCloudProcessingAuthorizationIsScopedToWorkflowAndProviderConfiguration() throws {
     let workflow = WorkflowDefinition(
       id: UUID(uuidString: "D74E1D72-32B2-4499-8A4F-A9F967A1BEE8")!,

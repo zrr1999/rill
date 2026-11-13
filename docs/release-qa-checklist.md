@@ -101,10 +101,11 @@ Run these checks on macOS 26.0 and the current supported macOS with the exact in
       background plate, excessive inset, or material that obscures the glyph.
 - [ ] Finder Get Info reports `Rill.icns`, and the installed ICNS SHA-256
       matches the release artifact recorded above.
-- [ ] The installed Rill input source uses the monochrome routed voice cursor
-      in the input menu and source switcher, including the highlighted menu row,
-      in light and dark appearances at 1x and 2x display scales. No generic icon,
-      background tile, clipping, or records indicator appears.
+- [ ] The installed Rill input source uses the monochrome rounded badge with a
+      cutout routed voice cursor in the input menu and source switcher, including
+      the highlighted menu row, in light and dark appearances at 1x and 2x display
+      scales. No generic icon, extra background tile, clipping, or records
+      indicator appears.
 
 ## Clean-account first run
 
@@ -255,6 +256,11 @@ Complete the pass in both App languages.
 
 ## Speech and privacy paths
 
+- [ ] Choose **Allow and Remember** for a cloud-processing Fn workflow, quit,
+      relaunch, and reinstall the candidate while retaining its data. With the
+      same workflow and service configuration, Fn does not ask again. Revoking
+      that grant or changing the service configuration requires confirmation;
+      **Allow Once** still prompts on the next run.
 - [ ] For `cloud-only`, local setup and preparation remain unavailable across
       restart and never fall back to an ambient cache, legacy loader, or model
       network request.
@@ -413,9 +419,11 @@ Use disposable local destinations and remove them after the candidate is signed 
       a consumed history-only item is never reactivated by a later assignment.
 - [ ] Copy a multi-item rich clipboard and large image near the temporary archive
       and image budgets. The main UI remains responsive while ImageIO works,
-      in-budget content restores every original representation, over-budget or
-      invalid content fails before replacement, and an external copy during image
-      processing wins without being overwritten.
+      in-budget content restores every original representation, and an external
+      copy during image processing wins without being overwritten. With an
+      over-budget or unreadable clipboard, dictation and Record text use keyboard
+      insertion into the focused app without replacing the clipboard. Image and
+      file paste must fail before replacement.
 - [ ] Force a clipboard save failure and confirm the main Clipboard page retains
       the warning, automatic retry and the single-flight immediate Retry do not
       duplicate state, successful recovery clears the warning, and the floating

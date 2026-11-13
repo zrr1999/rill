@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import IOKit.hidsystem
 
 struct InputMethodKeyEvent {
   let key: Int32
@@ -21,25 +22,36 @@ struct InputMethodKeyEvent {
         // Rime expects the lock state before the transition; AppKit reports it after.
         modifiers ^= 2
       } else {
-        let modifier: (key: Int32, flag: NSEvent.ModifierFlags)
+        let modifier: (key: Int32, flag: NSEvent.ModifierFlags, side: Int32, otherSide: Int32)
         switch Int(event.keyCode) {
-        case kVK_Shift: modifier = (0xffe1, .shift)
-        case kVK_RightShift: modifier = (0xffe2, .shift)
-        case kVK_Control: modifier = (0xffe3, .control)
-        case kVK_RightControl: modifier = (0xffe4, .control)
-        case kVK_Option: modifier = (0xffe9, .option)
-        case kVK_RightOption: modifier = (0xffea, .option)
-        case kVK_Command: modifier = (0xffeb, .command)
-        case kVK_RightCommand: modifier = (0xffec, .command)
+        case kVK_Shift: modifier = (0xffe1, .shift, NX_DEVICELSHIFTKEYMASK, NX_DEVICERSHIFTKEYMASK)
+        case kVK_RightShift: modifier = (0xffe2, .shift, NX_DEVICERSHIFTKEYMASK, NX_DEVICELSHIFTKEYMASK)
+        case kVK_Control: modifier = (0xffe3, .control, NX_DEVICELCTLKEYMASK, NX_DEVICERCTLKEYMASK)
+        case kVK_RightControl: modifier = (0xffe4, .control, NX_DEVICERCTLKEYMASK, NX_DEVICELCTLKEYMASK)
+        case kVK_Option: modifier = (0xffe9, .option, NX_DEVICELALTKEYMASK, NX_DEVICERALTKEYMASK)
+        case kVK_RightOption: modifier = (0xffea, .option, NX_DEVICERALTKEYMASK, NX_DEVICELALTKEYMASK)
+        case kVK_Command: modifier = (0xffeb, .command, NX_DEVICELCMDKEYMASK, NX_DEVICERCMDKEYMASK)
+        case kVK_RightCommand: modifier = (0xffec, .command, NX_DEVICERCMDKEYMASK, NX_DEVICELCMDKEYMASK)
         default: return nil
         }
         key = modifier.key
-        if !flags.contains(modifier.flag) { modifiers |= 1 << 30 }
+        let deviceFlags = flags.rawValue & UInt(modifier.side | modifier.otherSide)
+        // Keep supporting event sources that omit device-specific flags.
+        let isPressed =
+          deviceFlags == 0
+          ? flags.contains(modifier.flag)
+          : deviceFlags & UInt(modifier.side) != 0
+        if !isPressed { modifiers |= 1 << 30 }
       }
     case .keyDown:
+      // IMK can leave shifted symbols unmodified in charactersIgnoringModifiers.
+      let characters =
+        flags.intersection([.control, .option, .command]).isEmpty
+        ? event.characters ?? event.charactersIgnoringModifiers
+        : event.charactersIgnoringModifiers
       if let special = Self.specialKeys[event.keyCode] {
         key = special
-      } else if let character = event.charactersIgnoringModifiers?.unicodeScalars.first {
+      } else if let character = characters?.unicodeScalars.first {
         var value = character.value
         if (97...122).contains(value), flags.contains(.shift) != flags.contains(.capsLock) {
           value -= 32
