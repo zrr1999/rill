@@ -63,7 +63,9 @@ Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci
 
 jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；依赖审计分别查询 Swift 锁定提交和全部 Python 锁文件。
 
-仓库规则使用实际检查名称：[Policy - Check](../.github/workflows/policy-check.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。文档构建与只读门禁归入 [CI - Static Checks](../.github/workflows/ci-static-checks.yml) 的 `Static checks` 检查；是否列为必需检查以当前仓库规则为准。修改检查名称时同步核对仓库规则，合并步骤见[发布文档](releasing.md#合并门禁)。
+仓库规则使用实际检查名称：[Policy - Check](../.github/workflows/policy-check.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。[CI - Static Checks](../.github/workflows/ci-static-checks.yml) 保留 `Static checks` 名称作为汇总检查，要求文档与仓库检查、完整 CodeQL 矩阵及 Swift/Python 依赖审计全部成功；失败、取消或跳过均阻断。仓库规则同时要求各语言 CodeQL 和 `Dependency Vulnerabilities`，使尚未包含汇总逻辑的 PR 也受到安全门禁约束。修改检查名称时同步核对[当前仓库规则](https://github.com/zrr1999/rill/rules/23828255)，合并步骤见[发布文档](releasing.md#合并门禁)。
+
+CodeQL job 成功表示分析完成；PR 的漏洞阻断由仓库规则中的 CodeQL 扫描结果要求负责，采用 GitHub 默认阈值：普通告警为 error，安全告警为 high 或 critical。GitHub 的[扫描结果规则](https://docs.github.com/en/code-security/concepts/code-scanning/merge-protection)不适用于 merge group，因此队列仍保留上述分析与依赖审计的必需检查。
 
 Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-27` 镜像，以 macOS 27 SDK 编译完整依赖图。Record workload 和质量评测不编译这张图，继续使用 `macos-26`。
 
