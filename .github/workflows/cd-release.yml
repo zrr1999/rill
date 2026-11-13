@@ -75,16 +75,11 @@ jobs:
           [[ "$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG" | cut -f 1)" == "$EXPECTED_OBJECT" ]]
           [[ -z "$(git status --porcelain --untracked-files=all)" ]]
 
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
-
-      - name: Install pinned Gitleaks
-        run: |
-          tool_dir="$RUNNER_TEMP/gitleaks-bin"
-          bash scripts/preflight.sh install-gitleaks --destination "$tool_dir"
-          echo "$tool_dir" >> "$GITHUB_PATH"
+          version: "2026.11.0"
+          cache: false
 
       - name: Generate draft release notes
         env:

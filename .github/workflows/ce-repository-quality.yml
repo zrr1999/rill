@@ -3,6 +3,10 @@ on:
   schedule:
     - cron: 30 1 * * 1
   workflow_dispatch:
+env:
+  UV_CACHE_DIR: ${{ github.workspace }}/.artifacts/uv-cache
+  PREK_HOME: ${{ github.workspace }}/.artifacts/prek-cache
+
 permissions:
   contents: read
 concurrency:
@@ -17,28 +21,28 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Audit locked Swift revisions
-        run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
-      - name: Install verified OSV-Scanner
-        run: |
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 --output "$RUNNER_TEMP/osv-scanner"
-          printf '%s  %s\n' '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b' "$RUNNER_TEMP/osv-scanner" | sha256sum --check
-          chmod +x "$RUNNER_TEMP/osv-scanner"
+        run: mise run audit:swift
       - name: Audit all Python project and script locks
-        run: |
-          arguments=(--lockfile tools/uv.lock)
-          while IFS= read -r -d '' path; do
-            arguments+=(--lockfile "uv.lock:$path")
-          done < <(git ls-files -z 'scripts/*.py.lock' 'scripts/**/*.py.lock')
-          "$RUNNER_TEMP/osv-scanner" scan source "${arguments[@]}" --format json --output-file python-osv.json
+        run: mise run audit:python
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: dependency-audit
-          path: python-osv.json
+          path: .artifacts/quality/python-osv.json
           if-no-files-found: error
 
   workflow-audit:
@@ -50,9 +54,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Audit action provenance and references
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,22 +86,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
-          python-version: "3.13"
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          node-version: "26.13.0"
-      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-        with:
-          just-version: "1.59.0"
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - shell: bash
         run: |
-          mkdir -p .artifacts/quality
-          npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src
-          uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml
-          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json
+          mise run quality:duplication
+          mise run quality:complexity
         if: ${{ !cancelled() }}
       - shell: bash
         run: |
@@ -113,14 +128,21 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
-      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          just-version: "1.59.0"
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Collect Python and Swift domain coverage
-        run: just coverage
+        run: mise run coverage
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
@@ -166,15 +188,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
-          python-version: "3.13"
-      - shell: bash
-        run: |
-          mkdir -p .artifacts/quality
-          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee .artifacts/quality/mutation.log
-          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality mutmut export-cicd-stats
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
+      - name: Run mutation tests
+        run: mise run quality:mutation
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:

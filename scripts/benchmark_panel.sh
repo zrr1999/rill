@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 0 ]]; then
-  echo 'Usage: just benchmark panel' >&2
+  echo 'Usage: mise run benchmark:panel' >&2
   exit 2
 fi
 

@@ -4,7 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-GITLEAKS_REQUIRED_VERSION="8.30.1"
+GITLEAKS_REQUIRED_VERSION="$(uv run --quiet --no-project --python '>=3.11' python -c \
+  'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["tools"]["gitleaks"])' \
+  "$PROJECT_DIR/mise.toml")"
 GITLEAKS_CONFIG="$PROJECT_DIR/.gitleaks.toml"
 
 error() {
@@ -16,7 +18,7 @@ resolve_gitleaks_binary() {
   local candidate=""
   candidate="$(command -v gitleaks 2>/dev/null || true)"
   if [[ -z "$candidate" ]]; then
-    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required. Install it with: scripts/preflight.sh install-gitleaks --destination DIR"
+    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required. Install it with: mise install; run the scan with mise run audit:secrets"
     return
   fi
   printf '%s\n' "$candidate"
@@ -33,7 +35,7 @@ verify_gitleaks_binary() {
   fi
   version="$(printf '%s\n' "$output" | tail -n 1 | awk '{print $NF}' | sed 's/^v//')"
   if [[ "$version" != "$GITLEAKS_REQUIRED_VERSION" ]]; then
-    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required (found ${version:-unknown} at $binary). Install it with: scripts/preflight.sh install-gitleaks --destination DIR"
+    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required (found ${version:-unknown} at $binary). Install it with: mise install; run the scan with mise run audit:secrets"
     return
   fi
 }

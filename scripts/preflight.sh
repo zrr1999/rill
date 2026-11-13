@@ -269,7 +269,7 @@ run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
   run_performance_swift_tests
-  info 'Desktop interaction was not tested. Run just test desktop in an unlocked session; just ci requires both suites.'
+  info 'Desktop interaction was not tested. Run mise run test:desktop in an unlocked session; mise run ci requires both suites.'
 }
 
 run_script_tests() {
@@ -298,68 +298,6 @@ run_script_tests() {
   bash "$test_dir/app_icon_test.sh"
   echo 'Testing input method signing boundaries...'
   uv run --no-build --locked --script "$test_dir/input_method_assembly_test.py"
-}
-
-install_gitleaks() {
-  local destination=""
-  local version="8.30.1"
-  local asset_name=""
-  local expected_sha256=""
-  local temp_root=""
-  local archive_path=""
-  local extract_dir=""
-  local installed_version=""
-
-  while [[ "$#" -gt 0 ]]; do
-    case "$1" in
-    --destination)
-      [[ "$#" -ge 2 ]] || error "Missing value for --destination"
-      destination="$2"
-      shift 2
-      ;;
-    --help | -h)
-      echo "Usage: $0 install-gitleaks --destination DIR"
-      exit 0
-      ;;
-    *) error "Unknown argument: $1" ;;
-    esac
-  done
-  [[ -n "$destination" ]] || error "--destination is required"
-  case "$(uname -s)/$(uname -m)" in
-  Darwin/arm64)
-    asset_name="gitleaks_${version}_darwin_arm64.tar.gz"
-    expected_sha256="b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"
-    ;;
-  Darwin/x86_64)
-    asset_name="gitleaks_${version}_darwin_x64.tar.gz"
-    expected_sha256="dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709"
-    ;;
-  Linux/x86_64)
-    asset_name="gitleaks_${version}_linux_x64.tar.gz"
-    expected_sha256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
-    ;;
-  *) error "Unsupported platform: $(uname -s)/$(uname -m)" ;;
-  esac
-  for command_name in curl install mktemp shasum tar; do
-    command -v "$command_name" >/dev/null 2>&1 || error "Required command not found: $command_name"
-  done
-  temp_root="$(mktemp -d "${TMPDIR:-/tmp}/rill-gitleaks-install.XXXXXX")"
-  trap '[[ -n ${temp_root:-} ]] && rm -rf "$temp_root"' EXIT
-  archive_path="$temp_root/$asset_name"
-  extract_dir="$temp_root/extracted"
-  mkdir -p "$extract_dir" "$destination"
-  curl --fail --location --proto '=https' --retry 3 --show-error --silent --tlsv1.2 \
-    --output "$archive_path" \
-    "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${asset_name}"
-  printf '%s  %s\n' "$expected_sha256" "$archive_path" | shasum -a 256 -c -
-  tar -xzf "$archive_path" -C "$extract_dir"
-  [[ -f "$extract_dir/gitleaks" ]] || error "Verified archive does not contain gitleaks"
-  install -m 0755 "$extract_dir/gitleaks" "$destination/gitleaks"
-  installed_version="$("$destination/gitleaks" version | tail -n 1 | awk '{print $NF}' | sed 's/^v//')"
-  [[ "$installed_version" == "$version" ]] || error "Installed Gitleaks version mismatch: ${installed_version:-unknown}"
-  echo "Installed Gitleaks $version at $destination/gitleaks"
-  rm -rf "$temp_root"
-  trap - EXIT
 }
 
 check_commit_messages() {
@@ -564,7 +502,7 @@ parse_preflight_options() {
       shift
       ;;
     --help | -h)
-      echo "Usage: $0 [--clean] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | hygiene [ROOT]"
+      echo "Usage: $0 [--clean] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | commit-messages [BASE [HEAD]] | hygiene [ROOT]"
       exit 0
       ;;
     *) error "Unknown argument: $1" ;;
@@ -596,11 +534,6 @@ test-scripts)
 swift)
   shift
   exec uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
-  ;;
-install-gitleaks)
-  shift
-  install_gitleaks "$@"
-  exit
   ;;
 commit-messages)
   shift

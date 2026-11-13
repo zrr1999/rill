@@ -1,0 +1,179 @@
+min_version = "2026.11.0"
+
+[tools]
+uv = "0.13.5"
+prek = "0.5.7"
+gitleaks = "8.30.1"
+osv-scanner = "2.7.0"
+node = "26.13.0"
+
+[hooks]
+postinstall = 'if [ "${CI:-}" != "true" ]; then mise run hooks:install; fi'
+
+# An explicit help flag makes mise reject extra arguments on fixed commands.
+[task_templates.no-args]
+usage = 'flag "-h --help" help="Show help"'
+
+[tasks.default]
+description = "List the available repository commands"
+extends = "no-args"
+run = "mise tasks ls"
+
+[tasks."hooks:install"]
+description = "Install and prepare the pre-commit and commit-message hooks"
+extends = "no-args"
+run = "prek install --prepare-hooks"
+
+[tasks.check]
+description = "Run read-only formatting and static checks"
+extends = "no-args"
+run = ["prek validate-config prek.toml", "prek -c prek.toml run --all-files"]
+
+[tasks.format]
+description = "Apply explicit Python, Swift, and shell formatting fixes"
+extends = "no-args"
+run = [
+  "uv run --project tools ruff check --fix tools",
+  "uv run --project tools ruff format tools",
+  "prek run swift-format --hook-stage manual --all-files",
+  "uvx --from shfmt-py==4.2.0 shfmt -w -i 2 -bn scripts/*.sh scripts/tests/*.sh",
+]
+
+[tasks.coverage]
+description = "Collect Python and Swift domain coverage without provider evaluations"
+extends = "no-args"
+run = [
+  "uv run --project tools --frozen pytest --cov=tools/src/rill_dev --cov-config=tools/pyproject.toml --cov-report=xml:.artifacts/quality/python-coverage.xml --cov-report=term-missing tools/tests",
+  "bash scripts/check_coverage.sh",
+]
+
+[tasks.docs]
+description = "Build documentation with locked dependencies"
+raw_args = true
+run = "uv run --no-build --locked --script scripts/docs.py build"
+
+[tasks."docs:serve"]
+description = "Preview documentation locally (--port PORT)"
+raw_args = true
+run = "uv run --no-build --locked --script scripts/docs.py serve"
+
+[tasks."docs:deploy-check"]
+description = "Validate Cloudflare static assets without deploying"
+extends = "no-args"
+run = [{ task = "docs" }, "npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run"]
+
+[tasks.build]
+description = "Build one Debug product"
+usage = 'arg "[product]" default="RillApp"'
+run = 'scripts/preflight.sh swift build --product "${usage_product?}"'
+
+[tasks."build:release"]
+description = "Build all arm64 Release products"
+raw_args = true
+run = "scripts/preflight.sh swift release"
+
+[tasks.test]
+description = "Run domain and native tests"
+extends = "no-args"
+run = "scripts/preflight.sh test"
+
+[tasks."test:desktop"]
+description = "Verify desktop focus and keyboard routing in an unlocked session"
+extends = "no-args"
+run = "scripts/preflight.sh test-desktop"
+
+[tasks."test:scripts"]
+description = "Test build and release scripts offline"
+extends = "no-args"
+run = "scripts/preflight.sh test-scripts"
+
+[tasks."test:tools"]
+description = "Test internal development tools without model or provider access"
+raw_args = true
+run = "uv run --no-build --locked --project tools pytest tools/tests"
+
+[tasks."test:render"]
+description = "Capture native UI render evidence"
+extends = "no-args"
+env.RILL_UI_SNAPSHOT_DIR = "{{config_root}}/.artifacts/ui-renders"
+run = "scripts/preflight.sh swift test --filter 'Render|UIRenderEvidence'"
+
+[tasks."test:stress"]
+description = "Test a large Record catalog"
+extends = "no-args"
+env.RILL_RECORD_STRESS = "1"
+run = "scripts/preflight.sh swift test --filter RecordCatalogStressTests"
+
+[tasks.preflight]
+description = "Run preflight, optionally selecting --lane or --clean"
+raw_args = true
+env.RILL_RECORD_STRESS = "1"
+env.RILL_UI_SNAPSHOT_DIR = "{{config_root}}/.artifacts/ui-renders"
+run = "bash scripts/preflight.sh"
+
+[tasks.ci]
+description = "Run the full local CI gate"
+extends = "no-args"
+run = [{ task = "check" }, { task = "docs" }, { task = "preflight" }]
+
+[tasks."ci:clean"]
+description = "Run the full local CI gate without build artifact reuse"
+extends = "no-args"
+run = [{ task = "check" }, { task = "docs" }, { task = "preflight", args = ["--clean"] }]
+
+[tasks."benchmark:asr"]
+description = "Measure ASR replay performance"
+raw_args = true
+run = "uv run --locked --project tools rill-bench-asr"
+
+[tasks."benchmark:panel"]
+description = "Measure panel performance"
+raw_args = true
+run = "bash scripts/benchmark_panel.sh"
+
+[tasks."benchmark:workloads"]
+description = "Build and validate Record performance workloads"
+raw_args = true
+run = "bash scripts/build_benchmarks.sh"
+
+[tasks."audit:secrets"]
+description = "Scan complete Git history and the current source snapshot"
+extends = "no-args"
+run = "bash scripts/check_secrets.sh"
+
+[tasks."audit:swift"]
+description = "Audit locked Swift revisions against live OSV data"
+extends = "no-args"
+run = "uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv"
+
+[tasks."audit:python"]
+description = "Audit all Python project and script locks against live OSV data"
+extends = "no-args"
+run = "bash scripts/audit_python.sh"
+
+[tasks."quality:duplication"]
+description = "Report source duplication"
+extends = "no-args"
+run = ["mkdir -p .artifacts/quality", "npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src"]
+
+[tasks."quality:complexity"]
+description = "Report Swift and Python complexity"
+extends = "no-args"
+env.UV_PROJECT_ENVIRONMENT = "{{config_root}}/.artifacts/quality/python"
+run = [
+  "mkdir -p .artifacts/quality",
+  "uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml",
+  "uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json",
+]
+
+[tasks."quality:mutation"]
+shell = "bash -e -o pipefail -c"
+description = "Run mutation testing for ASR quality scoring"
+extends = "no-args"
+dir = "tools"
+env.UV_PROJECT_ENVIRONMENT = "{{config_root}}/.artifacts/quality/python"
+run = [
+  "mkdir -p ../.artifacts/quality",
+  "uv run --no-build --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee ../.artifacts/quality/mutation.log",
+  "uv run --no-build --python 3.13 --frozen --group quality mutmut export-cicd-stats",
+]

@@ -10,6 +10,10 @@ on:
     types:
       - checks_requested
 
+env:
+  UV_CACHE_DIR: ${{ github.workspace }}/.artifacts/uv-cache
+  PREK_HOME: ${{ github.workspace }}/.artifacts/prek-cache
+
 permissions:
   contents: read
 
@@ -29,42 +33,27 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
 
-      - name: Build documentation with locked dependencies
-        run: uv run --no-build --locked --script scripts/docs.py build
-
-      - name: Install Node.js for Cloudflare validation
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          node-version: "26"
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
       - name: Validate Cloudflare static assets without deploying
-        run: npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
-
-      - name: Install pinned prek
-        uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
-        with:
-          install-only: true
-          prek-version: "v0.5.7"
+        run: mise run docs:deploy-check
 
       - name: Run repository quality gates
-        run: |
-          prek --version
-          prek validate-config prek.toml
-          prek -c prek.toml run --all-files
-
-      - name: Install pinned Gitleaks
-        run: |
-          tool_dir="$RUNNER_TEMP/gitleaks-bin"
-          bash scripts/preflight.sh install-gitleaks --destination "$tool_dir"
-          echo "$tool_dir" >> "$GITHUB_PATH"
+        run: mise run check
 
       - name: Scan secrets
-        run: bash scripts/check_secrets.sh
+        run: mise run audit:secrets
 
   codeql:
     name: CodeQL (${{ matrix.language }})
@@ -93,10 +82,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         if: matrix.language == 'swift'
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.language == 'swift'
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Resolve locked packages before tracing
         if: matrix.language == 'swift'
         run: |
@@ -127,26 +127,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Audit locked Swift revisions
-        run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
-      - name: Install verified OSV-Scanner
-        run: |
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 --output "$RUNNER_TEMP/osv-scanner"
-          printf '%s  %s\n' '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b' "$RUNNER_TEMP/osv-scanner" | sha256sum --check
-          chmod +x "$RUNNER_TEMP/osv-scanner"
+        run: mise run audit:swift
       - name: Audit all Python project and script locks
-        run: |
-          arguments=(--lockfile tools/uv.lock)
-          while IFS= read -r -d '' path; do
-            arguments+=(--lockfile "uv.lock:$path")
-          done < <(git ls-files -z 'scripts/*.py.lock' 'scripts/**/*.py.lock')
-          "$RUNNER_TEMP/osv-scanner" scan source "${arguments[@]}" --format json --output-file python-osv.json
+        run: mise run audit:python
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: dependency-audit
-          path: python-osv.json
+          path: .artifacts/quality/python-osv.json
           if-no-files-found: error
