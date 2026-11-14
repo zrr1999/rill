@@ -18,7 +18,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   private let workerTimeout: Duration
   private let preparationTimeout: Duration
   private let diagnosticReporter: @Sendable (DiagnosticEvent) async -> Void
-  private let idleReleaseCoordinator: LocalSpeechIdleReleaseCoordinator
+  private let idleReleaseCoordinator: ModelIdleReleaseCoordinator
 
   public init(
     id: String = "local-speech",
@@ -37,7 +37,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     self.workerTimeout = workerTimeout
     self.preparationTimeout = preparationTimeout
     self.diagnosticReporter = diagnosticReporter
-    self.idleReleaseCoordinator = LocalSpeechIdleReleaseCoordinator(
+    self.idleReleaseCoordinator = ModelIdleReleaseCoordinator(
       delay: idleReleaseDelay
     )
   }
@@ -150,10 +150,12 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   }
 
   public func releaseLoadedModel() async throws {
+    await idleReleaseCoordinator.cancelAll()
     try await supervisor.releaseLoadedModel()
   }
 
   public func stopRuntime() async throws {
+    await idleReleaseCoordinator.cancelAll()
     try await supervisor.shutdown()
   }
 
@@ -268,43 +270,5 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     case .foregroundFinal: .foregroundFinal
     case .wakeCandidate: .wakeCandidate
     }
-  }
-}
-
-private actor LocalSpeechIdleReleaseCoordinator {
-  private let delay: Duration
-  private var pending: [String: Task<Void, Never>] = [:]
-
-  init(delay: Duration) {
-    precondition(delay > .zero)
-    self.delay = delay
-  }
-
-  func markActive(modelID: String) {
-    pending.removeValue(forKey: modelID)?.cancel()
-  }
-
-  func scheduleRelease(
-    modelID: String,
-    resident: Bool,
-    release: @escaping @Sendable () async -> Void
-  ) {
-    pending.removeValue(forKey: modelID)?.cancel()
-    guard !resident else { return }
-    let delay = self.delay
-    pending[modelID] = Task { [weak self] in
-      do {
-        try await Task.sleep(for: delay)
-      } catch {
-        return
-      }
-      guard !Task.isCancelled else { return }
-      await release()
-      await self?.releaseFinished(modelID: modelID)
-    }
-  }
-
-  private func releaseFinished(modelID: String) {
-    pending.removeValue(forKey: modelID)
   }
 }
