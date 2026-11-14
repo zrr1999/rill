@@ -87,7 +87,7 @@ jobs:
           mkdir -p .artifacts/quality
           npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src
           uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml
-          UV_PROJECT_ENVIRONMENT="$PWD/.artifacts/quality/python" uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json
+          UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/rill-quality-python" uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json
         if: ${{ !cancelled() }}
       - shell: bash
         run: |
@@ -98,8 +98,10 @@ jobs:
         with:
           name: quality-reports
           path: |
-            .artifacts/quality/
-          include-hidden-files: true
+            .artifacts/quality/jscpd/jscpd-report.json
+            .artifacts/quality/swift-complexity.xml
+            .artifacts/quality/python-complexity.json
+            .artifacts/quality/links.json
           if-no-files-found: error
   coverage:
     name: Coverage
