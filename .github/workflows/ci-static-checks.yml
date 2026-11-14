@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
-    name: Static checks
+  lint:
+    name: Repository checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -150,3 +150,18 @@ jobs:
           name: dependency-audit
           path: python-osv.json
           if-no-files-found: error
+
+  checks:
+    name: Static checks
+    needs: [lint, codeql, dependencies]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all security checks
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
+        run: |
+          [[ "$LINT_RESULT" == success && "$CODEQL_RESULT" == success && "$DEPENDENCIES_RESULT" == success ]]
