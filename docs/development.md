@@ -57,6 +57,8 @@ just build release --worker-cache off
 
 常规 CI 仅监听目标为 `main` 的 PR 和合并队列，不在合并后的 push 或手动事件中重复运行。合并队列事件执行干净预检；PR 在预检成功后保存构建缓存，供同一 PR 的后续更新和重试恢复。缓存按预检 lane、工具链和依赖区分，失败的预检不写入缓存。CE 负责定时及手动持续评估，触发条件、并发组与权限独立配置。
 
+开发工具测试由独立 job 执行。tests lane 执行仓库脚本检查及领域、原生、压力与桌面测试；release lane 只验证发布构建和装配，两者都校验工具链与源码一致性。依赖审计和秘密扫描由静态检查工作流负责。默认 `just ci` 使用 all lane，仍在本地执行全部检查；`just test scripts` 与 `just test tools` 分别运行脚本和开发工具测试。
+
 Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci-`、`ce-`、`cd-`、 `policy-` 前缀，显示名称对应 `CI - <Purpose>`、`CE - <Purpose>`、 `CD - <Purpose>`、`Policy - <Purpose>`。`policy` 同时覆盖仓库治理规则的检查与执行；自动化是执行方式，不单列类别。
 
 [Policy - Check](../.github/workflows/policy-check.yml) 只读校验 PR 元数据，检出 base commit 的模板。标题规范化由独立的 [Policy - Fix](../.github/workflows/policy-fix.yml) 执行，以 `contents: read` 读取默认分支配置，并仅为该 job 授予所需的 `pull-requests: write` 和 `actions: write`；不检出 PR 代码，也不读取上游运行产物。

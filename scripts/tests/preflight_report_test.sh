@@ -102,6 +102,7 @@ set -euo pipefail
 source "$1/scripts/preflight.sh"
 PROJECT_DIR="${FIXTURE_PROJECT_DIR:-$PROJECT_DIR}"
 parse_preflight_options --lane "${FIXTURE_LANE:-all}"
+if [[ "${FIXTURE_CLEAN:-false}" == true ]]; then parse_preflight_options --clean; fi
 
 mutate_source() {
   case "$MUTATION" in
@@ -143,6 +144,7 @@ fixture_stage() {
   fi
 }
 check_preflight_toolchain() { fixture_stage; }
+clean_preflight_builds() { fixture_stage; }
 check_repository() { fixture_stage; }
 run_domain_swift_tests() { fixture_stage; }
 run_native_swift_tests() { fixture_stage; }
@@ -158,7 +160,7 @@ for lane in all tests release; do
   case "$lane" in
   all) stages=("${all_stages[@]}") ;;
   tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
-  release) stages=(toolchain repository release working-diff) ;;
+  release) stages=(toolchain release working-diff) ;;
   esac
   for failed_stage in none "${stages[@]}"; do
     fixture="$TEST_ROOT/$lane-$failed_stage"
@@ -207,6 +209,46 @@ for lane in all tests release; do
   done
 done
 stages=("${all_stages[@]}")
+
+# Cleaning must precede the selected build and fail closed in either hosted lane.
+for lane in all tests release; do
+  fixture="$TEST_ROOT/clean-failure-$lane"
+  mkdir -p "$fixture"
+  status=0
+  env RILL_PREFLIGHT_REPORT_DIR="$fixture/reports" FIXTURE_CLEAN=true FIXTURE_LANE="$lane" \
+    FAIL_STAGE=clean FIXTURE_TRACE="$fixture/trace" \
+    "$BASH" "$TEST_ROOT/fixture.sh" "$PROJECT_DIR" >"$fixture/output" 2>&1 || status=$?
+  [[ "$status" == 47 ]]
+  printf 'toolchain\nclean\n' >"$fixture/expected"
+  cmp "$fixture/expected" "$fixture/trace"
+done
+echo 'PASS: clean failures stop every lane before repository checks or builds'
+
+# Local all preserves the full gate; hosted tests use the separate tool/security jobs.
+for lane in all tests; do
+  trace="$TEST_ROOT/repository-$lane"
+  env FIXTURE_TRACE="$trace" "$BASH" -c '
+    source "$1/scripts/preflight.sh"
+    parse_preflight_options --lane "$2"
+    info() { :; }
+    check_release_artifact_hygiene() { :; }
+    check_record_domain_boundary() { :; }
+    uv() { printf "%s\n" "$*" >>"$FIXTURE_TRACE"; }
+    bash() { printf "%s\n" "$*" >>"$FIXTURE_TRACE"; }
+    check_repository
+  ' _ "$PROJECT_DIR" "$lane" >"$trace.output" 2>&1
+  case "$lane" in
+  all) expected=1 ;;
+  tests) expected=0 ;;
+  esac
+  for command in ' pytest ' '/check_dependency_security.py' '/check_secrets.sh'; do
+    [[ "$(grep -c "$command" "$trace" || true)" == "$expected" ]]
+  done
+  for command in '/check_module_boundaries.py' '/ci_workflow_test.py' '/input_method_assembly_test.py' '/build_benchmarks.sh'; do
+    [[ "$(grep -c "$command" "$trace")" == 1 ]]
+  done
+done
+echo 'PASS: common checks run once in their selected owner while local all remains complete'
 
 # A reporting destination may be reused without overwriting an earlier run.
 env RILL_PREFLIGHT_REPORT_DIR="$TEST_ROOT/all-none/reports with spaces" \
@@ -357,7 +399,7 @@ echo 'PASS: lane arguments fail closed and clean builds preserve arena ownership
 for lane in tests release; do
   case "$lane" in
   tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
-  release) stages=(toolchain repository release working-diff) ;;
+  release) stages=(toolchain release working-diff) ;;
   esac
   export FIXTURE_LANE="$lane"
   source_case "$lane-stable" none none clean after

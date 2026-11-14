@@ -276,8 +276,6 @@ run_script_tests() {
   local test_dir="$SCRIPT_DIR/tests"
   echo 'Testing dependency security policy...'
   uv run --script "$test_dir/dependency_security_test.py"
-  echo 'Testing evaluation and performance analysis tools...'
-  uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'
@@ -432,13 +430,17 @@ check_repository() {
   info "Checking independent input method data packaging..."
   uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
 
-  info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
-  uv run --no-build --locked --script "$SCRIPT_DIR/check_dependency_security.py"
+  # Hosted CI owns these checks in its tool-tests and static-checks jobs.
+  if [[ "$PREFLIGHT_LANE" == all ]]; then
+    info "Testing evaluation and performance analysis tools..."
+    uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
 
-  info "Scanning Git history and the current source snapshot for secrets..."
-  bash "$SCRIPT_DIR/check_secrets.sh"
+    info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
+    uv run --no-build --locked --script "$SCRIPT_DIR/check_dependency_security.py"
 
-  clean_preflight_builds
+    info "Scanning Git history and the current source snapshot for secrets..."
+    bash "$SCRIPT_DIR/check_secrets.sh"
+  fi
 
   info "Checking performance benchmark workloads..."
   bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only
@@ -531,8 +533,11 @@ run_preflight() {
 
   run_preflight_stage toolchain check_preflight_toolchain
   cd "$PROJECT_DIR"
-  run_preflight_stage repository check_repository
+  if $CLEAN_BUILD; then
+    run_preflight_stage clean clean_preflight_builds
+  fi
   if [[ "$PREFLIGHT_LANE" != release ]]; then
+    run_preflight_stage repository check_repository
     run_preflight_stage domain-tests run_domain_swift_tests
     run_preflight_stage native-tests run_native_swift_tests
     run_preflight_stage performance-tests run_performance_swift_tests
