@@ -9,6 +9,9 @@ from __future__ import annotations
 import copy
 import io
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -222,6 +225,30 @@ class DependencySecurityTests(unittest.TestCase):
 
             with self.assertRaises(security.DependencySecurityError):
                 security.load_json_file(link, label="fixture")
+
+    def test_json_file_loader_rejects_oversized_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "large.json"
+            path.write_text('{"value": "too long"}')
+            with mock.patch.object(security, "MAX_JSON_BYTES", 8):
+                with self.assertRaisesRegex(security.DependencySecurityError, "byte limit"):
+                    security.load_json_file(path, label="fixture")
+
+    def test_command_rejects_a_fifo_without_waiting_for_a_writer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            for name in ("check_dependency_security.py", "file_input.py"):
+                shutil.copy2(SCRIPTS_DIR / name, scripts / name)
+            path = root / "Package.resolved"
+            os.mkfifo(path)
+            result = subprocess.run(
+                [sys.executable, str(scripts / "check_dependency_security.py")],
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("regular file", result.stderr)
 
     def test_live_response_maps_to_lock_order_and_any_advisory_is_a_finding(
         self,

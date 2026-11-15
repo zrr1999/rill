@@ -90,5 +90,7 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
   生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
   依赖都有受审证据，不核对已提交的渲染文本。安全检查使用受审 baseline；联网核对使用
   `uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv`。
+  仓库检查的 JSON 输入和构建回执只读取普通文件，单文件上限为 32 MiB；读取期间
+  文件变化会失败。锁文件和受审清单拒绝符号链接，构建回执仍允许显式指定符号链接。
 - 图标从受审矢量事实源生成，资源、校验值与生成方法见 [图标设计](icon-design.md)。
 - 文档站的依赖与构建入口见 [文档站维护](documentation.md)。
