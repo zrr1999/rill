@@ -14,7 +14,8 @@ from rill_dev import repository
 def checkout(tmp_path):
     root = tmp_path / "checkout with spaces"
     (root / "scripts").mkdir(parents=True)
-    shutil.copy2(repository.ROOT / "scripts/build_driver.py", root / "scripts/build_driver.py")
+    for name in ("build_driver.py", "file_input.py"):
+        shutil.copy2(repository.ROOT / "scripts" / name, root / "scripts" / name)
     (root / "Package.swift").write_text("fixture")
     (root / ".gitignore").write_text(".artifacts/\n__pycache__/\n.venv/\n")
     subprocess.run(["git", "init", "-q", str(root)], check=True)
