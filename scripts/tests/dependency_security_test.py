@@ -12,7 +12,7 @@ import json
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -264,24 +264,26 @@ class DependencySecurityTests(unittest.TestCase):
             baseline = root / "baseline.json"
             baseline.write_text(json.dumps(empty_policy_payload()), encoding="utf-8")
             with (
+                mock.patch.object(security, "DEFAULT_LOCKFILE", root / "missing-Package.resolved"),
+                mock.patch.object(security, "DEFAULT_BASELINE", baseline),
                 mock.patch.object(security, "scan_live_osv") as live_scan,
                 mock.patch.object(
                     security, "validate_policy_freshness"
                 ) as freshness_check,
                 redirect_stdout(io.StringIO()),
             ):
-                result = security.main(
-                    [
-                        "--lockfile",
-                        str(root / "missing-Package.resolved"),
-                        "--baseline",
-                        str(baseline),
-                    ]
-                )
+                result = security.main([])
 
         self.assertEqual(result, 0)
         freshness_check.assert_called_once()
         live_scan.assert_not_called()
+
+    def test_command_rejects_repository_input_overrides(self) -> None:
+        for option in ("--lockfile", "--baseline"):
+            with self.subTest(option=option), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    security.main([option, "/another-checkout/input.json"])
+                self.assertEqual(error.exception.code, 2)
 
     def test_live_pagination_only_requeries_results_with_tokens(self) -> None:
         pins = self.parse_pins(

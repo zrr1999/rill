@@ -360,8 +360,6 @@ NOTICES_WORK="$(mktemp -d "${TMPDIR:-/tmp}/rill-third-party-notices.XXXXXX")"
 trap cleanup_generated_notices EXIT
 THIRD_PARTY_NOTICES_SOURCE="$NOTICES_WORK/$THIRD_PARTY_NOTICES_NAME"
 uv run --script "$THIRD_PARTY_NOTICES_GENERATOR" \
-  --resolved "$PROJECT_DIR/Package.resolved" \
-  --manifest "$PROJECT_DIR/scripts/third_party_notices_manifest.json" \
   --checkouts-dir "$CHECKOUTS_DIR" \
   --output "$THIRD_PARTY_NOTICES_SOURCE"
 [[ -s "$THIRD_PARTY_NOTICES_SOURCE" ]] \

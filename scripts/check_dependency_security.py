@@ -731,18 +731,6 @@ def _print_findings(findings: Sequence[SecurityFinding]) -> None:
 def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--lockfile",
-        type=Path,
-        default=DEFAULT_LOCKFILE,
-        help="SwiftPM Package.resolved file (default: repository root)",
-    )
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        default=DEFAULT_BASELINE,
-        help="Reviewed Swift dependency security baseline",
-    )
-    parser.add_argument(
         "--live-osv",
         action="store_true",
         help="Also query OSV for every locked SwiftPM commit",
@@ -753,8 +741,8 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(argv)
     try:
-        pins = load_lockfile(arguments.lockfile)
-        policy = load_security_policy(arguments.baseline)
+        pins = load_lockfile(DEFAULT_LOCKFILE)
+        policy = load_security_policy(DEFAULT_BASELINE)
         validate_policy_freshness(policy)
         offline_findings = scan_offline_baseline(pins, policy.advisories)
         if offline_findings:
