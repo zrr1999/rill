@@ -133,7 +133,6 @@ class BuildDriverTests(unittest.TestCase):
             ["build", "--package-path"],
             ["build", "--configuration="],
             ["build", "-Xswiftc"],
-            ["test-domain", "--build-path=.build"],
         ):
             with self.subTest(arguments=arguments), patch.object(build.BuildContext, "swift") as swift:
                 with self.assertRaises(build.BuildError):
@@ -464,6 +463,9 @@ package.targets.removeAll { $0.name != "RillCore" }
         worker.write_text("concurrent rebuild")
         metadata.write_text("concurrent metadata")
         receipt = build.receipt_products(receipt_path, self.root)
+        receipt_link = receipt_path.with_name("receipt-link.json")
+        receipt_link.symlink_to(receipt_path)
+        self.assertEqual(build.receipt_products(receipt_link, self.root), receipt)
         copied_metadata = Path(receipt["productsDirectory"]) / metadata.name
         self.assertEqual(copied_metadata.read_text(), "release")
         self.assertEqual(
@@ -483,6 +485,23 @@ package.targets.removeAll { $0.name != "RillCore" }
         (self.root / "new-source.swift").write_text("new code")
         with self.assertRaisesRegex(build.BuildError, "Source changed"):
             build.receipt_products(receipt_path, self.root)
+
+    def test_receipt_rejects_oversized_input_before_json_parsing(self):
+        path = self.root / "large-receipt.json"
+        path.write_bytes(b"not JSON and over the limit")
+        with patch.object(build, "MAX_RECEIPT_BYTES", 8):
+            with self.assertRaisesRegex(ValueError, "byte limit"):
+                build.receipt_products(path, self.root)
+
+    def test_receipt_command_rejects_a_fifo_without_waiting_for_a_writer(self):
+        path = self.root / "receipt.json"
+        os.mkfifo(path)
+        result = subprocess.run(
+            [sys.executable, str(build.PROJECT / "scripts/build_driver.py"), "receipt", str(path), "--json"],
+            capture_output=True, text=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("regular file", result.stderr)
 
     def test_source_inputs_cover_added_deleted_and_dirty_files(self):
         source = self.root / "code.swift"

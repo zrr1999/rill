@@ -49,6 +49,8 @@ class Fixture:
 
     def create(self) -> None:
         (self.root / "scripts").mkdir(parents=True)
+        for source in (GENERATOR, GENERATOR.with_name("file_input.py")):
+            shutil.copy2(source, self.root / "scripts" / source.name)
         self.checkout.mkdir(parents=True)
         self.license_path.write_bytes(self.license_content)
         self.source_path.write_text("let sample = true\n", encoding="utf-8")
@@ -122,11 +124,7 @@ class Fixture:
             "uv",
             "run",
             "--script",
-            str(GENERATOR),
-            "--resolved",
-            str(self.resolved),
-            "--manifest",
-            str(self.manifest),
+            str(self.root / "scripts" / GENERATOR.name),
             "--checkouts-dir",
             str(self.checkouts),
             "--output",
@@ -186,7 +184,6 @@ class Fixture:
     def prepare_packaging(self) -> None:
         scripts = self.root / "scripts"
         for source in (
-            GENERATOR,
             ASSEMBLER,
             APP_ICON_RENDITION_RENDERER,
         ):
@@ -338,6 +335,53 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertIn("Sample dependency license", content)
         checked = run(self.fixture.generator_command(check=True))
         self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_generator_rejects_symlink_and_fifo_manifests(self) -> None:
+        manifest = self.fixture.manifest
+        target = manifest.with_name("target.json")
+        manifest.rename(target)
+        manifest.symlink_to(target)
+        result = run(self.fixture.generator_command())
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.fixture.output.exists())
+        manifest.unlink()
+        os.mkfifo(manifest)
+        result = run(self.fixture.generator_command())
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("regular file", result.stderr)
+        self.assertFalse(self.fixture.output.exists())
+
+    def test_generator_rejects_oversized_manifest(self) -> None:
+        with self.fixture.manifest.open("wb") as output:
+            output.truncate(32 * 1024 * 1024 + 1)
+        result = run(self.fixture.generator_command())
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("byte limit", result.stderr)
+        self.assertFalse(self.fixture.output.exists())
+
+    def test_output_replacement_preserves_a_symlink_target(self) -> None:
+        target = self.fixture.root / "unrelated.txt"
+        target.write_bytes(b"preserved")
+        self.fixture.output.symlink_to(target)
+        self.fixture.generate()
+        self.assertEqual(target.read_bytes(), b"preserved")
+        self.assertFalse(self.fixture.output.is_symlink())
+        self.assertEqual(self.fixture.output.stat().st_mode & 0o777, 0o644)
+
+    def test_failed_output_replacement_removes_the_temporary_file(self) -> None:
+        self.fixture.output.mkdir()
+        before = set(self.fixture.root.iterdir())
+        result = run(self.fixture.generator_command())
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(set(self.fixture.root.iterdir()), before)
+
+    def test_generator_rejects_repository_input_overrides(self) -> None:
+        for option in ("--resolved", "--manifest"):
+            with self.subTest(option=option):
+                result = run(self.fixture.generator_command() + [option, str(self.fixture.manifest)])
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("unrecognized arguments", result.stderr)
+                self.assertFalse(self.fixture.output.exists())
 
     def test_generator_can_pin_a_license_excerpt_by_line_range(self) -> None:
         first_line = b"Sample dependency license\n"

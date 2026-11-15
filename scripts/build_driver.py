@@ -23,6 +23,8 @@ import subprocess
 import sys
 import tempfile
 
+from file_input import read_regular_file
+
 PROJECT = Path(__file__).resolve().parent.parent
 RELEASE_ARGUMENTS = [
     "--build-system",
@@ -36,6 +38,7 @@ STALE_CACHE = re.compile(
     r"clang dependency scanning failure|unable to resolve module dependency|Failed to clone"
 )
 TEST_IDLE_SAMPLE_SECONDS = 300
+MAX_RECEIPT_BYTES = 32 * 1024 * 1024
 
 
 class BuildError(Exception):
@@ -600,7 +603,9 @@ def make_receipt(
 
 
 def receipt_products(path: Path, root: Path) -> dict[str, object]:
-    receipt = json.loads(path.read_text())
+    receipt = json.loads(
+        read_regular_file(path, max_bytes=MAX_RECEIPT_BYTES, follow_symlinks=True).decode("utf-8")
+    )
     if (
         not isinstance(receipt, dict)
         or receipt.get("schemaVersion") != 1

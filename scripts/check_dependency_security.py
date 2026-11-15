@@ -16,7 +16,6 @@ import argparse
 import json
 import os
 import re
-import stat
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -26,6 +25,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+from file_input import read_regular_file
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -163,48 +164,12 @@ def decode_json(data: bytes | str, *, source: str) -> object:
 
 
 def load_json_file(path: Path, *, label: str) -> object:
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, flags)
-    except OSError as error:
-        raise DependencySecurityError(f"cannot read {label}: {path}") from error
-    try:
-        with os.fdopen(descriptor, "rb", closefd=True) as source:
-            before = os.fstat(source.fileno())
-            if not stat.S_ISREG(before.st_mode):
-                raise DependencySecurityError(
-                    f"{label} must be a regular non-symlink file: {path}"
-                )
-            if before.st_size > MAX_JSON_BYTES:
-                raise DependencySecurityError(
-                    f"{label} exceeds the {MAX_JSON_BYTES}-byte limit"
-                )
-            data = source.read(MAX_JSON_BYTES + 1)
-            after = os.fstat(source.fileno())
-    except DependencySecurityError:
-        raise
-    except OSError as error:
-        raise DependencySecurityError(f"cannot read {label}: {path}") from error
-    if len(data) > MAX_JSON_BYTES:
-        raise DependencySecurityError(
-            f"{label} exceeds the {MAX_JSON_BYTES}-byte limit"
+        data = read_regular_file(
+            path, max_bytes=MAX_JSON_BYTES, follow_symlinks=False
         )
-    before_identity = (
-        before.st_dev,
-        before.st_ino,
-        before.st_size,
-        before.st_mtime_ns,
-        before.st_ctime_ns,
-    )
-    after_identity = (
-        after.st_dev,
-        after.st_ino,
-        after.st_size,
-        after.st_mtime_ns,
-        after.st_ctime_ns,
-    )
-    if len(data) != before.st_size or before_identity != after_identity:
-        raise DependencySecurityError(f"{label} changed while it was being read")
+    except (OSError, ValueError) as error:
+        raise DependencySecurityError(f"cannot read {label}: {error}") from error
     return decode_json(data, source=label)
 
 
@@ -731,18 +696,6 @@ def _print_findings(findings: Sequence[SecurityFinding]) -> None:
 def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--lockfile",
-        type=Path,
-        default=DEFAULT_LOCKFILE,
-        help="SwiftPM Package.resolved file (default: repository root)",
-    )
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        default=DEFAULT_BASELINE,
-        help="Reviewed Swift dependency security baseline",
-    )
-    parser.add_argument(
         "--live-osv",
         action="store_true",
         help="Also query OSV for every locked SwiftPM commit",
@@ -753,8 +706,8 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parse_arguments(argv)
     try:
-        pins = load_lockfile(arguments.lockfile)
-        policy = load_security_policy(arguments.baseline)
+        pins = load_lockfile(DEFAULT_LOCKFILE)
+        policy = load_security_policy(DEFAULT_BASELINE)
         validate_policy_freshness(policy)
         offline_findings = scan_offline_baseline(pins, policy.advisories)
         if offline_findings:
