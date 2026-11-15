@@ -46,8 +46,6 @@ class NoticeError(Exception):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--resolved", type=Path, default=DEFAULT_RESOLVED)
-    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--checkouts-dir", type=Path, default=DEFAULT_CHECKOUTS)
     parser.add_argument(
         "--output",
@@ -688,8 +686,8 @@ def write_output(output: Path, content: bytes) -> None:
 def main() -> int:
     arguments = parse_args()
     try:
-        pins = load_resolved_pins(arguments.resolved)
-        manifest = load_manifest(arguments.manifest)
+        pins = load_resolved_pins(DEFAULT_RESOLVED)
+        manifest = load_manifest(DEFAULT_MANIFEST)
         validate_inventory(pins, manifest)
         content = render(
             pins,

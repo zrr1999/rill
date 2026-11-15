@@ -49,6 +49,8 @@ class Fixture:
 
     def create(self) -> None:
         (self.root / "scripts").mkdir(parents=True)
+        for source in GENERATOR.parent.glob("*.py"):
+            shutil.copy2(source, self.root / "scripts" / source.name)
         self.checkout.mkdir(parents=True)
         self.license_path.write_bytes(self.license_content)
         self.source_path.write_text("let sample = true\n", encoding="utf-8")
@@ -122,11 +124,7 @@ class Fixture:
             "uv",
             "run",
             "--script",
-            str(GENERATOR),
-            "--resolved",
-            str(self.resolved),
-            "--manifest",
-            str(self.manifest),
+            str(self.root / "scripts" / GENERATOR.name),
             "--checkouts-dir",
             str(self.checkouts),
             "--output",
@@ -185,9 +183,7 @@ class Fixture:
 
     def prepare_packaging(self) -> None:
         scripts = self.root / "scripts"
-        shutil.copy2(GENERATOR.with_name("file_input.py"), scripts / "file_input.py")
         for source in (
-            GENERATOR,
             ASSEMBLER,
             APP_ICON_RENDITION_RENDERER,
         ):
@@ -380,6 +376,14 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         result = run(self.fixture.generator_command())
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(set(self.fixture.root.iterdir()), before)
+
+    def test_generator_rejects_repository_input_overrides(self) -> None:
+        for option in ("--resolved", "--manifest"):
+            with self.subTest(option=option):
+                result = run(self.fixture.generator_command() + [option, str(self.fixture.manifest)])
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("unrecognized arguments", result.stderr)
+                self.assertFalse(self.fixture.output.exists())
 
     def test_generator_can_pin_a_license_excerpt_by_line_range(self) -> None:
         first_line = b"Sample dependency license\n"
