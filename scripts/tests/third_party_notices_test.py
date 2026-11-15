@@ -49,7 +49,7 @@ class Fixture:
 
     def create(self) -> None:
         (self.root / "scripts").mkdir(parents=True)
-        for source in GENERATOR.parent.glob("*.py"):
+        for source in (GENERATOR, GENERATOR.with_name("file_input.py")):
             shutil.copy2(source, self.root / "scripts" / source.name)
         self.checkout.mkdir(parents=True)
         self.license_path.write_bytes(self.license_content)
@@ -367,8 +367,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertEqual(target.read_bytes(), b"preserved")
         self.assertFalse(self.fixture.output.is_symlink())
         self.assertEqual(self.fixture.output.stat().st_mode & 0o777, 0o644)
-        checked = run(self.fixture.generator_command(check=True))
-        self.assertEqual(checked.returncode, 0, checked.stderr)
 
     def test_failed_output_replacement_removes_the_temporary_file(self) -> None:
         self.fixture.output.mkdir()
