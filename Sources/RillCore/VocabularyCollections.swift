@@ -229,12 +229,7 @@ public enum VocabularyLegacyMigrator {
     _ collections: [VocabularyCollection], bindings: [VocabularyCollectionBinding]
   ) -> [VocabularyRule] {
     collections.flatMap { collection in
-      let condition = bindings.first { $0.collectionID == collection.id }?.condition
-      let scope = VocabularyRuleScope(
-        bundleIdentifier: condition?.bundleIdentifier,
-        recordCollectionID: condition?.recordCollectionID,
-        locale: condition?.locale
-      )
+      let scope = bindings.first { $0.collectionID == collection.id }?.condition ?? .any
       return collection.entries.map { $0.legacyRule(scope: scope) }
     }
   }
@@ -268,11 +263,7 @@ public enum VocabularyLegacyMigrator {
         VocabularyCollectionBinding(
           id: stableID(for: "binding:\(scopeKey(scope))"),
           collectionID: collectionID,
-          condition: WorkflowBindingCondition(
-            bundleIdentifier: scope.bundleIdentifier,
-            recordCollectionID: scope.recordCollectionID,
-            locale: scope.locale
-          )
+          condition: scope
         )
       )
     }

@@ -119,11 +119,7 @@ struct VocabularyCollectionCard: View {
   private var scopeSummary: some View {
     VStack(alignment: .leading, spacing: 4) {
       ForEach(model.vocabulary.vocabularyCollectionBindings.filter { $0.collectionID == collection.id }) { binding in
-        let scope = VocabularyRuleScope(
-          bundleIdentifier: binding.condition.bundleIdentifier,
-          recordCollectionID: binding.condition.recordCollectionID,
-          locale: binding.condition.locale
-        )
+        let scope = binding.condition
         Text(
           L10n.vocabularyScopeSummary(
             scope,

@@ -26,7 +26,11 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
   }
 
   func testCanonicalDocumentRoundTrips() throws {
-    let workflow = makeWorkflow()
+    var workflow = makeWorkflow()
+    workflow.plan.setup.vocabularyBindings[0].condition = .init(
+      bundleIdentifier: "com.example.editor",
+      recordCollectionID: UUID(uuidString: "44444444-1111-2222-3333-555555555555")!,
+      locale: "zh-CN")
     let data = try XDGWorkflowFileStore.encode(
       workflow: workflow,
       isEnabled: false
