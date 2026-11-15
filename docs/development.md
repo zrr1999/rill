@@ -51,13 +51,13 @@ just build release --worker-cache off
 
 `just coverage` 在 `.artifacts/quality/` 生成 Python XML 和 Swift LCOV、文本摘要。覆盖率测试明确使用与完整预检一致的 SwiftBuild，避免随 Xcode 默认值改变测试包组织方式，并使用原子计数器避免并发测试丢失覆盖率计数。Swift 报告合并领域测试的所有测试二进制，仅覆盖该入口编译的模块；不代表 App、UI、输入法和语音 worker 已完成覆盖率采集。
 
-`Coverage` 作业负责采集覆盖率并上传到 Codecov。SonarQube Cloud 统一使用自动分析，通过 GitHub 集成读取源码并发布独立检查；源码与测试范围由根目录的 `.sonarcloud.properties` 配置。CI 和 CE 不再运行 SonarScanner，也不需要 `SONAR_TOKEN`。自动分析不接收覆盖率报告，覆盖率由 Codecov 和本地报告负责。
+`Coverage` 作业调用[共享覆盖率工作流](../.github/workflows/ci-coverage.yml)，采集覆盖率并上传到 Codecov。SonarQube Cloud 统一使用自动分析，通过 GitHub 集成读取源码并发布独立检查；源码与测试范围由根目录的 `.sonarcloud.properties` 配置。CI 和 CE 不再运行 SonarScanner，也不需要 `SONAR_TOKEN`。自动分析不接收覆盖率报告，覆盖率由 Codecov 和本地报告负责。
 
 [仓库持续评估](../.github/workflows/ce-repository-quality.yml) 独立维护每周和手动触发的质量检查，包括结构指标、外部链接、覆盖率、性能与变异测试。变异任务使用独立 Python 环境，验证编辑距离评分函数的测试有效性；具体工具命令以对应 job 为准。尚未建立预算的指标与变异结果用于审查，不设统一分数线。[模型持续评估](../.github/workflows/ce-quality.yml) 保留自己的触发条件，依赖明确配置的服务和固定合成用例；真实音频与设备验收仍按对应评测文档执行。
 
 ## GitHub Actions
 
-常规 CI 仅监听目标为 `main` 的 PR 和合并队列，不在合并后的 push 或手动事件中重复运行。合并队列事件执行干净预检；PR 在预检成功后保存构建缓存，供同一 PR 的后续更新和重试恢复。缓存按预检 lane、工具链和依赖区分，失败的预检不写入缓存。CE 负责定时及手动持续评估，触发条件、并发组与权限独立配置。
+常规 CI 仅监听目标为 `main` 的 PR 和合并队列，不在合并后的 push 或手动事件中重复运行。合并队列事件执行干净预检；PR 在预检成功后保存构建缓存，供同一 PR 的后续更新和重试恢复。缓存按预检 lane、工具链和依赖区分，失败的预检不写入缓存。CE 负责定时及手动持续评估，触发条件、并发组与权限独立配置。CI 与 CE 共用覆盖率和 [Record 预览性能测量](../.github/workflows/ci-preview-simulation.yml)的可复用工作流；执行步骤在共享文件中维护，是否运行由调用方决定。
 
 开发工具测试由独立 job 执行。tests lane 执行仓库脚本检查及领域、原生、压力与桌面测试；release lane 只验证发布构建和装配，两者都校验工具链与源码一致性。依赖审计和秘密扫描由静态检查工作流负责。默认 `just ci` 使用 all lane，仍在本地执行全部检查；`just test scripts` 与 `just test tools` 分别运行脚本和开发工具测试。
 
