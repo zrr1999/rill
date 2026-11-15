@@ -324,8 +324,6 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
                     "swiftbuild",
                     "--manifest-cache",
                     "none",
-                    "--configuration",
-                    "release",
                     "--arch",
                     "arm64",
                 ]
