@@ -128,14 +128,14 @@ final class WorkflowPlanTests: XCTestCase {
     let bindings = [
       VocabularyCollectionBinding(
         collectionID: collectionID,
-        condition: WorkflowBindingCondition(
+        condition: VocabularyRuleScope(
           bundleIdentifier: "com.example.editor",
           locale: "zh-CN"
         )
       ),
       VocabularyCollectionBinding(
         collectionID: collectionID,
-        condition: WorkflowBindingCondition(locale: "en-US")
+        condition: VocabularyRuleScope(locale: "en-US")
       ),
     ]
 
@@ -178,6 +178,7 @@ final class WorkflowPlanTests: XCTestCase {
       caseSensitive: true,
       scope: VocabularyRuleScope(
         bundleIdentifier: "com.openai.codex",
+        recordCollectionID: UUID(uuidString: "44444444-1111-2222-3333-555555555555")!,
         locale: "zh-CN"
       ),
       priority: 7,
@@ -190,13 +191,8 @@ final class WorkflowPlanTests: XCTestCase {
     XCTAssertEqual(first, second)
     XCTAssertEqual(first.collections[0].entries[0].id, scopedID)
     XCTAssertFalse(first.collections[0].entries[0].enabled)
-    XCTAssertEqual(
-      first.bindings[0].condition,
-      WorkflowBindingCondition(
-        bundleIdentifier: "com.openai.codex",
-        locale: "zh-CN"
-      )
-    )
+    XCTAssertEqual(first.bindings[0].condition, rule.scope)
+    XCTAssertEqual(VocabularyLegacyMigrator.project(first.collections, bindings: first.bindings), [rule])
   }
 
   private func makeVoiceWorkflow() -> WorkflowDefinition {

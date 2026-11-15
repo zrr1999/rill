@@ -226,14 +226,9 @@ public final class VocabularyLibraryModel {
     }
 
     if let targetCollectionID {
-      let condition = WorkflowBindingCondition(
-        bundleIdentifier: rule.scope.bundleIdentifier,
-        recordCollectionID: rule.scope.recordCollectionID,
-        locale: rule.scope.locale
-      )
       guard vocabularyCollections.contains(where: { $0.id == targetCollectionID }),
         vocabularyCollectionBindings.contains(where: {
-          $0.collectionID == targetCollectionID && $0.condition == condition
+          $0.collectionID == targetCollectionID && $0.condition == rule.scope
         })
       else {
         return .invalid
@@ -245,14 +240,9 @@ public final class VocabularyLibraryModel {
   }
 
   func vocabularyCollectionIDs(compatibleWith scope: VocabularyRuleScope) -> [UUID] {
-    let condition = WorkflowBindingCondition(
-      bundleIdentifier: scope.bundleIdentifier,
-      recordCollectionID: scope.recordCollectionID,
-      locale: scope.locale
-    )
     let compatibleIDs = Set(
       vocabularyCollectionBindings.lazy
-        .filter { $0.condition == condition }
+        .filter { $0.condition == scope }
         .map(\.collectionID)
     )
     return
@@ -296,18 +286,13 @@ public final class VocabularyLibraryModel {
     _ rule: VocabularyRule,
     targetCollectionID: UUID? = nil
   ) {
-    let condition = WorkflowBindingCondition(
-      bundleIdentifier: rule.scope.bundleIdentifier,
-      recordCollectionID: rule.scope.recordCollectionID,
-      locale: rule.scope.locale
-    )
     let collectionID: UUID
     if let targetCollectionID {
       collectionID = targetCollectionID
     } else if rule.scope == VocabularyRuleScope() {
       collectionID = VocabularyCollection.personalID
     } else if let binding = vocabularyCollectionBindings.first(where: {
-      $0.condition == condition
+      $0.condition == rule.scope
     }) {
       collectionID = binding.collectionID
     } else {
