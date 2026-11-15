@@ -12,6 +12,8 @@ Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包�
 
 `just build` 默认只构建 Debug App，适合日常 App/UI 修改。`just build release` 构建全部 arm64 Release 产品。Debug 产物在当前 worktree 的 `.build`，Release 产物在 `.artifacts/build/release`。构建驱动负责加锁和缓存失效；不要在构建时手工删除目录，也不要跨 worktree 复制或软链接构建数据库。
 
+构建驱动统一解析 checkout、Debug/Release、构建目录和构建系统选项，重复指定时以最后一次为准；构建目录必须位于 checkout 内且不能包含构建锁。其余 SwiftPM 参数按原顺序传递，`-Xswiftc`、`-Xcc` 等编译器参数的值不会被当作驱动选项。
+
 完整依赖图通过 SwiftBuild 编译 String Catalog。`test-domain` 定向入口使用独立构建目录和缩小的依赖图；仅指定测试过滤器不保证缩小首次编译范围。定向领域测试可以使用：
 
 ```bash

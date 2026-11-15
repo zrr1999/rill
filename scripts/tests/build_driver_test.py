@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 from io import StringIO
+import json
 import multiprocessing
 import os
 from pathlib import Path
@@ -72,16 +73,81 @@ class BuildDriverTests(unittest.TestCase):
                 ["build", "--product", "RillApp"],
             ):
                 build.main(arguments + ["--package-path", str(self.root)])
-                self.assertEqual(build.option(swift.call_args.args[1], ("--build-system",), None), "swiftbuild")
+                self.assertEqual(swift.call_args.args[1][:4], ["--build-system", "swiftbuild", "--manifest-cache", "none"])
                 if output.exists():
                     self.assertEqual(output.read_text(), "compiled")
                 else:
                     output.write_text("compiled")
             clean.assert_not_called()
             build.main(["build", "--build-system", "native", "--package-path", str(self.root)])
-            self.assertEqual(build.option(swift.call_args.args[1], ("--build-system",), None), "native")
+            self.assertEqual(swift.call_args.args[1][:2], ["--build-system", "native"])
             build.main(["test-domain", "--filter", "SessionCoordinatorTests", "--package-path", str(self.root)])
             self.assertNotIn("--build-system", swift.call_args.args[1])
+
+    def test_cli_reconstructs_owned_options_and_preserves_compiler_arguments(self):
+        compiler = self.root / "swift"
+        record = self.root / "swift-arguments.json"
+        compiler.write_text(
+            f"#!{sys.executable}\n"
+            "import json, os, pathlib, sys\n"
+            f"pathlib.Path({str(record)!r}).write_text(json.dumps([sys.argv[1:], os.getcwd()]))\n"
+            "print('/tmp/product path/debug')\n"
+        )
+        compiler.chmod(0o755)
+        forwarded = [
+            "-Xswiftc", "--configuration", "-Xswiftc", "debug",
+            "-Xcc", "-DMESSAGE=hello world", "-Xlinker", "--scratch-path",
+            "--filter", "SomeTest", "--enable-code-coverage",
+        ]
+        for operation in ("--help", "--show-bin-path"):
+            with self.subTest(operation=operation):
+                result = subprocess.run(
+                    [
+                        sys.executable, str(build.PROJECT / "scripts/build_driver.py"), "test",
+                        "--package-path=unused", "--package-path", str(self.root),
+                        "--configuration=release", "-c", "debug",
+                        "--scratch-path", ".build/unused", "--build-path=build area",
+                        "--build-system", "swiftbuild", "--build-system=native",
+                        *forwarded, operation,
+                    ],
+                    env={**os.environ, "PATH": f"{self.root}{os.pathsep}{os.environ['PATH']}"},
+                    capture_output=True, text=True, timeout=10,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                command, directory = json.loads(record.read_text())
+                self.assertEqual(directory, str(self.root))
+                self.assertEqual(command, [
+                    "test", "--force-resolved-versions",
+                    "--package-path", str(self.root), "--configuration", "debug",
+                    "--scratch-path", str(self.root / "build area"),
+                    "--build-system", "native", *forwarded, operation,
+                ])
+                self.assertEqual(result.stdout, "/tmp/product path/debug\n")
+
+    def test_cli_rejects_invalid_owned_options_before_starting_swift(self):
+        for arguments in (
+            ["build", "--configuration=profile"],
+            ["build", "--scratch-path", ".."],
+            ["build", "--scratch-path", "."],
+            ["build", "--scratch-path", ".artifacts"],
+            ["build", "--package-path"],
+            ["build", "--configuration="],
+            ["build", "-Xswiftc"],
+        ):
+            with self.subTest(arguments=arguments), patch.object(build.BuildContext, "swift") as swift:
+                with self.assertRaises(build.BuildError):
+                    build.main([arguments[0], "--package-path", str(self.root), *arguments[1:]])
+                swift.assert_not_called()
+
+    def test_forwarded_help_flag_still_prepares_the_build(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(build.BuildContext, "environment", return_value={}),
+            patch.object(build.BuildContext, "build") as compile,
+        ):
+            build.main(["build", "--package-path", str(self.root), "-Xswiftc", "--help"])
+        compile.assert_called_once()
+        self.assertEqual(compile.call_args.args[1][-2:], ["-Xswiftc", "--help"])
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
