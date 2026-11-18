@@ -294,8 +294,8 @@ run_script_tests() {
   bash "$test_dir/github_release_test.sh"
   echo 'Testing app icon generation...'
   bash "$test_dir/app_icon_test.sh"
-  echo 'Testing input method signing boundaries...'
-  uv run --no-build --script "$test_dir/input_method_assembly_test.py"
+  echo 'Testing input method resources and signing boundaries...'
+  uv run --no-build --script "$test_dir/input_method_test.py"
 }
 
 install_gitleaks() {
@@ -427,9 +427,6 @@ check_repository() {
   info "Running script policy tests..."
   run_script_tests
 
-  info "Checking independent input method data packaging..."
-  uv run --no-build --script "$SCRIPT_DIR/tests/input_method_data_test.py"
-
   # Hosted CI owns these checks in its tool-tests and static-checks jobs.
   if [[ "$PREFLIGHT_LANE" == all ]]; then
     info "Testing evaluation and performance analysis tools..."
@@ -496,7 +493,7 @@ check_release() {
     cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" \
       || error "Packaged project document does not match $document"
   done
-  uv run --no-build --script "$SCRIPT_DIR/tests/input_method_test.py" \
+  uv run --no-build --script "$SCRIPT_DIR/tests/input_method_test.py" bundle \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
   if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
     check_working_diff
