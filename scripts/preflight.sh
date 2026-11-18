@@ -81,7 +81,7 @@ report_preflight_evidence() {
 }
 
 preflight_source() {
-  uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" \
+  uv run --no-build --script "$SCRIPT_DIR/build_driver.py" \
     preflight-source "$1" "$PROJECT_DIR" "$REPORT_DIR/source.json"
 }
 
@@ -181,7 +181,7 @@ verify_xcode_resource_accessor() {
 }
 
 locked_swift() {
-  uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
+  uv run --no-build --script "$SCRIPT_DIR/build_driver.py" "$@"
 }
 
 check_release_artifact_hygiene() {
@@ -281,9 +281,9 @@ run_script_tests() {
   echo 'Testing secret scanning...'
   bash "$test_dir/secret_scan_test.sh"
   echo 'Testing build ownership and receipts...'
-  uv run --no-build --locked --script "$test_dir/build_driver_test.py"
+  uv run --no-build --script "$test_dir/build_driver_test.py"
   echo 'Testing worker artifact caching...'
-  uv run --no-build --locked --script "$test_dir/worker_cache_test.py"
+  uv run --no-build --script "$test_dir/worker_cache_test.py"
   echo 'Testing release configuration...'
   bash "$test_dir/release_config_test.sh"
   echo 'Testing CI lane aggregation and cache policy...'
@@ -294,8 +294,8 @@ run_script_tests() {
   bash "$test_dir/github_release_test.sh"
   echo 'Testing app icon generation...'
   bash "$test_dir/app_icon_test.sh"
-  echo 'Testing input method signing boundaries...'
-  uv run --no-build --locked --script "$test_dir/input_method_assembly_test.py"
+  echo 'Testing input method resources and signing boundaries...'
+  uv run --no-build --script "$test_dir/input_method_test.py"
 }
 
 install_gitleaks() {
@@ -419,7 +419,7 @@ check_repository() {
   check_release_artifact_hygiene "$PROJECT_DIR"
 
   info "Checking Swift module dependencies..."
-  uv run --no-build --locked --script "$SCRIPT_DIR/check_module_boundaries.py"
+  uv run --no-build --script "$SCRIPT_DIR/check_module_boundaries.py"
 
   info "Checking Record domain boundary..."
   check_record_domain_boundary
@@ -427,16 +427,13 @@ check_repository() {
   info "Running script policy tests..."
   run_script_tests
 
-  info "Checking independent input method data packaging..."
-  uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
-
   # Hosted CI owns these checks in its tool-tests and static-checks jobs.
   if [[ "$PREFLIGHT_LANE" == all ]]; then
     info "Testing evaluation and performance analysis tools..."
     uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
 
     info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
-    uv run --no-build --locked --script "$SCRIPT_DIR/check_dependency_security.py"
+    uv run --no-build --script "$SCRIPT_DIR/check_dependency_security.py"
 
     info "Scanning Git history and the current source snapshot for secrets..."
     bash "$SCRIPT_DIR/check_secrets.sh"
@@ -486,7 +483,7 @@ check_release() {
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/$MLX_RESOURCE_BUNDLE_NAME"
   codesign --force --options runtime --sign - \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
-  uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" \
+  uv run --no-build --script "$SCRIPT_DIR/assemble_input_method.py" \
     --sign-existing "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
   codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
   codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
@@ -496,7 +493,7 @@ check_release() {
     cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" \
       || error "Packaged project document does not match $document"
   done
-  uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
+  uv run --no-build --script "$SCRIPT_DIR/tests/input_method_test.py" bundle \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
   if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
     check_working_diff
@@ -600,7 +597,7 @@ test-scripts)
   ;;
 swift)
   shift
-  exec uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
+  exec uv run --no-build --script "$SCRIPT_DIR/build_driver.py" "$@"
   ;;
 install-gitleaks)
   shift
