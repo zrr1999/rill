@@ -6,7 +6,7 @@
 
 Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包装脚本使用锁定解析结果。升级依赖时同时检查安全结果与第三方许可证据。
 
-独立 Python 入口可通过 inline metadata 及配套 `.py.lock` 声明运行环境；修改声明后用 `uv lock --script <path>` 更新对应锁文件。内部评测与回放工具由 `tools/pyproject.toml` 和 `tools/uv.lock` 管理，通过 `uv run --locked --project tools` 调用。
+仅使用标准库的独立 Python 脚本通过 `uv run --script` 运行，由 inline metadata 声明 Python 版本。带第三方依赖的入口（如 `scripts/docs.py`）同时维护 `.py.lock` 并使用 `--locked`，修改依赖后用 `uv lock --script <path>` 更新锁文件。内部评测与回放工具由 `tools/pyproject.toml` 和 `tools/uv.lock` 管理，通过 `uv run --locked --project tools` 调用。
 
 仓库任务定义在 [mise.toml](../mise.toml)，通过 `mise tasks ls` 查看，使用 `mise run <任务> [参数...]` 执行，无需激活 shell。任务从仓库根目录运行，也可以在子目录调用。mise 负责开发工具的版本、安装、PATH 和任务调度；Xcode 工具链与 uv 项目依赖继续由上述入口管理。GitHub Actions 复用同一配置，通过 `mise run preflight --lane tests` 或 `--lane release` 选择预检范围。直接调用下层脚本时，用 `mise exec -- <命令>` 提供开发工具环境，或先激活 mise shell。
 
@@ -97,7 +97,7 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
   `uv run --script scripts/generate_third_party_notices.py`；装配脚本在打包时
   生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
   依赖都有受审证据，不核对已提交的渲染文本。安全检查使用受审 baseline；联网核对使用
-  `uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv`。
+  `uv run --no-build --script scripts/check_dependency_security.py --live-osv`。
   两个脚本固定读取自身所在 checkout 的 `Package.resolved`、许可清单和安全 baseline，
   不接受替换这些仓库输入的命令行参数。许可证生成仍支持 `--checkouts-dir` 和
   `--output`，用于选择构建缓存和打包临时产物。

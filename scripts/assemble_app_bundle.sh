@@ -462,7 +462,7 @@ ditto \
   "$SPEECH_WORKER_SOURCE" \
   "$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"
 
-uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" --unsigned \
+uv run --no-build --script "$SCRIPT_DIR/assemble_input_method.py" --unsigned \
   --executable "$INPUT_METHOD_SOURCE" --output "$APP_BUNDLE/Contents/Helpers/RillInputMethod.app"
 
 # Verify the exact bytes that will be signed. The build directory can be
