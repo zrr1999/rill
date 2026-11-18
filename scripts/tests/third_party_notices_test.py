@@ -22,9 +22,6 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 GENERATOR = PROJECT_DIR / "scripts" / "generate_third_party_notices.py"
 ASSEMBLER = PROJECT_DIR / "scripts" / "assemble_app_bundle.sh"
 WORKFLOW_RESOURCES = PROJECT_DIR / "Sources" / "RillPlatform" / "Resources" / "BuiltinWorkflows"
-APP_ICON_RENDITION_RENDERER = (
-    PROJECT_DIR / "scripts" / "render_app_icon_renditions.swift"
-)
 APP_BUNDLE_RESOURCES = PROJECT_DIR / "Resources" / "AppBundle"
 APP_ICON_SOURCE = (
     PROJECT_DIR / "Resources" / "AppIcon" / "AppIcon-1024-routed-voice-cursor.png"
@@ -183,11 +180,8 @@ class Fixture:
 
     def prepare_packaging(self) -> None:
         scripts = self.root / "scripts"
-        for source in (
-            ASSEMBLER,
-            APP_ICON_RENDITION_RENDERER,
-        ):
-            shutil.copy2(source, scripts / source.name)
+        shutil.copy2(ASSEMBLER, scripts / ASSEMBLER.name)
+        (scripts / "render_app_icon_renditions.swift").touch()
         # This suite isolates outer bundle resource provenance. The packaged Rime
         # runtime is exercised separately against real binaries in preflight.
         (scripts / "assemble_input_method.py").write_text(
@@ -213,6 +207,19 @@ class Fixture:
         shutil.copy2(PROJECT_DIR / "Sources" / "RillApp" / intents_source.name, intents_source)
         self.fake_bin = self.root / "bin"
         self.fake_bin.mkdir()
+        # Pixel rendering is covered by app_icon_test.sh; keep a valid ICNS here.
+        fake_swift = self.fake_bin / "swift"
+        fake_swift.write_text(
+            """#!/bin/sh
+case "$2" in
+    render) cp "$3" "$4/icon_512x512@2x.png" ;;
+    verify) test -s "$3/icon_512x512@2x.png" ;;
+    *) exit 64 ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        fake_swift.chmod(0o755)
         fake_lipo = self.fake_bin / "lipo"
         fake_lipo.write_text(
             """#!/bin/sh
@@ -742,19 +749,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
 
         packaged_icon = app_bundle / "Contents" / "Resources" / "Rill.icns"
         self.assertGreater(packaged_icon.stat().st_size, 0)
-        extracted_iconset = self.fixture.root / "packaged-icon.iconset"
-        extracted = run(
-            [
-                "iconutil",
-                "-c",
-                "iconset",
-                str(packaged_icon),
-                "-o",
-                str(extracted_iconset),
-            ]
-        )
-        self.assertEqual(extracted.returncode, 0, extracted.stderr)
-        self.assertTrue((extracted_iconset / "icon_512x512@2x.png").is_file())
 
         for document in project_documents:
             source = self.fixture.root / document
