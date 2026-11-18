@@ -55,7 +55,7 @@ class InputMethodAssemblyTests(unittest.TestCase):
                     "tsInputModePaletteIconFileKey",
                 ))
             brand = Path(__file__).resolve().parents[2] / "Resources/AppIcon/RillInputMethodTemplate.tiff"
-            expected_name = f"RillInputMethod-{hashlib.sha256(brand.read_bytes()).hexdigest()[:16]}.tiff"
+            expected_name = f"RillInputMethod-{hashlib.sha256(brand.read_bytes()).hexdigest()[:16]}Template.tiff"
             for icon in icons:
                 with self.subTest(icon=icon):
                     self.assertEqual(icon, expected_name)
