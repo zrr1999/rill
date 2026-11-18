@@ -14,11 +14,6 @@ postinstall = 'if [ "${CI:-}" != "true" ]; then prek install --prepare-hooks; fi
 [task_templates.no-args]
 usage = 'flag "-h --help" help="Show help"'
 
-[tasks.default]
-description = "List the available repository commands"
-extends = "no-args"
-run = "mise tasks ls"
-
 [tasks.check]
 description = "Run read-only formatting and static checks"
 extends = "no-args"
@@ -47,59 +42,15 @@ description = "Build documentation or preview it locally with serve"
 raw_args = true
 run = "uv run --no-build --locked --script scripts/docs.py"
 
-[tasks."docs:deploy-check"]
-description = "Validate Cloudflare static assets without deploying"
-extends = "no-args"
-run = [{ task = "docs" }, "npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run"]
-
 [tasks.build]
 description = "Build one Debug product"
 usage = 'arg "[product]" default="RillApp"'
 run = 'scripts/preflight.sh swift build --product "${usage_product?}"'
 
-[tasks."build:release"]
-description = "Build all arm64 Release products"
-raw_args = true
-run = "scripts/preflight.sh swift release"
-
 [tasks.test]
 description = "Run domain and native tests"
 extends = "no-args"
 run = "scripts/preflight.sh test"
-
-[tasks."test:desktop"]
-description = "Verify desktop focus and keyboard routing in an unlocked session"
-extends = "no-args"
-run = "scripts/preflight.sh test-desktop"
-
-[tasks."test:scripts"]
-description = "Test build and release scripts offline"
-extends = "no-args"
-run = "scripts/preflight.sh test-scripts"
-
-[tasks."test:tools"]
-description = "Test internal development tools without model or provider access"
-raw_args = true
-run = "uv run --no-build --locked --project tools pytest tools/tests"
-
-[tasks."test:render"]
-description = "Capture native UI render evidence"
-extends = "no-args"
-env.RILL_UI_SNAPSHOT_DIR = "{{config_root}}/.artifacts/ui-renders"
-run = "scripts/preflight.sh swift test --filter 'Render|UIRenderEvidence'"
-
-[tasks."test:stress"]
-description = "Test a large Record catalog"
-extends = "no-args"
-env.RILL_RECORD_STRESS = "1"
-run = "scripts/preflight.sh swift test --filter RecordCatalogStressTests"
-
-[tasks.preflight]
-description = "Run preflight, optionally selecting --lane or --clean"
-raw_args = true
-env.RILL_RECORD_STRESS = "1"
-env.RILL_UI_SNAPSHOT_DIR = "{{config_root}}/.artifacts/ui-renders"
-run = "bash scripts/preflight.sh"
 
 [tasks.ci]
 description = "Run the full local CI gate"
@@ -107,28 +58,8 @@ usage = 'flag "--clean" help="Rebuild without reusing build artifacts"'
 run = [
   { task = "check" },
   { task = "docs" },
-  { task = "preflight{% if usage.clean %} --clean{% endif %}" },
+  "scripts/preflight.sh --test-evidence{% if usage.clean %} --clean{% endif %}",
 ]
-
-[tasks."benchmark:asr"]
-description = "Measure ASR replay performance"
-raw_args = true
-run = "uv run --locked --project tools rill-bench-asr"
-
-[tasks."benchmark:panel"]
-description = "Measure panel performance"
-raw_args = true
-run = "bash scripts/benchmark_panel.sh"
-
-[tasks."benchmark:workloads"]
-description = "Build and validate Record performance workloads"
-raw_args = true
-run = "bash scripts/build_benchmarks.sh"
-
-[tasks."audit:secrets"]
-description = "Scan complete Git history and the current source snapshot"
-extends = "no-args"
-run = "bash scripts/check_secrets.sh"
 
 [tasks."audit:dependencies"]
 description = "Audit locked Swift revisions and Python dependencies against OSV"
@@ -136,27 +67,4 @@ extends = "no-args"
 run = [
   "uv run --no-build --script scripts/check_dependency_security.py --live-osv",
   "bash scripts/audit_python.sh",
-]
-
-[tasks."quality:structure"]
-description = "Report source duplication and Swift and Python complexity"
-extends = "no-args"
-env.UV_PROJECT_ENVIRONMENT = "{{ env.RUNNER_TEMP | default(value=config_root ~ '/.artifacts') }}/rill-quality-python"
-run = [
-  "mkdir -p .artifacts/quality",
-  "npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src",
-  "uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml",
-  "uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json",
-]
-
-[tasks."quality:mutation"]
-shell = "bash -e -o pipefail -c"
-description = "Run mutation testing for ASR quality scoring"
-extends = "no-args"
-dir = "tools"
-env.UV_PROJECT_ENVIRONMENT = "{{config_root}}/.artifacts/quality/python"
-run = [
-  "mkdir -p ../.artifacts/quality",
-  "uv run --no-build --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee ../.artifacts/quality/mutation.log",
-  "uv run --no-build --python 3.13 --frozen --group quality mutmut export-cicd-stats",
 ]

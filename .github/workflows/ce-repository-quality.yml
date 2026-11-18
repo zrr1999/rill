@@ -99,7 +99,14 @@ jobs:
 
       - name: Measure source duplication and complexity
         if: ${{ !cancelled() }}
-        run: mise run quality:structure
+        shell: bash
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/rill-quality-python
+        run: |
+          mkdir -p .artifacts/quality
+          npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src
+          uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml
+          uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json
       - shell: bash
         run: |
           git ls-files -z '*.md' ':(exclude).agents/notes/**' | xargs -0 uvx --from lychee-bin==0.24.2 lychee --scheme https --scheme http --exclude '^https://github.com/zrr1999/rill/settings/' --timeout 20 --max-retries 1 --no-progress --format json --output .artifacts/quality/links.json
@@ -200,7 +207,14 @@ jobs:
           key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
       - name: Run mutation tests
-        run: mise run quality:mutation
+        shell: bash
+        working-directory: tools
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.artifacts/quality/python
+        run: |
+          mkdir -p ../.artifacts/quality
+          uv run --no-build --python 3.13 --frozen --group quality mutmut run 'rill_dev.evaluation.asr_quality.x_distance*' --max-children 2 2>&1 | tee ../.artifacts/quality/mutation.log
+          uv run --no-build --python 3.13 --frozen --group quality mutmut export-cicd-stats
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:

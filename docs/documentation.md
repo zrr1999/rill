@@ -50,10 +50,11 @@ CI 通过 `Static checks` 在 Linux 构建文档、验证 Cloudflare 静态资�
 
 文档站使用 [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)，与 zendev、zrr.dev 使用同一托管方式。Worker 名称为 `rill-docs`，正式域名为 `https://rill.zrr.dev/`。`zensical.toml` 的 `site_url` 决定 canonical URL 与 sitemap； `wrangler.toml` 管理静态产物目录、域名、目录索引和 404 行为。无需 Worker 脚本，也不包含 App 运行时或用户数据。
 
-mise 管理 Node.js 与 npm，`docs:deploy-check` 维护固定版本的 Wrangler 命令； Zensical 继续由 `scripts/docs.py.lock` 锁定。仓库不维护 Node.js 文档包。从仓库根目录构建并验证：
+mise 管理 Node.js 与 npm，[静态检查工作流](../.github/workflows/ci-static-checks.yml)运行固定版本的 Wrangler； Zensical 继续由 `scripts/docs.py.lock` 锁定。仓库不维护 Node.js 文档包。从仓库根目录构建并验证：
 
 ```sh
-mise run docs:deploy-check
+mise run docs
+mise exec -- npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
 ```
 
 npx 将工具缓存到 npm 缓存目录，不在仓库生成 `package.json`、锁文件或 `node_modules/`。上述 dry-run 不需要 Cloudflare 登录，也不会上传资源；它不能证明线上域名、TLS 或 Git 集成已经生效。

@@ -24,11 +24,9 @@ mise run test
 | `mise run check` / `mise run format` | 只读静态检查与显式格式修复 |
 | `mise run docs` / `mise run docs serve` | 严格构建文档与本地预览 |
 | `mise run test` | 不依赖真实桌面焦点的领域和原生测试；不启用压力与渲染证据 |
-| `mise run test:desktop` | 在已解锁的交互式桌面验证焦点与键盘路由 |
-| `mise run test:scripts` / `mise run test:tools` | 构建发布脚本与内部开发工具的离线测试 |
 | `mise run ci` / `mise run ci --clean` | 完整门禁。与 GitHub tests lane 一样启用一万条记录压力和 UI 渲染证据。`--clean` 在清理构建产物后重跑 |
 | `mise run coverage` | Python 与 Swift 领域测试覆盖率 |
-| `mise run benchmark:asr` / `benchmark:panel` / `benchmark:workloads` | 运行 ASR、面板或 Record workload 性能基准 |
+| `mise run audit:dependencies` | 联网审计 Swift 与 Python 锁定依赖 |
 
 提交前运行 `mise run ci` 和 `git diff --check`。完整门禁需要可用的交互式桌面。
 

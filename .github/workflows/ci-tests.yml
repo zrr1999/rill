@@ -90,7 +90,7 @@ jobs:
           key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
       - name: Test evaluation tools without model or provider access
-        run: mise run test:tools
+        run: uv run --no-build --locked --project tools pytest tools/tests
 
   preflight-lanes:
     name: Preflight (${{ matrix.lane }})
@@ -208,11 +208,9 @@ jobs:
           RILL_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           RILL_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [[ "$EVENT_NAME" == pull_request ]]; then
-            mise run preflight --lane "$LANE"
-          else
-            mise run preflight --clean --lane "$LANE"
-          fi
+          flags=(--lane "$LANE" --test-evidence)
+          if [[ "$EVENT_NAME" != pull_request ]]; then flags+=(--clean); fi
+          scripts/preflight.sh "${flags[@]}"
 
       - name: Save verified Swift build arena
         if: ${{ success() && github.event_name == 'pull_request' && steps.build-cache.outputs.cache-hit != 'true' }}
@@ -288,7 +286,7 @@ jobs:
           key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
       - name: Validate performance workload correctness
-        run: mise run benchmark:workloads
+        run: bash scripts/build_benchmarks.sh
 
   # Preserve the existing required-check name while joining every selected job.
     if: needs.scope.outputs.performance_workloads == 'true'

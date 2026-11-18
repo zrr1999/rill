@@ -46,14 +46,16 @@ jobs:
             .artifacts/prek-cache
           key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
-      - name: Validate Cloudflare static assets without deploying
-        run: mise run docs:deploy-check
+      - name: Build documentation and validate Cloudflare static assets
+        run: |
+          mise run docs
+          npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
 
       - name: Run repository quality gates
         run: mise run check
 
       - name: Scan secrets
-        run: mise run audit:secrets
+        run: bash scripts/check_secrets.sh
 
   codeql:
     name: CodeQL (${{ matrix.language }})

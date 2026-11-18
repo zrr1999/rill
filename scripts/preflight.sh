@@ -269,7 +269,7 @@ run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
   run_performance_swift_tests
-  info 'Desktop interaction was not tested. Run mise run test:desktop in an unlocked session; mise run ci requires both suites.'
+  info 'Desktop interaction was not tested. Run mise exec -- scripts/preflight.sh test-desktop in an unlocked session.'
 }
 
 run_script_tests() {
@@ -490,6 +490,10 @@ run_preflight() {
 parse_preflight_options() {
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
+    --test-evidence)
+      export RILL_RECORD_STRESS=1
+      export RILL_UI_SNAPSHOT_DIR="$PROJECT_DIR/.artifacts/ui-renders"
+      ;;
     --clean)
       CLEAN_BUILD=true
       WORKER_CACHE="off"
@@ -504,7 +508,8 @@ parse_preflight_options() {
       shift
       ;;
     --help | -h)
-      echo "Usage: $0 [--clean] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | commit-messages [BASE [HEAD]] | hygiene [ROOT]"
+      echo "Usage: $0 [--clean] [--test-evidence] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | commit-messages [BASE [HEAD]] | hygiene [ROOT]"
+      echo "  --test-evidence  Run Record stress fixtures and save UI renders in .artifacts/ui-renders."
       exit 0
       ;;
     *) error "Unknown argument: $1" ;;

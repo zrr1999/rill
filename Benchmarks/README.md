@@ -1,7 +1,7 @@
 # Performance benchmarks
 
 Quality evaluation corpora and manual CE belong to [Evals](../Evals/README.md).
-Paired ASR performance reports use `mise run benchmark:asr --target METRIC`;
+Paired ASR performance reports use `mise exec -- uv run --locked --project tools rill-bench-asr --target METRIC`;
 see the [ASR run contract](../docs/asr-evaluation.md).
 
 The suite runs production Record code with synthetic, offline data. It does not
@@ -27,13 +27,13 @@ memory logs are diagnostics, not evidence of a regression or improvement.
 Build and validate the Record CPU and storage workloads on macOS:
 
 ```sh
-mise run benchmark:workloads
+mise exec -- scripts/build_benchmarks.sh
 ```
 
 Build and measure the portable preview workloads on Linux:
 
 ```sh
-mise run benchmark:workloads --codspeed --preview-only
+mise exec -- scripts/build_benchmarks.sh --codspeed --preview-only
 codspeed run --mode simulation -- .artifacts/benchmarks/record-text
 ```
 
@@ -52,7 +52,7 @@ surround one batch after one warmup; URI construction, aggregate validation and
 logging stay outside the window. Each preview checks its result inside the
 workload. No walltime samples or walltime result JSON are emitted by this suite.
 
-`mise run benchmark:workloads` needs neither the download nor a CodSpeed login. `mise run ci` includes
+`mise exec -- scripts/build_benchmarks.sh` needs neither the download nor a CodSpeed login. `mise run ci` includes
 fast preview validation and tests buffer behavior through the Runtime tests.
 
 ## Native panel measurement
@@ -66,7 +66,7 @@ shared-runner samples.
 On an otherwise idle Mac with an unlocked desktop, run:
 
 ```sh
-mise run benchmark:panel
+mise exec -- scripts/benchmark_panel.sh
 ```
 
 This explicitly runs an optimized Release test after 10 warmup visits and records
