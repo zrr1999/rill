@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import build_driver as build
-import build_driver as worker
 
 
 class WorkerCacheTests(unittest.TestCase):
@@ -33,8 +32,8 @@ class WorkerCacheTests(unittest.TestCase):
             "dependencies": [],
             "products": [
                 {
-                    "name": worker.WORKER,
-                    "targets": [worker.WORKER],
+                    "name": build.WORKER,
+                    "targets": [build.WORKER],
                     "type": {"executable": None},
                 },
                 {
@@ -45,7 +44,7 @@ class WorkerCacheTests(unittest.TestCase):
             ],
             "targets": [
                 {
-                    "name": worker.WORKER,
+                    "name": build.WORKER,
                     "type": "executable",
                     "dependencies": [{"byName": ["Core", None]}],
                 },
@@ -62,19 +61,24 @@ class WorkerCacheTests(unittest.TestCase):
             "configuration": "release",
             "settings": ["--arch", "arm64"],
         }
-        self.cache = worker.WorkerCache(self.root / "cache")
-        self.output = self.root / "output"
-        self.output.mkdir()
-        executable = self.output / worker.WORKER
+        self.cache = build.WorkerCache(self.root / "cache")
+        self.output = self.root / "out/Products/Release"
+        self.output.mkdir(parents=True)
+        executable = self.output / build.WORKER
         executable.write_text("worker bytes")
         executable.chmod(0o755)
         for name in ("external_Crypto.bundle", "Sample_RillApp.bundle"):
             directory = self.output / name
             directory.mkdir()
             (directory / "data").write_text(name)
+        self.calls = []
+        self.enterContext(patch.dict(os.environ, {
+            "RILL_BUILD_CACHE_DIR": str(self.cache.root),
+            "CI": "false",
+        }))
 
     def identity(self):
-        return worker.input_identity(self.source, self.graph, self.environment)
+        return build.input_identity(self.source, self.graph, self.environment)
 
     def publish(self):
         identity = self.identity()
@@ -100,7 +104,7 @@ class WorkerCacheTests(unittest.TestCase):
         other = self.root / "other-branch"
         shutil.copytree(self.source, other)
         self.assertEqual(
-            self.identity(), worker.input_identity(other, self.graph, self.environment)
+            self.identity(), build.input_identity(other, self.graph, self.environment)
         )
 
     def test_toolchain_lock_and_flags_invalidate(self):
@@ -116,29 +120,29 @@ class WorkerCacheTests(unittest.TestCase):
 
     def test_unknown_inputs_bypass_cache(self):
         self.graph["targets"][0]["pluginUsages"] = ["generator"]
-        with self.assertRaises(worker.Uncacheable):
+        with self.assertRaises(build.Uncacheable):
             self.identity()
         self.graph["targets"][0].pop("pluginUsages")
         (self.source / "Sources/Core/link.swift").symlink_to("Source.swift")
-        with self.assertRaises(worker.Uncacheable):
+        with self.assertRaises(build.Uncacheable):
             self.identity()
 
     def test_payload_includes_dependencies_and_excludes_app_resources(self):
         key = self.publish()
         payload = self.cache.read(key)
-        self.assertTrue((payload / worker.WORKER).exists())
+        self.assertTrue((payload / build.WORKER).exists())
         self.assertTrue((payload / "external_Crypto.bundle/data").exists())
         self.assertFalse((payload / "Sample_RillApp.bundle").exists())
 
     def test_untracked_compiler_inputs_bypass_cache(self):
         self.environment["toolchain"]["untrackedCompilerInputs"] = "true"
-        with self.assertRaises(worker.Uncacheable):
+        with self.assertRaises(build.Uncacheable):
             self.identity()
         self.environment["toolchain"].pop("untrackedCompilerInputs")
         self.graph["targets"][0]["settings"] = [
             {"data": {"name": "unsafeFlags", "value": ["-include", "/tmp/header.h"]}}
         ]
-        with self.assertRaises(worker.Uncacheable):
+        with self.assertRaises(build.Uncacheable):
             self.identity()
 
     def test_input_drift_during_snapshot_prevents_publication(self):
@@ -161,7 +165,7 @@ class WorkerCacheTests(unittest.TestCase):
     def test_corrupt_incomplete_and_wrong_manifest_are_misses(self):
         key = self.publish()
         payload = self.cache.read(key)
-        (payload / worker.WORKER).write_text("corrupt")
+        (payload / build.WORKER).write_text("corrupt")
         self.assertIsNone(self.cache.read(key))
         key = self.publish()
         manifest = self.cache.entries / key / "manifest.json"
@@ -213,7 +217,7 @@ class WorkerCacheTests(unittest.TestCase):
         key = self.publish()
         manifest = self.cache.entries / key / "manifest.json"
         document = json.loads(manifest.read_text())
-        document["key"] = "../output"
+        document["key"] = os.path.relpath(self.output, self.cache.entries)
         manifest.write_text(json.dumps(document))
         self.assertIsNone(self.cache.read(key))
         self.cache.prune(0)
@@ -223,62 +227,41 @@ class WorkerCacheTests(unittest.TestCase):
         self.graph["products"].append(
             {"name": "RillInputMethod", "type": {"executable": None}}
         )
-        self.assertIn("RillInputMethod", worker.runtime_products(self.graph))
-
-
-class ReleaseCacheIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        self.fixture = WorkerCacheTests()
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        output = self.fixture.root / "out/Products/Release"
-        output.parent.mkdir(parents=True)
-        self.fixture.output = self.fixture.output.rename(output)
-        self.calls = []
-        self.environment_patch = patch.dict(
-            os.environ,
-            {
-                "RILL_BUILD_CACHE_DIR": str(self.fixture.cache.root),
-                "CI": "false",
-            },
-        )
-        self.environment_patch.start()
-        self.addCleanup(self.environment_patch.stop)
+        self.assertIn("RillInputMethod", build.runtime_products(self.graph))
 
     def run_release(self, *, mode="auto", source=None):
-        fixture = self.fixture
-        root = source or fixture.source
-        result = fixture.root / ("receipt-" + root.name + ".json")
+        root = source or self.source
+        result = self.root / ("receipt-" + root.name + ".json")
 
         def compile_product(context, subcommand, arguments, environment):
             self.calls.append(list(arguments))
             if "--product" in arguments:
                 products = [arguments[arguments.index("--product") + 1]]
             else:
-                products = worker.runtime_products(fixture.graph)
+                products = build.runtime_products(self.graph)
             for product in products:
-                output = fixture.output / product
+                output = self.output / product
                 output.write_text(product + " compiled")
                 output.chmod(0o755)
-            app_bundle = fixture.output / "Sample_RillApp.bundle" / "data"
+            app_bundle = self.output / "Sample_RillApp.bundle" / "data"
             app_bundle.write_text((root / "Sources/RillApp/Source.swift").read_text())
             if "RillApp" in products:
-                metadata = fixture.output.parents[1] / "Intermediates.noindex/Sample.build/Release/RillApp-p.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues"
+                metadata = self.output.parents[1] / "Intermediates.noindex/Sample.build/Release/RillApp-p.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues"
                 metadata.parent.mkdir(parents=True, exist_ok=True)
                 metadata.write_text(app_bundle.read_text())
 
         with (
             patch.object(build, "PROJECT", root),
-            patch.object(build.BuildContext, "swift", return_value=str(fixture.output)),
+            patch.object(build.BuildContext, "swift", return_value=str(self.output)),
             patch.object(
-                build.BuildContext, "environment", return_value=fixture.environment
+                build.BuildContext, "environment", return_value=self.environment
             ),
             patch.object(
                 build.BuildContext, "build", autospec=True, side_effect=compile_product
             ),
             patch.object(build, "source_inputs", return_value={"source": "stable"}),
-            patch.object(worker, "package_graph", return_value=fixture.graph),
-            patch.object(worker, "verify_checkouts"),
+            patch.object(build, "package_graph", return_value=self.graph),
+            patch.object(build, "verify_checkouts"),
             patch.object(build.subprocess, "run"),
         ):
             build.release(["--worker-cache", mode, "--result-file", str(result)])
@@ -287,13 +270,13 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
     def test_cross_checkout_hit_builds_current_app_and_future_input_method(self):
         import shutil
 
-        self.fixture.graph["products"].append(
+        self.graph["products"].append(
             {"name": "RillInputMethod", "type": {"executable": None}}
         )
         first = self.run_release()
         self.assertEqual(first["workerCache"]["status"], "miss")
-        other = self.fixture.root / "other"
-        shutil.copytree(self.fixture.source, other)
+        other = self.root / "other"
+        shutil.copytree(self.source, other)
         (other / "Sources/RillApp/Source.swift").write_text("new branch UI")
         self.calls.clear()
         second = self.run_release(source=other)
@@ -308,7 +291,7 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
             (directory / "RillApp-primary.swiftconstvalues").read_text(), "new branch UI"
         )
         self.assertEqual(
-            (directory / worker.WORKER).read_text(), "RillSpeechWorker compiled"
+            (directory / build.WORKER).read_text(), "RillSpeechWorker compiled"
         )
 
     def test_clean_mode_never_uses_existing_worker_cache(self):
@@ -331,37 +314,36 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
         )
 
     def test_source_drift_rejects_cache_publication(self):
-        fixture = self.fixture
         with (
-            patch.object(build, "PROJECT", fixture.source),
-            patch.object(build.BuildContext, "swift", return_value=str(fixture.output)),
+            patch.object(build, "PROJECT", self.source),
+            patch.object(build.BuildContext, "swift", return_value=str(self.output)),
             patch.object(
-                build.BuildContext, "environment", return_value=fixture.environment
+                build.BuildContext, "environment", return_value=self.environment
             ),
             patch.object(build.BuildContext, "build"),
-            patch.object(worker, "package_graph", return_value=fixture.graph),
+            patch.object(build, "package_graph", return_value=self.graph),
             patch.object(
                 build, "source_inputs", side_effect=[{"one": "a"}, {"one": "b"}]
             ),
         ):
             with self.assertRaisesRegex(build.BuildError, "Source changed"):
                 build.release([])
-        self.assertEqual(fixture.cache.status(), [])
+        self.assertEqual(self.cache.status(), [])
 
     def test_resource_conflict_is_rejected(self):
-        key = self.fixture.publish()
-        payload = self.fixture.cache.read(key)
-        (self.fixture.output / "external_Crypto.bundle/data").write_text(
+        key = self.publish()
+        payload = self.cache.read(key)
+        (self.output / "external_Crypto.bundle/data").write_text(
             "conflicting output"
         )
         context = build.BuildContext(
-            self.fixture.source, "release", build.RELEASE_ARGUMENTS
+            self.source, "release", build.RELEASE_ARGUMENTS
         )
         with self.assertRaisesRegex(build.BuildError, "Conflicting resource"):
             build.make_receipt(
                 context,
-                self.fixture.output,
-                self.fixture.root / "bad.json",
+                self.output,
+                self.root / "bad.json",
                 {},
                 worker_products=payload,
             )
