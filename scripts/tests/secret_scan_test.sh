@@ -10,6 +10,7 @@ fail() {
 }
 
 source "$PROJECT_DIR/scripts/check_secrets.sh"
+export GITLEAKS_TEST_VERSION="$GITLEAKS_REQUIRED_VERSION"
 
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rill-secret-scan-test.XXXXXX")"
 cleanup() {
@@ -82,7 +83,7 @@ cat >"$FAKE_GITLEAKS" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "version" ]]; then
-  echo "8.30.1"
+  echo "$GITLEAKS_TEST_VERSION"
   exit 0
 fi
 printf '%s\n' "$*" >>"$FAKE_LOG"
@@ -103,7 +104,7 @@ cat >"$MUTATING_GITLEAKS" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "version" ]]; then
-  echo "8.30.1"
+  echo "$GITLEAKS_TEST_VERSION"
   exit 0
 fi
 if [[ "${1:-}" == "git" ]]; then
@@ -157,7 +158,7 @@ fi
 if wrong_version_message="$(verify_gitleaks_binary "$WRONG_GITLEAKS" 2>&1)"; then
   fail "wrong Gitleaks version was accepted while checking its recovery hint"
 fi
-[[ "$wrong_version_message" == *"scripts/preflight.sh install-gitleaks --destination DIR"* ]] \
+[[ "$wrong_version_message" == *"mise install"* ]] \
   || fail "wrong-version failure does not provide an installation command"
 
 FAILURE_MARKER="$TEMP_ROOT/failing-snapshot-path"
@@ -166,7 +167,7 @@ cat >"$FAILING_GITLEAKS" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "version" ]]; then
-  echo "8.30.1"
+  echo "$GITLEAKS_TEST_VERSION"
   exit 0
 fi
 if [[ "${1:-}" == "git" ]]; then

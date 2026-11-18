@@ -6,7 +6,7 @@ Rill uses a separate InputMethodKit app with the pinned Rime 1.16.0 engine, Lua,
 
 ## Build and package
 
-Run `just ci` to validate the complete package, or use the local assembly commands in [CONTRIBUTING.md](../CONTRIBUTING.md). The assembled Rill app contains `Contents/Helpers/RillInputMethod.app`; signing covers nested libraries and helpers before the outer app. Ad-hoc builds cannot validate an authorized learning connection.
+Run `mise run ci` to validate the complete package, or use the local assembly commands in [CONTRIBUTING.md](../CONTRIBUTING.md). The assembled Rill app contains `Contents/Helpers/RillInputMethod.app`; signing covers nested libraries and helpers before the outer app. Ad-hoc builds cannot validate an authorized learning connection.
 
 The bundle identifier is `dev.zrr.inputmethod.Rill`; the literal `.inputmethod.` segment is required for macOS discovery. The selectable mode is the same identifier with `.Hans` appended. Keep the packaged plist, IMK server and IPC signature identity aligned through `InputMethodPaths`. The old `dev.zrr.Rill.InputMethod` identifier is only used to detect a running legacy component before repair.
 
