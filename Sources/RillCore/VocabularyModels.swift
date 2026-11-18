@@ -39,6 +39,8 @@ public struct VocabularyRuleScope: Codable, Sendable, Equatable, Hashable {
     return true
   }
 
+  public static let any = VocabularyRuleScope()
+
   private enum CodingKeys: String, CodingKey {
     case bundleIdentifier
     case recordCollectionID

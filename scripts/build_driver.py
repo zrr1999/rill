@@ -22,7 +22,8 @@ import stat
 import subprocess
 import sys
 import tempfile
-from typing import TypeVar
+
+from file_input import read_regular_file
 
 PROJECT = Path(__file__).resolve().parent.parent
 RELEASE_ARGUMENTS = [
@@ -30,8 +31,6 @@ RELEASE_ARGUMENTS = [
     "swiftbuild",
     "--manifest-cache",
     "none",
-    "--configuration",
-    "release",
     "--arch",
     "arm64",
 ]
@@ -39,6 +38,7 @@ STALE_CACHE = re.compile(
     r"clang dependency scanning failure|unable to resolve module dependency|Failed to clone"
 )
 TEST_IDLE_SAMPLE_SECONDS = 300
+MAX_RECEIPT_BYTES = 32 * 1024 * 1024
 
 
 class BuildError(Exception):
@@ -126,20 +126,40 @@ def file_lock(path: Path, *, blocking: bool = True):
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-OptionDefault = TypeVar("OptionDefault", bound=str | None)
-
-
-def option(arguments: list[str], names: tuple[str, ...], default: OptionDefault) -> str | OptionDefault:
-    value: str | OptionDefault = default
-    for index, argument in enumerate(arguments):
-        if argument in names:
-            if index + 1 == len(arguments):
-                raise BuildError(f"Missing value for {argument}")
-            value = arguments[index + 1]
-        for name in names:
-            if argument.startswith(name + "="):
-                value = argument[len(name) + 1 :]
-    return value
+def parse_build_arguments(arguments: list[str]) -> tuple[dict[str, str], list[str]]:
+    """Separate driver options from native SwiftPM arguments without reordering them."""
+    owned = {
+        "--package-path": "--package-path",
+        "--configuration": "--configuration",
+        "-c": "--configuration",
+        "--scratch-path": "--scratch-path",
+        "--build-path": "--scratch-path",
+        "--build-system": "--build-system",
+    }
+    options: dict[str, str] = {}
+    forwarded = []
+    remaining = iter(arguments)
+    for argument in remaining:
+        if argument == "--":
+            forwarded.extend([argument, *remaining])
+            break
+        name, equals, value = argument.partition("=")
+        if name in owned:
+            if not equals:
+                value = next(remaining, "")
+            if not value:
+                raise BuildError(f"Missing value for {name}")
+            options[owned[name]] = value
+        else:
+            forwarded.append(argument)
+            if argument in {"-Xswiftc", "-Xcc", "-Xcxx", "-Xlinker", "-Xxcbuild"}:
+                value = next(remaining, None)
+                if value is None:
+                    raise BuildError(f"Missing value for {argument}")
+                forwarded.append(value)
+            elif argument in {"--show-bin-path", "--help", "-h", "--help-hidden"}:
+                options[argument] = ""
+    return options, forwarded
 
 
 def build_settings(arguments: list[str]) -> list[str]:
@@ -340,13 +360,13 @@ def file_manifest(root: Path) -> dict[str, dict[str, object]]:
 
 
 class BuildContext:
-    def __init__(self, root: Path, configuration: str, arguments: list[str]):
+    def __init__(
+        self, root: Path, configuration: str, arguments: list[str], *, scratch_path: str | None = None
+    ):
         self.root = root.resolve()
         self.configuration = configuration
         default = ".artifacts/build/release" if configuration == "release" else ".build"
-        self.scratch = (
-            self.root / option(arguments, ("--scratch-path", "--build-path"), default)
-        ).resolve()
+        self.scratch = (self.root / (scratch_path if scratch_path is not None else default)).resolve()
         if self.scratch == self.root or not self.scratch.is_relative_to(self.root):
             raise BuildError("A build scratch path must be inside its source checkout")
         self.lock_path = (
@@ -419,8 +439,13 @@ class BuildContext:
     def swift(
         self, subcommand: str, arguments: list[str], *, quiet: bool = False
     ) -> str:
-        command = ["swift", subcommand, "--force-resolved-versions"]
-        command += arguments + ["--scratch-path", str(self.scratch)]
+        command = [
+            "swift", subcommand, "--force-resolved-versions",
+            "--package-path", str(self.root),
+            "--configuration", self.configuration,
+            "--scratch-path", str(self.scratch),
+            *arguments,
+        ]
         if quiet:
             return capture(command, self.root)
         with tempfile.TemporaryFile(mode="w+t") as log:
@@ -578,7 +603,9 @@ def make_receipt(
 
 
 def receipt_products(path: Path, root: Path) -> dict[str, object]:
-    receipt = json.loads(path.read_text())
+    receipt = json.loads(
+        read_regular_file(path, max_bytes=MAX_RECEIPT_BYTES, follow_symlinks=True).decode("utf-8")
+    )
     if (
         not isinstance(receipt, dict)
         or receipt.get("schemaVersion") != 1
@@ -725,15 +752,6 @@ def main(arguments: list[str] | None = None) -> None:
         argparse.ArgumentParser(description="Read the current source input digests.").parse_args(arguments)
         print(json.dumps(source_inputs(PROJECT)))
         return
-    if subcommand == "test-domain":
-        if option(arguments, ("--scratch-path", "--build-path"), None) is not None:
-            raise BuildError("Domain tests own their isolated build directory")
-        os.environ["RILL_BUILD_PROFILE"] = "domain-tests"
-        domain_configuration = option(arguments, ("--configuration", "-c"), "debug")
-        if domain_configuration not in ("debug", "release"):
-            raise BuildError(f"Unsupported domain test configuration: {domain_configuration}")
-        arguments += ["--scratch-path", f".artifacts/build/domain-tests/{domain_configuration}"]
-        subcommand = "test"
     if subcommand == "release":
         release(arguments)
         return
@@ -771,33 +789,41 @@ def main(arguments: list[str] | None = None) -> None:
         receipt = receipt_products(options.path, PROJECT)
         print(json.dumps(receipt) if options.json else receipt[options.field])
         return
-    if subcommand not in ("build", "test", "clean"):
+    if subcommand not in ("build", "test", "test-domain", "clean"):
         raise BuildError(f"unsupported SwiftPM subcommand: {subcommand}")
-    # The native engine copies .xcstrings without compiling localized resources.
-    # Builds and tests share the arena and must use the same resource compiler.
-    if (
-        subcommand in ("build", "test")
-        and os.environ.get("RILL_BUILD_PROFILE") != "domain-tests"
-        and option(arguments, ("--build-system",), None) is None
-    ):
-        arguments += ["--build-system", "swiftbuild", "--manifest-cache", "none"]
-    root = Path(option(arguments, ("--package-path",), str(PROJECT))).resolve()
-    configuration = option(arguments, ("--configuration", "-c"), "debug")
+    original_arguments = arguments
+    options, arguments = parse_build_arguments(arguments)
+    root = Path(options.get("--package-path", str(PROJECT))).resolve()
+    configuration = options.get("--configuration", "debug")
     if configuration not in ("debug", "release"):
         raise BuildError(f"Unsupported configuration: {configuration}")
-    context = BuildContext(root, configuration, arguments)
+    scratch_path = options.get("--scratch-path")
+    domain_tests = subcommand == "test-domain"
+    if domain_tests:
+        if scratch_path is not None:
+            raise BuildError("Domain tests own their isolated build directory")
+        scratch_path = f".artifacts/build/domain-tests/{configuration}"
+        os.environ["RILL_BUILD_PROFILE"] = "domain-tests"
+        subcommand = "test"
+    # The native engine copies .xcstrings without compiling localized resources.
+    # Builds and tests share the arena and must use the same resource compiler.
+    if "--build-system" in options:
+        arguments = ["--build-system", options["--build-system"], *arguments]
+    elif subcommand in ("build", "test") and not domain_tests:
+        arguments = ["--build-system", "swiftbuild", "--manifest-cache", "none", *arguments]
+    context = BuildContext(root, configuration, arguments, scratch_path=scratch_path)
     with context.lock():
         if subcommand == "clean":
             parser = argparse.ArgumentParser()
             parser.add_argument("--configuration", "-c", choices=("debug", "release"))
             parser.add_argument("--package-path")
             parser.add_argument("--scratch-path", "--build-path")
-            parser.parse_args(arguments)
+            parser.parse_args(original_arguments)
             context.clean()
-        elif "--show-bin-path" in arguments:
+        elif "--show-bin-path" in options:
             print(context.swift(subcommand, arguments, quiet=True))
         elif any(
-            argument in arguments
+            argument in options
             for argument in ("--help", "-h", "--help-hidden")
         ):
             context.swift(subcommand, arguments)

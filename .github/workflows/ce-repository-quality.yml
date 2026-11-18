@@ -34,10 +34,8 @@ jobs:
             .artifacts/prek-cache
           key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
-      - name: Audit locked Swift revisions
-        run: mise run audit:swift
-      - name: Audit all Python project and script locks
-        run: mise run audit:python
+      - name: Audit locked Swift and Python dependencies
+        run: mise run audit:dependencies
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
@@ -99,11 +97,9 @@ jobs:
             .artifacts/prek-cache
           key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
-      - shell: bash
-        run: |
-          mise run quality:duplication
-          mise run quality:complexity
+      - name: Measure source duplication and complexity
         if: ${{ !cancelled() }}
+        run: mise run quality:structure
       - shell: bash
         run: |
           git ls-files -z '*.md' ':(exclude).agents/notes/**' | xargs -0 uvx --from lychee-bin==0.24.2 lychee --scheme https --scheme http --exclude '^https://github.com/zrr1999/rill/settings/' --timeout 20 --max-retries 1 --no-progress --format json --output .artifacts/quality/links.json
@@ -113,8 +109,10 @@ jobs:
         with:
           name: quality-reports
           path: |
-            .artifacts/quality/
-          include-hidden-files: true
+            .artifacts/quality/jscpd/jscpd-report.json
+            .artifacts/quality/swift-complexity.xml
+            .artifacts/quality/python-complexity.json
+            .artifacts/quality/links.json
           if-no-files-found: error
   coverage:
     name: Coverage

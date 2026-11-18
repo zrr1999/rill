@@ -10,10 +10,10 @@
 mise trust mise.toml
 mise install
 mise run docs
-mise run docs:serve
+mise run docs serve
 ```
 
-`mise run docs` 使用锁定依赖运行 Zensical 严格构建，检查站内链接和标题锚点。产物位于 `.artifacts/docs/site/`。文档构建本身不调用 Xcode、Swift 或 MLX。 `mise run docs:serve` 在 `http://127.0.0.1:8000` 提供本地预览；修改原始 Markdown 后会自动同步并刷新。可用 `mise run docs:serve --port 8001` 更换端口；预览仅监听本机地址，端口只接受 1–65535 的整数。构建与预览都通过 uv 锁定环境的 Python 启动 Zensical。
+`mise run docs` 使用锁定依赖运行 Zensical 严格构建，检查站内链接和标题锚点。产物位于 `.artifacts/docs/site/`。文档构建本身不调用 Xcode、Swift 或 MLX。 `mise run docs serve` 在 `http://127.0.0.1:8000` 提供本地预览；修改原始 Markdown 后会自动同步并刷新。可用 `mise run docs serve --port 8001` 更换端口；预览仅监听本机地址，端口只接受 1–65535 的整数。构建与预览都通过 uv 锁定环境的 Python 启动 Zensical。
 
 `scripts/docs.py` 使用 PEP 723 声明 Zensical 的固定版本，完整依赖由 `scripts/docs.py.lock` 锁定。升级时同时更新版本与锁文件：
 

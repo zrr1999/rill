@@ -10,11 +10,13 @@ Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包�
 
 仓库任务定义在 [mise.toml](../mise.toml)，通过 `mise tasks ls` 查看，使用 `mise run <任务> [参数...]` 执行，无需激活 shell。任务从仓库根目录运行，也可以在子目录调用。mise 负责开发工具的版本、安装、PATH 和任务调度；Xcode 工具链与 uv 项目依赖继续由上述入口管理。GitHub Actions 复用同一配置，通过 `mise run preflight --lane tests` 或 `--lane release` 选择预检范围。直接调用下层脚本时，用 `mise exec -- <命令>` 提供开发工具环境，或先激活 mise shell。
 
-升级开发工具时修改 `mise.toml`，运行 `mise lock --platform macos-arm64,macos-x64,linux-x64`，一起提交 `mise.lock`。锁文件保存平台下载地址、校验和及可用的来源证明；Python 项目的 `uv.lock` 和脚本锁文件仍由 uv 管理。安装后 hooks 由 prek 准备；如果 mise 报告 postinstall 警告，运行 `mise run hooks:install` 查看并修复失败。
+升级开发工具时修改 `mise.toml`，运行 `mise lock --platform macos-arm64,macos-x64,linux-x64`，一起提交 `mise.lock`。锁文件保存平台下载地址、校验和及可用的来源证明；Python 项目的 `uv.lock` 和脚本锁文件仍由 uv 管理。如果 mise 报告 postinstall 警告，在仓库根目录运行 `mise exec -- prek install --prepare-hooks` 可直接查看安装错误。
 
 ## 构建与缓存
 
 `mise run build` 默认只构建 Debug App，适合日常 App/UI 修改。`mise run build:release` 构建全部 arm64 Release 产品。Debug 产物在当前 worktree 的 `.build`，Release 产物在 `.artifacts/build/release`。构建驱动负责加锁和缓存失效；不要在构建时手工删除目录，也不要跨 worktree 复制或软链接构建数据库。
+
+构建驱动统一解析 checkout、Debug/Release、构建目录和构建系统选项，重复指定时以最后一次为准；构建目录必须位于 checkout 内且不能包含构建锁。其余 SwiftPM 参数按原顺序传递，`-Xswiftc`、`-Xcc` 等编译器参数的值不会被当作驱动选项。
 
 完整依赖图通过 SwiftBuild 编译 String Catalog。`test-domain` 定向入口使用独立构建目录和缩小的依赖图；仅指定测试过滤器不保证缩小首次编译范围。定向领域测试可以使用：
 
@@ -22,7 +24,7 @@ Swift 依赖由 `Package.swift` 和 `Package.resolved` 共同声明，构建包�
 mise exec -- scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 ```
 
-该入口保留锁文件校验，不能替代完整生产依赖图上的 CI 验证。工具链、SDK、依赖声明或构建参数变化时，相应缓存会失效；普通源码修改走增量构建。 `mise run ci:clean` 使用干净构建，具体 CI 缓存策略见 [工作流配置](../.github/workflows/ci-tests.yml)。
+该入口保留锁文件校验，不能替代完整生产依赖图上的 CI 验证。工具链、SDK、依赖声明或构建参数变化时，相应缓存会失效；普通源码修改走增量构建。 `mise run ci --clean` 使用干净构建，具体 CI 缓存策略见 [工作流配置](../.github/workflows/ci-tests.yml)。
 
 本地 Release 可以复用跨 worktree 的语音 worker 产物。构建驱动校验输入与产物，无法确认或缓存损坏时回退源码构建；CI 和正式公证发布关闭该缓存。
 
@@ -55,7 +57,7 @@ mise run build:release --worker-cache off
 
 `Coverage` 作业负责采集覆盖率并上传到 Codecov。SonarQube Cloud 统一使用自动分析，通过 GitHub 集成读取源码并发布独立检查；源码与测试范围由根目录的 `.sonarcloud.properties` 配置。CI 和 CE 不再运行 SonarScanner，也不需要 `SONAR_TOKEN`。自动分析不接收覆盖率报告，覆盖率由 Codecov 和本地报告负责。
 
-[仓库持续评估](../.github/workflows/ce-repository-quality.yml) 独立维护每周和手动触发的质量检查，包括结构指标、外部链接、覆盖率、性能与变异测试。变异任务使用独立 Python 环境，验证编辑距离评分函数的测试有效性；结构与变异入口分别为 `quality:duplication`、`quality:complexity`、`quality:mutation`，任务配置维护工具参数与环境。尚未建立预算的指标与变异结果用于审查，不设统一分数线。[模型持续评估](../.github/workflows/ce-quality.yml) 保留自己的触发条件，依赖明确配置的服务和固定合成用例；真实音频与设备验收仍按对应评测文档执行。
+[仓库持续评估](../.github/workflows/ce-repository-quality.yml) 独立维护每周和手动触发的质量检查，包括结构指标、外部链接、覆盖率、性能与变异测试。`mise run quality:structure` 生成重复代码和复杂度报告。`mise run quality:mutation` 使用独立 Python 环境验证编辑距离评分函数的测试有效性。尚未建立预算的指标与变异结果用于审查，不设统一分数线。[模型持续评估](../.github/workflows/ce-quality.yml) 保留自己的触发条件，依赖明确配置的服务和固定合成用例；真实音频与设备验收仍按对应评测文档执行。
 
 ## GitHub Actions
 
@@ -63,13 +65,17 @@ mise run build:release --worker-cache off
 
 mise-action 缓存工具安装；独立的 Actions cache 保留 uv 下载和 prek hook 环境，按工具与依赖锁文件失效。它们与 Swift 构建缓存分别管理。
 
+开发工具测试由独立 job 执行。tests lane 执行仓库脚本检查及领域、原生、压力与桌面测试；release lane 只验证发布构建和装配，两者都校验工具链与源码一致性。依赖审计和秘密扫描由静态检查工作流负责。`mise run ci` 使用 all lane，在本地执行全部检查。`mise run test:scripts` 与 `mise run test:tools` 分别运行脚本和开发工具测试。
+
 Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci-`、`ce-`、`cd-`、 `policy-` 前缀，显示名称对应 `CI - <Purpose>`、`CE - <Purpose>`、 `CD - <Purpose>`、`Policy - <Purpose>`。`policy` 同时覆盖仓库治理规则的检查与执行；自动化是执行方式，不单列类别。
 
 [Policy - Check](../.github/workflows/policy-check.yml) 只读校验 PR 元数据，检出 base commit 的模板。标题规范化由独立的 [Policy - Fix](../.github/workflows/policy-fix.yml) 执行，以 `contents: read` 读取默认分支配置，并仅为该 job 授予所需的 `pull-requests: write` 和 `actions: write`；不检出 PR 代码，也不读取上游运行产物。
 
-jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；依赖审计分别查询 Swift 锁定提交和全部 Python 锁文件。
+jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；`mise run audit:dependencies` 审计 Swift 锁定提交和全部 Python 锁文件。
 
-仓库规则使用实际检查名称：[Policy - Check](../.github/workflows/policy-check.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。文档构建与只读门禁归入 [CI - Static Checks](../.github/workflows/ci-static-checks.yml) 的 `Static checks` 检查；是否列为必需检查以当前仓库规则为准。修改检查名称时同步核对仓库规则，合并步骤见[发布文档](releasing.md#合并门禁)。
+仓库规则使用实际检查名称：[Policy - Check](../.github/workflows/policy-check.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。[CI - Static Checks](../.github/workflows/ci-static-checks.yml) 保留 `Static checks` 名称作为汇总检查，要求文档与仓库检查、完整 CodeQL 矩阵及 Swift/Python 依赖审计全部成功；失败、取消或跳过均阻断。仓库规则同时要求各语言 CodeQL 和 `Dependency Vulnerabilities`，使尚未包含汇总逻辑的 PR 也受到安全门禁约束。修改检查名称时同步核对[当前仓库规则](https://github.com/zrr1999/rill/rules/23828255)，合并步骤见[发布文档](releasing.md#合并门禁)。
+
+CodeQL job 成功表示分析完成；PR 的漏洞阻断由仓库规则中的 CodeQL 扫描结果要求负责，采用 GitHub 默认阈值：普通告警为 error，安全告警为 high 或 critical。GitHub 的[扫描结果规则](https://docs.github.com/en/code-security/concepts/code-scanning/merge-protection)不适用于 merge group，因此队列仍保留上述分析与依赖审计的必需检查。
 
 Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-27` 镜像，以 macOS 27 SDK 编译完整依赖图。Record workload 和质量评测不编译这张图，继续使用 `macos-26`。
 
@@ -92,5 +98,10 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
   生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
   依赖都有受审证据，不核对已提交的渲染文本。安全检查使用受审 baseline；联网核对使用
   `uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv`。
+  两个脚本固定读取自身所在 checkout 的 `Package.resolved`、许可清单和安全 baseline，
+  不接受替换这些仓库输入的命令行参数。许可证生成仍支持 `--checkouts-dir` 和
+  `--output`，用于选择构建缓存和打包临时产物。
+  仓库检查的 JSON 输入和构建回执只读取普通文件，单文件上限为 32 MiB；读取期间
+  文件变化会失败。锁文件和受审清单拒绝符号链接，构建回执仍允许显式指定符号链接。
 - 图标从受审矢量事实源生成，资源、校验值与生成方法见 [图标设计](icon-design.md)。
 - 文档站的依赖与构建入口见 [文档站维护](documentation.md)。

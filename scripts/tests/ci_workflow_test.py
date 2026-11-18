@@ -22,10 +22,10 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = (ROOT / ".github/workflows/ci-tests.yml").read_text()
 
 
-def block(name):
+def block(name, workflow=WORKFLOW):
     """Read one named step without adding a YAML dependency to script tests."""
     marker = f"      - name: {name}\n"
-    return WORKFLOW.split(marker, 1)[1].split("      - name:", 1)[0]
+    return workflow.split(marker, 1)[1].split("      - name:", 1)[0]
 
 
 def condition(step):
@@ -95,6 +95,25 @@ class AggregateTests(unittest.TestCase):
         for result in ("failure", "cancelled", "skipped", ""):
             with self.subTest(result=result):
                 self.assertNotEqual(self.result("success", "false", "skipped", "false", "skipped", result), 0)
+
+
+class SecurityAggregateTests(unittest.TestCase):
+    def test_every_security_job_must_succeed(self):
+        workflow = (ROOT / ".github/workflows/ci-static-checks.yml").read_text()
+        step = block("Require all security checks", workflow)
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        states = ("success", "failure", "cancelled", "skipped", "")
+        for lint, codeql, dependencies in itertools.product(states, repeat=3):
+            with self.subTest(lint=lint, codeql=codeql, dependencies=dependencies):
+                result = subprocess.run(
+                    ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+                    env=dict(os.environ, LINT_RESULT=lint, CODEQL_RESULT=codeql,
+                             DEPENDENCIES_RESULT=dependencies),
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode == 0,
+                                 (lint, codeql, dependencies) == ("success",) * 3)
 
 
 class CachePolicyTests(unittest.TestCase):

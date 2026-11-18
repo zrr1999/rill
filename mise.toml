@@ -8,7 +8,7 @@ osv-scanner = "2.7.0"
 node = "26.13.0"
 
 [hooks]
-postinstall = 'if [ "${CI:-}" != "true" ]; then mise run hooks:install; fi'
+postinstall = 'if [ "${CI:-}" != "true" ]; then prek install --prepare-hooks; fi'
 
 # An explicit help flag makes mise reject extra arguments on fixed commands.
 [task_templates.no-args]
@@ -18,11 +18,6 @@ usage = 'flag "-h --help" help="Show help"'
 description = "List the available repository commands"
 extends = "no-args"
 run = "mise tasks ls"
-
-[tasks."hooks:install"]
-description = "Install and prepare the pre-commit and commit-message hooks"
-extends = "no-args"
-run = "prek install --prepare-hooks"
 
 [tasks.check]
 description = "Run read-only formatting and static checks"
@@ -48,14 +43,9 @@ run = [
 ]
 
 [tasks.docs]
-description = "Build documentation with locked dependencies"
+description = "Build documentation or preview it locally with serve"
 raw_args = true
-run = "uv run --no-build --locked --script scripts/docs.py build"
-
-[tasks."docs:serve"]
-description = "Preview documentation locally (--port PORT)"
-raw_args = true
-run = "uv run --no-build --locked --script scripts/docs.py serve"
+run = "uv run --no-build --locked --script scripts/docs.py"
 
 [tasks."docs:deploy-check"]
 description = "Validate Cloudflare static assets without deploying"
@@ -113,13 +103,12 @@ run = "bash scripts/preflight.sh"
 
 [tasks.ci]
 description = "Run the full local CI gate"
-extends = "no-args"
-run = [{ task = "check" }, { task = "docs" }, { task = "preflight" }]
-
-[tasks."ci:clean"]
-description = "Run the full local CI gate without build artifact reuse"
-extends = "no-args"
-run = [{ task = "check" }, { task = "docs" }, { task = "preflight", args = ["--clean"] }]
+usage = 'flag "--clean" help="Rebuild without reusing build artifacts"'
+run = [
+  { task = "check" },
+  { task = "docs" },
+  { task = "preflight{% if usage.clean %} --clean{% endif %}" },
+]
 
 [tasks."benchmark:asr"]
 description = "Measure ASR replay performance"
@@ -141,27 +130,21 @@ description = "Scan complete Git history and the current source snapshot"
 extends = "no-args"
 run = "bash scripts/check_secrets.sh"
 
-[tasks."audit:swift"]
-description = "Audit locked Swift revisions against live OSV data"
+[tasks."audit:dependencies"]
+description = "Audit locked Swift revisions and Python dependencies against OSV"
 extends = "no-args"
-run = "uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv"
+run = [
+  "uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv",
+  "bash scripts/audit_python.sh",
+]
 
-[tasks."audit:python"]
-description = "Audit all Python project and script locks against live OSV data"
+[tasks."quality:structure"]
+description = "Report source duplication and Swift and Python complexity"
 extends = "no-args"
-run = "bash scripts/audit_python.sh"
-
-[tasks."quality:duplication"]
-description = "Report source duplication"
-extends = "no-args"
-run = ["mkdir -p .artifacts/quality", "npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src"]
-
-[tasks."quality:complexity"]
-description = "Report Swift and Python complexity"
-extends = "no-args"
-env.UV_PROJECT_ENVIRONMENT = "{{config_root}}/.artifacts/quality/python"
+env.UV_PROJECT_ENVIRONMENT = "{{ env.RUNNER_TEMP | default(value=config_root ~ '/.artifacts') }}/rill-quality-python"
 run = [
   "mkdir -p .artifacts/quality",
+  "npx --yes --ignore-scripts jscpd@5.4.2 --reporters json --output .artifacts/quality/jscpd Sources scripts tools/src",
   "uvx --no-build lizard==1.24.3 --ignore_warnings -1 --xml Sources > .artifacts/quality/swift-complexity.xml",
   "uv run --no-build --directory tools --python 3.13 --frozen --group quality radon cc --json src > .artifacts/quality/python-complexity.json",
 ]

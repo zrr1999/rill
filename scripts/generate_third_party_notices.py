@@ -25,6 +25,8 @@ import tempfile
 from typing import Any
 from urllib.parse import urlparse
 
+from file_input import read_regular_file
+
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_RESOLVED = PROJECT_DIR / "Package.resolved"
@@ -32,6 +34,7 @@ DEFAULT_MANIFEST = PROJECT_DIR / "scripts" / "third_party_notices_manifest.json"
 DEFAULT_CHECKOUTS = PROJECT_DIR / ".build" / "checkouts"
 DEFAULT_OUTPUT = PROJECT_DIR / "THIRD_PARTY_NOTICES.md"
 MAX_EVIDENCE_BYTES = 2 * 1024 * 1024
+MAX_MANIFEST_BYTES = 32 * 1024 * 1024
 IDENTITY_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 REVISION_PATTERN = re.compile(r"[0-9a-f]{40,64}\Z")
@@ -43,8 +46,6 @@ class NoticeError(Exception):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--resolved", type=Path, default=DEFAULT_RESOLVED)
-    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--checkouts-dir", type=Path, default=DEFAULT_CHECKOUTS)
     parser.add_argument(
         "--output",
@@ -71,8 +72,10 @@ def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def load_json(path: Path, label: str) -> Any:
     try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError as error:
+        raw = read_regular_file(
+            path, max_bytes=MAX_MANIFEST_BYTES, follow_symlinks=False
+        ).decode("utf-8")
+    except (OSError, ValueError) as error:
         raise NoticeError(f"Cannot read {label} at {path}: {error}") from error
     try:
         return json.loads(raw, object_pairs_hook=reject_duplicate_keys)
@@ -97,8 +100,6 @@ def require_exact_keys(value: dict[str, Any], expected: set[str], label: str) ->
 def load_resolved_pins(path: Path) -> dict[str, dict[str, str]]:
     if not os.path.lexists(path):
         return {}
-    if path.is_symlink():
-        raise NoticeError(f"Package.resolved must not be a symlink: {path}")
     root = require_object(load_json(path, "Package.resolved"), "Package.resolved")
     require_exact_keys(
         root,
@@ -165,8 +166,6 @@ def valid_https_source(value: str) -> bool:
 
 
 def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
-    if path.is_symlink():
-        raise NoticeError(f"Notice manifest must not be a symlink: {path}")
     root = require_object(load_json(path, "notice manifest"), "notice manifest")
     require_exact_keys(root, {"schemaVersion", "packages"}, "notice manifest")
     if root["schemaVersion"] != 2:
@@ -647,28 +646,30 @@ def render(
     return ("\n".join(lines).rstrip() + "\n").encode("utf-8")
 
 
-def check_or_write(output: Path, content: bytes, check: bool) -> None:
-    if check:
-        try:
-            existing = output.read_bytes()
-        except OSError as error:
-            raise NoticeError(
-                f"Generated notice is missing or unreadable at {output}: {error}"
-            ) from error
-        if existing != content:
-            raise NoticeError(
-                f"Generated notice is stale: {output}; run scripts/generate_third_party_notices.py"
-            )
-        return
+def check_output(output: Path, content: bytes) -> None:
+    try:
+        existing = read_regular_file(output, max_bytes=len(content), follow_symlinks=True)
+    except OSError as error:
+        raise NoticeError(
+            f"Generated notice is missing or unreadable at {output}: {error}"
+        ) from error
+    except ValueError as error:
+        raise NoticeError(f"Generated notice is stale or unreadable at {output}: {error}") from error
+    if existing != content:
+        raise NoticeError(
+            f"Generated notice is stale: {output}; run scripts/generate_third_party_notices.py"
+        )
 
+
+def write_output(output: Path, content: bytes) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as temporary:
+            temporary_path = Path(temporary.name)
             temporary.write(content)
             temporary.flush()
             os.fsync(temporary.fileno())
-            temporary_path = Path(temporary.name)
         os.chmod(temporary_path, 0o644)
         os.replace(temporary_path, output)
     except OSError as error:
@@ -685,15 +686,18 @@ def check_or_write(output: Path, content: bytes, check: bool) -> None:
 def main() -> int:
     arguments = parse_args()
     try:
-        pins = load_resolved_pins(arguments.resolved)
-        manifest = load_manifest(arguments.manifest)
+        pins = load_resolved_pins(DEFAULT_RESOLVED)
+        manifest = load_manifest(DEFAULT_MANIFEST)
         validate_inventory(pins, manifest)
         content = render(
             pins,
             manifest,
             arguments.checkouts_dir,
         )
-        check_or_write(arguments.output, content, arguments.check)
+        if arguments.check:
+            check_output(arguments.output, content)
+        else:
+            write_output(arguments.output, content)
     except NoticeError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

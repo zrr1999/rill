@@ -9,10 +9,13 @@ from __future__ import annotations
 import copy
 import io
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -223,6 +226,30 @@ class DependencySecurityTests(unittest.TestCase):
             with self.assertRaises(security.DependencySecurityError):
                 security.load_json_file(link, label="fixture")
 
+    def test_json_file_loader_rejects_oversized_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "large.json"
+            path.write_text('{"value": "too long"}')
+            with mock.patch.object(security, "MAX_JSON_BYTES", 8):
+                with self.assertRaisesRegex(security.DependencySecurityError, "byte limit"):
+                    security.load_json_file(path, label="fixture")
+
+    def test_command_rejects_a_fifo_without_waiting_for_a_writer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            for name in ("check_dependency_security.py", "file_input.py"):
+                shutil.copy2(SCRIPTS_DIR / name, scripts / name)
+            path = root / "Package.resolved"
+            os.mkfifo(path)
+            result = subprocess.run(
+                [sys.executable, str(scripts / "check_dependency_security.py")],
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("regular file", result.stderr)
+
     def test_live_response_maps_to_lock_order_and_any_advisory_is_a_finding(
         self,
     ) -> None:
@@ -264,24 +291,26 @@ class DependencySecurityTests(unittest.TestCase):
             baseline = root / "baseline.json"
             baseline.write_text(json.dumps(empty_policy_payload()), encoding="utf-8")
             with (
+                mock.patch.object(security, "DEFAULT_LOCKFILE", root / "missing-Package.resolved"),
+                mock.patch.object(security, "DEFAULT_BASELINE", baseline),
                 mock.patch.object(security, "scan_live_osv") as live_scan,
                 mock.patch.object(
                     security, "validate_policy_freshness"
                 ) as freshness_check,
                 redirect_stdout(io.StringIO()),
             ):
-                result = security.main(
-                    [
-                        "--lockfile",
-                        str(root / "missing-Package.resolved"),
-                        "--baseline",
-                        str(baseline),
-                    ]
-                )
+                result = security.main([])
 
         self.assertEqual(result, 0)
         freshness_check.assert_called_once()
         live_scan.assert_not_called()
+
+    def test_command_rejects_repository_input_overrides(self) -> None:
+        for option in ("--lockfile", "--baseline"):
+            with self.subTest(option=option), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    security.main([option, "/another-checkout/input.json"])
+                self.assertEqual(error.exception.code, 2)
 
     def test_live_pagination_only_requeries_results_with_tokens(self) -> None:
         pins = self.parse_pins(

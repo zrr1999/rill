@@ -29,72 +29,18 @@ public enum VocabularyBindingUse: String, Codable, Sendable, Hashable, CaseItera
   case textReplacement
 }
 
-public struct WorkflowBindingCondition: Codable, Sendable, Equatable, Hashable {
-  public var bundleIdentifier: String?
-  public var recordCollectionID: UUID?
-  public var locale: String?
-
-  public init(
-    bundleIdentifier: String? = nil,
-    recordCollectionID: UUID? = nil,
-    locale: String? = nil
-  ) {
-    self.bundleIdentifier = bundleIdentifier
-    self.recordCollectionID = recordCollectionID
-    self.locale = locale
-  }
-
-  public func matches(_ context: VocabularyRuleContext) -> Bool {
-    if let bundleIdentifier, bundleIdentifier != context.bundleIdentifier {
-      return false
-    }
-    if let recordCollectionID, recordCollectionID != context.recordCollectionID {
-      return false
-    }
-    if let locale, locale != context.locale {
-      return false
-    }
-    return true
-  }
-
-  public static let any = WorkflowBindingCondition()
-
-  private enum CodingKeys: String, CodingKey {
-    case bundleIdentifier
-    case recordCollectionID
-    case legacyClipboardGroupID = "clipboardGroupID"
-    case locale
-  }
-
-  public init(from decoder: any Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    bundleIdentifier = try container.decodeIfPresent(String.self, forKey: .bundleIdentifier)
-    recordCollectionID =
-      try container.decodeIfPresent(UUID.self, forKey: .recordCollectionID)
-      ?? container.decodeIfPresent(UUID.self, forKey: .legacyClipboardGroupID)
-    locale = try container.decodeIfPresent(String.self, forKey: .locale)
-  }
-
-  public func encode(to encoder: any Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encodeIfPresent(bundleIdentifier, forKey: .bundleIdentifier)
-    try container.encodeIfPresent(recordCollectionID, forKey: .recordCollectionID)
-    try container.encodeIfPresent(locale, forKey: .locale)
-  }
-}
-
 public struct VocabularyCollectionBinding: Identifiable, Codable, Sendable, Equatable {
   public var id: UUID
   public var collectionID: UUID
   public var uses: Set<VocabularyBindingUse>
   public var optional: Bool
-  public var condition: WorkflowBindingCondition
+  public var condition: VocabularyRuleScope
 
   public init(
     id: UUID = UUID(),
     collectionID: UUID,
     uses: Set<VocabularyBindingUse> = Set(VocabularyBindingUse.allCases),
-    condition: WorkflowBindingCondition = .any, optional: Bool = false
+    condition: VocabularyRuleScope = .any, optional: Bool = false
   ) {
     self.id = id
     self.collectionID = collectionID
@@ -107,7 +53,7 @@ public struct VocabularyCollectionBinding: Identifiable, Codable, Sendable, Equa
     let values = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
       id: try values.decode(UUID.self, forKey: .id), collectionID: try values.decode(UUID.self, forKey: .collectionID),
-      uses: try values.decode(Set<VocabularyBindingUse>.self, forKey: .uses), condition: try values.decode(WorkflowBindingCondition.self, forKey: .condition),
+      uses: try values.decode(Set<VocabularyBindingUse>.self, forKey: .uses), condition: try values.decode(VocabularyRuleScope.self, forKey: .condition),
       optional: try values.decodeIfPresent(Bool.self, forKey: .optional) ?? false)
   }
 

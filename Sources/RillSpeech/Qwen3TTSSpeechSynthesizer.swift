@@ -41,7 +41,7 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
   private let enabledModelIDsProvider: @Sendable () throws -> Set<String>
   private let residentModelIDsProvider: @Sendable () throws -> Set<String>
   private let synthesisTimeout: Duration
-  private let idleReleaseCoordinator: TTSIdleReleaseCoordinator
+  private let idleReleaseCoordinator: ModelIdleReleaseCoordinator
 
   public init(
     supervisor: SpeechWorkerSupervisor,
@@ -60,7 +60,7 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
     self.enabledModelIDsProvider = enabledModelIDsProvider
     self.residentModelIDsProvider = residentModelIDsProvider
     self.synthesisTimeout = synthesisTimeout
-    self.idleReleaseCoordinator = TTSIdleReleaseCoordinator(delay: idleReleaseDelay)
+    self.idleReleaseCoordinator = ModelIdleReleaseCoordinator(delay: idleReleaseDelay)
   }
 
   public func prepare(
@@ -161,48 +161,5 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
       return lstat(path, &status)
     }
     return result == 0 && (status.st_mode & S_IFMT) == S_IFREG
-  }
-}
-
-private actor TTSIdleReleaseCoordinator {
-  private let delay: Duration
-  private var pending: [String: Task<Void, Never>] = [:]
-
-  init(delay: Duration) {
-    precondition(delay > .zero)
-    self.delay = delay
-  }
-
-  func markActive(modelID: String) {
-    pending.removeValue(forKey: modelID)?.cancel()
-  }
-
-  func scheduleRelease(
-    modelID: String,
-    resident: Bool,
-    release: @escaping @Sendable () async -> Void
-  ) {
-    pending.removeValue(forKey: modelID)?.cancel()
-    guard !resident else { return }
-    let delay = self.delay
-    pending[modelID] = Task { [weak self] in
-      do {
-        try await Task.sleep(for: delay)
-      } catch {
-        return
-      }
-      guard !Task.isCancelled else { return }
-      await release()
-      await self?.releaseFinished(modelID: modelID)
-    }
-  }
-
-  func cancelAll() {
-    for task in pending.values { task.cancel() }
-    pending.removeAll()
-  }
-
-  private func releaseFinished(modelID: String) {
-    pending.removeValue(forKey: modelID)
   }
 }

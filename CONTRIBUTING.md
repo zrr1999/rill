@@ -15,18 +15,18 @@ mise run build
 mise run test
 ```
 
-`mise install` 安装工具后会自动安装并准备 `pre-commit` 和 `commit-msg` hooks，重复安装也会检查 hooks；CI 跳过 hook 安装。需要单独重装时运行 `mise run hooks:install`。用 `mise tasks ls` 查看完整命令，通过 `mise run <任务>` 执行，无需激活 shell。构建模式、定向测试和故障定位见 [开发参考](docs/development.md)。SwiftPM 构建和测试统一通过 `scripts/preflight.sh swift` 运行；保留并使用仓库的 `Package.resolved`。
+`mise install` 安装工具后会自动安装并准备 `pre-commit` 和 `commit-msg` hooks，需要重装 hooks 时可再次运行 `mise install`。CI 跳过 hook 安装。用 `mise tasks ls` 查看完整命令，通过 `mise run <任务>` 执行，无需激活 shell。构建模式、定向测试和故障定位见 [开发参考](docs/development.md)。SwiftPM 构建和测试统一通过 `scripts/preflight.sh swift` 运行；保留并使用仓库的 `Package.resolved`。
 
 ## 验证
 
 | 命令 | 用途 |
 | --- | --- |
 | `mise run check` / `mise run format` | 只读静态检查与显式格式修复 |
-| `mise run docs` / `mise run docs:serve` | 严格构建文档与本地预览 |
+| `mise run docs` / `mise run docs serve` | 严格构建文档与本地预览 |
 | `mise run test` | 不依赖真实桌面焦点的领域和原生测试；不启用压力与渲染证据 |
 | `mise run test:desktop` | 在已解锁的交互式桌面验证焦点与键盘路由 |
 | `mise run test:scripts` / `mise run test:tools` | 构建发布脚本与内部开发工具的离线测试 |
-| `mise run ci` / `mise run ci:clean` | 完整门禁。与 GitHub tests lane 一样启用一万条记录压力和 UI 渲染证据；`ci:clean` 在清理构建产物后重跑 |
+| `mise run ci` / `mise run ci --clean` | 完整门禁。与 GitHub tests lane 一样启用一万条记录压力和 UI 渲染证据。`--clean` 在清理构建产物后重跑 |
 | `mise run coverage` | Python 与 Swift 领域测试覆盖率 |
 | `mise run benchmark:asr` / `benchmark:panel` / `benchmark:workloads` | 运行 ASR、面板或 Record workload 性能基准 |
 

@@ -22,8 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
-    name: Static checks
+  lint:
+    name: Repository checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -140,13 +140,26 @@ jobs:
             .artifacts/prek-cache
           key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
 
-      - name: Audit locked Swift revisions
-        run: mise run audit:swift
-      - name: Audit all Python project and script locks
-        run: mise run audit:python
+      - name: Audit locked Swift and Python dependencies
+        run: mise run audit:dependencies
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: dependency-audit
           path: .artifacts/quality/python-osv.json
           if-no-files-found: error
+
+  checks:
+    name: Static checks
+    needs: [lint, codeql, dependencies]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all security checks
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
+        run: |
+          [[ "$LINT_RESULT" == success && "$CODEQL_RESULT" == success && "$DEPENDENCIES_RESULT" == success ]]

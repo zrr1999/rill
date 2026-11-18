@@ -202,6 +202,7 @@ public actor AVAudioCaptureService: AudioCaptureService {
     do {
       try await readinessGate.wait(
         timeout: startupTimeout,
+        timeoutFailure: .timedOut,
         sleep: timeoutSleep
       )
       try Task.checkCancellation()
@@ -354,7 +355,7 @@ public actor AVAudioCaptureService: AudioCaptureService {
         return
       }
       guard recorder.isRecording else {
-        await gate.signalRecorderStopped()
+        await gate.signalFailure(.recorderStopped)
         return
       }
       if recorder.currentTime > 0 {
@@ -409,83 +410,9 @@ public actor AVAudioCaptureService: AudioCaptureService {
   }
 }
 
-actor AVAudioCaptureReadinessGate {
-  enum Failure: Error, Equatable, Sendable {
-    case recorderStopped
-    case timedOut
-  }
+typealias AVAudioCaptureReadinessGate = CaptureReadinessGate<AVAudioCaptureReadinessFailure>
 
-  private enum Resolution: Sendable {
-    case ready
-    case failed(Failure)
-    case cancelled
-  }
-
-  private var resolution: Resolution?
-  private var waiters: [CheckedContinuation<Resolution, Never>] = []
-
-  func wait(
-    timeout: Duration,
-    sleep: @escaping @Sendable (Duration) async throws -> Void
-  ) async throws {
-    let timeoutTask = Task { [weak self] in
-      do {
-        try await sleep(timeout)
-      } catch {
-        return
-      }
-      await self?.resolve(.failed(.timedOut))
-    }
-
-    let resolution = await withTaskCancellationHandler {
-      await nextResolution()
-    } onCancel: {
-      Task { [weak self] in
-        await self?.resolve(.cancelled)
-      }
-    }
-    timeoutTask.cancel()
-    await timeoutTask.value
-    try Task.checkCancellation()
-
-    switch resolution {
-    case .ready:
-      return
-    case .failed(let failure):
-      throw failure
-    case .cancelled:
-      throw CancellationError()
-    }
-  }
-
-  func signalReady() {
-    resolve(.ready)
-  }
-
-  func signalRecorderStopped() {
-    resolve(.failed(.recorderStopped))
-  }
-
-  func cancel() {
-    resolve(.cancelled)
-  }
-
-  private func nextResolution() async -> Resolution {
-    if let resolution {
-      return resolution
-    }
-    return await withCheckedContinuation { continuation in
-      waiters.append(continuation)
-    }
-  }
-
-  private func resolve(_ resolution: Resolution) {
-    guard self.resolution == nil else { return }
-    self.resolution = resolution
-    let waiters = self.waiters
-    self.waiters.removeAll()
-    for waiter in waiters {
-      waiter.resume(returning: resolution)
-    }
-  }
+enum AVAudioCaptureReadinessFailure: Error, Equatable, Sendable {
+  case recorderStopped
+  case timedOut
 }

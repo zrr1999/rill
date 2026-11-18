@@ -53,7 +53,7 @@ def stage():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["build", "serve"])
+    parser.add_argument("command", nargs="?", choices=["build", "serve"], default="build")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:

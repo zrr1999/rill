@@ -504,14 +504,14 @@ struct WorkflowTOMLBindingCondition: Codable {
     case locale
   }
 
-  init(condition: WorkflowBindingCondition) {
+  init(condition: VocabularyRuleScope) {
     appBundleID = condition.bundleIdentifier
     recordCollection = condition.recordCollectionID
     locale = condition.locale
   }
 
-  var condition: WorkflowBindingCondition {
-    WorkflowBindingCondition(
+  var condition: VocabularyRuleScope {
+    VocabularyRuleScope(
       bundleIdentifier: appBundleID,
       recordCollectionID: recordCollection,
       locale: locale

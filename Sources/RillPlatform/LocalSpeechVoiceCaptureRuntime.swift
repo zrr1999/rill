@@ -501,7 +501,7 @@ actor LocalSpeechVoiceCaptureRuntime {
     startStreamingPreview(request: request, generation: generation)
 
     do {
-      try await readinessGate.wait(timeout: startupTimeout, sleep: readinessSleep)
+      try await readinessGate.wait(timeout: startupTimeout, timeoutFailure: .timedOut, sleep: readinessSleep)
       if let readinessCommitHook {
         await readinessCommitHook()
       }
@@ -929,9 +929,9 @@ actor LocalSpeechVoiceCaptureRuntime {
         pendingStartupTermination = failed ? .streamFailed : .streamEnded
       }
       if failed {
-        await readinessGate.signalStreamFailed()
+        await readinessGate.signalFailure(.streamFailed)
       } else {
-        await readinessGate.signalStreamEnded()
+        await readinessGate.signalFailure(.streamEnded)
       }
       if didRecordTermination, let startupTerminationRecordedHook {
         await startupTerminationRecordedHook()
@@ -1284,81 +1284,10 @@ struct LocalSpeechInputReadinessDetector: Sendable, Equatable {
   }
 }
 
-actor LocalSpeechCaptureReadinessGate {
-  enum Failure: Error, Sendable, Equatable {
-    case streamEnded
-    case streamFailed
-    case timedOut
-  }
+typealias LocalSpeechCaptureReadinessGate = CaptureReadinessGate<LocalSpeechCaptureReadinessFailure>
 
-  private enum Resolution: Sendable {
-    case ready
-    case failed(Failure)
-    case cancelled
-  }
-
-  private var resolution: Resolution?
-  private var waiters: [CheckedContinuation<Resolution, Never>] = []
-
-  func wait(
-    timeout: Duration,
-    sleep: @escaping @Sendable (Duration) async throws -> Void
-  ) async throws {
-    let timeoutTask = Task { [weak self] in
-      do {
-        try await sleep(timeout)
-      } catch {
-        return
-      }
-      await self?.resolve(.failed(.timedOut))
-    }
-    let result = await withTaskCancellationHandler {
-      await nextResolution()
-    } onCancel: {
-      Task { [weak self] in await self?.resolve(.cancelled) }
-    }
-    timeoutTask.cancel()
-    await timeoutTask.value
-    try Task.checkCancellation()
-
-    switch result {
-    case .ready:
-      return
-    case .failed(let failure):
-      throw failure
-    case .cancelled:
-      throw CancellationError()
-    }
-  }
-
-  func signalReady() {
-    resolve(.ready)
-  }
-
-  func signalStreamEnded() {
-    resolve(.failed(.streamEnded))
-  }
-
-  func signalStreamFailed() {
-    resolve(.failed(.streamFailed))
-  }
-
-  func cancel() {
-    resolve(.cancelled)
-  }
-
-  private func nextResolution() async -> Resolution {
-    if let resolution { return resolution }
-    return await withCheckedContinuation { waiters.append($0) }
-  }
-
-  private func resolve(_ result: Resolution) {
-    guard resolution == nil else { return }
-    resolution = result
-    let currentWaiters = waiters
-    waiters.removeAll()
-    for waiter in currentWaiters {
-      waiter.resume(returning: result)
-    }
-  }
+enum LocalSpeechCaptureReadinessFailure: Error, Sendable, Equatable {
+  case streamEnded
+  case streamFailed
+  case timedOut
 }

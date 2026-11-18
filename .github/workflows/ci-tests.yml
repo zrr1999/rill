@@ -92,9 +92,6 @@ jobs:
       - name: Test evaluation tools without model or provider access
         run: mise run test:tools
 
-      - name: Test CI aggregation and cache policy
-        run: python3 scripts/tests/ci_workflow_test.py
-
   preflight-lanes:
     name: Preflight (${{ matrix.lane }})
     needs:
@@ -195,15 +192,11 @@ jobs:
       - name: Show toolchain versions
         run: |
           uv --version
-          gitleaks version
           swift --version
           sw_vers
           xcodebuild -version
           grep -F '.macOS(.v26)' Package.swift
           uv run --quiet --no-project --python '>=3.11' python --version
-
-      - name: Query live OSV for locked SwiftPM commits
-        run: mise run audit:swift
 
       - name: Run preflight
         id: lane
