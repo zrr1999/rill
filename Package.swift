@@ -23,7 +23,7 @@ let package = Package(
     ),
     .package(
       url: "https://github.com/huggingface/swift-huggingface.git",
-      exact: "0.13.0"
+      exact: "1.0.1"
     ),
     .package(
       url: "https://github.com/ml-explore/mlx-swift.git",
