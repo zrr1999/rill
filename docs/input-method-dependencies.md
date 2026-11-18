@@ -4,7 +4,7 @@ The macOS frontend is implemented in Swift/AppKit using InputMethodKit and the l
 
 ## Independent default data
 
-`scripts/input_method_data_manifest.json` pins the following public assets and SHA-256 values. `prepare_input_method_data.py` checks every downloaded or cached asset before extracting data into the input method's signed Resources directory. Install-time deployment uses only those bundled files and the packaged runtime; it does not download data or read an installed Squirrel application.
+`scripts/input_method_data_manifest.json` pins the following public assets and SHA-256 values. `assemble_input_method.py` checks every downloaded or cached asset before extracting data into the input method's signed Resources directory. Install-time deployment uses only those bundled files and the packaged runtime; it does not download data or read an installed Squirrel application.
 
 | Data | Source | License |
 | --- | --- | --- |

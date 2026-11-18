@@ -244,7 +244,7 @@ for lane in all tests; do
   for command in ' pytest ' '/check_dependency_security.py' '/check_secrets.sh'; do
     [[ "$(grep -c "$command" "$trace" || true)" == "$expected" ]]
   done
-  for command in '/check_module_boundaries.py' '/ci_workflow_test.py' '/input_method_assembly_test.py' '/build_benchmarks.sh'; do
+  for command in '/check_module_boundaries.py' '/ci_workflow_test.py' '/input_method_test.py' '/build_benchmarks.sh'; do
     [[ "$(grep -c "$command" "$trace")" == 1 ]]
   done
 done
