@@ -56,7 +56,10 @@ def evaluate(expression, values):
 
 
 class AggregateTests(unittest.TestCase):
-    def result(self, selection, app, preflight, scope, workload, tools="success"):
+    def result(
+        self, *, selection="success", app="true", preflight="success",
+        scope="true", workload="success", tools="success"
+    ):
         env = dict(os.environ)
         env.update(
             SCOPE_RESULT=selection,
@@ -73,28 +76,42 @@ class AggregateTests(unittest.TestCase):
             check=False,
         ).returncode
 
-    def test_all_result_and_scope_combinations_fail_closed(self):
-        # Include missing/invalid outputs and every dependency terminal state.
+    def test_selected_jobs_succeed_and_unselected_jobs_are_skipped(self):
+        for app, workload in itertools.product(("true", "false"), repeat=2):
+            with self.subTest(app=app, workload=workload):
+                self.assertEqual(self.result(
+                    app=app, preflight="success" if app == "true" else "skipped",
+                    scope=workload, workload="success" if workload == "true" else "skipped",
+                ), 0)
+
+    def test_each_required_job_must_succeed(self):
+        for job, result in itertools.product(
+            ("selection", "tools"), ("failure", "cancelled", "skipped", "")
+        ):
+            with self.subTest(job=job, result=result):
+                self.assertNotEqual(self.result(**{job: result}), 0)
+                self.assertNotEqual(self.result(
+                    app="false", preflight="skipped", scope="false", workload="skipped",
+                    **{job: result},
+                ), 0)
+
+    def test_each_scoped_job_rejects_invalid_scope_or_result(self):
+        # Keep the other gates valid so they cannot mask a missing rejection.
         states = ("success", "failure", "cancelled", "skipped", "")
         scopes = ("true", "false", "", "invalid")
-        for docs, app, preflight, scope, workload in itertools.product(
-            states, scopes, states, scopes, states
+        for (scope_key, result_key), scope, result in itertools.product(
+            (("app", "preflight"), ("scope", "workload")), scopes, states
         ):
-            expected = (
-                docs == "success"
-                and (app, preflight) in (("true", "success"), ("false", "skipped"))
-                and (scope, workload) in (("true", "success"), ("false", "skipped"))
-            )
-            with self.subTest(
-                docs=docs, app=app, preflight=preflight, scope=scope, workload=workload
-            ):
-                self.assertEqual(self.result(docs, app, preflight, scope, workload) == 0, expected)
+            expected = (scope, result) in (("true", "success"), ("false", "skipped"))
+            with self.subTest(job=result_key, scope=scope, result=result):
+                self.assertEqual(
+                    self.result(**{scope_key: scope, result_key: result}) == 0, expected
+                )
 
-
-    def test_tool_tests_must_succeed_even_when_application_jobs_are_skipped(self):
-        for result in ("failure", "cancelled", "skipped", ""):
-            with self.subTest(result=result):
-                self.assertNotEqual(self.result("success", "false", "skipped", "false", "skipped", result), 0)
+    def test_skipping_preflight_does_not_skip_workload_validation(self):
+        self.assertNotEqual(self.result(
+            app="false", preflight="skipped", scope="false", workload="failure",
+        ), 0)
 
 
 class SecurityAggregateTests(unittest.TestCase):
@@ -102,18 +119,20 @@ class SecurityAggregateTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/ci-static-checks.yml").read_text()
         step = block("Require all security checks", workflow)
         script = textwrap.dedent(step.split("        run: |\n", 1)[1])
-        states = ("success", "failure", "cancelled", "skipped", "")
-        for lint, codeql, dependencies in itertools.product(states, repeat=3):
-            with self.subTest(lint=lint, codeql=codeql, dependencies=dependencies):
+        passing = dict.fromkeys(("LINT_RESULT", "CODEQL_RESULT", "DEPENDENCIES_RESULT"), "success")
+        cases = [passing] + [
+            {**passing, job: result}
+            for job, result in itertools.product(passing, ("failure", "cancelled", "skipped", ""))
+        ]
+        for results in cases:
+            with self.subTest(**results):
                 result = subprocess.run(
                     ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
-                    env=dict(os.environ, LINT_RESULT=lint, CODEQL_RESULT=codeql,
-                             DEPENDENCIES_RESULT=dependencies),
+                    env=dict(os.environ, **results),
                     capture_output=True,
                     check=False,
                 )
-                self.assertEqual(result.returncode == 0,
-                                 (lint, codeql, dependencies) == ("success",) * 3)
+                self.assertEqual(result.returncode == 0, results == passing)
 
 
 class CachePolicyTests(unittest.TestCase):
