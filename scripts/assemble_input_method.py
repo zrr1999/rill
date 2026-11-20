@@ -128,7 +128,7 @@ def assemble(executable: Path, output: Path) -> None:
         (contents / name).mkdir(parents=True, exist_ok=True)
     prepare_data(contents / "Resources")
     icon = ROOT / "Resources/AppIcon/RillInputMethodTemplate.tiff"
-    icon_name = f"RillInputMethod-{hashlib.sha256(icon.read_bytes()).hexdigest()[:16]}.tiff"
+    icon_name = f"RillInputMethod-{hashlib.sha256(icon.read_bytes()).hexdigest()[:16]}Template.tiff"
     shutil.copy2(icon, contents / "Resources" / icon_name)
     shutil.copy2(executable, contents / "MacOS/RillInputMethod")
     subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks",
