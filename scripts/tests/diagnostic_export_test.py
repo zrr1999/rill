@@ -16,8 +16,7 @@ from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import export_diagnostics as exporter
-import analyze_diagnostics as analyzer
+import analyze_diagnostics as diagnostics
 
 
 class DiagnosticExportTests(unittest.TestCase):
@@ -38,8 +37,10 @@ class DiagnosticExportTests(unittest.TestCase):
                         (index, time.time(), 'run', 'session', 'debug', 'session.stage',
                          '{"stage":"completed"}', 'private message', generation))
             before = database.read_bytes()
-            with patch.object(exporter, 'ROOT', root), patch.object(exporter, 'DATABASE', database), contextlib.redirect_stdout(io.StringIO()):
-                exporter.main()
+            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), \
+                    patch.object(sys, 'argv', ['analyze_diagnostics.py', '--export-only']), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                diagnostics.main()
             output = (root / 'diagnostics.jsonl').read_text()
             header, event = [json.loads(line) for line in output.splitlines()]
             self.assertEqual(header['event_count'], 1)
@@ -47,6 +48,16 @@ class DiagnosticExportTests(unittest.TestCase):
             self.assertNotIn('private message', output)
             self.assertEqual(database.read_bytes(), before)
             self.assertEqual((root / 'diagnostics.jsonl').stat().st_mode & 0o777, 0o600)
+            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), \
+                    patch.object(sys, 'argv', ['analyze_diagnostics.py']), \
+                    patch.object(diagnostics.sqlite3, 'connect', side_effect=AssertionError('Unexpected database read')), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                diagnostics.main()
+            report = json.loads((root / 'performance-scan.json').read_text())
+            self.assertEqual(report['event_count'], 1)
+            for name in ('summary.json', 'performance-scan.json', 'performance-scan.md'):
+                self.assertEqual((root / name).stat().st_mode & 0o777, 0o600)
+                self.assertNotIn('private message', (root / name).read_text())
 
     def test_missing_database_fails_without_creating_source_or_replacing_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -54,9 +65,10 @@ class DiagnosticExportTests(unittest.TestCase):
             database = root / 'missing.sqlite'
             output = root / 'diagnostics.jsonl'
             output.write_text('previous snapshot')
-            with patch.object(exporter, 'ROOT', root), patch.object(exporter, 'DATABASE', database):
+            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), \
+                    patch.object(sys, 'argv', ['analyze_diagnostics.py', '--refresh']):
                 with self.assertRaises(sqlite3.OperationalError):
-                    exporter.main()
+                    diagnostics.main()
             self.assertFalse(database.exists())
             self.assertEqual(output.read_text(), 'previous snapshot')
 
@@ -69,11 +81,11 @@ class DiagnosticExportTests(unittest.TestCase):
                   event(3, 'session.stage', {'stage': 'completed'}),
                   event(4, 'clipboard.inject.paste.posted', {'pasteDispatchMillis': '12'})]
         header = {'exported_at_utc': '2026-09-23T00:00:00+00:00', 'invalid_event_count': 0}
-        report = analyzer.scan(header, events)
+        report = diagnostics.scan(header, events)
         self.assertEqual(report['runs'][0]['metrics_ms']['api_completed'], 123)
         self.assertEqual(report['runs'][0]['metrics_ms']['pasteDispatchMillis'], 12)
         self.assertNotIn('recognition_measured', report['runs'][0]['metrics_ms'])
-        report = analyzer.scan(header, events + [events[1]])
+        report = diagnostics.scan(header, events + [events[1]])
         self.assertNotIn('api_completed', report['runs'][0]['metrics_ms'])
 
 

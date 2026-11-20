@@ -6,7 +6,9 @@ Run an explicit, one-shot scan on the Mac running Rill:
 uv run --script scripts/analyze_diagnostics.py --refresh
 ```
 
-The scripts read the current history generation through a read-only SQLite transaction. They replace a rolling seven-day snapshot under `~/Library/Application Support/Rill/Diagnostics/`. The directory is private (0700), and exports and reports are private files (0600). No timer or monitoring service is installed. They export already-sanitized diagnostic events, omit free-text messages, and never read encrypted receipts, transcripts, credentials, or recordings. Export failures leave the previous snapshot intact; the scan must not treat an old export as fresh evidence.
+The script reads the current history generation through a read-only SQLite transaction. It replaces a rolling seven-day snapshot under `~/Library/Application Support/Rill/Diagnostics/`. The directory is private (0700), and exports and reports are private files (0600). No timer or monitoring service is installed. It exports already-sanitized diagnostic events, omits free-text messages, and never reads encrypted receipts, transcripts, credentials, or recordings. Export failures leave the previous snapshot intact; the scan must not treat an old export as fresh evidence.
+
+Use `--export-only` to refresh the snapshot without analysis, or omit both flags to analyze the existing snapshot.
 
 `diagnostics.jsonl` contains an export header followed by events; `summary.json` contains counts. `performance-scan.json` preserves per-run measurements, and `performance-scan.md` contains sample counts and P50/P95 tables. The installed app revision is a snapshot coordinate, not proof of every historical run's build.
 
