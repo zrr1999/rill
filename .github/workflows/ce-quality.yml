@@ -37,9 +37,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
