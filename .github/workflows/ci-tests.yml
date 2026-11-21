@@ -77,9 +77,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -116,9 +116,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -273,9 +273,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -327,9 +327,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -373,7 +373,7 @@ jobs:
       - name: Build and validate preview workloads
         run: bash scripts/build_benchmarks.sh --codspeed --preview-only
       - name: Measure CPU simulation with CodSpeed
-        uses: CodSpeedHQ/action@78102a468f96d8e0ccb92d0ec49425753fc42062 # v5.6.0
+        uses: CodSpeedHQ/action@b1f28b5eccf7cb5bfe6a2a89cb3053eb67f1150c # v5.8.0
         with:
           mode: simulation
           runner-version: "5.6.0"
