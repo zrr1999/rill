@@ -87,7 +87,7 @@ class DependencySecurityTests(unittest.TestCase):
         )
         security.validate_policy_freshness(policy)
         self.assertEqual(security.scan_offline_baseline(pins, policy.advisories), ())
-        self.assertEqual(len(pins), 36)
+        self.assertEqual(len(pins), 22)
         self.assertTrue(
             {
                 "grdb.swift",
@@ -97,7 +97,7 @@ class DependencySecurityTests(unittest.TestCase):
                 "swift-huggingface",
                 "swift-openapi-runtime",
                 "swift-toml",
-                "swift-xet",
+                "zstd",
             }.issubset({pin.identity for pin in pins})
         )
         self.assertEqual(policy.advisories, ())

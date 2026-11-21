@@ -3,23 +3,6 @@
   "packages": [
     {
       "kind": "sourceControl",
-      "identity": "async-http-client",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "e5eab628baf9849380ce867d80f65ece8ff98daa48035f994714e6fe7dbdb3ce"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
       "identity": "eventsource",
       "licenseExpression": "MIT",
       "evidence": [
@@ -97,18 +80,6 @@
     },
     {
       "kind": "sourceControl",
-      "identity": "swift-algorithms",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
       "identity": "swift-asn1",
       "licenseExpression": "Apache-2.0",
       "evidence": [
@@ -126,18 +97,6 @@
     },
     {
       "kind": "sourceControl",
-      "identity": "swift-async-algorithms",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
       "identity": "swift-atomics",
       "licenseExpression": "Apache-2.0",
       "evidence": [
@@ -145,23 +104,6 @@
           "kind": "license",
           "path": "LICENSE.txt",
           "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-certificates",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "57d7797703d906b63c2be50d891cf70bdec307ae6f77a881638c33343f3dd195"
         }
       ]
     },
@@ -179,23 +121,6 @@
     },
     {
       "kind": "sourceControl",
-      "identity": "swift-configuration",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "e7edb579b15aa8a733959cec14b244d48f11b771099382d6cfaf442af4c3b69d"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
       "identity": "swift-crypto",
       "licenseExpression": "Apache-2.0",
       "evidence": [
@@ -208,30 +133,6 @@
           "kind": "notice",
           "path": "NOTICE.txt",
           "sha256": "b3ddc2ae068e76b3beb71be03c0400f90090f9469aa491bf7b1ac42320af37b8"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-distributed-tracing",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-http-structured-headers",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
         }
       ]
     },
@@ -278,23 +179,6 @@
     },
     {
       "kind": "sourceControl",
-      "identity": "swift-log",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "879b241d49b407215a0ad8e1c6a71c358d7b29591b090cf379d37a5f50cff918"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
       "identity": "swift-nio",
       "licenseExpression": "Apache-2.0",
       "evidence": [
@@ -307,69 +191,6 @@
           "kind": "notice",
           "path": "NOTICE.txt",
           "sha256": "d25ed2452b3476c342082d11e4e8bf5459174d2836124f842b499850bcebc50e"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-nio-extras",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "722817c4c450c062f1f6e7b9df36733c0f6983aaad3e5e4aa5d76fe23d90010a"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-nio-http2",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "56b85f4571b653e82649d82a696afe841a417206a21a25afac751bcb11c2ea87"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-nio-ssl",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "03e8ca5c65a3df21fe1ab48eef91bca7d370db56c290d8ef16eaaa09ba322abe"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-nio-transport-services",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
         }
       ]
     },
@@ -399,40 +220,6 @@
           "kind": "notice",
           "path": "NOTICE.txt",
           "sha256": "b54b35c36f1cde851867e5dffc843d379456d202d332f04ae8d877232359925c"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-service-context",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "0881037b6840338ea800fdb5876540081a75d8bdd9eb8175a16f348247e8677e"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
-      "identity": "swift-service-lifecycle",
-      "licenseExpression": "Apache-2.0",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE.txt",
-          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-        },
-        {
-          "kind": "notice",
-          "path": "NOTICE.txt",
-          "sha256": "e0583b716a12a866a2a1d7456c26a17d18e1ec70f0ecaf2c62ed77180d1db043"
         }
       ]
     },
@@ -493,19 +280,6 @@
     },
     {
       "kind": "sourceControl",
-      "identity": "swift-xet",
-      "licenseExpression": "Apache-2.0",
-      "evidenceRevision": "b8447cbdf0e798de27bab3c5b0a99da98fae81e9",
-      "evidence": [
-        {
-          "kind": "license",
-          "path": "LICENSE",
-          "sha256": "66d3de8f54fa087ac001d3fde9221c9c7d220f6856c37fb038fa858d71450f35"
-        }
-      ]
-    },
-    {
-      "kind": "sourceControl",
       "identity": "yyjson",
       "licenseExpression": "MIT",
       "evidence": [
@@ -513,6 +287,18 @@
           "kind": "license",
           "path": "LICENSE",
           "sha256": "45e384d3d52c73cba3a64d6e6c25d47cd738cd8a55c30629e3201046eda62947"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "zstd",
+      "licenseExpression": "BSD-3-Clause",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
         }
       ]
     }

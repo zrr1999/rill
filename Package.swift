@@ -19,7 +19,7 @@ let package = Package(
     ),
     .package(
       url: "https://github.com/Blaizzy/mlx-audio-swift.git",
-      exact: "0.1.6"
+      exact: "0.2.1"
     ),
     .package(
       url: "https://github.com/huggingface/swift-huggingface.git",
@@ -27,17 +27,17 @@ let package = Package(
     ),
     .package(
       url: "https://github.com/ml-explore/mlx-swift.git",
-      exact: "0.32.3"
+      exact: "0.33.0"
     ),
     // The default trait compiles MLXFoundationModels, which 3.32.3 cannot
     // type-check against the current FoundationModels SDK. Rill does not use
     // that adapter.
     .package(
       url: "https://github.com/ml-explore/mlx-swift-lm.git",
-      exact: "3.32.3",
+      exact: "3.33.0",
       traits: []
     ),
-    .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.3.5"),
+    .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.4.0"),
     .package(
       url: "https://github.com/MacPaw/OpenAI.git",
       exact: "0.5.3"
