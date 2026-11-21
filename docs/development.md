@@ -81,7 +81,7 @@ Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci
 
 [Policy - Check](../.github/workflows/policy-check.yml) 只读校验 PR 元数据，检出 base commit 的模板。标题规范化由独立的 [Policy - Fix](../.github/workflows/policy-fix.yml) 执行，以 `contents: read` 读取默认分支配置，并仅为该 job 授予所需的 `pull-requests: write` 和 `actions: write`；不检出 PR 代码，也不读取上游运行产物。
 
-jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；`mise run audit:dependencies` 审计 Swift 锁定提交和全部 Python 锁文件。
+jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；`mise run audit:dependencies` 使用 OSV-Scanner 审计 Swift 锁定版本、精确 Git 提交和全部受 Git 跟踪的 Python 锁文件。
 
 仓库规则使用实际检查名称：[Policy - Check](../.github/workflows/policy-check.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。[CI - Static Checks](../.github/workflows/ci-static-checks.yml) 保留 `Static checks` 名称作为汇总检查，要求文档与仓库检查、完整 CodeQL 矩阵及 Swift/Python 依赖审计全部成功；失败、取消或跳过均阻断。仓库规则同时要求各语言 CodeQL 和 `Dependency Vulnerabilities`，使尚未包含汇总逻辑的 PR 也受到安全门禁约束。修改检查名称时同步核对[当前仓库规则](https://github.com/zrr1999/rill/rules/23828255)，合并步骤见[发布文档](releasing.md#合并门禁)。
 
@@ -107,7 +107,7 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
   `uv run --script scripts/generate_third_party_notices.py`；装配脚本在打包时
   生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
   依赖都有受审证据，不核对已提交的渲染文本。安全检查使用受审 baseline；联网核对使用
-  `uv run --no-build --script scripts/check_dependency_security.py --live-osv`。
+  `mise run audit:dependencies`。
   两个脚本固定读取自身所在 checkout 的 `Package.resolved`、许可清单和安全 baseline，
   不接受替换这些仓库输入的命令行参数。许可证生成仍支持 `--checkouts-dir` 和
   `--output`，用于选择构建缓存和打包临时产物。

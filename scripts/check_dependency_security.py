@@ -6,25 +6,25 @@
 """Fail-closed security checks for locked SwiftPM dependencies.
 
 The default offline check applies the reviewed Swift advisory baseline and
-enforces its review window. ``--live-osv`` additionally submits every locked
-Git commit to OSV's official batch API and fails when any advisory is returned.
+enforces its review window. ``--live-osv`` delegates advisory matching to
+the pinned OSV-Scanner and verifies that every locked input was inventoried.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
+import subprocess
 import sys
-from collections.abc import Callable, Sequence
+import tempfile
+import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from file_input import read_regular_file
 
@@ -32,10 +32,7 @@ from file_input import read_regular_file
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_LOCKFILE = PROJECT_DIR / "Package.resolved"
 DEFAULT_BASELINE = Path(__file__).resolve().parent / "dependency_security_baseline.json"
-OSV_QUERY_BATCH_URL = "https://api.osv.dev/v1/querybatch"
-OSV_TIMEOUT_SECONDS = 30.0
 MAX_JSON_BYTES = 32 * 1024 * 1024
-MAX_PAGES_PER_QUERY = 100
 MAX_REVIEW_WINDOW = timedelta(days=90)
 IDENTITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 REVISION_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
@@ -49,7 +46,7 @@ RFC3339_UTC_PATTERN = re.compile(
 
 
 class DependencySecurityError(ValueError):
-    """A malformed policy, lockfile, network exchange, or OSV response."""
+    """An invalid policy, lockfile, or scanner inventory."""
 
 
 @dataclass(frozen=True, order=True)
@@ -108,27 +105,10 @@ class ReviewedAdvisory:
 
 @dataclass(frozen=True)
 class SecurityFinding:
-    source: str
     advisory_id: str
     pin: LockedPin
-    modified: str | None = None
-    introduced: SemanticVersion | None = None
-    fixed: SemanticVersion | None = None
-
-
-@dataclass(frozen=True)
-class _LiveAdvisory:
-    advisory_id: str
-    modified: str
-
-
-@dataclass(frozen=True)
-class _LivePage:
-    advisories: tuple[_LiveAdvisory, ...]
-    next_page_token: str | None
-
-
-BatchTransport = Callable[[dict[str, object]], object]
+    introduced: SemanticVersion
+    fixed: SemanticVersion
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -245,8 +225,8 @@ def parse_lockfile(payload: object) -> tuple[LockedPin, ...]:
             "Package.resolved originHash must be 64 lowercase hex"
         )
     raw_pins = root["pins"]
-    if not isinstance(raw_pins, list):
-        raise DependencySecurityError("Package.resolved pins must be an array")
+    if not isinstance(raw_pins, list) or not raw_pins:
+        raise DependencySecurityError("Package.resolved pins must be a non-empty array")
 
     pins: list[LockedPin] = []
     seen_identities: set[str] = set()
@@ -389,8 +369,6 @@ def parse_baseline(payload: object) -> tuple[ReviewedAdvisory, ...]:
 
 
 def load_lockfile(path: Path = DEFAULT_LOCKFILE) -> tuple[LockedPin, ...]:
-    if not os.path.lexists(path):
-        return ()
     return parse_lockfile(load_json_file(path, label="Package.resolved"))
 
 
@@ -441,7 +419,6 @@ def scan_offline_baseline(
         if pin is not None and advisory.affects(pin.version):
             findings.append(
                 SecurityFinding(
-                    source="reviewed-baseline",
                     advisory_id=advisory.advisory_id,
                     pin=pin,
                     introduced=advisory.introduced,
@@ -453,244 +430,144 @@ def scan_offline_baseline(
     )
 
 
-def _parse_modified(value: object, *, field: str) -> str:
-    modified = _require_nonempty_string(value, field=field, maximum_length=128)
-    if RFC3339_UTC_PATTERN.fullmatch(modified) is None:
-        raise DependencySecurityError(f"{field} must be an RFC3339 UTC timestamp")
+def commit_inventory(pins: Sequence[LockedPin]) -> dict[str, object]:
+    # Official OSV-Scanner custom lockfile format. Keep commit and version inputs
+    # separate: the native Swift extractor currently drops state.revision.
+    return {
+        "results": [
+            {
+                "packages": [
+                    {"package": {"name": pin.identity, "commit": pin.revision}}
+                    for pin in pins
+                ]
+            }
+        ]
+    }
+
+
+def uv_inventory(path: Path) -> set[tuple[str, str]]:
+    # This is only an inventory completeness check; OSV-Scanner extracts and matches
+    # the actual lockfile.
     try:
-        parsed = datetime.fromisoformat(modified[:-1] + "+00:00")
-    except ValueError as error:
-        raise DependencySecurityError(f"{field} is not a valid timestamp") from error
-    if parsed.utcoffset() is None:
-        raise DependencySecurityError(f"{field} must include a timezone")
-    return modified
+        data = read_regular_file(path, max_bytes=MAX_JSON_BYTES, follow_symlinks=False)
+        packages = tomllib.loads(data.decode("utf-8"))["package"]
+        if not isinstance(packages, list) or not packages:
+            raise ValueError("expected a non-empty package array")
+        return {
+            (
+                _require_nonempty_string(package["name"], field="name"),
+                _require_nonempty_string(package["version"], field="version"),
+            )
+            for package in packages
+        }
+    except (KeyError, TypeError, OSError, ValueError) as error:
+        raise DependencySecurityError(f"invalid {path}: {error}") from error
 
 
-def parse_osv_batch_response(
-    payload: object, *, expected_results: int
-) -> tuple[_LivePage, ...]:
-    root = _require_object(payload, field="OSV querybatch response")
-    _require_exact_keys(root, {"results"}, field="OSV querybatch response")
-    raw_results = root["results"]
-    if not isinstance(raw_results, list) or len(raw_results) != expected_results:
-        raise DependencySecurityError(
-            "OSV querybatch response result count does not match the request"
-        )
+def verify_scanner_inventory(
+    report: object, expected: dict[Path, set[tuple[str, str, str]]]
+) -> None:
+    try:
+        observed: dict[Path, set[tuple[str, str, str]]] = {}
+        results = _require_object(report, field="OSV-Scanner report")["results"]
+        if not isinstance(results, list):
+            raise ValueError("expected a results array")
+        for result in results:
+            path = Path(result["source"]["path"])
+            packages = observed.setdefault(path, set())
+            for item in result["packages"]:
+                coordinate = item["package"]
+                ecosystem = coordinate["ecosystem"]
+                value = coordinate["commit" if ecosystem == "GIT" else "version"]
+                packages.add((ecosystem, coordinate["name"], value))
+    except (KeyError, TypeError, ValueError) as error:
+        raise DependencySecurityError("malformed OSV-Scanner inventory") from error
 
-    pages: list[_LivePage] = []
-    page_tokens: set[str] = set()
-    for result_index, raw_result in enumerate(raw_results):
-        field = f"OSV querybatch results[{result_index}]"
-        result = _require_object(raw_result, field=field)
-        unknown_keys = set(result) - {"vulns", "next_page_token"}
-        if unknown_keys:
+    for path, packages in expected.items():
+        missing = packages - observed.get(path, set())
+        if missing:
             raise DependencySecurityError(
-                f"{field} has unexpected keys: {', '.join(sorted(unknown_keys))}"
+                f"OSV-Scanner inventory incomplete for {path}: missing {sorted(missing)}"
             )
-        raw_vulnerabilities = result.get("vulns", [])
-        if not isinstance(raw_vulnerabilities, list):
-            raise DependencySecurityError(f"{field}.vulns must be an array")
-        advisories: list[_LiveAdvisory] = []
-        page_ids: set[str] = set()
-        for advisory_index, raw_vulnerability in enumerate(raw_vulnerabilities):
-            advisory_field = f"{field}.vulns[{advisory_index}]"
-            vulnerability = _require_object(raw_vulnerability, field=advisory_field)
-            _require_exact_keys(vulnerability, {"id", "modified"}, field=advisory_field)
-            advisory_id = _require_nonempty_string(
-                vulnerability["id"], field=f"{advisory_field}.id", maximum_length=128
-            )
-            if ADVISORY_ID_PATTERN.fullmatch(advisory_id) is None:
-                raise DependencySecurityError(f"{advisory_field}.id is invalid")
-            if advisory_id in page_ids:
-                raise DependencySecurityError(
-                    f"OSV returned duplicate advisory {advisory_id} in one result"
-                )
-            page_ids.add(advisory_id)
-            advisories.append(
-                _LiveAdvisory(
-                    advisory_id,
-                    _parse_modified(
-                        vulnerability["modified"], field=f"{advisory_field}.modified"
-                    ),
-                )
-            )
-        next_page_token: str | None = None
-        if "next_page_token" in result:
-            next_page_token = _require_nonempty_string(
-                result["next_page_token"],
-                field=f"{field}.next_page_token",
-                maximum_length=8192,
-            )
-            if next_page_token in page_tokens:
-                raise DependencySecurityError(
-                    "OSV returned the same next_page_token for multiple results"
-                )
-            page_tokens.add(next_page_token)
-        pages.append(_LivePage(tuple(advisories), next_page_token))
-    return tuple(pages)
 
 
-class _RejectRedirects(HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        req: Request,
-        fp: Any,
-        code: int,
-        msg: str,
-        headers: Any,
-        newurl: str,
-    ) -> Request | None:
-        raise DependencySecurityError(
-            f"OSV querybatch unexpectedly redirected with HTTP {code}"
-        )
-
-
-def post_osv_querybatch(payload: dict[str, object]) -> object:
-    try:
-        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
-            "utf-8"
-        )
-    except (TypeError, ValueError) as error:
-        raise DependencySecurityError(
-            "cannot serialize the OSV querybatch request"
-        ) from error
-    request = Request(
-        OSV_QUERY_BATCH_URL,
-        data=body,
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Rill-dependency-security/1",
-        },
-        method="POST",
-    )
-    opener = build_opener(_RejectRedirects())
-    try:
-        with opener.open(request, timeout=OSV_TIMEOUT_SECONDS) as response:
-            if response.status != 200:
-                raise DependencySecurityError(
-                    f"OSV querybatch returned HTTP {response.status}"
-                )
-            if response.geturl() != OSV_QUERY_BATCH_URL:
-                raise DependencySecurityError("OSV querybatch response URL changed")
-            if response.headers.get_content_type() != "application/json":
-                raise DependencySecurityError(
-                    "OSV querybatch response Content-Type is not application/json"
-                )
-            content_length = response.headers.get("Content-Length")
-            if content_length is not None:
-                try:
-                    declared_length = int(content_length)
-                except ValueError as error:
-                    raise DependencySecurityError(
-                        "OSV querybatch returned an invalid Content-Length"
-                    ) from error
-                if declared_length < 0 or declared_length > MAX_JSON_BYTES:
-                    raise DependencySecurityError(
-                        "OSV querybatch response exceeds the size limit"
-                    )
-            response_body = response.read(MAX_JSON_BYTES + 1)
-            if len(response_body) > MAX_JSON_BYTES:
-                raise DependencySecurityError(
-                    "OSV querybatch response exceeds the size limit"
-                )
-    except DependencySecurityError:
-        raise
-    except HTTPError as error:
-        raise DependencySecurityError(
-            f"OSV querybatch returned HTTP {error.code}"
-        ) from error
-    except (URLError, TimeoutError, OSError) as error:
-        raise DependencySecurityError(
-            "OSV querybatch network request failed"
-        ) from error
-    return decode_json(response_body, source="OSV querybatch response")
-
-
-def scan_live_osv(
-    pins: Sequence[LockedPin],
-    *,
-    transport: BatchTransport = post_osv_querybatch,
-) -> tuple[SecurityFinding, ...]:
-    pending: list[tuple[int, LockedPin, str | None]] = [
-        (index, pin, None) for index, pin in enumerate(pins)
+def scan_live_osv(pins: Sequence[LockedPin]) -> int:
+    if not pins:
+        raise DependencySecurityError("cannot audit an empty Swift lockfile")
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "scripts/*.py.lock", "scripts/**/*.py.lock"],
+        cwd=PROJECT_DIR,
+        check=True,
+        capture_output=True,
+    ).stdout
+    python_locks = [
+        PROJECT_DIR / "tools/uv.lock",
+        *(PROJECT_DIR / path.decode("utf-8") for path in tracked.split(b"\0") if path),
     ]
-    seen_page_tokens = [set[str]() for _ in pins]
-    seen_advisory_ids = [set[str]() for _ in pins]
-    # The initial batch response is page one. Count every response so the
-    # advertised cap cannot become one initial page plus MAX follow-ups.
-    page_counts = [1 for _ in pins]
-    findings: list[SecurityFinding] = []
-
-    while pending:
-        queries: list[dict[str, str]] = []
-        for _, pin, page_token in pending:
-            query = {"commit": pin.revision}
-            if page_token is not None:
-                query["page_token"] = page_token
-            queries.append(query)
-        try:
-            raw_response = transport({"queries": queries})
-        except DependencySecurityError:
-            raise
-        except (OSError, TimeoutError) as error:
-            raise DependencySecurityError(
-                "OSV querybatch network request failed"
-            ) from error
-        pages = parse_osv_batch_response(raw_response, expected_results=len(pending))
-
-        next_pending: list[tuple[int, LockedPin, str | None]] = []
-        for (original_index, pin, _), page in zip(pending, pages, strict=True):
-            for advisory in page.advisories:
-                if advisory.advisory_id in seen_advisory_ids[original_index]:
-                    raise DependencySecurityError(
-                        f"OSV returned duplicate advisory {advisory.advisory_id} "
-                        f"across pages for {pin.identity}"
-                    )
-                seen_advisory_ids[original_index].add(advisory.advisory_id)
-                findings.append(
-                    SecurityFinding(
-                        source="live-osv",
-                        advisory_id=advisory.advisory_id,
-                        pin=pin,
-                        modified=advisory.modified,
-                    )
-                )
-            if page.next_page_token is not None:
-                if page.next_page_token in seen_page_tokens[original_index]:
-                    raise DependencySecurityError(
-                        f"OSV repeated a page token for {pin.identity}"
-                    )
-                seen_page_tokens[original_index].add(page.next_page_token)
-                page_counts[original_index] += 1
-                if page_counts[original_index] > MAX_PAGES_PER_QUERY:
-                    raise DependencySecurityError(
-                        f"OSV pagination exceeded {MAX_PAGES_PER_QUERY} pages for {pin.identity}"
-                    )
-                next_pending.append((original_index, pin, page.next_page_token))
-        pending = next_pending
-
-    return tuple(
-        sorted(findings, key=lambda item: (item.pin.identity, item.advisory_id))
-    )
+    expected = {
+        path: {("PyPI", name, version) for name, version in uv_inventory(path)}
+        for path in python_locks
+    }
+    expected[DEFAULT_LOCKFILE] = {
+        (
+            "SwiftURL",
+            pin.location.removeprefix("https://").removesuffix(".git"),
+            str(pin.version),
+        )
+        for pin in pins
+    }
+    report = PROJECT_DIR / ".artifacts/quality/dependency-osv.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="rill-osv-") as directory:
+        inventory = Path(directory).resolve() / "swift-commits.json"
+        inventory.write_text(json.dumps(commit_inventory(pins)), encoding="utf-8")
+        expected[inventory] = {("GIT", pin.identity, pin.revision) for pin in pins}
+        config = inventory.with_name("osv-scanner.toml")
+        # Do not allow auto-discovered configuration to silently suppress an
+        # advisory or exclude a package from this no-exceptions audit.
+        config.write_text("", encoding="utf-8")
+        result = subprocess.run(
+            [
+                "osv-scanner",
+                "scan",
+                "source",
+                "--config",
+                str(config),
+                "-L",
+                f"osv-scanner:{inventory}",
+                "-L",
+                str(DEFAULT_LOCKFILE),
+                *[arg for path in python_locks for arg in ("-L", f"uv.lock:{path}")],
+                "--all-packages",
+                "--format=json",
+                "--output-file",
+                str(report),
+            ],
+            cwd=PROJECT_DIR,
+            check=False,
+        )
+        if result.returncode:
+            print(
+                f"OSV-Scanner exited with status {result.returncode}; see {report}",
+                file=sys.stderr,
+            )
+            return 1
+        verify_scanner_inventory(
+            load_json_file(report, label="OSV-Scanner report"), expected
+        )
+    print(f"OSV-Scanner dependency audit passed; see {report}.")
+    return 0
 
 
 def _print_findings(findings: Sequence[SecurityFinding]) -> None:
     print("Dependency security check failed:", file=sys.stderr)
     for finding in findings:
-        if finding.source == "reviewed-baseline":
-            print(
-                f"- {finding.advisory_id}: {finding.pin.identity} {finding.pin.version} "
-                f"is in the reviewed affected range >= {finding.introduced}, < {finding.fixed}",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"- {finding.advisory_id}: OSV reported {finding.pin.identity} "
-                f"{finding.pin.version} at {finding.pin.revision} "
-                f"(modified {finding.modified})",
-                file=sys.stderr,
-            )
+        print(
+            f"- {finding.advisory_id}: {finding.pin.identity} {finding.pin.version} "
+            f"is in the reviewed affected range >= {finding.introduced}, < {finding.fixed}",
+            file=sys.stderr,
+        )
 
 
 def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -698,7 +575,7 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--live-osv",
         action="store_true",
-        help="Also query OSV for every locked SwiftPM commit",
+        help="Use OSV-Scanner to audit locked Swift revisions and versions and Python versions",
     )
     return parser.parse_args(argv)
 
@@ -714,20 +591,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             _print_findings(offline_findings)
             return 1
         if arguments.live_osv:
-            live_findings = scan_live_osv(pins)
-            if live_findings:
-                _print_findings(live_findings)
-                return 1
-    except DependencySecurityError as error:
+            return scan_live_osv(pins)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Dependency security check failed: {error}", file=sys.stderr)
         return 1
 
-    mode = "reviewed baseline + live OSV" if arguments.live_osv else "reviewed baseline"
     audited_commits = len(pins)
     commit_label = "commit" if audited_commits == 1 else "commits"
     advisory_label = "advisory" if len(policy.advisories) == 1 else "advisories"
     print(
-        f"Dependency security check passed ({mode}; {audited_commits} auditable "
+        f"Dependency security check passed (reviewed baseline; {audited_commits} auditable "
         f"{commit_label}; {len(policy.advisories)} reviewed Swift {advisory_label}; "
         f"review valid until {policy.expires_at.isoformat()})."
     )

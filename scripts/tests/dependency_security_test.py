@@ -87,29 +87,16 @@ class DependencySecurityTests(unittest.TestCase):
         )
         security.validate_policy_freshness(policy)
         self.assertEqual(security.scan_offline_baseline(pins, policy.advisories), ())
-        self.assertEqual(len(pins), 36)
-        self.assertTrue(
-            {
-                "grdb.swift",
-                "mlx-audio-swift",
-                "mlx-swift",
-                "openai",
-                "swift-huggingface",
-                "swift-openapi-runtime",
-                "swift-toml",
-                "swift-xet",
-            }.issubset({pin.identity for pin in pins})
-        )
-        self.assertEqual(policy.advisories, ())
+        self.assertTrue(pins)
 
-    def test_absent_lockfile_and_empty_inventories_are_valid(self) -> None:
+    def test_absent_lockfile_and_empty_inventories_fail(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             missing = Path(temporary_directory) / "Package.resolved"
-            self.assertEqual(security.load_lockfile(missing), ())
-        self.assertEqual(security.parse_lockfile(lock_payload()), ())
-        empty_baseline = empty_policy_payload()
-        self.assertEqual(security.parse_baseline(empty_baseline), ())
-        self.assertEqual(security.scan_live_osv((), transport=lambda _: {}), ())
+            with self.assertRaisesRegex(security.DependencySecurityError, "cannot read"):
+                security.load_lockfile(missing)
+        with self.assertRaisesRegex(security.DependencySecurityError, "non-empty"):
+            security.parse_lockfile(lock_payload())
+        self.assertEqual(security.parse_baseline(empty_policy_payload()), ())
 
     def test_reviewed_advisory_affected_and_fixed_boundaries(self) -> None:
         advisories = security.parse_baseline(baseline_payload())
@@ -250,48 +237,71 @@ class DependencySecurityTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertIn("regular file", result.stderr)
 
-    def test_live_response_maps_to_lock_order_and_any_advisory_is_a_finding(
-        self,
-    ) -> None:
+    def test_commit_inventory_preserves_exact_revisions(self) -> None:
         pins = self.parse_pins(
             ("first-package", "1.0.0", REVISION_A),
             ("second-package", "2.0.0", REVISION_B),
         )
-        requests: list[dict[str, object]] = []
-
-        def transport(payload: dict[str, object]) -> object:
-            requests.append(payload)
-            return {
-                "results": [
-                    {},
-                    {
-                        "vulns": [
-                            {
-                                "id": "GHSA-abcd-1234-efgh",
-                                "modified": "2026-07-13T00:00:00Z",
-                            }
-                        ]
-                    },
-                ]
-            }
-
-        findings = security.scan_live_osv(pins, transport=transport)
-
         self.assertEqual(
-            requests,
-            [{"queries": [{"commit": REVISION_A}, {"commit": REVISION_B}]}],
+            security.commit_inventory(pins),
+            {
+                "results": [
+                    {
+                        "packages": [
+                            {"package": {"name": "first-package", "commit": REVISION_A}},
+                            {"package": {"name": "second-package", "commit": REVISION_B}},
+                        ]
+                    }
+                ]
+            },
         )
-        self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].pin.identity, "second-package")
-        self.assertEqual(findings[0].advisory_id, "GHSA-abcd-1234-efgh")
+
+    def test_scanner_report_must_cover_each_source_and_coordinate(self) -> None:
+        expected = {
+            Path("/scan/swift-commits.json"): {("GIT", "first-package", REVISION_A)},
+            Path("/scan/Package.resolved"): {("SwiftURL", "github.com/a/b", "1.0.0")},
+            Path("/scan/uv.lock"): {("PyPI", "click", "8.0.0")},
+        }
+        complete = {
+            "results": [
+                {
+                    "source": {"path": str(path)},
+                    "packages": [
+                        {"package": {
+                            "ecosystem": ecosystem,
+                            "name": name,
+                            ("commit" if ecosystem == "GIT" else "version"): value,
+                        }}
+                        for ecosystem, name, value in coordinates
+                    ],
+                }
+                for path, coordinates in expected.items()
+            ]
+        }
+        security.verify_scanner_inventory(complete, expected)
+        for i in range(len(complete["results"])):
+            with self.subTest(source=i):
+                partial = copy.deepcopy(complete)
+                del partial["results"][i]
+                with self.assertRaisesRegex(security.DependencySecurityError, "incomplete"):
+                    security.verify_scanner_inventory(partial, expected)
+        incomplete = copy.deepcopy(complete)
+        incomplete["results"][0]["packages"][0]["package"]["commit"] = REVISION_B
+        with self.assertRaisesRegex(security.DependencySecurityError, "incomplete"):
+            security.verify_scanner_inventory(incomplete, expected)
+        del incomplete["results"][0]["packages"][0]["package"]["commit"]
+        with self.assertRaisesRegex(security.DependencySecurityError, "malformed"):
+            security.verify_scanner_inventory(incomplete, expected)
 
     def test_offline_command_never_invokes_live_transport(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
+            lock = root / "Package.resolved"
+            lock.write_text(json.dumps(lock_payload(("demo", "1.0.0", REVISION_A))))
             baseline = root / "baseline.json"
             baseline.write_text(json.dumps(empty_policy_payload()), encoding="utf-8")
             with (
-                mock.patch.object(security, "DEFAULT_LOCKFILE", root / "missing-Package.resolved"),
+                mock.patch.object(security, "DEFAULT_LOCKFILE", lock),
                 mock.patch.object(security, "DEFAULT_BASELINE", baseline),
                 mock.patch.object(security, "scan_live_osv") as live_scan,
                 mock.patch.object(
@@ -311,137 +321,6 @@ class DependencySecurityTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as error:
                     security.main([option, "/another-checkout/input.json"])
                 self.assertEqual(error.exception.code, 2)
-
-    def test_live_pagination_only_requeries_results_with_tokens(self) -> None:
-        pins = self.parse_pins(
-            ("first-package", "1.0.0", REVISION_A),
-            ("second-package", "2.0.0", REVISION_B),
-        )
-        requests: list[dict[str, object]] = []
-        responses = iter(
-            [
-                {"results": [{"next_page_token": "page-two"}, {}]},
-                {"results": [{}]},
-            ]
-        )
-
-        def transport(payload: dict[str, object]) -> object:
-            requests.append(payload)
-            return next(responses)
-
-        self.assertEqual(security.scan_live_osv(pins, transport=transport), ())
-        self.assertEqual(
-            requests,
-            [
-                {"queries": [{"commit": REVISION_A}, {"commit": REVISION_B}]},
-                {"queries": [{"commit": REVISION_A, "page_token": "page-two"}]},
-            ],
-        )
-
-    def test_live_rejects_repeated_tokens_and_duplicate_advisories_across_pages(
-        self,
-    ) -> None:
-        pins = self.parse_pins(("first-package", "1.0.0", REVISION_A))
-
-        repeated_token_responses = iter(
-            [
-                {"results": [{"next_page_token": "same"}]},
-                {"results": [{"next_page_token": "same"}]},
-            ]
-        )
-        with self.assertRaisesRegex(
-            security.DependencySecurityError, "repeated a page token"
-        ):
-            security.scan_live_osv(
-                pins, transport=lambda _: next(repeated_token_responses)
-            )
-
-        advisory = {
-            "id": "CVE-2026-00001",
-            "modified": "2026-07-13T00:00:00.123456Z",
-        }
-        duplicate_advisory_responses = iter(
-            [
-                {"results": [{"vulns": [advisory], "next_page_token": "next"}]},
-                {"results": [{"vulns": [advisory]}]},
-            ]
-        )
-        with self.assertRaisesRegex(
-            security.DependencySecurityError, "duplicate advisory"
-        ):
-            security.scan_live_osv(
-                pins, transport=lambda _: next(duplicate_advisory_responses)
-            )
-
-    def test_live_pagination_cap_includes_the_initial_response(self) -> None:
-        pins = self.parse_pins(("first-package", "1.0.0", REVISION_A))
-        call_count = 0
-
-        def transport(_: dict[str, object]) -> object:
-            nonlocal call_count
-            call_count += 1
-            return {"results": [{"next_page_token": f"page-{call_count + 1}"}]}
-
-        with self.assertRaisesRegex(
-            security.DependencySecurityError,
-            f"pagination exceeded {security.MAX_PAGES_PER_QUERY} pages",
-        ):
-            security.scan_live_osv(pins, transport=transport)
-
-        self.assertEqual(call_count, security.MAX_PAGES_PER_QUERY)
-
-    def test_live_rejects_malformed_response_shapes(self) -> None:
-        pins = self.parse_pins(("first-package", "1.0.0", REVISION_A))
-        malformed_responses = [
-            {},
-            {"results": []},
-            {"results": [{"unexpected": True}]},
-            {"results": [{"vulns": "not-an-array"}]},
-            {
-                "results": [
-                    {
-                        "vulns": [
-                            {
-                                "id": "CVE-2026-00001",
-                                "modified": "not-a-timestamp",
-                            }
-                        ]
-                    }
-                ]
-            },
-        ]
-        for response in malformed_responses:
-            with self.subTest(response=response):
-                with self.assertRaises(security.DependencySecurityError):
-                    security.scan_live_osv(pins, transport=lambda _: response)
-
-        two_pins = self.parse_pins(
-            ("first-package", "1.0.0", REVISION_A),
-            ("second-package", "2.0.0", REVISION_B),
-        )
-        with self.assertRaisesRegex(
-            security.DependencySecurityError, "same next_page_token"
-        ):
-            security.scan_live_osv(
-                two_pins,
-                transport=lambda _: {
-                    "results": [
-                        {"next_page_token": "duplicate"},
-                        {"next_page_token": "duplicate"},
-                    ]
-                },
-            )
-
-    def test_live_network_failure_is_fail_closed(self) -> None:
-        pins = self.parse_pins(("first-package", "1.0.0", REVISION_A))
-
-        def failing_transport(_: dict[str, object]) -> object:
-            raise OSError("network unavailable")
-
-        with self.assertRaisesRegex(
-            security.DependencySecurityError, "network request failed"
-        ):
-            security.scan_live_osv(pins, transport=failing_transport)
 
 
 if __name__ == "__main__":

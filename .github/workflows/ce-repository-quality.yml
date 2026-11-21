@@ -40,7 +40,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: dependency-audit
-          path: .artifacts/quality/python-osv.json
+          path: .artifacts/quality/dependency-osv.json
+          include-hidden-files: true
           if-no-files-found: error
 
   workflow-audit:

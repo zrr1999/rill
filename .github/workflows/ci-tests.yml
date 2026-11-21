@@ -300,19 +300,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
       - name: Require all selected verification jobs
         env:
-          APP_SCOPE: ${{ needs.scope.outputs.app }}
-          PREFLIGHT_RESULT: ${{ needs.preflight-lanes.result }}
-          WORKLOAD_SCOPE: ${{ needs.scope.outputs.performance_workloads }}
-          WORKLOAD_RESULT: ${{ needs.record-workloads.result }}
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          TOOLS_RESULT: ${{ needs.tool-tests.result }}
-        run: bash scripts/check_ci_results.sh
+          VERIFICATION_PASSED: >-
+            ${{
+              needs.scope.result == 'success' &&
+              needs.tool-tests.result == 'success' &&
+              ((needs.scope.outputs.app == 'true' && needs.preflight-lanes.result == 'success') ||
+               (needs.scope.outputs.app == 'false' && needs.preflight-lanes.result == 'skipped')) &&
+              ((needs.scope.outputs.performance_workloads == 'true' && needs.record-workloads.result == 'success') ||
+               (needs.scope.outputs.performance_workloads == 'false' && needs.record-workloads.result == 'skipped'))
+            }}
+        run: test "$VERIFICATION_PASSED" = true
     if: ${{ always() }}
   coverage:
     name: Coverage

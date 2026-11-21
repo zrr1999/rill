@@ -56,64 +56,42 @@ def evaluate(expression, values):
 
 
 class AggregateTests(unittest.TestCase):
-    def result(self, selection, app, preflight, scope, workload, tools="success"):
-        env = dict(os.environ)
-        env.update(
-            SCOPE_RESULT=selection,
-            TOOLS_RESULT=tools,
-            APP_SCOPE=app,
-            PREFLIGHT_RESULT=preflight,
-            WORKLOAD_SCOPE=scope,
-            WORKLOAD_RESULT=workload,
-        )
-        return subprocess.run(
-            ["bash", str(ROOT / "scripts/check_ci_results.sh")],
-            env=env,
-            capture_output=True,
-            check=False,
-        ).returncode
-
     def test_all_result_and_scope_combinations_fail_closed(self):
-        # Include missing/invalid outputs and every dependency terminal state.
+        step = block("Require all selected verification jobs")
+        guard = re.search(r"\$\{\{(.*?)\}\}", step, re.S).group(1)
+        guard = " ".join(guard.split())
         states = ("success", "failure", "cancelled", "skipped", "")
         scopes = ("true", "false", "", "invalid")
-        for docs, app, preflight, scope, workload in itertools.product(
-            states, scopes, states, scopes, states
+        for selection, tools, app, preflight, scope, workload in itertools.product(
+            states, states, scopes, states, scopes, states
         ):
+            actual = evaluate(guard, {
+                "needs.scope.result": selection,
+                "needs.tool-tests.result": tools,
+                "needs.scope.outputs.app": app,
+                "needs.preflight-lanes.result": preflight,
+                "needs.scope.outputs.performance_workloads": scope,
+                "needs.record-workloads.result": workload,
+            })
             expected = (
-                docs == "success"
+                selection == tools == "success"
                 and (app, preflight) in (("true", "success"), ("false", "skipped"))
                 and (scope, workload) in (("true", "success"), ("false", "skipped"))
             )
-            with self.subTest(
-                docs=docs, app=app, preflight=preflight, scope=scope, workload=workload
-            ):
-                self.assertEqual(self.result(docs, app, preflight, scope, workload) == 0, expected)
+            self.assertEqual(actual, expected)
 
-
-    def test_tool_tests_must_succeed_even_when_application_jobs_are_skipped(self):
-        for result in ("failure", "cancelled", "skipped", ""):
-            with self.subTest(result=result):
-                self.assertNotEqual(self.result("success", "false", "skipped", "false", "skipped", result), 0)
-
-
-class SecurityAggregateTests(unittest.TestCase):
     def test_every_security_job_must_succeed(self):
         workflow = (ROOT / ".github/workflows/ci-static-checks.yml").read_text()
         step = block("Require all security checks", workflow)
-        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        guard = " ".join(re.search(r"\$\{\{(.*?)\}\}", step, re.S).group(1).split())
         states = ("success", "failure", "cancelled", "skipped", "")
         for lint, codeql, dependencies in itertools.product(states, repeat=3):
-            with self.subTest(lint=lint, codeql=codeql, dependencies=dependencies):
-                result = subprocess.run(
-                    ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
-                    env=dict(os.environ, LINT_RESULT=lint, CODEQL_RESULT=codeql,
-                             DEPENDENCIES_RESULT=dependencies),
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(result.returncode == 0,
-                                 (lint, codeql, dependencies) == ("success",) * 3)
+            actual = evaluate(guard, {
+                "needs.lint.result": lint,
+                "needs.codeql.result": codeql,
+                "needs.dependencies.result": dependencies,
+            })
+            self.assertEqual(actual, (lint, codeql, dependencies) == ("success",) * 3)
 
 
 class CachePolicyTests(unittest.TestCase):
