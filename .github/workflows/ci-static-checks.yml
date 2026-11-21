@@ -161,10 +161,5 @@ jobs:
     steps:
       - name: Require all security checks
         env:
-          SECURITY_CHECKS_PASSED: >-
-            ${{
-              needs.lint.result == 'success' &&
-              needs.codeql.result == 'success' &&
-              needs.dependencies.result == 'success'
-            }}
-        run: test "$SECURITY_CHECKS_PASSED" = true
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: jq -e 'length > 0 and all(.[]; .result == "success")' <<< "$NEEDS_JSON"

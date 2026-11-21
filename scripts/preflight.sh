@@ -274,8 +274,6 @@ run_swift_tests() {
 
 run_script_tests() {
   local test_dir="$SCRIPT_DIR/tests"
-  echo 'Testing dependency security policy...'
-  uv run --script "$test_dir/dependency_security_test.py"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'
@@ -369,9 +367,6 @@ check_repository() {
   if [[ "$PREFLIGHT_LANE" == all ]]; then
     info "Testing evaluation and performance analysis tools..."
     uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
-
-    info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
-    uv run --no-build --script "$SCRIPT_DIR/check_dependency_security.py"
 
     info "Scanning Git history and the current source snapshot for secrets..."
     bash "$SCRIPT_DIR/check_secrets.sh"

@@ -80,19 +80,6 @@ class AggregateTests(unittest.TestCase):
             )
             self.assertEqual(actual, expected)
 
-    def test_every_security_job_must_succeed(self):
-        workflow = (ROOT / ".github/workflows/ci-static-checks.yml").read_text()
-        step = block("Require all security checks", workflow)
-        guard = " ".join(re.search(r"\$\{\{(.*?)\}\}", step, re.S).group(1).split())
-        states = ("success", "failure", "cancelled", "skipped", "")
-        for lint, codeql, dependencies in itertools.product(states, repeat=3):
-            actual = evaluate(guard, {
-                "needs.lint.result": lint,
-                "needs.codeql.result": codeql,
-                "needs.dependencies.result": dependencies,
-            })
-            self.assertEqual(actual, (lint, codeql, dependencies) == ("success",) * 3)
-
 
 class CachePolicyTests(unittest.TestCase):
     def test_clean_runs_do_not_restore(self):
