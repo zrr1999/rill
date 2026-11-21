@@ -160,8 +160,10 @@ jobs:
     steps:
       - name: Require all security checks
         env:
-          LINT_RESULT: ${{ needs.lint.result }}
-          CODEQL_RESULT: ${{ needs.codeql.result }}
-          DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
-        run: |
-          [[ "$LINT_RESULT" == success && "$CODEQL_RESULT" == success && "$DEPENDENCIES_RESULT" == success ]]
+          SECURITY_CHECKS_PASSED: >-
+            ${{
+              needs.lint.result == 'success' &&
+              needs.codeql.result == 'success' &&
+              needs.dependencies.result == 'success'
+            }}
+        run: test "$SECURITY_CHECKS_PASSED" = true
