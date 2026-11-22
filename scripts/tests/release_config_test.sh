@@ -613,26 +613,9 @@ create_release_source_fixture() {
   printf '%s\n' '.build/' >"$repository/.gitignore"
   cp "$RELEASE_SCRIPT" "$repository/scripts/release.sh"
   chmod +x "$repository/scripts/release.sh"
-  cat >"$repository/scripts/preflight.sh" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-
-: "${SNAPSHOT_PROBE:?SNAPSHOT_PROBE is required}"
-if [[ -n "${RILL_RELEASE_SOURCE_CAPABILITY-}" ]]; then
-  echo "release source capability leaked into snapshot preflight" >&2
-  exit 74
-fi
-snapshot_project="$(cd "$(dirname "$0")/.." && pwd -P)"
-printf '%s\n%s\n' \
-  "$snapshot_project" \
-  "$(git -C "$snapshot_project" rev-parse HEAD)" >"$SNAPSHOT_PROBE"
-exit 73
-SH
-  chmod +x "$repository/scripts/preflight.sh"
   git -C "$repository" init -q
   git -C "$repository" add \
     .gitignore \
-    scripts/preflight.sh \
     scripts/release.sh \
     scripts/third_party_notices_manifest.json
   git -C "$repository" \

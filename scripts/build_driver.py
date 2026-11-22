@@ -740,7 +740,7 @@ def main(arguments: list[str] | None = None) -> None:
     arguments = sys.argv[1:] if arguments is None else arguments
     if not arguments:
         raise BuildError(
-            "usage: scripts/preflight.sh swift <build|test|clean|release|receipt|cache> [arguments...]"
+            "usage: uv run --no-build --script scripts/build_driver.py <build|test|clean|release|receipt|cache> [arguments...]"
         )
     subcommand, *arguments = arguments
     if os.environ.get("RILL_BUILD_PROFILE"):

@@ -117,7 +117,7 @@ jobs:
         if: matrix.language == 'swift'
         # CodeQL traces source compilation; this arena is never used for an App bundle.
         # SwiftBuild's Metal resource compilation fails under the macOS tracer.
-        run: scripts/preflight.sh swift build --build-system native --scratch-path .artifacts/build/codeql --arch arm64
+        run: uv run --no-build --script scripts/build_driver.py build --build-system native --scratch-path .artifacts/build/codeql --arch arm64
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           category: /language:${{ matrix.language }}

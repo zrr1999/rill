@@ -230,11 +230,48 @@ check_record_domain_boundary() (
   echo "Record domain boundary check passed"
 )
 
+check_commit_messages() (
+  cd "$PROJECT_DIR" || return
+  local base=""
+  local head="HEAD"
+  local range=""
+  local revisions=""
+  local revision=""
+  local message_file=""
+
+  if (($# > 2)); then
+    echo "usage: $0 commit-messages [BASE [HEAD]]" >&2
+    exit 2
+  fi
+  head="${2:-HEAD}"
+  base="${1:-}"
+  head="$(git rev-parse --verify "${head}^{commit}")" || return
+  range="$head"
+  if [[ -n "$base" && "$base" != "0000000000000000000000000000000000000000" ]]; then
+    base="$(git rev-parse --verify "${base}^{commit}")" || return
+    range="$base..$head"
+  fi
+  revisions="$(git rev-list --reverse "$range")" || return
+  [[ -n "$revisions" ]] || return 0
+  message_file="$(mktemp)" || return
+  trap '[[ -n ${message_file:-} ]] && rm -f "$message_file"' EXIT
+  while IFS= read -r revision; do
+    git show --no-patch --format=%B "$revision" >"$message_file" || return
+    echo "Checking commit $revision"
+    uvx --no-build --from zendev==0.5.0 \
+      zendev message check --profile zendev "$message_file" || return
+  done <<<"$revisions"
+)
+
 main() {
   case "${1:-}" in
   workflows)
     shift
     check_workflows "$@"
+    ;;
+  commit-messages)
+    shift
+    check_commit_messages "$@"
     ;;
   secrets | record-boundary)
     if [[ $# -ne 1 ]]; then
@@ -248,7 +285,7 @@ main() {
     fi
     ;;
   *)
-    echo "Usage: $0 {workflows [jactionlint arguments] | secrets | record-boundary}" >&2
+    echo "Usage: $0 {workflows [jactionlint arguments] | secrets | record-boundary | commit-messages [BASE [HEAD]]}" >&2
     return 2
     ;;
   esac

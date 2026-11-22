@@ -335,8 +335,11 @@ def run_llm(suite, output):
     environment.update({SUITES[suite][2]: "1", "RILL_EVAL_OUTPUT": str(raw_path.resolve())})
     result = subprocess.run(
         [
-            str(ROOT / "scripts/preflight.sh"),
-            "swift",
+            "uv",
+            "run",
+            "--no-build",
+            "--script",
+            str(ROOT / "scripts/build_driver.py"),
             "test-domain",
             "--filter",
             "RillQualityEvaluations." + SUITES[suite][1],

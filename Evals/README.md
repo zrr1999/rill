@@ -46,9 +46,9 @@ read real screens, history or recordings. The optional local
 its ASR witness must meet the existing provenance and term-count contract.
 Credentials are never command arguments or report fields.
 
-The runner uses the locked `scripts/preflight.sh swift test-domain` entry point
+The runner uses the locked `uv run --no-build --script scripts/build_driver.py test-domain` entry point
 and only enables the selected suite in `RillQualityEvaluations`. Ordinary
-`mise run test` / `mise run ci` explicitly exclude that target from execution, even if
+`mise run test` explicitly excludes that target from execution, even if
 a live-evaluation environment flag was inherited. The target remains compiled.
 
 Each invocation creates a fresh private directory under

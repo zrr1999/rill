@@ -6,10 +6,11 @@ Copy this checklist for each release candidate. Keep the automated results and d
 
 Attach evidence from the exact candidate commit before beginning device QA:
 
-- `mise run ci`: maintained prek hooks, generated artifacts, offline dependency policy,
-  full Git/source secret scans, release-policy tests, an arm64 Release build,
-  bundle and signing smoke checks, and the complete Swift test suite.
-- `scripts/preflight.sh commit-messages`: complete messages validated with the
+- `mise run check` and `mise run test --clean --desktop --evidence`: repository hooks,
+  Swift tests including desktop, record stress and UI render checks.
+- `mise run package:smoke --clean`: arm64 Release build, bundle assembly and
+  ad-hoc signing verification.
+- `mise exec -- scripts/check_repository.sh commit-messages`: complete messages validated with the
   pinned ZenDev profile.
 - `mise run audit:dependencies`: current
   advisory results for the exact locked dependency revisions.
@@ -17,7 +18,7 @@ Attach evidence from the exact candidate commit before beginning device QA:
 
 Preserve logs, toolchain versions, expected skips, source commit, and artifact hashes together. Local development runs and historical WhisperKit/sherpa-onnx results do not satisfy current MLX speech-worker candidate gates. The current source and locked model catalog determine which tests and models apply.
 
-The Release lane of `CI - Tests` retains a `native-preflight-app-release-<run id>-<attempt>` artifact for 14 days. It contains the arm64 app assembled and signature-verified by that run, its ZIP SHA-256, and the source revision/dirty state. Verify the checksum before extraction and record the app's embedded build identity for interaction QA. The bundle keeps the existing ad-hoc signature and `preflight` version; distribution trust and notarization still need the release candidate. Local preflight can save the same evidence by setting `RILL_PREFLIGHT_APP_DIR` to an artifact directory. CI exports after the Release lane passes; the parallel Tests lane may still be running. Use the app for acceptance only when that run's `Release preflight` aggregate succeeds. Default local preflight still exports after all tests pass. An existing archive is preserved rather than overwritten.
+The Release lane of `CI - Tests` retains a `native-preflight-app-release-<run id>-<attempt>` artifact for 14 days. It contains the arm64 app assembled and signature-verified by that run, its ZIP SHA-256, and the source revision/dirty state. Verify the checksum before extraction and record the app's embedded build identity for interaction QA. The bundle keeps the existing ad-hoc signature and `preflight` version; distribution trust and notarization still need the release candidate. The local package smoke check can save the same evidence by setting `RILL_PREFLIGHT_APP_DIR` to an artifact directory. CI exports after the Release lane passes; the parallel Tests lane may still be running. Use the app for acceptance only when that run's `Release preflight` aggregate succeeds. Run the local test suite separately before accepting a local smoke package. An existing archive is preserved rather than overwritten.
 
 Automated checks do not prove Gatekeeper behavior after a real download, permission prompts, physical Fn or input-method behavior, acoustic quality, or VoiceOver usability. Record those results below with the packaged candidate.
 

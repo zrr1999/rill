@@ -45,21 +45,21 @@ run = "uv run --no-build --locked --script scripts/docs.py"
 [tasks.build]
 description = "Build one Debug product"
 usage = 'arg "[product]" default="RillApp"'
-run = 'scripts/preflight.sh swift build --product "${usage_product?}"'
+run = 'uv run --no-build --script scripts/build_driver.py build --product "${usage_product?}"'
 
 [tasks.test]
-description = "Run domain and native tests"
-extends = "no-args"
-run = "scripts/preflight.sh test"
+description = "Run macOS tests (desktop and test evidence are opt-in)"
+usage = """
+flag "--clean" help="Start with a clean Debug build arena"
+flag "--desktop" help="Also run tests requiring an unlocked macOS desktop"
+flag "--evidence" help="Run Record stress tests and save UI renders"
+"""
+run = "scripts/test.sh{% if usage.clean %} --clean{% endif %}{% if usage.desktop %} --desktop{% endif %}{% if usage.evidence %} --evidence{% endif %}"
 
-[tasks.ci]
-description = "Run the full local CI gate"
-usage = 'flag "--clean" help="Rebuild without reusing build artifacts"'
-run = [
-  { task = "check" },
-  { task = "docs" },
-  "scripts/preflight.sh --test-evidence{% if usage.clean %} --clean{% endif %}",
-]
+[tasks."package:smoke"]
+description = "Build the release App and verify packaging and ad-hoc signing"
+usage = 'flag "--clean" help="Start with a clean Release build arena"'
+run = "scripts/package_smoke.sh{% if usage.clean %} --clean{% endif %}"
 
 [tasks."audit:dependencies"]
 description = "Audit locked Swift revisions and Python dependencies against OSV"

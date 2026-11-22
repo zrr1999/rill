@@ -7,7 +7,6 @@
 #   ./scripts/release.sh                  # 构建 + 签名 + DMG
 #   ./scripts/release.sh --notarize       # 构建 + 签名 + 公证 + DMG
 #   ./scripts/release.sh --install        # 增量构建 + 安装到 /Applications
-#   ./scripts/release.sh --preflight      # 完整预检后构建 + 签名 + DMG
 #   ./scripts/release.sh --validate-config # 仅验证发布签名配置
 #   RELEASE_OUTPUT_DIR=/tmp/rill-release ./scripts/release.sh # 输出到仓库外目录
 #
@@ -106,7 +105,6 @@ INSTALL_TRANSACTION_NEW_IDENTITY=""
 DO_NOTARIZE=false
 DO_INSTALL=false
 DO_VALIDATE_CONFIG=false
-DO_PREFLIGHT=false
 VALIDATED_RELEASE_TAG=""
 VALIDATED_RELEASE_COMMIT=""
 VALIDATED_RELEASE_TREE=""
@@ -127,13 +125,11 @@ for arg in "$@"; do
   case "$arg" in
   --notarize) DO_NOTARIZE=true ;;
   --install) DO_INSTALL=true ;;
-  --preflight) DO_PREFLIGHT=true ;;
   --validate-config) DO_VALIDATE_CONFIG=true ;;
   --help | -h)
-    echo "用法: $0 [--notarize] [--install] [--preflight] [--validate-config]"
+    echo "用法: $0 [--notarize] [--install] [--validate-config]"
     echo "  --notarize   签名后提交 Apple 公证（需要 Developer ID Application 证书）"
     echo "  --install    构建后安装到 /Applications"
-    echo "  --preflight  构建前运行完整仓库检查和全量测试"
     echo "  --validate-config  仅验证签名身份和公证参数，不构建、不签名"
     echo "  RELEASE_OUTPUT_DIR  可选输出目录；默认 .artifacts/release"
     exit 0
@@ -144,12 +140,6 @@ for arg in "$@"; do
     ;;
   esac
 done
-
-# A notarized distribution candidate must retain the complete release gate.
-# Local build/install stays incremental unless the caller opts into it.
-if $DO_NOTARIZE; then
-  DO_PREFLIGHT=true
-fi
 
 # ─── 辅助函数 ────────────────────────────────────────────────────
 info() { echo "▸ $*"; }
@@ -1422,7 +1412,7 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0
 fi
 
-# 身份配置必须在预检和构建前失败，避免用错误证书完成昂贵构建后才发现问题。
+# 身份配置必须在构建前失败，避免用错误证书完成昂贵构建后才发现问题。
 validate_release_configuration
 if $DO_VALIDATE_CONFIG; then
   info "发布配置验证通过（未执行构建、签名或公证）"
@@ -1449,20 +1439,22 @@ info "发布输出目录: $RELEASE_OUTPUT_DIR"
 
 # ─── 步骤 1: 构建 ────────────────────────────────────────────────
 cd "$PROJECT_DIR"
-if $DO_PREFLIGHT; then
-  info "运行完整发布预检和全量测试..."
-  if $DO_NOTARIZE; then
-    "$SCRIPT_DIR/preflight.sh" --clean
-  else
-    "$SCRIPT_DIR/preflight.sh"
-  fi
-  info "完整发布预检通过"
+WORKER_CACHE="auto"
+if $DO_NOTARIZE; then
+  info "在发布源码快照中运行测试..."
+  uv run --no-build --script "$SCRIPT_DIR/check_module_boundaries.py"
+  "$SCRIPT_DIR/test.sh" --scripts
+  uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
+  bash "$SCRIPT_DIR/check_repository.sh" secrets
+  bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only
+  "$SCRIPT_DIR/test.sh" --clean --desktop
+  revalidate_notarized_release_source "测试后"
+  info "清理 Release 构建缓存..."
+  uv run --no-build --script "$SCRIPT_DIR/build_driver.py" clean --configuration release
+  WORKER_CACHE="off"
 else
-  info "跳过完整预检；如需全量测试请运行 scripts/preflight.sh 或传入 --preflight"
   info "增量构建 Release..."
 fi
-WORKER_CACHE="auto"
-$DO_NOTARIZE && WORKER_CACHE="off"
 BUILD_RESULT="$RELEASE_TEMP_DIR/build-result.json"
 uv run --no-build --script "$SCRIPT_DIR/build_driver.py" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
 revalidate_notarized_release_source "构建后"

@@ -9,15 +9,15 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 cat >"$TEST_ROOT/release-failure.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-source "$1/scripts/preflight.sh"
-check_preflight_toolchain() { :; }
-parse_preflight_options --lane release
+source "$1/scripts/package_smoke.sh"
+check_toolchain() { :; }
+require_command() { :; }
 locked_swift() {
   echo "$PACKAGE_SMOKE_ROOT" >"$FIXTURE_TRACE"
   echo "release fixture failed" >&2
   return 47
 }
-run_preflight
+run_package_smoke
 SH
 status=0
 env RILL_PREFLIGHT_REPORT_DIR="$TEST_ROOT/release-cleanup" \

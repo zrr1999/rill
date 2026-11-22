@@ -307,8 +307,8 @@ done
 
 if [[ -n "$BUILD_RESULT" ]]; then
   [[ -z "$BUILD_DIR" ]] || error "--build-dir and --build-result are mutually exclusive"
-  BUILD_DIR="$("$SCRIPT_DIR/preflight.sh" swift receipt "$BUILD_RESULT" --field productsDirectory)"
-  CHECKOUTS_DIR="$("$SCRIPT_DIR/preflight.sh" swift receipt "$BUILD_RESULT" --field checkoutsDirectory)"
+  BUILD_DIR="$(uv run --no-build --script "$SCRIPT_DIR/build_driver.py" receipt "$BUILD_RESULT" --field productsDirectory)"
+  CHECKOUTS_DIR="$(uv run --no-build --script "$SCRIPT_DIR/build_driver.py" receipt "$BUILD_RESULT" --field checkoutsDirectory)"
 fi
 [[ -n "$BUILD_DIR" ]] || error "--build-dir or --build-result is required"
 [[ -n "$APP_BUNDLE" ]] || error "--app-bundle is required"
