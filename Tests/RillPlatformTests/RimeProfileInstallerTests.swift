@@ -269,7 +269,7 @@ struct RimeProfileInstallerTests {
         to: shared.appendingPathComponent("opencc/custom.json"))
       try Data("shared".utf8).write(to: shared.appendingPathComponent("opencc/s2t.json"))
       let deployer = helper.appendingPathComponent("Contents/Helpers/rime_deployer")
-      // The real Rime deployment/ABI is exercised by input_method_test.py. This fixture
+      // The real Rime deployment/ABI is exercised by validate_input_method.py. This fixture
       // isolates import atomicity and byte preservation from dictionary compilation.
       try Data(
         """

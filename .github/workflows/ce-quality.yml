@@ -16,6 +16,10 @@ on:
           - vocabulary-correction
           - context-correction
 
+env:
+  UV_CACHE_DIR: ${{ github.workspace }}/.artifacts/uv-cache
+  PREK_HOME: ${{ github.workspace }}/.artifacts/prek-cache
+
 permissions:
   contents: read
 
@@ -32,9 +36,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Install locked development tools
+        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "0.13.5"
+          version: "2026.11.0"
+
+      - name: Restore Python and hook caches
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .artifacts/uv-cache
+            .artifacts/prek-cache
+          key: python-hooks-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('mise.lock', 'prek.toml', '**/uv.lock', 'scripts/**/*.py.lock') }}
+
       - name: Run the selected quality evaluation
         env:
           EVALUATION_SUITE: ${{ matrix.suite }}

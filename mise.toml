@@ -1,0 +1,67 @@
+min_version = "2026.11.0"
+
+[tools]
+uv = "0.13.5"
+prek = "0.5.7"
+gitleaks = "8.30.1"
+osv-scanner = "2.7.0"
+node = "26.13.0"
+
+[hooks]
+postinstall = 'if [ "${CI:-}" != "true" ]; then prek install --prepare-hooks; fi'
+
+# An explicit help flag makes mise reject extra arguments on fixed commands.
+[task_templates.no-args]
+usage = 'flag "-h --help" help="Show help"'
+
+[tasks.check]
+description = "Run read-only formatting and static checks"
+extends = "no-args"
+run = ["prek validate-config prek.toml", "prek -c prek.toml run --all-files"]
+
+[tasks.format]
+description = "Apply explicit Python, Swift, and shell formatting fixes"
+extends = "no-args"
+run = [
+  "uv run --project tools ruff check --fix tools",
+  "uv run --project tools ruff format tools",
+  "prek run swift-format --hook-stage manual --all-files",
+  "uvx --from shfmt-py==4.2.0 shfmt -w -i 2 -bn scripts/*.sh scripts/tests/*.sh",
+]
+
+[tasks.coverage]
+description = "Collect Python and Swift domain coverage without provider evaluations"
+extends = "no-args"
+run = [
+  "uv run --project tools --frozen pytest --cov=tools/src/rill_dev --cov-config=tools/pyproject.toml --cov-report=xml:.artifacts/quality/python-coverage.xml --cov-report=term-missing tools/tests",
+  "bash scripts/check_coverage.sh",
+]
+
+[tasks.docs]
+description = "Build documentation or preview it locally with serve"
+raw_args = true
+run = "uv run --no-build --locked --script scripts/docs.py"
+
+[tasks.build]
+description = "Build one Debug product"
+usage = 'arg "[product]" default="RillApp"'
+run = 'scripts/preflight.sh swift build --product "${usage_product?}"'
+
+[tasks.test]
+description = "Run domain and native tests"
+extends = "no-args"
+run = "scripts/preflight.sh test"
+
+[tasks.ci]
+description = "Run the full local CI gate"
+usage = 'flag "--clean" help="Rebuild without reusing build artifacts"'
+run = [
+  { task = "check" },
+  { task = "docs" },
+  "scripts/preflight.sh --test-evidence{% if usage.clean %} --clean{% endif %}",
+]
+
+[tasks."audit:dependencies"]
+description = "Audit locked Swift revisions and Python dependencies against OSV"
+extends = "no-args"
+run = "uv run --no-build --script scripts/audit_dependencies.py"

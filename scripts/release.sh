@@ -1464,7 +1464,7 @@ fi
 WORKER_CACHE="auto"
 $DO_NOTARIZE && WORKER_CACHE="off"
 BUILD_RESULT="$RELEASE_TEMP_DIR/build-result.json"
-uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
+uv run --no-build --script "$SCRIPT_DIR/build_driver.py" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
 revalidate_notarized_release_source "构建后"
 
 resolve_build_identity
@@ -1518,7 +1518,7 @@ codesign --force --options runtime --timestamp \
   "$SPEECH_WORKER_EXECUTABLE"
 
 info "签名外层应用..."
-uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" \
+uv run --no-build --script "$SCRIPT_DIR/assemble_input_method.py" \
   --sign-existing "$APP_BUNDLE/Contents/Helpers/RillInputMethod.app" \
   --signing-identity "$RESOLVED_SIGN_IDENTITY"
 codesign --force --options runtime --timestamp \

@@ -6,7 +6,7 @@ Rill uses a separate InputMethodKit app with the pinned Rime 1.16.0 engine, Lua,
 
 ## Build and package
 
-Run `just ci` to validate the complete package, or use the local assembly commands in [CONTRIBUTING.md](../CONTRIBUTING.md). The assembled Rill app contains `Contents/Helpers/RillInputMethod.app`; signing covers nested libraries and helpers before the outer app. Ad-hoc builds cannot validate an authorized learning connection.
+Run `mise run ci` to validate the complete package, or use the local assembly commands in [CONTRIBUTING.md](../CONTRIBUTING.md). The assembled Rill app contains `Contents/Helpers/RillInputMethod.app`; signing covers nested libraries and helpers before the outer app. Ad-hoc builds cannot validate an authorized learning connection.
 
 The bundle identifier is `dev.zrr.inputmethod.Rill`; the literal `.inputmethod.` segment is required for macOS discovery. The selectable mode is the same identifier with `.Hans` appended. Keep the packaged plist, IMK server and IPC signature identity aligned through `InputMethodPaths`. The old `dev.zrr.Rill.InputMethod` identifier is only used to detect a running legacy component before repair.
 
@@ -25,13 +25,15 @@ keeps its last valid settings on other read, decoding, or validation errors.
 Missing fonts fall back to the system font. Neither Rime
 deployment nor the learning connection is required for appearance changes.
 
-`uv run --script scripts/tests/input_method_test.py PATH/TO/RillInputMethod.app` checks the signed bundle with both a synthetic profile and the bundled default: deployment, plugin loading, six candidates, full-pinyin commits and copied userdb reopening. All resources come from the app. It does not modify real input sources or the user's profile. `RILL_IME_VALIDATION_BUNDLE=/path/to/RillInputMethod.app scripts/preflight.sh swift test --filter RimeProfileInstallerTests` also exercises the production installer with the default data in temporary directories.
+`uv run --script scripts/tests/input_method_test.py` checks that a modified cached dictionary is rejected.
+
+`uv run --script scripts/validate_input_method.py bundle PATH/TO/RillInputMethod.app` checks the signed bundle with both a synthetic profile and the bundled default: deployment, plugin loading, six candidates, full-pinyin commits and copied userdb reopening. The probe uses resources from the app. Run it from the matching checkout so it can also verify the packaged template icon and its plist references. It does not modify real input sources or the user's profile. `RILL_IME_VALIDATION_BUNDLE=/path/to/RillInputMethod.app scripts/preflight.sh swift test --filter RimeProfileInstallerTests` also exercises the production installer with the default data in temporary directories.
 
 The packaged executable also supports `--probe-profile COPIED_PROFILE INPUTS_JSON OUTPUT_JSON` for controlled replay. The JSON input is an array of at most 32 keystroke strings. Always use a disposable copy: replay commits text and can change Rime frequencies. The output contains candidates and commits and must remain private when using personal dictionaries.
 
 For migration acceptance, stop Squirrel, copy its complete profile and compare all `.userdb` file hashes before deployment. Compare `rime_dict_manager` backups from the copies for text, reading, commit count and dynamic weight. Run the same input sequence on separate copies of the original and imported profiles; compare candidate order without sharing either user's data in logs or commits.
 
-`uv run --script scripts/tests/input_method_migration_test.py --original FROZEN_PROFILE --migrated IMPORTED_PROFILE --bundle PATH/TO/RillInputMethod.app --report REPORT.json` automates that comparison on disposable copies and emits only counts and equality results. It checks complete database bytes, all reading/phrase/count/weight/tick rows, and eight fixed candidate/commit replays with the packaged engine.
+`uv run --script scripts/validate_input_method.py migration --original FROZEN_PROFILE --migrated IMPORTED_PROFILE --bundle PATH/TO/RillInputMethod.app --report REPORT.json` automates that comparison on disposable copies and emits only counts and equality results. It checks complete database bytes, all reading/phrase/count/weight/tick rows, and eight fixed candidate/commit replays with the packaged engine.
 
 ## Mac acceptance
 

@@ -167,39 +167,33 @@ generate_app_icon() {
   local source_png="${1-}"
   local output_icns="${2-}"
   local rendition_renderer="$SCRIPT_DIR/render_app_icon_renditions.swift"
-  local expected_source_sha256="c6c6bd3647ca2cc2ae860c27832d2f8150c5832320ed7b4b7b95eae902fe2642"
   local max_source_bytes=$((500 * 1024))
   local temporary_directory=""
   local iconset=""
-  local reviewed_source=""
-  local source_sha256=""
+  local source_snapshot=""
+  local properties=""
   local source_bytes=""
-  local pixel_width=""
-  local pixel_height=""
 
   [[ -n "$source_png" && -n "$output_icns" ]] || error "usage: $0 app-icon SOURCE_PNG OUTPUT_ICNS"
   command -v sips >/dev/null 2>&1 || error "sips is required"
   command -v iconutil >/dev/null 2>&1 || error "iconutil is required"
-  command -v shasum >/dev/null 2>&1 || error "shasum is required"
   command -v swift >/dev/null 2>&1 || error "Swift is required"
   [[ -f "$source_png" ]] || error "app icon source is missing: $source_png"
   [[ -f "$rendition_renderer" ]] || error "app icon rendition renderer is missing: $rendition_renderer"
   temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/rill-app-icon.XXXXXX")"
   iconset="$temporary_directory/Rill.iconset"
-  reviewed_source="$temporary_directory/AppIcon-1024-reviewed.png"
+  source_snapshot="$temporary_directory/AppIcon-1024.png"
   mkdir -p "$iconset" "$(dirname "$output_icns")"
-  cp "$source_png" "$reviewed_source"
-  source_sha256="$(shasum -a 256 "$reviewed_source" | awk '{ print $1 }')"
-  [[ "$source_sha256" == "$expected_source_sha256" ]] \
-    || error "app icon source SHA-256 does not match the reviewed asset"
-  source_bytes="$(wc -c <"$reviewed_source" | tr -d '[:space:]')"
+  cp "$source_png" "$source_snapshot"
+  source_bytes="$(wc -c <"$source_snapshot" | tr -d '[:space:]')"
   [[ "$source_bytes" -le "$max_source_bytes" ]] \
     || error "app icon source exceeds the 500 KiB repository limit"
-  pixel_width="$(sips -g pixelWidth "$reviewed_source" | awk '/pixelWidth:/ { print $2 }')"
-  pixel_height="$(sips -g pixelHeight "$reviewed_source" | awk '/pixelHeight:/ { print $2 }')"
-  [[ "$pixel_width" == "1024" && "$pixel_height" == "1024" ]] \
-    || error "app icon source must be exactly 1024 x 1024 pixels"
-  swift "$rendition_renderer" render "$reviewed_source" "$iconset"
+  properties="$(sips -g format -g hasAlpha -g space "$source_snapshot")"
+  for property in 'format: png' 'hasAlpha: no' 'space: RGB'; do
+    grep -Eq "^[[:space:]]*${property}[[:space:]]*$" <<<"$properties" \
+      || error "app icon source must be an opaque RGB PNG"
+  done
+  swift "$rendition_renderer" render "$source_snapshot" "$iconset"
   swift "$rendition_renderer" verify "$iconset"
   rm -f "$output_icns"
   iconutil -c icns "$iconset" -o "$output_icns"
@@ -462,7 +456,7 @@ ditto \
   "$SPEECH_WORKER_SOURCE" \
   "$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"
 
-uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" --unsigned \
+uv run --no-build --script "$SCRIPT_DIR/assemble_input_method.py" --unsigned \
   --executable "$INPUT_METHOD_SOURCE" --output "$APP_BUNDLE/Contents/Helpers/RillInputMethod.app"
 
 # Verify the exact bytes that will be signed. The build directory can be

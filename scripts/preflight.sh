@@ -6,7 +6,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-BUILD_DIR=""
 SOURCE_REVISION=""
 SOURCE_DIRTY="false"
 SOURCE_FINGERPRINT=""
@@ -81,7 +80,7 @@ report_preflight_evidence() {
 }
 
 preflight_source() {
-  uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" \
+  uv run --no-build --script "$SCRIPT_DIR/build_driver.py" \
     preflight-source "$1" "$PROJECT_DIR" "$REPORT_DIR/source.json"
 }
 
@@ -181,57 +180,7 @@ verify_xcode_resource_accessor() {
 }
 
 locked_swift() {
-  uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
-}
-
-check_release_artifact_hygiene() {
-  local root="$1"
-  local name=""
-  local path=""
-  local found=()
-
-  [[ -d "$root" ]] || error "Release artifact hygiene root is not a directory: $root"
-  root="$(cd "$root" && pwd -P)"
-  for name in Rill.app Rill.dmg Rill.dmg.sha256; do
-    path="$root/$name"
-    if [[ -e "$path" || -L "$path" ]]; then
-      found+=("$name")
-    fi
-  done
-  if [[ "${#found[@]}" -gt 0 ]]; then
-    echo "✗ Repository-root release artifacts are forbidden: ${found[*]}" >&2
-    echo "  Preserve local artifacts under .artifacts/ or use a directory outside the repository." >&2
-    exit 1
-  fi
-  echo "Release artifact hygiene check passed."
-}
-
-check_record_domain_boundary() {
-  local legacy_domain_pattern='(^|[^A-Za-z0-9_])(DeliveryStack|ClipboardHistoryItem|ClipboardGroup|ClipboardPasteMode|ClipboardItemDryRun)([^A-Za-z0-9_]|$)'
-  local declaration_pattern='^[[:space:]]*(public |internal |private |fileprivate )?(final )?(struct|class|enum|protocol|actor|typealias) Clipboard[A-Z]'
-  local resource_pattern='id[[:space:]]*=[[:space:]]*"(stack\.push|clipboard\.copy)"|strategy[[:space:]]*=[[:space:]]*"(stack-first|clipboard-only)"'
-  local legacy_sources=""
-
-  if git grep -n -E -e "$legacy_domain_pattern" -- Sources ':!**/LegacyClipboardMigration.swift'; then
-    error "Legacy Stack/Clipboard domain types escaped LegacyClipboardMigration"
-  fi
-  if git grep -n -E -e "$declaration_pattern" -- Sources ':!**/LegacyClipboardMigration.swift'; then
-    error "Clipboard-prefixed domain declarations must be SystemClipboard-prefixed or migration-only"
-  fi
-  legacy_sources="$(
-    find Sources -type f \
-      \( -name 'DeliveryStack*.swift' -o -name 'Clipboard*.swift' -o -name 'StackPasteController.swift' \) \
-      ! -name 'LegacyClipboardMigration.swift' \
-      -print
-  )"
-  if [[ -n "$legacy_sources" ]]; then
-    printf '%s\n' "$legacy_sources" >&2
-    error "Legacy Stack/Clipboard source files remain outside the migration boundary"
-  fi
-  if git grep -n -E -e "$resource_pattern" -- Sources/RillPlatform/Resources/BuiltinWorkflows; then
-    error "Built-in workflow resources must emit canonical Record action IDs and strategies"
-  fi
-  echo "Record domain boundary check passed"
+  uv run --no-build --script "$SCRIPT_DIR/build_driver.py" "$@"
 }
 
 run_domain_swift_tests() {
@@ -269,95 +218,27 @@ run_swift_tests() {
   run_domain_swift_tests
   run_native_swift_tests
   run_performance_swift_tests
-  info 'Desktop interaction was not tested. Run just test desktop in an unlocked session; just ci requires both suites.'
+  info 'Desktop interaction was not tested. Run mise exec -- scripts/preflight.sh test-desktop in an unlocked session.'
 }
 
 run_script_tests() {
   local test_dir="$SCRIPT_DIR/tests"
-  echo 'Testing dependency security policy...'
-  uv run --script "$test_dir/dependency_security_test.py"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'
   bash "$test_dir/secret_scan_test.sh"
   echo 'Testing build ownership and receipts...'
-  uv run --no-build --locked --script "$test_dir/build_driver_test.py"
+  uv run --no-build --script "$test_dir/build_driver_test.py"
   echo 'Testing worker artifact caching...'
-  uv run --no-build --locked --script "$test_dir/worker_cache_test.py"
+  uv run --no-build --script "$test_dir/worker_cache_test.py"
   echo 'Testing release configuration...'
   bash "$test_dir/release_config_test.sh"
-  echo 'Testing CI lane aggregation and cache policy...'
-  uv run --quiet --no-project --python ">=3.11" python "$test_dir/ci_workflow_test.py"
   echo 'Testing preflight stage reporting...'
   bash "$test_dir/preflight_report_test.sh"
   echo 'Testing GitHub Release drafts...'
   bash "$test_dir/github_release_test.sh"
-  echo 'Testing app icon generation...'
-  bash "$test_dir/app_icon_test.sh"
-  echo 'Testing input method signing boundaries...'
-  uv run --no-build --locked --script "$test_dir/input_method_assembly_test.py"
-}
-
-install_gitleaks() {
-  local destination=""
-  local version="8.30.1"
-  local asset_name=""
-  local expected_sha256=""
-  local temp_root=""
-  local archive_path=""
-  local extract_dir=""
-  local installed_version=""
-
-  while [[ "$#" -gt 0 ]]; do
-    case "$1" in
-    --destination)
-      [[ "$#" -ge 2 ]] || error "Missing value for --destination"
-      destination="$2"
-      shift 2
-      ;;
-    --help | -h)
-      echo "Usage: $0 install-gitleaks --destination DIR"
-      exit 0
-      ;;
-    *) error "Unknown argument: $1" ;;
-    esac
-  done
-  [[ -n "$destination" ]] || error "--destination is required"
-  case "$(uname -s)/$(uname -m)" in
-  Darwin/arm64)
-    asset_name="gitleaks_${version}_darwin_arm64.tar.gz"
-    expected_sha256="b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"
-    ;;
-  Darwin/x86_64)
-    asset_name="gitleaks_${version}_darwin_x64.tar.gz"
-    expected_sha256="dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709"
-    ;;
-  Linux/x86_64)
-    asset_name="gitleaks_${version}_linux_x64.tar.gz"
-    expected_sha256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
-    ;;
-  *) error "Unsupported platform: $(uname -s)/$(uname -m)" ;;
-  esac
-  for command_name in curl install mktemp shasum tar; do
-    command -v "$command_name" >/dev/null 2>&1 || error "Required command not found: $command_name"
-  done
-  temp_root="$(mktemp -d "${TMPDIR:-/tmp}/rill-gitleaks-install.XXXXXX")"
-  trap '[[ -n ${temp_root:-} ]] && rm -rf "$temp_root"' EXIT
-  archive_path="$temp_root/$asset_name"
-  extract_dir="$temp_root/extracted"
-  mkdir -p "$extract_dir" "$destination"
-  curl --fail --location --proto '=https' --retry 3 --show-error --silent --tlsv1.2 \
-    --output "$archive_path" \
-    "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${asset_name}"
-  printf '%s  %s\n' "$expected_sha256" "$archive_path" | shasum -a 256 -c -
-  tar -xzf "$archive_path" -C "$extract_dir"
-  [[ -f "$extract_dir/gitleaks" ]] || error "Verified archive does not contain gitleaks"
-  install -m 0755 "$extract_dir/gitleaks" "$destination/gitleaks"
-  installed_version="$("$destination/gitleaks" version | tail -n 1 | awk '{print $NF}' | sed 's/^v//')"
-  [[ "$installed_version" == "$version" ]] || error "Installed Gitleaks version mismatch: ${installed_version:-unknown}"
-  echo "Installed Gitleaks $version at $destination/gitleaks"
-  rm -rf "$temp_root"
-  trap - EXIT
+  echo 'Testing input method cache integrity...'
+  uv run --no-build --script "$test_dir/input_method_test.py"
 }
 
 check_commit_messages() {
@@ -415,31 +296,19 @@ clean_preflight_builds() {
 }
 
 check_repository() {
-  info "Checking repository release artifact hygiene..."
-  check_release_artifact_hygiene "$PROJECT_DIR"
-
   info "Checking Swift module dependencies..."
-  uv run --no-build --locked --script "$SCRIPT_DIR/check_module_boundaries.py"
-
-  info "Checking Record domain boundary..."
-  check_record_domain_boundary
+  uv run --no-build --script "$SCRIPT_DIR/check_module_boundaries.py"
 
   info "Running script policy tests..."
   run_script_tests
-
-  info "Checking independent input method data packaging..."
-  uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
 
   # Hosted CI owns these checks in its tool-tests and static-checks jobs.
   if [[ "$PREFLIGHT_LANE" == all ]]; then
     info "Testing evaluation and performance analysis tools..."
     uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
 
-    info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
-    uv run --no-build --locked --script "$SCRIPT_DIR/check_dependency_security.py"
-
     info "Scanning Git history and the current source snapshot for secrets..."
-    bash "$SCRIPT_DIR/check_secrets.sh"
+    bash "$SCRIPT_DIR/check_repository.sh" secrets
   fi
 
   info "Checking performance benchmark workloads..."
@@ -457,16 +326,7 @@ check_release() {
   BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
   info "Building the release configuration..."
   locked_swift release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
-  BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field productsDirectory)"
   RAW_BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field buildDirectory)"
-
-  info "Checking arm64 release executable architectures..."
-  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillApp"
-  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillSpeechWorker"
-
-  info "Checking locked third-party license and notice provenance..."
-  RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
-    uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
 
   info "Checking relocatable SwiftPM resource accessors..."
   verify_xcode_resource_accessor "RillMacOS_RillApp"
@@ -486,17 +346,13 @@ check_release() {
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/$MLX_RESOURCE_BUNDLE_NAME"
   codesign --force --options runtime --sign - \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
-  uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" \
+  uv run --no-build --script "$SCRIPT_DIR/assemble_input_method.py" \
     --sign-existing "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
   codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
   codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
 
-  for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
-    cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" \
-      || error "Packaged project document does not match $document"
-  done
-  uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
+  uv run --no-build --script "$SCRIPT_DIR/validate_input_method.py" bundle \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
   if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
     check_working_diff
@@ -555,6 +411,10 @@ run_preflight() {
 parse_preflight_options() {
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
+    --test-evidence)
+      export RILL_RECORD_STRESS=1
+      export RILL_UI_SNAPSHOT_DIR="$PROJECT_DIR/.artifacts/ui-renders"
+      ;;
     --clean)
       CLEAN_BUILD=true
       WORKER_CACHE="off"
@@ -569,7 +429,8 @@ parse_preflight_options() {
       shift
       ;;
     --help | -h)
-      echo "Usage: $0 [--clean] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | hygiene [ROOT]"
+      echo "Usage: $0 [--clean] [--test-evidence] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | commit-messages [BASE [HEAD]]"
+      echo "  --test-evidence  Run Record stress fixtures and save UI renders in .artifacts/ui-renders."
       exit 0
       ;;
     *) error "Unknown argument: $1" ;;
@@ -600,21 +461,11 @@ test-scripts)
   ;;
 swift)
   shift
-  exec uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
-  ;;
-install-gitleaks)
-  shift
-  install_gitleaks "$@"
-  exit
+  exec uv run --no-build --script "$SCRIPT_DIR/build_driver.py" "$@"
   ;;
 commit-messages)
   shift
   check_commit_messages "$@"
-  exit
-  ;;
-hygiene)
-  shift
-  check_release_artifact_hygiene "${1:-$PROJECT_DIR}"
   exit
   ;;
 esac

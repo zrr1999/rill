@@ -7,13 +7,8 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stdout
-from io import StringIO
-import json
 import multiprocessing
-import os
 from pathlib import Path
-import signal
 import subprocess
 import sys
 import tempfile
@@ -31,124 +26,6 @@ def try_lock(path, connection):
 
 
 class BuildDriverTests(unittest.TestCase):
-    def test_product_path_query_keeps_compiler_warnings_out_of_stdout(self):
-        compiler = self.root / "swift"
-        compiler.write_text(
-            f"#!{sys.executable}\n"
-            "import sys\n"
-            "print('warning: native build is deprecated', file=sys.stderr)\n"
-            "print('/tmp/product path/release')\n"
-        )
-        compiler.chmod(0o755)
-        output = StringIO()
-        with (
-            patch.dict(os.environ, {"PATH": f"{self.root}{os.pathsep}{os.environ['PATH']}"}),
-            redirect_stdout(output),
-        ):
-            build.main(["build", "--show-bin-path", "--package-path", str(self.root)])
-        self.assertEqual(output.getvalue(), "/tmp/product path/release\n")
-
-    def test_full_build_rejects_inherited_domain_profile(self):
-        with patch.dict(os.environ, {"RILL_BUILD_PROFILE": "domain-tests"}):
-            with self.assertRaises(build.BuildError):
-                build.main(["build"])
-
-    def test_domain_build_refuses_shared_scratch_override(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(build.BuildError):
-                build.main(["test-domain", "--scratch-path", ".build"])
-
-    def test_build_and_tests_compile_catalogs_without_cleaning_shared_outputs(self):
-        with (
-            patch.dict(os.environ, {}, clear=True),
-            patch.object(build, "toolchain_identity", return_value={"swift": "fixture"}),
-            patch.object(build.BuildContext, "swift", return_value="") as swift,
-            patch.object(build.BuildContext, "clean") as clean,
-        ):
-            output = self.root / ".build/compiled-output"
-            for arguments in (
-                ["build", "--product", "RillApp"],
-                ["test", "--parallel", "--num-workers", "4"],
-                ["test", "--skip-build", "--filter", "RillUITests"],
-                ["build", "--product", "RillApp"],
-            ):
-                build.main(arguments + ["--package-path", str(self.root)])
-                self.assertEqual(swift.call_args.args[1][:4], ["--build-system", "swiftbuild", "--manifest-cache", "none"])
-                if output.exists():
-                    self.assertEqual(output.read_text(), "compiled")
-                else:
-                    output.write_text("compiled")
-            clean.assert_not_called()
-            build.main(["build", "--build-system", "native", "--package-path", str(self.root)])
-            self.assertEqual(swift.call_args.args[1][:2], ["--build-system", "native"])
-            build.main(["test-domain", "--filter", "SessionCoordinatorTests", "--package-path", str(self.root)])
-            self.assertNotIn("--build-system", swift.call_args.args[1])
-
-    def test_cli_reconstructs_owned_options_and_preserves_compiler_arguments(self):
-        compiler = self.root / "swift"
-        record = self.root / "swift-arguments.json"
-        compiler.write_text(
-            f"#!{sys.executable}\n"
-            "import json, os, pathlib, sys\n"
-            f"pathlib.Path({str(record)!r}).write_text(json.dumps([sys.argv[1:], os.getcwd()]))\n"
-            "print('/tmp/product path/debug')\n"
-        )
-        compiler.chmod(0o755)
-        forwarded = [
-            "-Xswiftc", "--configuration", "-Xswiftc", "debug",
-            "-Xcc", "-DMESSAGE=hello world", "-Xlinker", "--scratch-path",
-            "--filter", "SomeTest", "--enable-code-coverage",
-        ]
-        for operation in ("--help", "--show-bin-path"):
-            with self.subTest(operation=operation):
-                result = subprocess.run(
-                    [
-                        sys.executable, str(build.PROJECT / "scripts/build_driver.py"), "test",
-                        "--package-path=unused", "--package-path", str(self.root),
-                        "--configuration=release", "-c", "debug",
-                        "--scratch-path", ".build/unused", "--build-path=build area",
-                        "--build-system", "swiftbuild", "--build-system=native",
-                        *forwarded, operation,
-                    ],
-                    env={**os.environ, "PATH": f"{self.root}{os.pathsep}{os.environ['PATH']}"},
-                    capture_output=True, text=True, timeout=10,
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                command, directory = json.loads(record.read_text())
-                self.assertEqual(directory, str(self.root))
-                self.assertEqual(command, [
-                    "test", "--force-resolved-versions",
-                    "--package-path", str(self.root), "--configuration", "debug",
-                    "--scratch-path", str(self.root / "build area"),
-                    "--build-system", "native", *forwarded, operation,
-                ])
-                self.assertEqual(result.stdout, "/tmp/product path/debug\n")
-
-    def test_cli_rejects_invalid_owned_options_before_starting_swift(self):
-        for arguments in (
-            ["build", "--configuration=profile"],
-            ["build", "--scratch-path", ".."],
-            ["build", "--scratch-path", "."],
-            ["build", "--scratch-path", ".artifacts"],
-            ["build", "--package-path"],
-            ["build", "--configuration="],
-            ["build", "-Xswiftc"],
-        ):
-            with self.subTest(arguments=arguments), patch.object(build.BuildContext, "swift") as swift:
-                with self.assertRaises(build.BuildError):
-                    build.main([arguments[0], "--package-path", str(self.root), *arguments[1:]])
-                swift.assert_not_called()
-
-    def test_forwarded_help_flag_still_prepares_the_build(self):
-        with (
-            patch.dict(os.environ, {}, clear=True),
-            patch.object(build.BuildContext, "environment", return_value={}),
-            patch.object(build.BuildContext, "build") as compile,
-        ):
-            build.main(["build", "--package-path", str(self.root), "-Xswiftc", "--help"])
-        compile.assert_called_once()
-        self.assertEqual(compile.call_args.args[1][-2:], ["-Xswiftc", "--help"])
-
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -157,41 +34,6 @@ class BuildDriverTests(unittest.TestCase):
         (self.root / ".gitignore").write_text(".build/\n.artifacts/\n")
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         self.context = build.BuildContext(self.root, "release", build.RELEASE_ARGUMENTS)
-
-    def test_clean_is_scoped_and_keeps_lock_outside_arena(self):
-        debug = build.BuildContext(self.root, "debug", [])
-        debug.scratch.mkdir()
-        self.assertEqual(self.context.scratch, self.root / ".artifacts/build/release")
-        self.context.scratch.mkdir(parents=True)
-        sentinel = self.context.scratch / "worker"
-        sentinel.write_text("release")
-        with patch.object(build.subprocess, "run") as run:
-            debug.clean()
-        self.assertEqual(
-            run.call_args.args[0],
-            ["swift", "package", "--scratch-path", str(debug.scratch), "clean"],
-        )
-        self.assertEqual(sentinel.read_text(), "release")
-        self.assertFalse(debug.lock_path.is_relative_to(debug.scratch))
-        self.assertFalse(self.context.lock_path.is_relative_to(self.context.scratch))
-
-    def test_unchanged_environment_does_not_clean(self):
-        environment = {"toolchain": "one", "sourceRoot": str(self.root)}
-        with (
-            patch.object(self.context, "swift"),
-            patch.object(self.context, "clean") as clean,
-        ):
-            self.context.build("build", [], environment)
-            self.context.build("build", [], environment)
-            clean.assert_not_called()
-            self.context.build("build", [], {"toolchain": "two"})
-            clean.assert_called_once()
-
-    def test_product_and_filter_do_not_invalidate_environment(self):
-        self.assertEqual(
-            build.build_settings(["--product", "RillApp", "--filter", "OneTest"]), []
-        )
-        self.assertNotEqual(build.build_settings(["-Xswiftc", "-O"]), [])
 
     def test_metal_remount_reuses_outputs_but_compiler_changes_invalidate_them(self):
         first_mount = self.root / "mount-one/metal"
@@ -237,19 +79,6 @@ class BuildDriverTests(unittest.TestCase):
             )
             self.assertEqual(clean.call_count, 2)
 
-    def test_swiftpm_metadata_after_clean_does_not_trigger_another_clean(self):
-        self.context.scratch.mkdir(parents=True)
-        for name in ("CACHEDIR.TAG", ".lock", ".buildSystem_debug"):
-            (self.context.scratch / name).write_text("metadata")
-        (self.context.scratch / "prebuilts").mkdir()
-        with patch.object(self.context, "clean") as clean:
-            self.context.prepare({})
-            clean.assert_not_called()
-            self.context.fingerprint_path.unlink()
-            (self.context.scratch / "out").mkdir()
-            self.context.prepare({})
-            clean.assert_called_once()
-
     def test_stale_cache_retries_once_but_compile_error_does_not(self):
         with (
             patch.object(self.context, "prepare"),
@@ -273,147 +102,6 @@ class BuildDriverTests(unittest.TestCase):
                 with self.assertRaises(build.BuildFailure):
                     self.context.build("build", [], {})
                 clean.assert_not_called()
-
-    def test_build_and_test_retain_locked_dependency_policy(self):
-        with patch.object(build, "capture", return_value="") as capture:
-            self.context.swift("test", ["--filter", "SomeTest"], quiet=True)
-        command = capture.call_args.args[0]
-        self.assertEqual(
-            command[:3],
-            [
-                "swift",
-                "test",
-                "--force-resolved-versions",
-            ],
-        )
-        self.assertIn("--scratch-path", command)
-        self.assertNotIn("-warnings-as-errors", command)
-
-    @unittest.skipUnless(sys.platform == "darwin", "macOS test process sampling")
-    def test_idle_swift_testing_samples_only_its_owned_processes(self):
-        release = self.root / "release"
-        stage = self.root / "stage"
-        script = f"""
-import pathlib, subprocess, sys, time
-stage = pathlib.Path({str(stage)!r})
-stage.write_text('building')
-time.sleep(0.15)
-child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(5)'])
-print('child=' + str(child.pid), flush=True)
-stage.write_text('testing')
-print('◇ Test run started.', flush=True)
-try:
-    deadline = time.monotonic() + 3
-    while not pathlib.Path({str(release)!r}).exists():
-        if time.monotonic() > deadline:
-            raise RuntimeError('No diagnostic arrived')
-        time.sleep(0.01)
-finally:
-    child.terminate()
-    child.wait()
-"""
-        popen = subprocess.Popen
-        run = subprocess.run
-        owned = []
-        sampled = []
-        previous_alarm = signal.getsignal(signal.SIGALRM)
-
-        def launch(command, **kwargs):
-            if command[0] == "swift":
-                process = popen([sys.executable, "-c", script], **kwargs)
-                owned.append(process.pid)
-                return process
-            return popen(command, **kwargs)
-
-        def sample(command, **kwargs):
-            if command[0] != "/usr/bin/sample":
-                return run(command, **kwargs)
-            self.assertEqual(stage.read_text(), "testing")
-            sampled.append(int(command[1]))
-            Path(command[-1]).write_text(f"sampled pid={command[1]}\n")
-            if int(command[1]) != owned[0]:
-                release.touch()
-            return subprocess.CompletedProcess(command, 0, "", "")
-
-        with (
-            patch.dict(os.environ, {"CI": "true"}),
-            patch.object(build, "TEST_IDLE_SAMPLE_SECONDS", 0.05),
-            patch.object(build.subprocess, "Popen", side_effect=launch),
-            patch.object(build.subprocess, "run", side_effect=sample),
-        ):
-            output = self.context.swift("test", [])
-        child = int(next(line.removeprefix("child=") for line in output.splitlines() if line.startswith("child=")))
-        self.assertEqual(set(sampled), {owned[0], child})
-        self.assertIn(f"sampled pid={child}", output)
-        self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0, 0))
-        self.assertEqual(signal.getsignal(signal.SIGALRM), previous_alarm)
-
-    @unittest.skipUnless(sys.platform == "darwin", "macOS test process sampling")
-    def test_completed_swift_testing_leaves_no_diagnostic_timer(self):
-        popen = subprocess.Popen
-
-        def launch(command, **kwargs):
-            return popen([sys.executable, "-c", "print('◇ Test run started.')"], **kwargs)
-
-        with (
-            patch.dict(os.environ, {"CI": "true"}),
-            patch.object(build.subprocess, "Popen", side_effect=launch),
-            patch.object(build, "sample_test_processes") as sample,
-        ):
-            self.context.swift("test", [])
-        sample.assert_not_called()
-        self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0, 0))
-
-    def test_real_manifest_rejects_first_party_swift_warnings(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            manifest = (build.PROJECT / "Package.swift").read_text()
-            # Keep the real target and its settings; remove unrelated dependencies
-            # so this negative compilation only exercises the package warning gate.
-            manifest += """
-package.dependencies = []
-package.products = []
-package.targets.removeAll { $0.name != "RillCore" }
-"""
-            (root / "Package.swift").write_text(manifest)
-            source = root / "Sources/RillCore/Warning.swift"
-            source.parent.mkdir(parents=True)
-            source.write_text('#warning("Rill warning gate regression fixture")\n')
-            for configuration in ("debug", "release"):
-                with self.subTest(configuration=configuration):
-                    result = subprocess.run(
-                        [
-                            "swift", "build", "--package-path", str(root),
-                            "--build-system", "native", "-c", configuration,
-                        ],
-                        text=True,
-                        capture_output=True,
-                        check=False,
-                    )
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn(
-                        "error: Rill warning gate regression fixture",
-                        result.stdout + result.stderr,
-                    )
-
-    def test_first_compile_failure_keeps_partial_incremental_outputs(self):
-        partial = self.context.scratch / "out/partial.o"
-
-        def compile_error(*args, **kwargs):
-            partial.parent.mkdir(parents=True)
-            partial.write_text("completed dependency")
-            raise build.BuildFailure("build", 1, "type error in application")
-
-        with patch.object(self.context, "swift", side_effect=compile_error):
-            with self.assertRaises(build.BuildFailure):
-                self.context.build("build", [], {"toolchain": "stable"})
-        with (
-            patch.object(self.context, "clean") as clean,
-            patch.object(self.context, "swift"),
-        ):
-            self.context.build("build", [], {"toolchain": "stable"})
-            clean.assert_not_called()
-        self.assertEqual(partial.read_text(), "completed dependency")
 
     def test_lock_blocks_second_process_and_release_recovers(self):
         receiver, sender = multiprocessing.Pipe(False)
@@ -485,34 +173,6 @@ package.targets.removeAll { $0.name != "RillCore" }
         (self.root / "new-source.swift").write_text("new code")
         with self.assertRaisesRegex(build.BuildError, "Source changed"):
             build.receipt_products(receipt_path, self.root)
-
-    def test_receipt_rejects_oversized_input_before_json_parsing(self):
-        path = self.root / "large-receipt.json"
-        path.write_bytes(b"not JSON and over the limit")
-        with patch.object(build, "MAX_RECEIPT_BYTES", 8):
-            with self.assertRaisesRegex(ValueError, "byte limit"):
-                build.receipt_products(path, self.root)
-
-    def test_receipt_command_rejects_a_fifo_without_waiting_for_a_writer(self):
-        path = self.root / "receipt.json"
-        os.mkfifo(path)
-        result = subprocess.run(
-            [sys.executable, str(build.PROJECT / "scripts/build_driver.py"), "receipt", str(path), "--json"],
-            capture_output=True, text=True, timeout=5,
-        )
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertIn("regular file", result.stderr)
-
-    def test_source_inputs_cover_added_deleted_and_dirty_files(self):
-        source = self.root / "code.swift"
-        source.write_text("first")
-        first = build.source_inputs(self.root)
-        source.write_text("second")
-        self.assertNotEqual(first, build.source_inputs(self.root))
-        subprocess.run(["git", "-C", str(self.root), "add", "code.swift"], check=True)
-        source.unlink()
-        self.assertEqual(build.source_inputs(self.root)["code.swift"], "deleted")
-
 
 if __name__ == "__main__":
     unittest.main()

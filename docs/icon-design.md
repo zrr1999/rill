@@ -40,6 +40,8 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 
 `render_input_method_icon.swift` 从菜单栏 PDF 生成包含 1x、2x 表示的 template TIFF。符号使用透明镂空，让 macOS 为深浅色和选中状态着色；应用自身的菜单栏图标继续使用无底板线稿。
 
+打包文件名在内容摘要之后保留 `Template` 后缀，让 AppKit 将资源识别为模板图像。`TISIconIsTemplate` 声明不能代替资源名称中的模板标记。
+
 ## 源文件与维护
 
 编辑 SVG 源文件；校验值和生成命令见 [图标资源说明][asset-readme]。
@@ -51,18 +53,18 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 | `assemble_app_bundle.sh render-brand` | 生成 1024 px PNG、两种菜单栏 PDF 和输入源 TIFF |
 | `scripts/render_input_method_icon.swift` | 为 Rill 轮廓添加镂空圆角底板，生成输入源的 1x、2x TIFF |
 | [render_app_icon_renditions.swift][icon-renderer] | 生成带圆角、阴影和光学调整的各尺寸图标 |
-| `assemble_app_bundle.sh app-icon` | 校验受审 PNG 并装配 ICNS |
+| `assemble_app_bundle.sh app-icon` | 校验 PNG 格式、像素与各尺寸渲染结果并装配 ICNS |
 
 安装 `librsvg` 后重新导出：
 
 ```sh
 brew install librsvg
 scripts/assemble_app_bundle.sh render-brand
-bash scripts/tests/app_icon_test.sh
+scripts/assemble_app_bundle.sh app-icon Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png /tmp/Rill.icns
 scripts/preflight.sh swift test --filter RillMenuBarIconTests
 ```
 
-常规构建使用提交的 PNG / PDF，无需安装 SVG 转换工具。源 SVG、导出文件、资源说明与图标检查中的源图摘要应在同一提交中更新。设计变化时从新的导出产物重新渲染预览，并同步版本链接；预览图不是打包输入。
+常规构建使用提交的 PNG / PDF，无需安装 SVG 转换工具。源 SVG 和导出文件应在同一提交中更新。打包校验图标内容，不锁定源图摘要。设计变化时从新的导出产物重新渲染预览，并同步版本链接；预览图不是打包输入。
 
 菜单栏 PDF 通过 `Bundle.module.image(forResource:)` 加载，再以 `NSImage` 交给 SwiftUI 做 template 渲染。松散 PDF 资源不能依赖 SwiftUI 的命名图片初始化器；维护加载路径时应保留实际资源渲染测试，避免资源存在但菜单栏空白。
 
