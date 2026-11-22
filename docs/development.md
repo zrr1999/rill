@@ -105,8 +105,10 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
   `scripts/third_party_notices_manifest.json`（含证据 SHA-256）。渲染后的
   `THIRD_PARTY_NOTICES.md` 不入库：本地预览运行
   `uv run --script scripts/generate_third_party_notices.py`；装配脚本在打包时
-  生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
-  依赖都有受审证据，不核对已提交的渲染文本。漏洞查询由 CI/CE 的 OSV-Scanner 执行，
+  生成同一文件并复制到 App 的 `Contents/Resources`。打包时漏登记依赖、证据缺失或
+  无法读取会失败；原文 SHA-256 变化只在打包日志中提示，声明照常附上实际使用的原文和哈希。
+  复核变更后再更新清单的哈希。CI 通过真实打包验证，不核对已提交的渲染文本。
+  漏洞查询由 CI/CE 的 OSV-Scanner 执行，
   本地可显式运行 `mise run audit:dependencies`；离线预检不做漏洞判断。
   许可生成和审计固定读取自身 checkout 的锁文件和仓库清单，不接受替换这些输入的
   命令行参数。许可证生成仍支持 `--checkouts-dir` 和

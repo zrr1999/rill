@@ -6,9 +6,9 @@
 """Generate distributable notices from locked SwiftPM dependencies.
 
 The reviewed manifest records license evidence for every dependency. SwiftPM's
-``Package.resolved`` supplies source-control pins. The generator fails closed
-when either the inventory or any reviewed evidence byte changes. The rendered
-markdown is a pack-time artifact, not a reviewed source file.
+``Package.resolved`` supplies source-control pins. Missing inventory or evidence
+fails generation; changed evidence bytes warn and are rendered from the locked
+checkout. The rendered markdown is a pack-time artifact.
 """
 
 from __future__ import annotations
@@ -528,15 +528,19 @@ def load_evidence(
             display_path += f"#L{line_start}-L{line_end}"
         digest = hashlib.sha256(content).hexdigest()
         if digest != item["sha256"]:
-            raise NoticeError(
-                f"Evidence SHA-256 mismatch for {package['identity']}/{item['path']}: "
-                f"expected {item['sha256']}, found {digest}"
+            print(
+                f"warning: License evidence changed for {package['identity']}/{display_path} "
+                f"(SHA-256: reviewed {item['sha256']}, current {digest}); "
+                "review the license text and update the manifest if accepted.",
+                file=sys.stderr,
             )
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError as error:
             raise NoticeError(f"Evidence is not UTF-8: {display_path}") from error
-        result.append({**item, "path": display_path, "content": content, "text": text})
+        result.append(
+            {**item, "path": display_path, "sha256": digest, "content": content, "text": text}
+        )
     return result
 
 
@@ -585,9 +589,8 @@ def render(
     lines = [
         "# Rill Third-Party Notices",
         "",
-        "This file is generated from `Package.resolved` and the reviewed license",
-        "evidence in",
-        "`scripts/third_party_notices_manifest.json`. Do not edit it manually.",
+        "This file is generated from `Package.resolved` and the license evidence",
+        "listed in `scripts/third_party_notices_manifest.json`. Do not edit it manually.",
         "",
         "The notices below cover source-control dependencies locked for this build.",
         "They do not grant a license to Rill itself.",
@@ -596,7 +599,7 @@ def render(
         "",
         "## Dependency inventory",
         "",
-        "| Package | Kind | Version | Source | License | Reviewed artifacts | Reviewed evidence |",
+        "| Package | Kind | Version | Source | License (manifest) | Locked artifact | Included evidence |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for identity in sorted(manifest):

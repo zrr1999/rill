@@ -495,16 +495,11 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertIn(f"`LICENSE-LATER@{evidence_revision}`", content)
         self.assertIn("License granted on a descendant revision", content)
 
-    def test_generator_rejects_missing_or_changed_evidence(self) -> None:
+    def test_generator_rejects_missing_evidence(self) -> None:
         self.fixture.license_path.unlink()
         missing = run(self.fixture.generator_command())
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn("Missing or unsafe evidence", missing.stderr)
-
-        self.fixture.license_path.write_bytes(b"changed license\n")
-        changed = run(self.fixture.generator_command())
-        self.assertNotEqual(changed.returncode, 0)
-        self.assertIn("SHA-256 mismatch", changed.stderr)
 
     def test_generator_rejects_checkout_revision_drift(self) -> None:
         marker = self.fixture.checkout / "marker.txt"
