@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import analyze_diagnostics as diagnostics
+import diagnostics
 
 
 class DiagnosticExportTests(unittest.TestCase):
@@ -37,10 +37,8 @@ class DiagnosticExportTests(unittest.TestCase):
                         (index, time.time(), 'run', 'session', 'debug', 'session.stage',
                          '{"stage":"completed"}', 'private message', generation))
             before = database.read_bytes()
-            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), \
-                    patch.object(sys, 'argv', ['analyze_diagnostics.py', '--export-only']), \
-                    contextlib.redirect_stdout(io.StringIO()):
-                diagnostics.main()
+            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), contextlib.redirect_stdout(io.StringIO()):
+                diagnostics.main(["export"])
             output = (root / 'diagnostics.jsonl').read_text()
             header, event = [json.loads(line) for line in output.splitlines()]
             self.assertEqual(header['event_count'], 1)
@@ -48,16 +46,21 @@ class DiagnosticExportTests(unittest.TestCase):
             self.assertNotIn('private message', output)
             self.assertEqual(database.read_bytes(), before)
             self.assertEqual((root / 'diagnostics.jsonl').stat().st_mode & 0o777, 0o600)
-            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), \
-                    patch.object(sys, 'argv', ['analyze_diagnostics.py']), \
-                    patch.object(diagnostics.sqlite3, 'connect', side_effect=AssertionError('Unexpected database read')), \
-                    contextlib.redirect_stdout(io.StringIO()):
-                diagnostics.main()
-            report = json.loads((root / 'performance-scan.json').read_text())
-            self.assertEqual(report['event_count'], 1)
-            for name in ('summary.json', 'performance-scan.json', 'performance-scan.md'):
+            self.assertFalse((root / 'performance-scan.json').exists())
+
+            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), contextlib.redirect_stdout(io.StringIO()):
+                diagnostics.main(['analyze', '--refresh'])
+                refreshed_report = (root / 'performance-scan.json').read_bytes()
+                refreshed_markdown = (root / 'performance-scan.md').read_bytes()
+                with patch.object(diagnostics.sqlite3, 'connect', side_effect=AssertionError('cached analysis must not open SQLite')):
+                    diagnostics.main(['analyze'])
+            self.assertEqual((root / 'performance-scan.json').read_bytes(), refreshed_report)
+            self.assertEqual((root / 'performance-scan.md').read_bytes(), refreshed_markdown)
+            self.assertEqual(json.loads(refreshed_report)['event_count'], 1)
+            self.assertEqual(database.read_bytes(), before)
+            self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+            for name in ('diagnostics.jsonl', 'summary.json', 'performance-scan.json', 'performance-scan.md'):
                 self.assertEqual((root / name).stat().st_mode & 0o777, 0o600)
-                self.assertNotIn('private message', (root / name).read_text())
 
     def test_missing_database_fails_without_creating_source_or_replacing_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -65,12 +68,16 @@ class DiagnosticExportTests(unittest.TestCase):
             database = root / 'missing.sqlite'
             output = root / 'diagnostics.jsonl'
             output.write_text('previous snapshot')
-            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database), \
-                    patch.object(sys, 'argv', ['analyze_diagnostics.py', '--refresh']):
-                with self.assertRaises(sqlite3.OperationalError):
-                    diagnostics.main()
+            report = root / 'performance-scan.json'
+            report.write_text('previous report')
+            with patch.object(diagnostics, 'ROOT', root), patch.object(diagnostics, 'DATABASE', database):
+                for args in (['export'], ['analyze', '--refresh']):
+                    with self.subTest(args=args), self.assertRaises(sqlite3.OperationalError):
+                        diagnostics.main(args)
             self.assertFalse(database.exists())
             self.assertEqual(output.read_text(), 'previous snapshot')
+            self.assertEqual(report.read_text(), 'previous report')
+
 
     def test_missing_or_duplicate_endpoints_are_not_zero_latency(self):
         def event(index, code, metadata):

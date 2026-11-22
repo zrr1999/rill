@@ -3,15 +3,16 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Export and analyze Rill's sanitized diagnostic events in a private local snapshot.
+"""Export and analyze the last seven days of Rill's sanitized diagnostic events.
 
-Reads SQLite in read-only mode; never reads encrypted receipts, transcripts,
-clipboard payloads, credentials, or audio. No scheduler or permanent event history.
+Local monitoring utility: reads SQLite in read-only mode, never reads encrypted
+receipts, transcripts, clipboard payloads, credentials, or audio. Replaces the
+previous snapshot instead of accumulating a second permanent event history.
 """
 
 import argparse
 from collections import Counter, defaultdict
-import datetime as dt
+from datetime import datetime, timezone
 import json
 import math
 import os
@@ -22,9 +23,34 @@ import statistics
 import tempfile
 import time
 
-
 ROOT = Path.home() / "Library/Application Support/Rill/Diagnostics"
 DATABASE = ROOT.parent / "rill.sqlite"
+
+
+LABELS = {
+    "captureStopMillis": "音频源停止（单调计时）",
+    "captureDrainMillis": "PCM 流排空（单调计时）",
+    "capturePreviewRetireMillis": "预览取消及排空（单调计时）",
+    "captureFinalizeMillis": "WAV 完成（单调计时）",
+    "captureFinishMillis": "录音捕获整体收尾（单调计时）",
+    "captureSealMillis": "授权捕获封存（单调计时）",
+    "captureCueMillis": "停止反馈（单调计时）",
+    "recognition_measured": "识别操作（单调计时）",
+    "release_to_paste_posted": "松键 → 粘贴按键已发送（非文字可见确认）",
+    "pasteDispatchMillis": "粘贴按键发送（单调计时）",
+    "store_measured": "Record 存储动作及回执协调（单调计时）",
+    "injection_measured": "注入动作及回执协调（单调计时）",
+    "pasteSettleMillis": "粘贴后等待（单调计时）",
+    "restore_measured": "剪贴板恢复尝试（单调计时）",
+    "release_to_finishing": "松键 → 录音收尾事件",
+    "queue_wait": "入队 → 开始处理",
+    "recognition_stage": "识别阶段跨度（含阶段间开销）",
+    "transform_to_api": "变换阶段 → 模型请求开始",
+    "api_completed": "模型完整响应及解析（记录值）",
+    "store_action": "输出开始 → Record 存储动作结束",
+    "injection_action": "存储动作结束 → 文字注入动作结束",
+    "release_to_injection": "松键 → 注入动作结束（含恢复等待）",
+}
 
 
 def atomic_write(name, content):
@@ -40,10 +66,10 @@ def atomic_write(name, content):
 
 
 def utc(timestamp):
-    return dt.datetime.fromtimestamp(timestamp, dt.timezone.utc).isoformat()
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
 
 
-def export():
+def export_snapshot():
     ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(ROOT, 0o700)
     now = time.time()
@@ -109,32 +135,6 @@ def export():
     ) + "\n")
     atomic_write("summary.json", json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-
-LABELS = {
-    "captureStopMillis": "音频源停止（单调计时）",
-    "captureDrainMillis": "PCM 流排空（单调计时）",
-    "capturePreviewRetireMillis": "预览取消及排空（单调计时）",
-    "captureFinalizeMillis": "WAV 完成（单调计时）",
-    "captureFinishMillis": "录音捕获整体收尾（单调计时）",
-    "captureSealMillis": "授权捕获封存（单调计时）",
-    "captureCueMillis": "停止反馈（单调计时）",
-    "recognition_measured": "识别操作（单调计时）",
-    "release_to_paste_posted": "松键 → 粘贴按键已发送（非文字可见确认）",
-    "pasteDispatchMillis": "粘贴按键发送（单调计时）",
-    "store_measured": "Record 存储动作及回执协调（单调计时）",
-    "injection_measured": "注入动作及回执协调（单调计时）",
-    "pasteSettleMillis": "粘贴后等待（单调计时）",
-    "restore_measured": "剪贴板恢复尝试（单调计时）",
-    "release_to_finishing": "松键 → 录音收尾事件",
-    "queue_wait": "入队 → 开始处理",
-    "recognition_stage": "识别阶段跨度（含阶段间开销）",
-    "transform_to_api": "变换阶段 → 模型请求开始",
-    "api_completed": "模型完整响应及解析（记录值）",
-    "store_action": "输出开始 → Record 存储动作结束",
-    "injection_action": "存储动作结束 → 文字注入动作结束",
-    "release_to_injection": "松键 → 注入动作结束（含恢复等待）",
-}
 
 
 def stats(values):
@@ -224,7 +224,7 @@ def scan(header, events):
             "metrics_ms": {k: round(v, 3) for k, v in measures.items()},
         })
     runs.sort(key=lambda run: run["completed_timestamp"])
-    cutoff = dt.datetime.fromisoformat(header["exported_at_utc"]).timestamp() - 86400
+    cutoff = datetime.fromisoformat(header["exported_at_utc"]).timestamp() - 86400
     cohorts = {
         "7d_completed_voice": runs,
         "24h_completed_voice": [r for r in runs if r["completed_timestamp"] >= cutoff],
@@ -259,16 +259,9 @@ def scan(header, events):
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    export_mode = parser.add_mutually_exclusive_group()
-    export_mode.add_argument("--refresh", action="store_true", help="Refresh read-only export first")
-    export_mode.add_argument("--export-only", action="store_true", help="Refresh the export without analysis")
-    args = parser.parse_args()
-    if args.refresh or args.export_only:
-        export()
-    if args.export_only:
-        return
+def analyze_snapshot(*, refresh=False):
+    if refresh:
+        export_snapshot()
     header, *events = [json.loads(line) for line in
                        (ROOT / "diagnostics.jsonl").read_text().splitlines()]
     if header["event_count"] != len(events):
@@ -286,6 +279,19 @@ def main():
     lines += ["## 解释边界", ""] + [f"- {item}" for item in report["limitations"]]
     atomic_write("performance-scan.md", "\n".join(lines) + "\n")
     print(json.dumps({k: v for k, v in report.items() if k not in ("runs", "limitations")}, ensure_ascii=False, indent=2))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("export", help="Refresh the private diagnostic snapshot")
+    analyze = commands.add_parser("analyze", help="Analyze the private diagnostic snapshot")
+    analyze.add_argument("--refresh", action="store_true", help="Refresh the read-only export first")
+    args = parser.parse_args(argv)
+    if args.command == "export":
+        export_snapshot()
+    else:
+        analyze_snapshot(refresh=args.refresh)
 
 
 if __name__ == "__main__":

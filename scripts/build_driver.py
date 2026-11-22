@@ -748,6 +748,14 @@ def main(arguments: list[str] | None = None) -> None:
     if subcommand == "preflight-source":
         preflight_source(arguments)
         return
+    if subcommand == "toolchain-key":
+        argparse.ArgumentParser(description="Identify the Swift build toolchain for CI caching.").parse_args(arguments)
+        identity = toolchain_identity(PROJECT, require_metal=True)
+        # These are install locations, not versions or compiler contents.
+        for location in ("swiftc", "sdk"):
+            del identity[location]
+        print(digest(identity))
+        return
     if subcommand == "source-inputs":
         argparse.ArgumentParser(description="Read the current source input digests.").parse_args(arguments)
         print(json.dumps(source_inputs(PROJECT)))

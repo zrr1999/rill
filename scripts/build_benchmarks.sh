@@ -3,6 +3,45 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 cd "$SCRIPT_DIR/.."
+
+run_panel_benchmark() {
+  if [[ $# -ne 0 ]]; then
+    echo "Usage: $0 panel" >&2
+    exit 2
+  fi
+
+  local project_dir report_dir
+  project_dir="$(pwd -P)"
+  mkdir -p .artifacts/benchmarks/panel
+  report_dir="$(mktemp -d "$project_dir/.artifacts/benchmarks/panel/run.XXXXXX")"
+  echo "Panel benchmark report: $report_dir"
+
+  uv run --no-build --script scripts/build_driver.py \
+    preflight-source snapshot "$project_dir" "$report_dir/source.json"
+  {
+    swift --version
+    xcodebuild -version
+    sw_vers
+    sysctl hw.model hw.ncpu hw.memsize
+  } >"$report_dir/toolchain.log"
+
+  RILL_PANEL_BENCHMARK_OUTPUT="$report_dir/samples.json" \
+    scripts/preflight.sh swift test --configuration release --test-product RillAppTests \
+    --filter '^RillAppTests.RecordPanelControllerTests/testBenchmarkWarmPanelPresentation$' \
+    2>&1 | tee "$report_dir/test.log"
+
+  [[ -s "$report_dir/samples.json" ]]
+  uv run --no-build --script scripts/build_driver.py \
+    preflight-source verify "$project_dir" "$report_dir/source.json"
+  echo "Panel benchmark completed: $report_dir"
+}
+
+if [[ ${1:-} == panel ]]; then
+  shift
+  run_panel_benchmark "$@"
+  exit 0
+fi
+
 mkdir -p .artifacts/benchmarks
 
 use_codspeed=false
@@ -13,6 +52,7 @@ for argument in "$@"; do
   --preview-only) preview_only=true ;;
   *)
     echo "Usage: $0 [--codspeed] [--preview-only]" >&2
+    echo "       $0 panel" >&2
     exit 1
     ;;
   esac
