@@ -3,16 +3,28 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""One-shot performance scan of the local diagnostic export; no scheduler."""
+"""Export and analyze the last seven days of Rill's sanitized diagnostic events.
+
+Local monitoring utility: reads SQLite in read-only mode, never reads encrypted
+receipts, transcripts, clipboard payloads, credentials, or audio. Replaces the
+previous snapshot instead of accumulating a second permanent event history.
+"""
 
 import argparse
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import math
+import os
+from pathlib import Path
+import plistlib
+import sqlite3
 import statistics
+import tempfile
+import time
 
-import export_diagnostics as exporter
+ROOT = Path.home() / "Library/Application Support/Rill/Diagnostics"
+DATABASE = ROOT.parent / "rill.sqlite"
 
 
 LABELS = {
@@ -39,6 +51,90 @@ LABELS = {
     "injection_action": "存储动作结束 → 文字注入动作结束",
     "release_to_injection": "松键 → 注入动作结束（含恢复等待）",
 }
+
+
+def atomic_write(name, content):
+    fd, temporary = tempfile.mkstemp(prefix=".export-", dir=ROOT)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, ROOT / name)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def utc(timestamp):
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+
+def export_snapshot():
+    ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(ROOT, 0o700)
+    now = time.time()
+    since = now - 7 * 86400
+    connection = sqlite3.connect(DATABASE.as_uri() + "?mode=ro", uri=True, timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        connection.execute("BEGIN")
+        generation = connection.execute(
+            "SELECT current_generation FROM run_history_generation WHERE id = 1"
+        ).fetchone()[0]
+        rows = connection.execute(
+            "SELECT id, timestamp, run_id, subsystem, level, event, metadata_json "
+            "FROM diagnostic_events WHERE timestamp >= ? AND timestamp <= ? "
+            "AND write_generation = ? ORDER BY timestamp, id", (since, now, generation)
+        ).fetchall()
+    finally:
+        connection.close()
+    events = []
+    for row in rows:
+        event = dict(row)
+        event["metadata"] = json.loads(event.pop("metadata_json"))
+        event["time_utc"] = utc(event["timestamp"])
+        events.append(event)
+    counts = Counter(e["level"] for e in events)
+    warnings = Counter(
+        (e["level"], e["event"]) for e in events
+        if e["level"] in ("warning", "error")
+    )
+    summary = {
+        "schema_version": 2,
+        "history_generation": generation,
+        "exported_at_utc": utc(now),
+        "window_start_utc": utc(since),
+        "event_count": len(events),
+        "latest_event_utc": events[-1]["time_utc"] if events else None,
+        "max_event_id": max((e["id"] for e in events), default=None),
+        "levels": dict(counts),
+        "warnings_and_errors": [
+            {"level": level, "event": event, "count": count}
+            for (level, event), count in warnings.most_common()
+        ],
+        "invalid_event_count": sum(
+            e["event"] == "diagnostic.event.invalid" for e in events
+        ),
+        "scope": "Stored sanitized diagnostic events only; no free-text messages or encrypted receipts.",
+        "timing_note": "Group by run_id and event. session.stage completed durationMillis is measured from session.startedAt, not standalone STT or API latency. Missing timings are not zero.",
+    }
+    info_path = Path("/Applications/Rill.app/Contents/Info.plist")
+    if info_path.is_file():
+        with info_path.open("rb") as source:
+            info = plistlib.load(source)
+        summary["installed_app_at_export"] = {
+            key: info.get(key) for key in (
+                "CFBundleShortVersionString", "CFBundleVersion", "RillSourceRevision"
+            )
+        }
+        summary["version_note"] = "Installed artifact at export time; historical events have no per-run build identity."
+    header = {"type": "export", **summary}
+    atomic_write("diagnostics.jsonl", "\n".join(
+        json.dumps(value, ensure_ascii=False) for value in [header, *events]
+    ) + "\n")
+    atomic_write("summary.json", json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
 def stats(values):
@@ -163,18 +259,15 @@ def scan(header, events):
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--refresh", action="store_true", help="Refresh read-only export first")
-    args = parser.parse_args()
-    if args.refresh:
-        exporter.main()
+def analyze_snapshot(*, refresh=False):
+    if refresh:
+        export_snapshot()
     header, *events = [json.loads(line) for line in
-                       (exporter.ROOT / "diagnostics.jsonl").read_text().splitlines()]
+                       (ROOT / "diagnostics.jsonl").read_text().splitlines()]
     if header["event_count"] != len(events):
         raise ValueError("Incomplete export")
     report = scan(header, events)
-    exporter.atomic_write("performance-scan.json", json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    atomic_write("performance-scan.json", json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     lines = ["# Rill 第一轮性能扫描", "", f"数据导出时间：{header['exported_at_utc']}",
              "", "单位为毫秒；下表统计完整语音运行。缺少端点的指标不计入，n 是有效样本数。", ""]
     for name, cohort in report["cohorts"].items():
@@ -184,8 +277,21 @@ def main():
             lines.append(f"| {LABELS[metric]} | {item['n']} | {item['p50_ms']} | {item['p95_ms']} |")
         lines.append("")
     lines += ["## 解释边界", ""] + [f"- {item}" for item in report["limitations"]]
-    exporter.atomic_write("performance-scan.md", "\n".join(lines) + "\n")
+    atomic_write("performance-scan.md", "\n".join(lines) + "\n")
     print(json.dumps({k: v for k, v in report.items() if k not in ("runs", "limitations")}, ensure_ascii=False, indent=2))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("export", help="Refresh the private diagnostic snapshot")
+    analyze = commands.add_parser("analyze", help="Analyze the private diagnostic snapshot")
+    analyze.add_argument("--refresh", action="store_true", help="Refresh the read-only export first")
+    args = parser.parse_args(argv)
+    if args.command == "export":
+        export_snapshot()
+    else:
+        analyze_snapshot(refresh=args.refresh)
 
 
 if __name__ == "__main__":

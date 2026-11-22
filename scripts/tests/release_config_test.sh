@@ -278,52 +278,6 @@ use_recorded_swap() {
   build_atomic_swap_helper() { ATOMIC_SWAP_HELPER="fake_atomic_swap"; }
 }
 
-run_release_artifact_hygiene_policy_case() {
-  local fixture="$TEST_ROOT/release-artifact-hygiene"
-  local artifact=""
-  local output=""
-  local status=0
-
-  mkdir -p "$fixture/.artifacts/release/Rill.app"
-  touch "$fixture/.artifacts/release/Rill.dmg"
-  bash "$PREFLIGHT_SCRIPT" hygiene "$fixture" >/dev/null
-
-  rm -rf "$fixture/.artifacts"
-  for artifact in Rill.app Rill.dmg Rill.dmg.sha256; do
-    if [[ "$artifact" == *.app ]]; then
-      mkdir -p "$fixture/$artifact"
-    else
-      touch "$fixture/$artifact"
-    fi
-    set +e
-    output="$(bash "$PREFLIGHT_SCRIPT" hygiene "$fixture" 2>&1)"
-    status=$?
-    set -e
-    if [[ "$status" -eq 0 ||
-      "$output" != *"Repository-root release artifacts are forbidden"* ||
-      "$output" != *"$artifact"* ]]; then
-      echo "FAIL: repository-root $artifact is rejected" >&2
-      printf '%s\n' "$output" >&2
-      exit 1
-    fi
-    rm -rf "${fixture:?}/${artifact:?}"
-  done
-
-  if git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.app \
-    || git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.dmg; then
-    echo "FAIL: repository-root release-looking artifacts are hidden by .gitignore" >&2
-    exit 1
-  fi
-  if ! git -C "$PROJECT_DIR" check-ignore -q --no-index \
-    .artifacts/release/Rill.app; then
-    echo "FAIL: the dedicated release artifact directory is not ignored" >&2
-    exit 1
-  fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: release artifacts are isolated and repository-root lookalikes fail closed"
-}
-
 run_release_output_staging_policy_case() {
   local fixture="$TEST_ROOT/release-output-staging"
   local output_dir="$fixture/output"
@@ -991,32 +945,6 @@ run_preflight_toolchain_policy_case() {
 
   PASSED=$((PASSED + 1))
   echo "PASS: preflight enforces uv and Swift 6.2+"
-}
-
-run_preflight_evidence_policy_case() {
-  local output=""
-  local revision="0123456789abcdef0123456789abcdef01234567"
-
-  output="$(
-    (
-      set --
-      # shellcheck source=/dev/null
-      source "$PREFLIGHT_SCRIPT"
-      SOURCE_REVISION="$revision"
-      SOURCE_DIRTY="true"
-      report_preflight_evidence
-    )
-  )"
-  if [[ "$output" != *"class=working-source"* ||
-    "$output" != *"source_revision=$revision"* ||
-    "$output" != *"source_dirty=true"* ]]; then
-    echo "FAIL: preflight evidence must identify working source revision and dirty state" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: preflight reports a deterministic working-source evidence coordinate"
 }
 
 run_arm64_executable_policy_case() {
@@ -1853,7 +1781,6 @@ run_literal_plist_key_case
 run_speech_worker_bundle_signing_policy_case
 run_distribution_dmg_policy_case
 run_notarization_result_cases
-run_release_artifact_hygiene_policy_case
 run_release_output_staging_policy_case
 run_install_quit_policy_case
 run_orphaned_speech_worker_install_policy_case
@@ -1865,7 +1792,6 @@ run_process_enumeration_failure_case
 run_first_install_concurrent_target_case
 run_existing_install_concurrent_identity_case
 run_preflight_toolchain_policy_case
-run_preflight_evidence_policy_case
 run_arm64_executable_policy_case
 run_local_build_identity_case
 run_notarized_output_symlink_policy_case

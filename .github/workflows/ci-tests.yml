@@ -132,24 +132,14 @@ jobs:
         id: toolchain
         shell: bash
         run: |
-          xcode="$(xcodebuild -version)"
-          swift="$(swift --version)"
-          sdk="$(xcrun --show-sdk-build-version)"
-          metal="$(xcrun metal -v 2>&1)"
-          metal_path="$(xcrun -f metal)"
-          metal_sha="$(shasum -a 256 "$metal_path" | cut -d ' ' -f 1)"
-          # Cryptex mount paths vary across runners; preserve compiler content identity.
-          metal="$(printf '%s\n' "$metal" | sed '/^InstalledDir:/d')"
-          identity="$(printf '%s\n' "$xcode" "$swift" "$sdk" "$metal" "$metal_sha")"
-          printf '%s\n' "$identity"
-          key="$(printf '%s' "$identity" | shasum -a 256 | cut -d ' ' -f 1)"
+          key="$(scripts/preflight.sh swift toolchain-key)"
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Compute lane cache key
         id: cache-key
         env:
           CACHE_PREFIX: swift-v2-${{ matrix.lane }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{
-            hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py') }}-
+            hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/file_input.py') }}-
           CHECKOUT_SHA: ${{ github.sha }}
         run: |
           echo "prefix=$CACHE_PREFIX" >> "$GITHUB_OUTPUT"

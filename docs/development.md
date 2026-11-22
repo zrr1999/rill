@@ -99,6 +99,17 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
 
 ## 生成物与脚本维护
 
+脚本按职责使用，不按 CI 步骤各建一个入口：
+
+- 仓库检查：`mise run check` 执行 prek；工作流、密钥和迁移边界使用同一个
+  `scripts/check_repository.sh` 入口，分别由 jactionlint、Gitleaks 和仓库规则负责。
+- 构建与预检：`scripts/preflight.sh` 组织验证，`scripts/build_driver.py` 管 SwiftPM 构建、
+  缓存和产物回执。CI 使用官方 `actions/cache`；依赖键来自 `Package.resolved`，另用构建驱动
+  识别 runner 已安装的 Xcode、SDK 和 Metal 编译器。mise 的锁文件只覆盖 mise 安装的工具。
+- 覆盖率：`mise run coverage` 用 pytest 和 LLVM 生成报告，托管 CI 交给 Codecov 汇总。
+- 交付：`scripts/release.sh` 是签名和安装入口；App、输入法和许可生成各自保留独立装配入口。
+- 基准与诊断分别使用 `scripts/build_benchmarks.sh` 和 `scripts/diagnostics.py`。
+
 - 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，与用户工作流
   共用解析和验证路径；格式与执行契约见 [工作流文档](workflow-toml.md)。
 - 依赖变化后，同步 `Package.resolved` 与受审许可清单

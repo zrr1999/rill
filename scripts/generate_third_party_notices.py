@@ -53,11 +53,6 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT,
         help="Rendered notices path (pack-time artifact; not committed).",
     )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Fail unless the existing output exactly matches generated content.",
-    )
     return parser.parse_args()
 
 
@@ -649,21 +644,6 @@ def render(
     return ("\n".join(lines).rstrip() + "\n").encode("utf-8")
 
 
-def check_output(output: Path, content: bytes) -> None:
-    try:
-        existing = read_regular_file(output, max_bytes=len(content), follow_symlinks=True)
-    except OSError as error:
-        raise NoticeError(
-            f"Generated notice is missing or unreadable at {output}: {error}"
-        ) from error
-    except ValueError as error:
-        raise NoticeError(f"Generated notice is stale or unreadable at {output}: {error}") from error
-    if existing != content:
-        raise NoticeError(
-            f"Generated notice is stale: {output}; run scripts/generate_third_party_notices.py"
-        )
-
-
 def write_output(output: Path, content: bytes) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
@@ -697,15 +677,11 @@ def main() -> int:
             manifest,
             arguments.checkouts_dir,
         )
-        if arguments.check:
-            check_output(arguments.output, content)
-        else:
-            write_output(arguments.output, content)
+        write_output(arguments.output, content)
     except NoticeError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    action = "verified" if arguments.check else "generated"
-    print(f"Third-party notices {action}: {arguments.output}")
+    print(f"Third-party notices generated: {arguments.output}")
     return 0
 
 

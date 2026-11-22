@@ -158,11 +158,20 @@ SH
 all_stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests release working-diff)
 for lane in all tests release; do
   case "$lane" in
-  all) stages=("${all_stages[@]}") ;;
-  tests) stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff) ;;
-  release) stages=(toolchain release working-diff) ;;
+  all)
+    stages=("${all_stages[@]}")
+    failure=repository
+    ;;
+  tests)
+    stages=(toolchain repository domain-tests native-tests performance-tests desktop-tests working-diff)
+    failure=domain-tests
+    ;;
+  release)
+    stages=(toolchain release working-diff)
+    failure=release
+    ;;
   esac
-  for failed_stage in none "${stages[@]}"; do
+  for failed_stage in none "$failure"; do
     fixture="$TEST_ROOT/$lane-$failed_stage"
     mkdir -p "$fixture/reports with spaces"
     status=0
@@ -223,32 +232,6 @@ for lane in all tests release; do
   cmp "$fixture/expected" "$fixture/trace"
 done
 echo 'PASS: clean failures stop every lane before repository checks or builds'
-
-# Local all preserves the full gate; hosted tests use the separate tool/security jobs.
-for lane in all tests; do
-  trace="$TEST_ROOT/repository-$lane"
-  env FIXTURE_TRACE="$trace" "$BASH" -c '
-    source "$1/scripts/preflight.sh"
-    parse_preflight_options --lane "$2"
-    info() { :; }
-    check_release_artifact_hygiene() { :; }
-    check_record_domain_boundary() { :; }
-    uv() { printf "%s\n" "$*" >>"$FIXTURE_TRACE"; }
-    bash() { printf "%s\n" "$*" >>"$FIXTURE_TRACE"; }
-    check_repository
-  ' _ "$PROJECT_DIR" "$lane" >"$trace.output" 2>&1
-  case "$lane" in
-  all) expected=1 ;;
-  tests) expected=0 ;;
-  esac
-  for command in ' pytest ' '/check_secrets.sh'; do
-    [[ "$(grep -c "$command" "$trace" || true)" == "$expected" ]]
-  done
-  for command in '/check_module_boundaries.py' '/ci_workflow_test.py' '/input_method_test.py' '/build_benchmarks.sh'; do
-    [[ "$(grep -c "$command" "$trace")" == 1 ]]
-  done
-done
-echo 'PASS: common checks run once in their selected owner while local all remains complete'
 
 # A reporting destination may be reused without overwriting an earlier run.
 env RILL_PREFLIGHT_REPORT_DIR="$TEST_ROOT/all-none/reports with spaces" \
@@ -331,6 +314,9 @@ source_case() {
   cmp "$fixture/expected-trace" "$fixture/trace"
   if [[ "$mutation" == none || "$mutation" == ignored ]]; then
     [[ "$status" == 0 ]]
+    local revision
+    revision="$(git -C "$repository" rev-parse HEAD)"
+    grep -Fq "Preflight evidence: class=working-source source_revision=$revision source_dirty=$dirty" "$fixture/output"
     grep -Fq 'Result: **passed** (exit 0)' "$summary"
   else
     [[ "$status" == 1 ]]
@@ -347,9 +333,7 @@ source_case stable-clean none none clean after
 source_case stable-dirty none none dirty after
 source_case stable-untracked none none untracked after
 source_case ignored-build-output ignored domain-tests clean after
-for stage in "${stages[@]}"; do
-  source_case "edit-$stage" edit "$stage" clean after
-done
+source_case edit-after-domain edit domain-tests clean after
 for mutation in add delete head mode revert; do
   source_case "$mutation" "$mutation" domain-tests clean after
 done

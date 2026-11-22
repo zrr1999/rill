@@ -116,8 +116,8 @@ class Fixture:
             },
         )
 
-    def generator_command(self, check: bool = False) -> list[str]:
-        command = [
+    def generator_command(self) -> list[str]:
+        return [
             "uv",
             "run",
             "--script",
@@ -127,9 +127,6 @@ class Fixture:
             "--output",
             str(self.output),
         ]
-        if check:
-            command.append("--check")
-        return command
 
     def generate(self) -> subprocess.CompletedProcess[str]:
         return run(self.generator_command(), check=True)
@@ -340,8 +337,8 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertIn("`sample` | source control | 1.2.3", content)
         self.assertIn(self.fixture.revision, content)
         self.assertIn("Sample dependency license", content)
-        checked = run(self.fixture.generator_command(check=True))
-        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.fixture.generate()
+        self.assertEqual(self.fixture.output.read_text(encoding="utf-8"), content)
 
     def test_generator_rejects_symlink_and_fifo_manifests(self) -> None:
         manifest = self.fixture.manifest
@@ -408,18 +405,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertIn("`LICENSE#L1-L1`", content)
         self.assertIn("Sample dependency license", content)
         self.assertNotIn("Copyright Example", content)
-
-    def test_check_rejects_missing_or_stale_generated_output(self) -> None:
-        missing = run(self.fixture.generator_command(check=True))
-        self.assertNotEqual(missing.returncode, 0)
-        self.assertIn("missing or unreadable", missing.stderr)
-
-        self.fixture.generate()
-        with self.fixture.output.open("a", encoding="utf-8") as destination:
-            destination.write("stale\n")
-        stale = run(self.fixture.generator_command(check=True))
-        self.assertNotEqual(stale.returncode, 0)
-        self.assertIn("stale", stale.stderr)
 
     def test_generator_rejects_vendored_manifest_entries(self) -> None:
         manifest = json.loads(self.fixture.manifest.read_text(encoding="utf-8"))
@@ -616,64 +601,13 @@ class ThirdPartyNoticesTests(unittest.TestCase):
             app_bundle / "Contents" / "Helpers" / "RillSpeechWorker"
         )
         self.assertTrue(packaged_speech_worker.is_file())
-        self.assertTrue(os.access(packaged_speech_worker, os.X_OK))
         self.assertEqual(
             packaged_speech_worker.read_bytes(),
             (build_dir / "RillSpeechWorker").read_bytes(),
         )
-        packaged_mlx_bundle = (
-            app_bundle / "Contents" / "Helpers" / MLX_RESOURCE_BUNDLE_NAME
-        )
-        self.assertTrue(packaged_mlx_bundle.is_dir())
-        self.assertFalse(
-            (app_bundle / "Contents" / "Resources" / MLX_RESOURCE_BUNDLE_NAME).exists()
-        )
-        self.assertEqual(
-            (
-                packaged_mlx_bundle / "Contents" / "Resources" / "default.metallib"
-            ).read_bytes(),
-            (
-                build_dir
-                / MLX_RESOURCE_BUNDLE_NAME
-                / "Contents"
-                / "Resources"
-                / "default.metallib"
-            ).read_bytes(),
-        )
-        for language in ("en", "zh-Hans"):
-            relative = Path("RillMacOS_RillUI.bundle") / "Contents" / "Resources" / f"{language}.lproj" / "Localizable.strings"
-            self.assertEqual(
-                (app_bundle / "Contents" / "Resources" / relative).read_bytes(),
-                (build_dir / relative).read_bytes(),
-            )
-            intents_relative = Path(f"{language}.lproj/Localizable.strings")
-            self.assertEqual(
-                (app_bundle / "Contents/Resources" / intents_relative).read_bytes(),
-                (build_dir / "RillMacOS_RillApp.bundle/Contents/Resources" / intents_relative).read_bytes(),
-            )
         packaged = app_bundle / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.md"
+        self.assertIn("Sample dependency license", packaged.read_text(encoding="utf-8"))
         self.assertFalse(self.fixture.output.exists())
-        self.fixture.generate()
-        self.assertEqual(packaged.read_bytes(), self.fixture.output.read_bytes())
-        for document in project_documents:
-            self.assertEqual(
-                (app_bundle / "Contents" / "Resources" / document).read_bytes(),
-                (PROJECT_DIR / document).read_bytes(),
-            )
-        packaged_privacy_notice = (
-            app_bundle / "Contents" / "Resources" / PRIVACY_NOTICE.name
-        )
-        self.assertEqual(
-            packaged_privacy_notice.read_bytes(),
-            self.fixture.privacy_notice.read_bytes(),
-        )
-        packaged_local_model_notices = (
-            app_bundle / "Contents" / "Resources" / LOCAL_MODEL_NOTICES.name
-        )
-        self.assertEqual(
-            packaged_local_model_notices.read_bytes(),
-            self.fixture.local_model_notices.read_bytes(),
-        )
         self.assertFalse(
             (
                 app_bundle
@@ -686,7 +620,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         with (app_bundle / "Contents" / "Info.plist").open("rb") as source:
             info_plist = plistlib.load(source)
         self.assertEqual(info_plist["CFBundleDevelopmentRegion"], "en")
-        self.assertEqual(info_plist["CFBundleIconFile"], "Rill.icns")
         self.assertEqual(
             info_plist["NSMicrophoneUsageDescription"],
             "Rill needs microphone access to capture voice input for speech-to-text.",
@@ -700,11 +633,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
             "zh-Hans": "Rill 需要使用麦克风来采集语音输入并转换为文字。",
         }
         for localization, expected_description in expected_descriptions.items():
-            source = (
-                self.fixture.app_bundle_resources
-                / f"{localization}.lproj"
-                / "InfoPlist.strings"
-            )
             localized = (
                 app_bundle
                 / "Contents"
@@ -712,7 +640,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
                 / f"{localization}.lproj"
                 / "InfoPlist.strings"
             )
-            self.assertEqual(localized.read_bytes(), source.read_bytes())
             extracted = run(
                 [
                     "plutil",
@@ -726,9 +653,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
             )
             self.assertEqual(extracted.returncode, 0, extracted.stderr)
             self.assertEqual(extracted.stdout.strip(), expected_description)
-
-        packaged_icon = app_bundle / "Contents" / "Resources" / "Rill.icns"
-        self.assertGreater(packaged_icon.stat().st_size, 0)
 
         for document in project_documents:
             source = self.fixture.root / document

@@ -55,7 +55,7 @@ jobs:
         run: mise run check
 
       - name: Scan secrets
-        run: bash scripts/check_secrets.sh
+        run: bash scripts/check_repository.sh secrets
 
   codeql:
     name: CodeQL (${{ matrix.language }})
