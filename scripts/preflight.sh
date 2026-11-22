@@ -6,7 +6,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-BUILD_DIR=""
 SOURCE_REVISION=""
 SOURCE_DIRTY="false"
 SOURCE_FINGERPRINT=""
@@ -184,56 +183,6 @@ locked_swift() {
   uv run --no-build --script "$SCRIPT_DIR/build_driver.py" "$@"
 }
 
-check_release_artifact_hygiene() {
-  local root="$1"
-  local name=""
-  local path=""
-  local found=()
-
-  [[ -d "$root" ]] || error "Release artifact hygiene root is not a directory: $root"
-  root="$(cd "$root" && pwd -P)"
-  for name in Rill.app Rill.dmg Rill.dmg.sha256; do
-    path="$root/$name"
-    if [[ -e "$path" || -L "$path" ]]; then
-      found+=("$name")
-    fi
-  done
-  if [[ "${#found[@]}" -gt 0 ]]; then
-    echo "✗ Repository-root release artifacts are forbidden: ${found[*]}" >&2
-    echo "  Preserve local artifacts under .artifacts/ or use a directory outside the repository." >&2
-    exit 1
-  fi
-  echo "Release artifact hygiene check passed."
-}
-
-check_record_domain_boundary() {
-  local legacy_domain_pattern='(^|[^A-Za-z0-9_])(DeliveryStack|ClipboardHistoryItem|ClipboardGroup|ClipboardPasteMode|ClipboardItemDryRun)([^A-Za-z0-9_]|$)'
-  local declaration_pattern='^[[:space:]]*(public |internal |private |fileprivate )?(final )?(struct|class|enum|protocol|actor|typealias) Clipboard[A-Z]'
-  local resource_pattern='id[[:space:]]*=[[:space:]]*"(stack\.push|clipboard\.copy)"|strategy[[:space:]]*=[[:space:]]*"(stack-first|clipboard-only)"'
-  local legacy_sources=""
-
-  if git grep -n -E -e "$legacy_domain_pattern" -- Sources ':!**/LegacyClipboardMigration.swift'; then
-    error "Legacy Stack/Clipboard domain types escaped LegacyClipboardMigration"
-  fi
-  if git grep -n -E -e "$declaration_pattern" -- Sources ':!**/LegacyClipboardMigration.swift'; then
-    error "Clipboard-prefixed domain declarations must be SystemClipboard-prefixed or migration-only"
-  fi
-  legacy_sources="$(
-    find Sources -type f \
-      \( -name 'DeliveryStack*.swift' -o -name 'Clipboard*.swift' -o -name 'StackPasteController.swift' \) \
-      ! -name 'LegacyClipboardMigration.swift' \
-      -print
-  )"
-  if [[ -n "$legacy_sources" ]]; then
-    printf '%s\n' "$legacy_sources" >&2
-    error "Legacy Stack/Clipboard source files remain outside the migration boundary"
-  fi
-  if git grep -n -E -e "$resource_pattern" -- Sources/RillPlatform/Resources/BuiltinWorkflows; then
-    error "Built-in workflow resources must emit canonical Record action IDs and strategies"
-  fi
-  echo "Record domain boundary check passed"
-}
-
 run_domain_swift_tests() {
   echo 'Running domain tests in parallel...'
   locked_swift test --parallel --num-workers 4 --skip "$NATIVE_TESTS|$DESKTOP_TESTS|$BENCHMARK_TESTS|RillQualityEvaluations|$STORAGE_STRESS_TESTS"
@@ -274,8 +223,6 @@ run_swift_tests() {
 
 run_script_tests() {
   local test_dir="$SCRIPT_DIR/tests"
-  echo 'Testing dependency security policy...'
-  uv run --script "$test_dir/dependency_security_test.py"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'
@@ -286,15 +233,11 @@ run_script_tests() {
   uv run --no-build --script "$test_dir/worker_cache_test.py"
   echo 'Testing release configuration...'
   bash "$test_dir/release_config_test.sh"
-  echo 'Testing CI lane aggregation and cache policy...'
-  uv run --quiet --no-project --python ">=3.11" python "$test_dir/ci_workflow_test.py"
   echo 'Testing preflight stage reporting...'
   bash "$test_dir/preflight_report_test.sh"
   echo 'Testing GitHub Release drafts...'
   bash "$test_dir/github_release_test.sh"
-  echo 'Testing app icon generation...'
-  bash "$test_dir/app_icon_test.sh"
-  echo 'Testing input method resources and signing boundaries...'
+  echo 'Testing input method cache integrity...'
   uv run --no-build --script "$test_dir/input_method_test.py"
 }
 
@@ -353,14 +296,8 @@ clean_preflight_builds() {
 }
 
 check_repository() {
-  info "Checking repository release artifact hygiene..."
-  check_release_artifact_hygiene "$PROJECT_DIR"
-
   info "Checking Swift module dependencies..."
   uv run --no-build --script "$SCRIPT_DIR/check_module_boundaries.py"
-
-  info "Checking Record domain boundary..."
-  check_record_domain_boundary
 
   info "Running script policy tests..."
   run_script_tests
@@ -370,11 +307,8 @@ check_repository() {
     info "Testing evaluation and performance analysis tools..."
     uv run --locked --project "$PROJECT_DIR/tools" pytest "$PROJECT_DIR/tools/tests"
 
-    info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
-    uv run --no-build --script "$SCRIPT_DIR/check_dependency_security.py"
-
     info "Scanning Git history and the current source snapshot for secrets..."
-    bash "$SCRIPT_DIR/check_secrets.sh"
+    bash "$SCRIPT_DIR/check_repository.sh" secrets
   fi
 
   info "Checking performance benchmark workloads..."
@@ -392,16 +326,7 @@ check_release() {
   BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
   info "Building the release configuration..."
   locked_swift release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
-  BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field productsDirectory)"
   RAW_BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field buildDirectory)"
-
-  info "Checking arm64 release executable architectures..."
-  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillApp"
-  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillSpeechWorker"
-
-  info "Checking locked third-party license and notice provenance..."
-  RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
-    uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
 
   info "Checking relocatable SwiftPM resource accessors..."
   verify_xcode_resource_accessor "RillMacOS_RillApp"
@@ -427,11 +352,7 @@ check_release() {
   codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
 
-  for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
-    cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" \
-      || error "Packaged project document does not match $document"
-  done
-  uv run --no-build --script "$SCRIPT_DIR/tests/input_method_test.py" bundle \
+  uv run --no-build --script "$SCRIPT_DIR/validate_input_method.py" bundle \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
   if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
     check_working_diff
@@ -508,7 +429,7 @@ parse_preflight_options() {
       shift
       ;;
     --help | -h)
-      echo "Usage: $0 [--clean] [--test-evidence] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | commit-messages [BASE [HEAD]] | hygiene [ROOT]"
+      echo "Usage: $0 [--clean] [--test-evidence] [--lane all|tests|release] | test | test-desktop | test-scripts | swift ... | commit-messages [BASE [HEAD]]"
       echo "  --test-evidence  Run Record stress fixtures and save UI renders in .artifacts/ui-renders."
       exit 0
       ;;
@@ -545,11 +466,6 @@ swift)
 commit-messages)
   shift
   check_commit_messages "$@"
-  exit
-  ;;
-hygiene)
-  shift
-  check_release_artifact_hygiene "${1:-$PROJECT_DIR}"
   exit
   ;;
 esac

@@ -1,44 +1,36 @@
 #!/usr/bin/env bash
-# Scan committed history and the current tracked/untracked source snapshot.
-set -euo pipefail
-
+# Validate Git-visible workflow files or scan the repository for secrets.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-GITLEAKS_REQUIRED_VERSION="$(uv run --quiet --no-project --python '>=3.11' python -c \
-  'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["tools"]["gitleaks"])' \
-  "$PROJECT_DIR/mise.toml")"
-GITLEAKS_CONFIG="$PROJECT_DIR/.gitleaks.toml"
 
 error() {
   echo "✗ $*" >&2
   return 1
 }
 
-resolve_gitleaks_binary() {
-  local candidate=""
-  candidate="$(command -v gitleaks 2>/dev/null || true)"
-  if [[ -z "$candidate" ]]; then
-    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required. Install it with: mise install; run the scan with mise exec -- scripts/check_secrets.sh"
+check_workflows() (
+  cd "$PROJECT_DIR" || return
+  local file_list path
+  local -a files=()
+  file_list="$(mktemp "${TMPDIR:-/tmp}/rill-workflows.XXXXXX")" || return
+  trap 'rm -f -- "$file_list"' EXIT
+  if ! git ls-files --cached --others --exclude-standard -z >"$file_list"; then
+    error "Cannot enumerate Git-visible workflow files"
     return
   fi
-  printf '%s\n' "$candidate"
-}
-
-verify_gitleaks_binary() {
-  local binary="$1"
-  local output=""
-  local version=""
-
-  if ! output="$("$binary" version 2>&1)"; then
-    error "Cannot execute Gitleaks: $binary"
+  while IFS= read -r -d '' path; do
+    case "$path" in
+    .github/workflows/*.yml | .github/workflows/*.yaml | .github/workflows/actions.lock | .github/dependabot.yml | .github/dependabot.yaml | action.yml | action.yaml | */action.yml | */action.yaml)
+      [[ -e "$path" || -L "$path" ]] && files+=("$path")
+      ;;
+    esac
+  done <"$file_list"
+  if [[ ${#files[@]} -eq 0 ]]; then
+    error "No repository workflows or actions found"
     return
   fi
-  version="$(printf '%s\n' "$output" | tail -n 1 | awk '{print $NF}' | sed 's/^v//')"
-  if [[ "$version" != "$GITLEAKS_REQUIRED_VERSION" ]]; then
-    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required (found ${version:-unknown} at $binary). Install it with: mise install; run the scan with mise exec -- scripts/check_secrets.sh"
-    return
-  fi
-}
+  jactionlint --shellcheck=shellcheck --ruff=ruff "$@" "${files[@]}"
+)
 
 copy_current_source_snapshot() {
   local project_dir="$1"
@@ -161,6 +153,7 @@ run_secret_scan() {
 
   "$binary" git \
     --config "$config_path" \
+    --log-opts="--all HEAD" \
     --redact \
     --no-banner \
     --no-color \
@@ -193,14 +186,75 @@ run_secret_scan() {
   return "$snapshot_status"
 }
 
+reject_record_matches() {
+  local message="$1" status
+  shift
+  if git grep -n -E "$@"; then
+    error "$message"
+    return
+  else
+    status=$?
+  fi
+  if [[ "$status" -ne 1 ]]; then
+    error "Unable to check the Record domain boundary with git grep"
+  fi
+}
+
+check_record_domain_boundary() (
+  cd "$PROJECT_DIR" || return
+  local legacy_domain_pattern='(^|[^A-Za-z0-9_])(DeliveryStack|ClipboardHistoryItem|ClipboardGroup|ClipboardPasteMode|ClipboardItemDryRun)([^A-Za-z0-9_]|$)'
+  local declaration_pattern='^[[:space:]]*(public |internal |private |fileprivate )?(final )?(struct|class|enum|protocol|actor|typealias) Clipboard[A-Z]'
+  local resource_pattern='id[[:space:]]*=[[:space:]]*"(stack\.push|clipboard\.copy)"|strategy[[:space:]]*=[[:space:]]*"(stack-first|clipboard-only)"'
+  local legacy_sources
+
+  reject_record_matches "Legacy Stack/Clipboard domain types escaped LegacyClipboardMigration" \
+    -e "$legacy_domain_pattern" -- Sources ':!**/LegacyClipboardMigration.swift' || return
+
+  reject_record_matches "Clipboard-prefixed domain declarations must be SystemClipboard-prefixed or migration-only" \
+    -e "$declaration_pattern" -- Sources ':!**/LegacyClipboardMigration.swift' || return
+
+  legacy_sources="$(
+    find Sources -type f \
+      \( -name 'DeliveryStack*.swift' -o -name 'Clipboard*.swift' -o -name 'StackPasteController.swift' \) \
+      ! -name 'LegacyClipboardMigration.swift' \
+      -print
+  )" || return
+  if [[ -n "$legacy_sources" ]]; then
+    printf '%s\n' "$legacy_sources" >&2
+    error "Legacy Stack/Clipboard source files remain outside the migration boundary"
+    return
+  fi
+
+  reject_record_matches "Built-in workflow resources must emit canonical Record action IDs and strategies" \
+    -e "$resource_pattern" -- Sources/RillPlatform/Resources/BuiltinWorkflows || return
+  echo "Record domain boundary check passed"
+)
+
 main() {
-  local binary=""
-  binary="$(resolve_gitleaks_binary)" || return $?
-  verify_gitleaks_binary "$binary" || return $?
-  run_secret_scan "$PROJECT_DIR" "$GITLEAKS_CONFIG" "$binary" || return $?
-  echo "Secret scan passed with Gitleaks $GITLEAKS_REQUIRED_VERSION"
+  case "${1:-}" in
+  workflows)
+    shift
+    check_workflows "$@"
+    ;;
+  secrets | record-boundary)
+    if [[ $# -ne 1 ]]; then
+      error "The $1 check does not take additional arguments"
+      return
+    fi
+    if [[ "$1" == secrets ]]; then
+      run_secret_scan "$PROJECT_DIR" "$PROJECT_DIR/.gitleaks.toml" gitleaks
+    else
+      check_record_domain_boundary
+    fi
+    ;;
+  *)
+    echo "Usage: $0 {workflows [jactionlint arguments] | secrets | record-boundary}" >&2
+    return 2
+    ;;
+  esac
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  set -euo pipefail
   main "$@"
 fi

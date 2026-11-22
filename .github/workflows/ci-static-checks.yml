@@ -55,7 +55,7 @@ jobs:
         run: mise run check
 
       - name: Scan secrets
-        run: bash scripts/check_secrets.sh
+        run: bash scripts/check_repository.sh secrets
 
   codeql:
     name: CodeQL (${{ matrix.language }})
@@ -148,7 +148,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: dependency-audit
-          path: .artifacts/quality/python-osv.json
+          path: .artifacts/quality/dependency-osv.json
+          include-hidden-files: true
           if-no-files-found: error
 
   checks:
@@ -159,9 +160,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Require all security checks
-        env:
-          LINT_RESULT: ${{ needs.lint.result }}
-          CODEQL_RESULT: ${{ needs.codeql.result }}
-          DEPENDENCIES_RESULT: ${{ needs.dependencies.result }}
-        run: |
-          [[ "$LINT_RESULT" == success && "$CODEQL_RESULT" == success && "$DEPENDENCIES_RESULT" == success ]]
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}

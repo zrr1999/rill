@@ -66,7 +66,7 @@ shared-runner samples.
 On an otherwise idle Mac with an unlocked desktop, run:
 
 ```sh
-mise exec -- scripts/benchmark_panel.sh
+mise exec -- scripts/build_benchmarks.sh panel
 ```
 
 This explicitly runs an optimized Release test after 10 warmup visits and records

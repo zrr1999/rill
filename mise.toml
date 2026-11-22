@@ -64,7 +64,4 @@ run = [
 [tasks."audit:dependencies"]
 description = "Audit locked Swift revisions and Python dependencies against OSV"
 extends = "no-args"
-run = [
-  "uv run --no-build --script scripts/check_dependency_security.py --live-osv",
-  "bash scripts/audit_python.sh",
-]
+run = "uv run --no-build --script scripts/audit_dependencies.py"

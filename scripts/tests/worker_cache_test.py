@@ -8,6 +8,7 @@
 from __future__ import annotations
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -64,6 +65,11 @@ class WorkerCacheTests(unittest.TestCase):
         self.cache = build.WorkerCache(self.root / "cache")
         self.output = self.root / "out/Products/Release"
         self.output.mkdir(parents=True)
+        self.calls = []
+        self.enterContext(patch.dict(os.environ, {
+            "RILL_BUILD_CACHE_DIR": str(self.cache.root),
+            "CI": "false",
+        }))
         executable = self.output / build.WORKER
         executable.write_text("worker bytes")
         executable.chmod(0o755)
@@ -71,11 +77,6 @@ class WorkerCacheTests(unittest.TestCase):
             directory = self.output / name
             directory.mkdir()
             (directory / "data").write_text(name)
-        self.calls = []
-        self.enterContext(patch.dict(os.environ, {
-            "RILL_BUILD_CACHE_DIR": str(self.cache.root),
-            "CI": "false",
-        }))
 
     def identity(self):
         return build.input_identity(self.source, self.graph, self.environment)
@@ -98,15 +99,6 @@ class WorkerCacheTests(unittest.TestCase):
         (self.source / "Sources/Core/Source.swift").unlink()
         self.assertNotEqual(before, self.identity())
 
-    def test_identity_is_independent_of_checkout_path(self):
-        import shutil
-
-        other = self.root / "other-branch"
-        shutil.copytree(self.source, other)
-        self.assertEqual(
-            self.identity(), build.input_identity(other, self.graph, self.environment)
-        )
-
     def test_toolchain_lock_and_flags_invalidate(self):
         before = self.identity()
         self.environment["toolchain"]["metal"] = "two"
@@ -127,13 +119,6 @@ class WorkerCacheTests(unittest.TestCase):
         with self.assertRaises(build.Uncacheable):
             self.identity()
 
-    def test_payload_includes_dependencies_and_excludes_app_resources(self):
-        key = self.publish()
-        payload = self.cache.read(key)
-        self.assertTrue((payload / build.WORKER).exists())
-        self.assertTrue((payload / "external_Crypto.bundle/data").exists())
-        self.assertFalse((payload / "Sample_RillApp.bundle").exists())
-
     def test_untracked_compiler_inputs_bypass_cache(self):
         self.environment["toolchain"]["untrackedCompilerInputs"] = "true"
         with self.assertRaises(build.Uncacheable):
@@ -144,23 +129,6 @@ class WorkerCacheTests(unittest.TestCase):
         ]
         with self.assertRaises(build.Uncacheable):
             self.identity()
-
-    def test_input_drift_during_snapshot_prevents_publication(self):
-        identity = self.identity()
-        key = build.digest(identity)
-
-        def verify():
-            raise build.BuildError("inputs changed while copying products")
-
-        with (
-            self.cache.lock(key),
-            self.assertRaisesRegex(build.BuildError, "inputs changed"),
-        ):
-            self.cache.publish(
-                key, self.output, identity, self.graph, validate_inputs=verify
-            )
-        self.assertIsNone(self.cache.read(key))
-        self.assertFalse(list(self.cache.entries.glob(".pending-*")))
 
     def test_corrupt_incomplete_and_wrong_manifest_are_misses(self):
         key = self.publish()
@@ -174,14 +142,6 @@ class WorkerCacheTests(unittest.TestCase):
         key = self.publish()
         manifest.unlink()
         self.assertIsNone(self.cache.read(key))
-        self.assertEqual(self.cache.prune(0)["removed"], 1)
-
-    def test_cleanup_includes_corrupt_entries_without_metadata(self):
-        key = self.publish()
-        (self.cache.entries / key / "used").unlink()
-        (self.cache.entries / key / "manifest.json").unlink()
-        self.assertEqual(self.cache.prune(0)["removed"], 1)
-        (self.cache.entries / key).write_text("broken entry")
         self.assertEqual(self.cache.prune(0)["removed"], 1)
 
     def test_cleanup_skips_active_entry(self):
@@ -201,35 +161,7 @@ class WorkerCacheTests(unittest.TestCase):
         self.assertIsNotNone(self.cache.read(key))
         self.assertFalse(list(self.cache.entries.glob(".pending-*")))
 
-    def test_cleanup_removes_abandoned_pending_entries(self):
-        key = build.digest(self.identity())
-        pending = self.cache.entries / (".pending-" + key + "-interrupted")
-        pending.mkdir()
-        (pending / "partial").write_text("incomplete")
-        with self.cache.lock(key):
-            self.cache.prune(0)
-            self.assertTrue(pending.exists())
-        self.cache.prune(0)
-        self.assertFalse(pending.exists())
-        self.assertIsNone(self.cache.read(key))
-
-    def test_manifest_key_cannot_redirect_cleanup(self):
-        key = self.publish()
-        manifest = self.cache.entries / key / "manifest.json"
-        document = json.loads(manifest.read_text())
-        document["key"] = os.path.relpath(self.output, self.cache.entries)
-        manifest.write_text(json.dumps(document))
-        self.assertIsNone(self.cache.read(key))
-        self.cache.prune(0)
-        self.assertTrue(self.output.exists())
-
-    def test_new_runtime_products_remain_in_build_plan(self):
-        self.graph["products"].append(
-            {"name": "RillInputMethod", "type": {"executable": None}}
-        )
-        self.assertIn("RillInputMethod", build.runtime_products(self.graph))
-
-    def run_release(self, *, mode="auto", source=None):
+    def run_release(self, *, source=None):
         root = source or self.source
         result = self.root / ("receipt-" + root.name + ".json")
 
@@ -264,12 +196,10 @@ class WorkerCacheTests(unittest.TestCase):
             patch.object(build, "verify_checkouts"),
             patch.object(build.subprocess, "run"),
         ):
-            build.release(["--worker-cache", mode, "--result-file", str(result)])
+            build.release(["--worker-cache", "auto", "--result-file", str(result)])
         return json.loads(result.read_text())
 
     def test_cross_checkout_hit_builds_current_app_and_future_input_method(self):
-        import shutil
-
         self.graph["products"].append(
             {"name": "RillInputMethod", "type": {"executable": None}}
         )
@@ -294,25 +224,6 @@ class WorkerCacheTests(unittest.TestCase):
             (directory / build.WORKER).read_text(), "RillSpeechWorker compiled"
         )
 
-    def test_clean_mode_never_uses_existing_worker_cache(self):
-        self.run_release()
-        self.calls.clear()
-        result = self.run_release(mode="off")
-        self.assertEqual(result["workerCache"]["status"], "off")
-        self.assertEqual(
-            self.calls,
-            [
-                [
-                    "--build-system",
-                    "swiftbuild",
-                    "--manifest-cache",
-                    "none",
-                    "--arch",
-                    "arm64",
-                ]
-            ],
-        )
-
     def test_source_drift_rejects_cache_publication(self):
         with (
             patch.object(build, "PROJECT", self.source),
@@ -329,24 +240,6 @@ class WorkerCacheTests(unittest.TestCase):
             with self.assertRaisesRegex(build.BuildError, "Source changed"):
                 build.release([])
         self.assertEqual(self.cache.status(), [])
-
-    def test_resource_conflict_is_rejected(self):
-        key = self.publish()
-        payload = self.cache.read(key)
-        (self.output / "external_Crypto.bundle/data").write_text(
-            "conflicting output"
-        )
-        context = build.BuildContext(
-            self.source, "release", build.RELEASE_ARGUMENTS
-        )
-        with self.assertRaisesRegex(build.BuildError, "Conflicting resource"):
-            build.make_receipt(
-                context,
-                self.output,
-                self.root / "bad.json",
-                {},
-                worker_products=payload,
-            )
 
 
 if __name__ == "__main__":

@@ -40,7 +40,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: dependency-audit
-          path: .artifacts/quality/python-osv.json
+          path: .artifacts/quality/dependency-osv.json
+          include-hidden-files: true
           if-no-files-found: error
 
   workflow-audit:
@@ -69,7 +70,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: uvx --no-build --from jactionlint==2.4.0 --with shellcheck-py==0.11.0.1 --with ruff==0.17.1 bash
-          scripts/check_workflows.sh --online=strict --online-report=workflow-audit.json
+          scripts/check_repository.sh workflows --online=strict --online-report=workflow-audit.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:

@@ -24,7 +24,7 @@ Maintainers will coordinate verification, a fix, and disclosure with the reporte
 ## Dependencies and privacy
 
 Dependency updates are proposed through Renovate and checked against the locked
-dependency graph, reviewed advisory baseline, and live OSV results in CI.
+dependency graph and live OSV-Scanner results in CI.
 Passing those checks is not a claim that all dependencies are vulnerability-free.
 
 For product data handling and user controls, see [PRIVACY.md](PRIVACY.md) and

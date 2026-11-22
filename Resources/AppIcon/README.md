@@ -53,14 +53,14 @@ Install librsvg (`brew install librsvg`) when editing the artwork, then run:
 
 ```bash
 scripts/assemble_app_bundle.sh render-brand
-bash scripts/tests/app_icon_test.sh
+scripts/assemble_app_bundle.sh app-icon Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png /tmp/Rill.icns
 ```
 
 The generator writes the PNG and both PDFs and prints their SHA-256 values.
 `SOURCE_DATE_EPOCH=0` fixes the PDF creation timestamp. Normal builds and CI
 consume the committed exports and need no SVG conversion tools. Commit the
-SVG sources, exports, this provenance, and the updated PNG hash in
-`assemble_app_bundle.sh app-icon` and `tests/app_icon_test.sh` together.
+SVG sources and updated exports together. The hashes below record artwork
+provenance; packaging validates the image and rendered renditions directly.
 
 | File | Reviewed SHA-256 |
 | --- | --- |

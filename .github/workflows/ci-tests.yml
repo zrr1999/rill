@@ -132,24 +132,14 @@ jobs:
         id: toolchain
         shell: bash
         run: |
-          xcode="$(xcodebuild -version)"
-          swift="$(swift --version)"
-          sdk="$(xcrun --show-sdk-build-version)"
-          metal="$(xcrun metal -v 2>&1)"
-          metal_path="$(xcrun -f metal)"
-          metal_sha="$(shasum -a 256 "$metal_path" | cut -d ' ' -f 1)"
-          # Cryptex mount paths vary across runners; preserve compiler content identity.
-          metal="$(printf '%s\n' "$metal" | sed '/^InstalledDir:/d')"
-          identity="$(printf '%s\n' "$xcode" "$swift" "$sdk" "$metal" "$metal_sha")"
-          printf '%s\n' "$identity"
-          key="$(printf '%s' "$identity" | shasum -a 256 | cut -d ' ' -f 1)"
+          key="$(scripts/preflight.sh swift toolchain-key)"
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Compute lane cache key
         id: cache-key
         env:
           CACHE_PREFIX: swift-v2-${{ matrix.lane }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{
-            hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py') }}-
+            hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/file_input.py') }}-
           CHECKOUT_SHA: ${{ github.sha }}
         run: |
           echo "prefix=$CACHE_PREFIX" >> "$GITHUB_OUTPUT"
@@ -300,19 +290,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+      - name: Reject inconsistent verification scope
+        if: >-
+          ${{
+            (needs.scope.outputs.app != 'true' &&
+             (needs.scope.outputs.app != 'false' || needs.preflight-lanes.result != 'skipped')) ||
+            (needs.scope.outputs.performance_workloads != 'true' &&
+             (needs.scope.outputs.performance_workloads != 'false' || needs.record-workloads.result != 'skipped'))
+          }}
+        run: echo "::error::Verification scope is invalid or an unselected job did not skip"; exit 1
       - name: Require all selected verification jobs
-        env:
-          APP_SCOPE: ${{ needs.scope.outputs.app }}
-          PREFLIGHT_RESULT: ${{ needs.preflight-lanes.result }}
-          WORKLOAD_SCOPE: ${{ needs.scope.outputs.performance_workloads }}
-          WORKLOAD_RESULT: ${{ needs.record-workloads.result }}
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          TOOLS_RESULT: ${{ needs.tool-tests.result }}
-        run: bash scripts/check_ci_results.sh
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: >-
+            ${{
+              format('{0},{1}',
+                needs.scope.outputs.app == 'false' && 'preflight-lanes' || '',
+                needs.scope.outputs.performance_workloads == 'false' && 'record-workloads' || '')
+            }}
     if: ${{ always() }}
   coverage:
     name: Coverage

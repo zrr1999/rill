@@ -81,7 +81,7 @@ Workflow 文件名和 job ID 使用小写 kebab-case。文件按职责使用 `ci
 
 [Policy - Check](../.github/workflows/policy-check.yml) 只读校验 PR 元数据，检出 base commit 的模板。标题规范化由独立的 [Policy - Fix](../.github/workflows/policy-fix.yml) 执行，以 `contents: read` 读取默认分支配置，并仅为该 job 授予所需的 `pull-requests: write` 和 `actions: write`；不检出 PR 代码，也不读取上游运行产物。
 
-jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；`mise run audit:dependencies` 审计 Swift 锁定提交和全部 Python 锁文件。
+jactionlint 本地离线检查 Git 可见的 workflow 和 action 文件，并实际运行 ShellCheck 与 Ruff；下载依赖中的第三方 action 不属于扫描输入。zizmor 继续检查安全规则。仓库 CE 在受信任的主分支执行严格在线审计，查询失败不能算作通过。CodeQL 分析 Swift、C、Python 与 Actions。Swift 源码分析使用独立的 native 构建目录，避开 tracer 与 SwiftBuild Metal 资源编译的冲突；这份分析产物不用于 App 装配，生产构建仍使用 SwiftBuild；`mise run audit:dependencies` 使用 OSV-Scanner 审计 Swift 锁定版本、精确 Git 提交和全部受 Git 跟踪的 uv 锁文件（`uv.lock` 和 `*.py.lock`）。
 
 仓库规则使用实际检查名称：[Policy - Check](../.github/workflows/policy-check.yml) 的检查是 `PR message`，[CI - Tests](../.github/workflows/ci-tests.yml) 的汇总检查是 `Release preflight`。后者要求范围判定、开发工具测试、所需的 tests / release lane 和 Record workload 检查成功，仅接受范围判定明确不需要运行的跳过项；失败、取消或缺少范围输出均阻断。[CI - Static Checks](../.github/workflows/ci-static-checks.yml) 保留 `Static checks` 名称作为汇总检查，要求文档与仓库检查、完整 CodeQL 矩阵及 Swift/Python 依赖审计全部成功；失败、取消或跳过均阻断。仓库规则同时要求各语言 CodeQL 和 `Dependency Vulnerabilities`，使尚未包含汇总逻辑的 PR 也受到安全门禁约束。修改检查名称时同步核对[当前仓库规则](https://github.com/zrr1999/rill/rules/23828255)，合并步骤见[发布文档](releasing.md#合并门禁)。
 
@@ -99,17 +99,32 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
 
 ## 生成物与脚本维护
 
+脚本按职责使用，不按 CI 步骤各建一个入口：
+
+- 仓库检查：`mise run check` 执行 prek；工作流、密钥和迁移边界使用同一个
+  `scripts/check_repository.sh` 入口，分别由 jactionlint、Gitleaks 和仓库规则负责。
+- 构建与预检：`scripts/preflight.sh` 组织验证，`scripts/build_driver.py` 管 SwiftPM 构建、
+  缓存和产物回执。CI 使用官方 `actions/cache`；依赖键来自 `Package.resolved`，另用构建驱动
+  识别 runner 已安装的 Xcode、SDK 和 Metal 编译器。mise 的锁文件只覆盖 mise 安装的工具。
+- 覆盖率：`mise run coverage` 用 pytest 和 LLVM 生成报告，托管 CI 交给 Codecov 汇总。
+- 交付：`scripts/release.sh` 是签名和安装入口；App、输入法和许可生成各自保留独立装配入口。
+- 基准与诊断分别使用 `scripts/build_benchmarks.sh` 和 `scripts/diagnostics.py`。
+
+### 生成物
+
 - 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，与用户工作流
   共用解析和验证路径；格式与执行契约见 [工作流文档](workflow-toml.md)。
 - 依赖变化后，同步 `Package.resolved` 与受审许可清单
   `scripts/third_party_notices_manifest.json`（含证据 SHA-256）。渲染后的
   `THIRD_PARTY_NOTICES.md` 不入库：本地预览运行
   `uv run --script scripts/generate_third_party_notices.py`；装配脚本在打包时
-  生成同一文件并复制到 App 的 `Contents/Resources`。CI 验证生成成功且每个锁定
-  依赖都有受审证据，不核对已提交的渲染文本。安全检查使用受审 baseline；联网核对使用
-  `uv run --no-build --script scripts/check_dependency_security.py --live-osv`。
-  两个脚本固定读取自身所在 checkout 的 `Package.resolved`、许可清单和安全 baseline，
-  不接受替换这些仓库输入的命令行参数。许可证生成仍支持 `--checkouts-dir` 和
+  生成同一文件并复制到 App 的 `Contents/Resources`。打包时漏登记依赖、证据缺失或
+  无法读取会失败；原文 SHA-256 变化只在打包日志中提示，声明照常附上实际使用的原文和哈希。
+  复核变更后再更新清单的哈希。CI 通过真实打包验证，不核对已提交的渲染文本。
+  漏洞查询由 CI/CE 的 OSV-Scanner 执行，
+  本地可显式运行 `mise run audit:dependencies`；离线预检不做漏洞判断。
+  许可生成和审计固定读取自身 checkout 的锁文件和仓库清单，不接受替换这些输入的
+  命令行参数。许可证生成仍支持 `--checkouts-dir` 和
   `--output`，用于选择构建缓存和打包临时产物。
   仓库检查的 JSON 输入和构建回执只读取普通文件，单文件上限为 32 MiB；读取期间
   文件变化会失败。锁文件和受审清单拒绝符号链接，构建回执仍允许显式指定符号链接。

@@ -36,11 +36,20 @@ hooks = [
   {
     id = "jactionlint",
     name = "GitHub Actions correctness and security",
-    entry = "bash scripts/check_workflows.sh --no-online",
+    entry = "bash scripts/check_repository.sh workflows --no-online",
     language = "python",
     additional_dependencies = ["jactionlint==2.4.0", "shellcheck-py==0.11.0.1", "ruff==0.17.1"],
     pass_filenames = false,
-    files = '^(\.github/|(.*/)?action\.ya?ml$|prek\.toml$|scripts/check_workflows\.sh$)',
+    files = '^(\.github/|(.*/)?action\.ya?ml$|prek\.toml$|scripts/check_repository\.sh$)',
+    stages = ["pre-commit"],
+  },
+  {
+    id = "record-domain-boundary",
+    name = "Record domain boundary",
+    entry = "bash scripts/check_repository.sh record-boundary",
+    language = "system",
+    pass_filenames = false,
+    files = '^Sources/.*\.(swift|toml)$|^scripts/check_repository\.sh$',
     stages = ["pre-commit"],
   },
 ]
