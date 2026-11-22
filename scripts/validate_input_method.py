@@ -26,6 +26,21 @@ def check_bundle(bundle: Path) -> None:
     mode = info["ComponentInputModeDict"]["tsInputModeListKey"][identifier + ".Hans"]
     assert mode["TISInputSourceID"] == identifier + ".Hans"
     assert mode["tsInputModeIsVisibleKey"] is True
+
+    # Keep macOS template tint and refresh its icon cache when the asset changes.
+    source = Path(__file__).resolve().parents[1] / "Resources/AppIcon/RillInputMethodTemplate.tiff"
+    icon_bytes = source.read_bytes()
+    digest = hashlib.sha256(icon_bytes).hexdigest()[:16]
+    name = f"RillInputMethod-{digest}Template.tiff"
+    assert info["TISIconIsTemplate"] is True, "The input source icon must be marked as a template"
+    for key in ("CFBundleIconFile", "tsInputMethodIconFileKey"):
+        assert info[key] == name, f"{key} does not reference the packaged template icon"
+    for key in ("tsInputModeMenuIconFileKey", "tsInputModeAlternateMenuIconFileKey", "tsInputModePaletteIconFileKey"):
+        assert mode[key] == name, f"{key} does not reference the packaged template icon"
+    icon = contents / "Resources" / name
+    assert icon.is_file() and not icon.is_symlink(), "The packaged template icon must be a regular file"
+    assert icon.read_bytes() == icon_bytes, "The packaged template icon differs from this checkout"
+
     for language in ("en", "zh-Hans", "zh-Hant"):
         names = plistlib.loads((contents / "Resources" / f"{language}.lproj/InfoPlist.strings").read_bytes())
         assert names[identifier + ".Hans"] == "Rill"

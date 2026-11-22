@@ -40,6 +40,8 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 
 `render_input_method_icon.swift` 从菜单栏 PDF 生成包含 1x、2x 表示的 template TIFF。符号使用透明镂空，让 macOS 为深浅色和选中状态着色；应用自身的菜单栏图标继续使用无底板线稿。
 
+打包文件名在内容摘要之后保留 `Template` 后缀，让 AppKit 将资源识别为模板图像。`TISIconIsTemplate` 声明不能代替资源名称中的模板标记。
+
 ## 源文件与维护
 
 编辑 SVG 源文件；校验值和生成命令见 [图标资源说明][asset-readme]。

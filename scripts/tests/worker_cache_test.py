@@ -8,6 +8,7 @@
 from __future__ import annotations
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -62,8 +63,13 @@ class WorkerCacheTests(unittest.TestCase):
             "settings": ["--arch", "arm64"],
         }
         self.cache = build.WorkerCache(self.root / "cache")
-        self.output = self.root / "output"
-        self.output.mkdir()
+        self.output = self.root / "out/Products/Release"
+        self.output.mkdir(parents=True)
+        self.calls = []
+        self.enterContext(patch.dict(os.environ, {
+            "RILL_BUILD_CACHE_DIR": str(self.cache.root),
+            "CI": "false",
+        }))
         executable = self.output / build.WORKER
         executable.write_text("worker bytes")
         executable.chmod(0o755)
@@ -155,58 +161,38 @@ class WorkerCacheTests(unittest.TestCase):
         self.assertIsNotNone(self.cache.read(key))
         self.assertFalse(list(self.cache.entries.glob(".pending-*")))
 
-class ReleaseCacheIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        self.fixture = WorkerCacheTests()
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        output = self.fixture.root / "out/Products/Release"
-        output.parent.mkdir(parents=True)
-        self.fixture.output = self.fixture.output.rename(output)
-        self.calls = []
-        self.environment_patch = patch.dict(
-            os.environ,
-            {
-                "RILL_BUILD_CACHE_DIR": str(self.fixture.cache.root),
-                "CI": "false",
-            },
-        )
-        self.environment_patch.start()
-        self.addCleanup(self.environment_patch.stop)
-
     def run_release(self, *, source=None):
-        fixture = self.fixture
-        root = source or fixture.source
-        result = fixture.root / ("receipt-" + root.name + ".json")
+        root = source or self.source
+        result = self.root / ("receipt-" + root.name + ".json")
 
         def compile_product(context, subcommand, arguments, environment):
             self.calls.append(list(arguments))
             if "--product" in arguments:
                 products = [arguments[arguments.index("--product") + 1]]
             else:
-                products = build.runtime_products(fixture.graph)
+                products = build.runtime_products(self.graph)
             for product in products:
-                output = fixture.output / product
+                output = self.output / product
                 output.write_text(product + " compiled")
                 output.chmod(0o755)
-            app_bundle = fixture.output / "Sample_RillApp.bundle" / "data"
+            app_bundle = self.output / "Sample_RillApp.bundle" / "data"
             app_bundle.write_text((root / "Sources/RillApp/Source.swift").read_text())
             if "RillApp" in products:
-                metadata = fixture.output.parents[1] / "Intermediates.noindex/Sample.build/Release/RillApp-p.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues"
+                metadata = self.output.parents[1] / "Intermediates.noindex/Sample.build/Release/RillApp-p.build/Objects-normal/arm64/RillApp-primary.swiftconstvalues"
                 metadata.parent.mkdir(parents=True, exist_ok=True)
                 metadata.write_text(app_bundle.read_text())
 
         with (
             patch.object(build, "PROJECT", root),
-            patch.object(build.BuildContext, "swift", return_value=str(fixture.output)),
+            patch.object(build.BuildContext, "swift", return_value=str(self.output)),
             patch.object(
-                build.BuildContext, "environment", return_value=fixture.environment
+                build.BuildContext, "environment", return_value=self.environment
             ),
             patch.object(
                 build.BuildContext, "build", autospec=True, side_effect=compile_product
             ),
             patch.object(build, "source_inputs", return_value={"source": "stable"}),
-            patch.object(build, "package_graph", return_value=fixture.graph),
+            patch.object(build, "package_graph", return_value=self.graph),
             patch.object(build, "verify_checkouts"),
             patch.object(build.subprocess, "run"),
         ):
@@ -214,15 +200,13 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
         return json.loads(result.read_text())
 
     def test_cross_checkout_hit_builds_current_app_and_future_input_method(self):
-        import shutil
-
-        self.fixture.graph["products"].append(
+        self.graph["products"].append(
             {"name": "RillInputMethod", "type": {"executable": None}}
         )
         first = self.run_release()
         self.assertEqual(first["workerCache"]["status"], "miss")
-        other = self.fixture.root / "other"
-        shutil.copytree(self.fixture.source, other)
+        other = self.root / "other"
+        shutil.copytree(self.source, other)
         (other / "Sources/RillApp/Source.swift").write_text("new branch UI")
         self.calls.clear()
         second = self.run_release(source=other)
@@ -241,22 +225,22 @@ class ReleaseCacheIntegrationTests(unittest.TestCase):
         )
 
     def test_source_drift_rejects_cache_publication(self):
-        fixture = self.fixture
         with (
-            patch.object(build, "PROJECT", fixture.source),
-            patch.object(build.BuildContext, "swift", return_value=str(fixture.output)),
+            patch.object(build, "PROJECT", self.source),
+            patch.object(build.BuildContext, "swift", return_value=str(self.output)),
             patch.object(
-                build.BuildContext, "environment", return_value=fixture.environment
+                build.BuildContext, "environment", return_value=self.environment
             ),
             patch.object(build.BuildContext, "build"),
-            patch.object(build, "package_graph", return_value=fixture.graph),
+            patch.object(build, "package_graph", return_value=self.graph),
             patch.object(
                 build, "source_inputs", side_effect=[{"one": "a"}, {"one": "b"}]
             ),
         ):
             with self.assertRaisesRegex(build.BuildError, "Source changed"):
                 build.release([])
-        self.assertEqual(fixture.cache.status(), [])
+        self.assertEqual(self.cache.status(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
