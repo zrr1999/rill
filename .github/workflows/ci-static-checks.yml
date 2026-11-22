@@ -160,6 +160,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Require all security checks
-        env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
-        run: jq -e 'length > 0 and all(.[]; .result == "success")' <<< "$NEEDS_JSON"
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}

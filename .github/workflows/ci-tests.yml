@@ -290,18 +290,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Reject inconsistent verification scope
+        if: >-
+          ${{
+            (needs.scope.outputs.app != 'true' &&
+             (needs.scope.outputs.app != 'false' || needs.preflight-lanes.result != 'skipped')) ||
+            (needs.scope.outputs.performance_workloads != 'true' &&
+             (needs.scope.outputs.performance_workloads != 'false' || needs.record-workloads.result != 'skipped'))
+          }}
+        run: echo "::error::Verification scope is invalid or an unselected job did not skip"; exit 1
       - name: Require all selected verification jobs
-        env:
-          VERIFICATION_PASSED: >-
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: >-
             ${{
-              needs.scope.result == 'success' &&
-              needs.tool-tests.result == 'success' &&
-              ((needs.scope.outputs.app == 'true' && needs.preflight-lanes.result == 'success') ||
-               (needs.scope.outputs.app == 'false' && needs.preflight-lanes.result == 'skipped')) &&
-              ((needs.scope.outputs.performance_workloads == 'true' && needs.record-workloads.result == 'success') ||
-               (needs.scope.outputs.performance_workloads == 'false' && needs.record-workloads.result == 'skipped'))
+              format('{0},{1}',
+                needs.scope.outputs.app == 'false' && 'preflight-lanes' || '',
+                needs.scope.outputs.performance_workloads == 'false' && 'record-workloads' || '')
             }}
-        run: test "$VERIFICATION_PASSED" = true
     if: ${{ always() }}
   coverage:
     name: Coverage

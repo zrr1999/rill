@@ -110,6 +110,8 @@ Swift 预检的 tests / release lane，以及公证发布任务，使用 `xcode-
 - 交付：`scripts/release.sh` 是签名和安装入口；App、输入法和许可生成各自保留独立装配入口。
 - 基准与诊断分别使用 `scripts/build_benchmarks.sh` 和 `scripts/diagnostics.py`。
 
+### 生成物
+
 - 内建工作流位于 `Sources/RillPlatform/Resources/BuiltinWorkflows/`，与用户工作流
   共用解析和验证路径；格式与执行契约见 [工作流文档](workflow-toml.md)。
 - 依赖变化后，同步 `Package.resolved` 与受审许可清单
