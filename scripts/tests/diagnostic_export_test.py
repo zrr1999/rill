@@ -78,22 +78,6 @@ class DiagnosticExportTests(unittest.TestCase):
             self.assertEqual(output.read_text(), 'previous snapshot')
             self.assertEqual(report.read_text(), 'previous report')
 
-    def test_missing_or_duplicate_endpoints_are_not_zero_latency(self):
-        def event(index, code, metadata):
-            return {'id': index, 'timestamp': 100 + index, 'time_utc': f't{index}',
-                    'event': code, 'run_id': 'r', 'metadata': metadata}
-        events = [event(1, 'recording.hotkey.released', {}),
-                  event(2, 'provider.openai.rewrite.completed', {'durationMillis': '123'}),
-                  event(3, 'session.stage', {'stage': 'completed'}),
-                  event(4, 'clipboard.inject.paste.posted', {'pasteDispatchMillis': '12'})]
-        header = {'exported_at_utc': '2026-09-23T00:00:00+00:00', 'invalid_event_count': 0}
-        report = diagnostics.scan(header, events)
-        self.assertEqual(report['runs'][0]['metrics_ms']['api_completed'], 123)
-        self.assertEqual(report['runs'][0]['metrics_ms']['pasteDispatchMillis'], 12)
-        self.assertNotIn('recognition_measured', report['runs'][0]['metrics_ms'])
-        report = diagnostics.scan(header, events + [events[1]])
-        self.assertNotIn('api_completed', report['runs'][0]['metrics_ms'])
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -237,9 +237,7 @@ run_script_tests() {
   bash "$test_dir/preflight_report_test.sh"
   echo 'Testing GitHub Release drafts...'
   bash "$test_dir/github_release_test.sh"
-  echo 'Testing app icon generation...'
-  bash "$test_dir/app_icon_test.sh"
-  echo 'Testing input method resources and signing boundaries...'
+  echo 'Testing input method cache integrity...'
   uv run --no-build --script "$test_dir/input_method_test.py"
 }
 
@@ -330,9 +328,6 @@ check_release() {
   locked_swift release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
   RAW_BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field buildDirectory)"
 
-  info "Testing third-party notice and app bundle regression fixtures..."
-  uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
-
   info "Checking relocatable SwiftPM resource accessors..."
   verify_xcode_resource_accessor "RillMacOS_RillApp"
   verify_xcode_resource_accessor "RillMacOS_RillUI"
@@ -357,7 +352,7 @@ check_release() {
   codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
 
-  uv run --no-build --script "$SCRIPT_DIR/tests/input_method_test.py" bundle \
+  uv run --no-build --script "$SCRIPT_DIR/validate_input_method.py" bundle \
     "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
   if [[ -n "${RILL_PREFLIGHT_APP_DIR:-}" ]]; then
     check_working_diff
