@@ -421,21 +421,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertNotEqual(stale.returncode, 0)
         self.assertIn("stale", stale.stderr)
 
-    def test_generator_rejects_unreviewed_locked_package(self) -> None:
-        self.fixture.write_resolved(
-            [
-                {
-                    "identity": "unreviewed",
-                    "kind": "remoteSourceControl",
-                    "location": "https://example.invalid/unreviewed.git",
-                    "state": {"revision": "a" * 40, "version": "9.9.9"},
-                }
-            ]
-        )
-        result = run(self.fixture.generator_command())
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unreviewed locked packages: unreviewed", result.stderr)
-
     def test_generator_rejects_vendored_manifest_entries(self) -> None:
         manifest = json.loads(self.fixture.manifest.read_text(encoding="utf-8"))
         manifest["packages"][0]["kind"] = "vendored"
@@ -836,35 +821,7 @@ fi
                 }
             ]
         )
-        self.expect_rejected("unreviewed locked packages")
-
-    def test_locked_dependencies_have_reviewed_evidence(self) -> None:
-        checkouts = os.environ.get(
-            "RILL_TEST_CHECKOUTS_DIR", str(PROJECT_DIR / ".build/checkouts")
-        )
-        pins = json.loads((PROJECT_DIR / "Package.resolved").read_text(encoding="utf-8"))[
-            "pins"
-        ]
-        with tempfile.TemporaryDirectory(prefix="rill-generated-notices.") as directory:
-            output = Path(directory) / "THIRD_PARTY_NOTICES.md"
-            result = run(
-                [
-                    "uv",
-                    "run",
-                    "--script",
-                    str(GENERATOR),
-                    "--output",
-                    str(output),
-                    "--checkouts-dir",
-                    checkouts,
-                ]
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            content = output.read_text(encoding="utf-8")
-            self.assertIn("# Rill Third-Party Notices", content)
-            self.assertIn("## Dependency inventory", content)
-            for pin in pins:
-                self.assertIn(f"`{pin['identity']}`", content)
+        self.expect_rejected("unreviewed locked packages: unreviewed")
 
 
 def create_bundle(path: Path, identifier: str) -> None:

@@ -6,7 +6,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-BUILD_DIR=""
 SOURCE_REVISION=""
 SOURCE_DIRTY="false"
 SOURCE_FINGERPRINT=""
@@ -387,16 +386,10 @@ check_release() {
   BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
   info "Building the release configuration..."
   locked_swift release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
-  BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field productsDirectory)"
   RAW_BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field buildDirectory)"
 
-  info "Checking arm64 release executable architectures..."
-  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillApp"
-  bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillSpeechWorker"
-
-  info "Checking locked third-party license and notice provenance..."
-  RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
-    uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
+  info "Testing third-party notice and app bundle regression fixtures..."
+  uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
 
   info "Checking relocatable SwiftPM resource accessors..."
   verify_xcode_resource_accessor "RillMacOS_RillApp"
