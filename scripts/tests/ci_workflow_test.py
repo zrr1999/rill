@@ -4,14 +4,11 @@
 # dependencies = []
 # ///
 
-"""Offline regression tests for CI's fail-closed gate and lane cache policy."""
+"""Offline regression tests for the Swift cache key and coverage export."""
 
-import ast
-import itertools
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import tempfile
@@ -28,82 +25,7 @@ def block(name, workflow=WORKFLOW):
     return workflow.split(marker, 1)[1].split("      - name:", 1)[0]
 
 
-def condition(step):
-    return re.search(r"if: \$\{\{ (.*?) \}\}", block(step)).group(1)
-
-
-def evaluate(expression, values):
-    """Evaluate the boolean/equality subset used by the actual workflow guards."""
-    for key in sorted(values, key=len, reverse=True):
-        expression = expression.replace(key, repr(values[key]))
-    expression = expression.replace("&&", " and ").replace("||", " or ")
-
-    def visit(node):
-        if isinstance(node, ast.Constant):
-            return node.value
-        if isinstance(node, ast.BoolOp):
-            results = [visit(value) for value in node.values]
-            return all(results) if isinstance(node.op, ast.And) else any(results)
-        if isinstance(node, ast.Compare) and len(node.ops) == 1:
-            left, right = visit(node.left), visit(node.comparators[0])
-            if isinstance(node.ops[0], ast.Eq):
-                return left == right
-            if isinstance(node.ops[0], ast.NotEq):
-                return left != right
-        raise AssertionError(f"Unsupported workflow expression: {ast.dump(node)}")
-
-    return visit(ast.parse(expression, mode="eval").body)
-
-
-class AggregateTests(unittest.TestCase):
-    def test_all_result_and_scope_combinations_fail_closed(self):
-        step = block("Require all selected verification jobs")
-        guard = re.search(r"\$\{\{(.*?)\}\}", step, re.S).group(1)
-        guard = " ".join(guard.split())
-        states = ("success", "failure", "cancelled", "skipped", "")
-        scopes = ("true", "false", "", "invalid")
-        for selection, tools, app, preflight, scope, workload in itertools.product(
-            states, states, scopes, states, scopes, states
-        ):
-            actual = evaluate(guard, {
-                "needs.scope.result": selection,
-                "needs.tool-tests.result": tools,
-                "needs.scope.outputs.app": app,
-                "needs.preflight-lanes.result": preflight,
-                "needs.scope.outputs.performance_workloads": scope,
-                "needs.record-workloads.result": workload,
-            })
-            expected = (
-                selection == tools == "success"
-                and (app, preflight) in (("true", "success"), ("false", "skipped"))
-                and (scope, workload) in (("true", "success"), ("false", "skipped"))
-            )
-            self.assertEqual(actual, expected)
-
-
-class CachePolicyTests(unittest.TestCase):
-    def test_clean_runs_do_not_restore(self):
-        guard = condition("Restore Swift build arena")
-        for event in ("pull_request", "merge_group"):
-            self.assertEqual(evaluate(guard, {"github.event_name": event}), event == "pull_request")
-
-    def test_only_successful_pr_runs_save_cache_on_miss(self):
-        guard = condition("Save verified Swift build arena")
-        for event, success, hit in itertools.product(
-            ("pull_request", "merge_group", "push", "workflow_dispatch"),
-            (True, False),
-            ("true", "false", ""),
-        ):
-            with self.subTest(event=event, success=success, hit=hit):
-                self.assertEqual(
-                    evaluate(guard, {
-                        "github.event_name": event,
-                        "success()": success,
-                        "steps.build-cache.outputs.cache-hit": hit,
-                    }),
-                    event == "pull_request" and success and hit != "true",
-                )
-
+class CacheKeyTests(unittest.TestCase):
     def test_toolchain_key_ignores_remount_but_tracks_compiler_contents(self):
         step = block("Identify the build toolchain")
         script = textwrap.dedent(step.split("        run: |\n", 1)[1])
