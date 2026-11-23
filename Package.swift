@@ -12,10 +12,10 @@ let package = Package(
     .executable(name: "RillInputMethod", targets: ["RillInputMethod"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.11.1"),
+    .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.12.0"),
     .package(
       url: "https://github.com/mattt/swift-toml.git",
-      exact: "2.0.0"
+      exact: "2.2.2"
     ),
     .package(
       url: "https://github.com/Blaizzy/mlx-audio-swift.git",
@@ -40,7 +40,7 @@ let package = Package(
     .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.4.0"),
     .package(
       url: "https://github.com/MacPaw/OpenAI.git",
-      exact: "0.5.3"
+      exact: "0.6.1"
     ),
   ],
   targets: [
