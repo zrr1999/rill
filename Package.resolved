@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/groue/GRDB.swift.git",
       "state" : {
-        "revision" : "b83108d10f42680d78f23fe4d4d80fc88dab3212",
-        "version" : "7.11.1"
+        "revision" : "92a554cd0d5e8d67cb18993c6054e73fe42c066c",
+        "version" : "7.12.0"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/MacPaw/OpenAI.git",
       "state" : {
-        "revision" : "b66c398c9afd2fb31866d4ac3da4761ce5e3d1c8",
-        "version" : "0.5.3"
+        "revision" : "fe89b3ba8793a21fc6c034058c394d4100d419e3",
+        "version" : "0.6.1"
       }
     },
     {
@@ -168,8 +168,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattt/swift-toml.git",
       "state" : {
-        "revision" : "827506c90475e82d5a7f191f950fb3025cbdc0d6",
-        "version" : "2.0.0"
+        "revision" : "28ffe337f7da0aa0ba82c9ccca8f9287891326ce",
+        "version" : "2.2.2"
       }
     },
     {

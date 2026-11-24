@@ -1,11 +1,11 @@
 min_version = "2026.11.0"
 
 [tools]
-uv = "0.13.5"
-prek = "0.5.7"
+uv = "0.13.9"
+prek = "0.5.11"
 gitleaks = "8.30.1"
-osv-scanner = "2.7.0"
-node = "26.13.0"
+osv-scanner = "2.7.1"
+node = "26.13.1"
 
 [hooks]
 postinstall = 'if [ "${CI:-}" != "true" ]; then prek install --prepare-hooks; fi'
