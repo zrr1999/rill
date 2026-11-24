@@ -34,9 +34,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -85,10 +85,10 @@ jobs:
         with:
           persist-credentials: false
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         if: matrix.language == 'swift'
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -104,7 +104,7 @@ jobs:
         run: |
           swift package --scratch-path .artifacts/build/codeql --force-resolved-versions resolve
           git diff --exit-code -- Package.resolved
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build }}
@@ -118,7 +118,7 @@ jobs:
         # CodeQL traces source compilation; this arena is never used for an App bundle.
         # SwiftBuild's Metal resource compilation fails under the macOS tracer.
         run: uv run --no-build --script scripts/build_driver.py build --build-system native --scratch-path .artifacts/build/codeql --arch arm64
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           category: /language:${{ matrix.language }}
   dependencies:
@@ -130,9 +130,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install locked development tools
-        uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
-          version: "2026.11.0"
+          version: "2026.11.12"
 
       - name: Restore Python and hook caches
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
