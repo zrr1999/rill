@@ -42,9 +42,9 @@ mise run docs
 
 ## 验证与交付
 
-提交前运行 `mise run docs` 和仓库要求的 `mise run ci`。更新主题或 Zensical 时还应在本地预览检查窄窗口、键盘搜索、深浅主题、用户指南的任务链接，以及 TOML 与 Schema 下载。搜索至少覆盖「语音识别」「剪贴板」「润色」和 `record_duration`。
+提交前运行 `mise run docs` 和 `mise run check`。更新主题或 Zensical 时还应在本地预览检查窄窗口、键盘搜索、深浅主题、用户指南的任务链接，以及 TOML 与 Schema 下载。搜索至少覆盖「语音识别」「剪贴板」「润色」和 `record_duration`。
 
-CI 通过 `Static checks` 在 Linux 构建文档、验证 Cloudflare 静态资产配置并运行 prek，通过 `Release preflight` 在 macOS 执行预检。纯文档修改仍扫描完整 Git 历史和当前源码中的密钥，但跳过 Swift/MLX 构建与应用测试。随 App 分发的根目录文档、工作流 Schema、代码、脚本和 CI 配置变化仍运行完整预检。
+CI 通过 `Static checks` 在 Linux 构建文档、验证 Cloudflare 静态资产配置并运行 prek，通过 `Release preflight` 汇总所需的 macOS 测试和打包冒烟检查等结果。纯文档修改仍扫描完整 Git 历史和当前源码中的密钥，但跳过 Swift/MLX 构建与应用测试。随 App 分发的根目录文档、工作流 Schema、代码、脚本和 CI 配置变化仍运行所需的 Swift 构建、macOS 测试与打包检查。
 
 ## Cloudflare 托管
 

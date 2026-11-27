@@ -142,8 +142,11 @@ def main():
             environment = dict(os.environ, RILL_PRODUCT_REPLAY_REQUEST=str(path))
             subprocess.run(
                 [
-                    str(root / "scripts/preflight.sh"),
-                    "swift",
+                    "uv",
+                    "run",
+                    "--no-build",
+                    "--script",
+                    str(root / "scripts/build_driver.py"),
                     "test-domain",
                     "-c",
                     "release",

@@ -71,7 +71,7 @@ The targeted tests cover freezing without waiting, ignored cancellation, indepen
 ```sh
 # Supply DEEPSEEK_API_KEY securely in this process environment.
 uv run --locked --project tools rill-eval-quality context-correction
-RILL_CONTEXT_MAC_PROBE=1 scripts/preflight.sh swift test --filter ScreenContextCaptureTests
+RILL_CONTEXT_MAC_PROBE=1 uv run --no-build --script scripts/build_driver.py test --filter ScreenContextCaptureTests
 ```
 
 The fixed expected-content match ignores whitespace, punctuation and letter case. It is a regression signal, not a human semantic judgment. Review mismatches for improvements, unnecessary changes, invented facts and lost negation/conditions; report latency and fallback rate alongside accuracy. The dataset is intentionally small and cannot establish production accuracy.

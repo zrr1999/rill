@@ -78,7 +78,7 @@ ASR 的 CE 在本机显式运行，私有录音不上传 GitHub。三套 LLM 的
 `EncryptedCorpusRecordingArchiveStore` 提供独立的只读评测接口，逐条校验 receipt、音频认证与长度，拒绝符号链接；不会在应用启动时解密整个归档。在“设置 → 存储”中可选择归档录音、声明麦克风/合成/公开 fixture 来源、选择开发集或保留验收集，并明确授权导出到本地私有目录。导出只包含选中的 WAV、SHA256、待填写参考文本的 corpus 和说明文件；不填虚假的空白参考。目录权限为 0700，文件为 0600；取消/失败清理暂存目录，无法清理时显示剩余目录并提供 Finder 入口。该剩余目录提示保留在本次应用会话中。导出不上传；仍需本人听取并标注参考文本。已有获授权 PCM WAV 也可以使用下面的工具。
 
 ```sh
-scripts/preflight.sh swift release --result-file /private/path/release.json
+uv run --no-build --script scripts/build_driver.py release --result-file /private/path/release.json
 uv run --locked --project tools rill-replay-asr --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state cold_process --repetitions 3 --output /private/path/cold.jsonl

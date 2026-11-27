@@ -61,7 +61,7 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 brew install librsvg
 scripts/assemble_app_bundle.sh render-brand
 scripts/assemble_app_bundle.sh app-icon Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png /tmp/Rill.icns
-scripts/preflight.sh swift test --filter RillMenuBarIconTests
+uv run --no-build --script scripts/build_driver.py test --filter RillMenuBarIconTests
 ```
 
 常规构建使用提交的 PNG / PDF，无需安装 SVG 转换工具。源 SVG 和导出文件应在同一提交中更新。打包校验图标内容，不锁定源图摘要。设计变化时从新的导出产物重新渲染预览，并同步版本链接；预览图不是打包输入。

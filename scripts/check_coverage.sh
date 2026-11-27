@@ -13,8 +13,8 @@ coverage_arguments=(
   -Xswiftc -Xllvm -Xswiftc -instrprof-atomic-counter-update-all
   -Xcc -fprofile-update=atomic
 )
-scripts/preflight.sh swift test-domain "${coverage_arguments[@]}" --skip RillQualityEvaluations
-report="$(scripts/preflight.sh swift test-domain "${coverage_arguments[@]}" --show-codecov-path)"
+uv run --no-build --script scripts/build_driver.py test-domain "${coverage_arguments[@]}" --skip RillQualityEvaluations
+report="$(uv run --no-build --script scripts/build_driver.py test-domain "${coverage_arguments[@]}" --show-codecov-path)"
 products="$(dirname "$(dirname "$report")")"
 profile="$(dirname "$report")/default.profdata"
 

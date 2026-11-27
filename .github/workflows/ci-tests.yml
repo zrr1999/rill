@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Select the application verification lane
+      - name: Choose test and packaging scope
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -93,7 +93,7 @@ jobs:
         run: uv run --no-build --locked --project tools pytest tools/tests
 
   preflight-lanes:
-    name: Preflight (${{ matrix.lane }})
+    name: ${{ matrix.name }}
     needs:
       - scope
       - tool-tests
@@ -105,8 +105,10 @@ jobs:
       matrix:
         include:
           - lane: tests
+            name: macOS tests
             cache-path: .build
           - lane: release
+            name: macOS package smoke test
             cache-path: .artifacts/build/release
     steps:
       - name: Check out repository
@@ -132,7 +134,7 @@ jobs:
         id: toolchain
         shell: bash
         run: |
-          key="$(scripts/preflight.sh swift toolchain-key)"
+          key="$(uv run --no-build --script scripts/build_driver.py toolchain-key)"
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Compute lane cache key
@@ -188,7 +190,14 @@ jobs:
           grep -F '.macOS(.v26)' Package.swift
           uv run --quiet --no-project --python '>=3.11' python --version
 
-      - name: Run preflight
+      - name: Check Swift module boundaries and script behavior
+        if: ${{ matrix.lane == 'tests' }}
+        run: |
+          uv run --no-build --script scripts/check_module_boundaries.py
+          scripts/test.sh --scripts
+          scripts/build_benchmarks.sh --preview-only
+
+      - name: Run test or package smoke check
         id: lane
         env:
           LANE: ${{ matrix.lane }}
@@ -198,9 +207,13 @@ jobs:
           RILL_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           RILL_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          flags=(--lane "$LANE" --test-evidence)
+          flags=()
           if [[ "$EVENT_NAME" != pull_request ]]; then flags+=(--clean); fi
-          scripts/preflight.sh "${flags[@]}"
+          case "$LANE" in
+            tests) scripts/test.sh --desktop --evidence "${flags[@]}" ;;
+            release) scripts/package_smoke.sh "${flags[@]}" ;;
+            *) echo "::error::Unknown macOS job: $LANE"; exit 2 ;;
+          esac
 
       - name: Save verified Swift build arena
         if: ${{ success() && github.event_name == 'pull_request' && steps.build-cache.outputs.cache-hit != 'true' }}
@@ -219,7 +232,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Save verified preflight app
+      - name: Save smoke-tested app
         if: ${{ success() && matrix.lane == 'release' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -228,7 +241,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Summarize preflight
+      - name: Summarize test or packaging report
         if: ${{ always() }}
         env:
           LANE: ${{ matrix.lane }}
@@ -238,10 +251,10 @@ jobs:
           if [[ "${#reports[@]}" -gt 0 ]]; then
             cat "${reports[@]}" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo 'No preflight report was produced. Check setup steps and preflight initialization.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No test or packaging report was produced. Check setup steps.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload preflight reports
+      - name: Upload test and packaging reports
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -278,8 +291,8 @@ jobs:
       - name: Validate performance workload correctness
         run: bash scripts/build_benchmarks.sh
 
-  # Preserve the existing required-check name while joining every selected job.
     if: needs.scope.outputs.performance_workloads == 'true'
+  # Keep the exact required-check name configured in the main ruleset.
   preflight:
     name: Release preflight
     needs:

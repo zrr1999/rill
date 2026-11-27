@@ -4,7 +4,7 @@
 
 准备 macOS、Xcode 及其 Command Line Tools 和 Metal Toolchain，以及 [mise](https://mise.jdx.dev/) 和 Git。
 
-平台与 Swift 要求见 [Package.swift](Package.swift)，工具链检查见 [scripts/preflight.sh](scripts/preflight.sh)。mise 的最低版本和开发工具版本见 [mise.toml](mise.toml)，本地与 CI 共用 [mise.lock](mise.lock)。Swift、文档和 Python 依赖继续使用各自的配置与锁文件。
+平台与 Swift 要求见 [Package.swift](Package.swift)，构建驱动见 [scripts/build_driver.py](scripts/build_driver.py)。mise 的最低版本和开发工具版本见 [mise.toml](mise.toml)，本地与 CI 共用 [mise.lock](mise.lock)。Swift、文档和 Python 依赖继续使用各自的配置与锁文件。
 
 首次使用时，在仓库根目录审阅并信任 [mise.toml](mise.toml)，然后安装开发工具和 hooks、构建和测试：
 
@@ -15,7 +15,7 @@ mise run build
 mise run test
 ```
 
-`mise install` 安装工具后会自动安装并准备 `pre-commit` 和 `commit-msg` hooks，需要重装 hooks 时可再次运行 `mise install`。CI 跳过 hook 安装。用 `mise tasks ls` 查看完整命令，通过 `mise run <任务>` 执行，无需激活 shell。构建模式、定向测试和故障定位见 [开发参考](docs/development.md)。SwiftPM 构建和测试统一通过 `scripts/preflight.sh swift` 运行；保留并使用仓库的 `Package.resolved`。
+`mise install` 安装工具后会自动安装并准备 `pre-commit` 和 `commit-msg` hooks，需要重装 hooks 时可再次运行 `mise install`。CI 跳过 hook 安装。用 `mise tasks ls` 查看完整命令，通过 `mise run <任务>` 执行，无需激活 shell。构建模式、定向测试和故障定位见 [开发参考](docs/development.md)。SwiftPM 构建和定向测试统一通过 `uv run --no-build --script scripts/build_driver.py` 运行；保留并使用仓库的 `Package.resolved`。
 
 ## 验证
 
@@ -24,11 +24,12 @@ mise run test
 | `mise run check` / `mise run format` | 只读静态检查与显式格式修复 |
 | `mise run docs` / `mise run docs serve` | 严格构建文档与本地预览 |
 | `mise run test` | 不依赖真实桌面焦点的领域和原生测试；不启用压力与渲染证据 |
-| `mise run ci` / `mise run ci --clean` | 完整门禁。与 GitHub tests lane 一样启用一万条记录压力和 UI 渲染证据。`--clean` 在清理构建产物后重跑 |
+| `mise run test --desktop --evidence` | 在已解锁桌面运行交互测试、记录压力测试和 UI 渲染检查 |
+| `mise run package:smoke` | 验证 arm64 Release 构建、App 装配和临时签名 |
 | `mise run coverage` | Python 与 Swift 领域测试覆盖率 |
 | `mise run audit:dependencies` | 联网审计 Swift 与 Python 锁定依赖 |
 
-提交前运行 `mise run ci` 和 `git diff --check`。完整门禁需要可用的交互式桌面。
+提交前运行 `mise run check`、`mise run test` 和 `git diff --check`。更改构建、装配或交付时，另运行 `mise run package:smoke`；桌面测试需要已解锁的交互式桌面。
 
 涉及 Fn、麦克风、IME、跨应用输出或 VoiceOver 的改动，按 [macOS 验收清单](docs/release-qa-checklist.md)进行人工验收。质量评测与性能测量分别见 [Evals](Evals/README.md) 和 [Benchmarks](Benchmarks/README.md)。
 

@@ -26,7 +26,7 @@ run_panel_benchmark() {
   } >"$report_dir/toolchain.log"
 
   RILL_PANEL_BENCHMARK_OUTPUT="$report_dir/samples.json" \
-    scripts/preflight.sh swift test --configuration release --test-product RillAppTests \
+    uv run --no-build --script scripts/build_driver.py test --configuration release --test-product RillAppTests \
     --filter '^RillAppTests.RecordPanelControllerTests/testBenchmarkWarmPanelPresentation$' \
     2>&1 | tee "$report_dir/test.log"
 
@@ -116,7 +116,7 @@ mkdir -p "$modules"
 # the build driver otherwise selects SwiftBuild for string catalog resources.
 # A separate arena keeps this build-system fingerprint from cleaning the release arena.
 grdb_scratch=.artifacts/build/benchmarks-grdb
-grdb_build=(scripts/preflight.sh swift build --build-system native --configuration release --scratch-path "$grdb_scratch")
+grdb_build=(uv run --no-build --script scripts/build_driver.py build --build-system native --configuration release --scratch-path "$grdb_scratch")
 "${grdb_build[@]}" --target GRDB
 grdb_products="$("${grdb_build[@]}" --show-bin-path)"
 grdb_module_map="$PWD/$grdb_scratch/checkouts/GRDB.swift/Sources/GRDBSQLite/module.modulemap"

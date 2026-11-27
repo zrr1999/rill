@@ -6,7 +6,7 @@ Rill uses a separate InputMethodKit app with the pinned Rime 1.16.0 engine, Lua,
 
 ## Build and package
 
-Run `mise run ci` to validate the complete package, or use the local assembly commands in [CONTRIBUTING.md](../CONTRIBUTING.md). The assembled Rill app contains `Contents/Helpers/RillInputMethod.app`; signing covers nested libraries and helpers before the outer app. Ad-hoc builds cannot validate an authorized learning connection.
+Run `mise run package:smoke` to validate the complete package, or use the local assembly commands in [CONTRIBUTING.md](../CONTRIBUTING.md). The assembled Rill app contains `Contents/Helpers/RillInputMethod.app`; signing covers nested libraries and helpers before the outer app. Ad-hoc builds cannot validate an authorized learning connection.
 
 The bundle identifier is `dev.zrr.inputmethod.Rill`; the literal `.inputmethod.` segment is required for macOS discovery. The selectable mode is the same identifier with `.Hans` appended. Keep the packaged plist, IMK server and IPC signature identity aligned through `InputMethodPaths`. The old `dev.zrr.Rill.InputMethod` identifier is only used to detect a running legacy component before repair.
 
@@ -27,7 +27,7 @@ deployment nor the learning connection is required for appearance changes.
 
 `uv run --script scripts/tests/input_method_test.py` checks that a modified cached dictionary is rejected.
 
-`uv run --script scripts/validate_input_method.py bundle PATH/TO/RillInputMethod.app` checks the signed bundle with both a synthetic profile and the bundled default: deployment, plugin loading, six candidates, full-pinyin commits and copied userdb reopening. The probe uses resources from the app. Run it from the matching checkout so it can also verify the packaged template icon and its plist references. It does not modify real input sources or the user's profile. `RILL_IME_VALIDATION_BUNDLE=/path/to/RillInputMethod.app scripts/preflight.sh swift test --filter RimeProfileInstallerTests` also exercises the production installer with the default data in temporary directories.
+`uv run --script scripts/validate_input_method.py bundle PATH/TO/RillInputMethod.app` checks the signed bundle with both a synthetic profile and the bundled default: deployment, plugin loading, six candidates, full-pinyin commits and copied userdb reopening. The probe uses resources from the app. Run it from the matching checkout so it can also verify the packaged template icon and its plist references. It does not modify real input sources or the user's profile. `RILL_IME_VALIDATION_BUNDLE=/path/to/RillInputMethod.app uv run --no-build --script scripts/build_driver.py test --filter RimeProfileInstallerTests` also exercises the production installer with the default data in temporary directories.
 
 The packaged executable also supports `--probe-profile COPIED_PROFILE INPUTS_JSON OUTPUT_JSON` for controlled replay. The JSON input is an array of at most 32 keystroke strings. Always use a disposable copy: replay commits text and can change Rime frequencies. The output contains candidates and commits and must remain private when using personal dictionaries.
 
