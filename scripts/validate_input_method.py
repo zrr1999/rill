@@ -80,29 +80,62 @@ menu:
         (profile / "wanxiang.dict.yaml").write_text(
             "---\nname: wanxiang\nversion: '1'\nsort: by_weight\n"
             "use_preset_vocabulary: false\n...\n你好\tnihao\t100\n泥好\tnihao\t10\n"
-            "世界\tshijie\t100\n汉字\thanzi\t100\n"
+            "世界\tshijie\t100\n汉字\thanzi\t100\n漢語\thanyu\t100\n"
         )
-        subprocess.run(
-            [str(contents / "Helpers/rime_deployer"), "--build", str(profile), str(profile), str(profile / "build")],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
+        reverse = root / "traditional-source"
+        shutil.copytree(profile, reverse)
+        (reverse / "wanxiang.custom.yaml").write_text(
+            'patch:\n  "simplifier/opencc_config": t2s.json\n'
         )
+        for directory in (profile, reverse):
+            subprocess.run(
+                [str(contents / "Helpers/rime_deployer"), "--build",
+                 str(directory), str(directory), str(directory / "build")],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
+            )
         inputs = root / "inputs.json"
-        inputs.write_text(json.dumps(["nihao", "shijie", "hanzi"]))
         output = root / "output.json"
         executable = str(contents / "MacOS/RillInputMethod")
-        subprocess.run([executable, "--probe-profile", str(profile), str(inputs), str(output)],
-                       check=True, timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        first = json.loads(output.read_text())
+
+        def probe(directory: Path, readings: list[str], timeout: int = 30) -> list[dict]:
+            inputs.write_text(json.dumps(readings))
+            subprocess.run([executable, "--probe-profile", str(directory), str(inputs), str(output)],
+                           check=True, timeout=timeout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return json.loads(output.read_text())
+
+        installation = profile / "installation.yaml"
+        previous = "installation_id: rill-upgrade-test\nrime_version: '1.16.0'\n"
+        installation.write_text(previous)
+        # A newer engine must rebuild from the profile sources before accepting input.
+        shutil.rmtree(profile / "build")
+        dictionary = profile / "wanxiang.dict.yaml"
+        saved = root / dictionary.name
+        dictionary.rename(saved)
+        try:
+            probe(profile, ["hanzi"])
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            raise AssertionError("Opened a profile whose dictionary could not be rebuilt")
+        assert installation.read_text() == previous, "Failed deployment marked the engine current"
+        saved.rename(dictionary)
+        readings = ["nihao", "shijie", "hanzi"]
+        first = probe(profile, readings)
+        assert (profile / "build/wanxiang.prism.bin").is_file()
+        updated = installation.read_text()
+        assert "rill-upgrade-test" in updated and "1.16.0" not in updated
         assert first[0]["candidates"][:2] == ["你好", "泥好"], first
         assert first[0]["committed"] == "你好"
         assert first[1]["committed"] == "世界"
-        assert first[2]["committed"] == "漢字", "Bundled OpenCC conversion did not run"
+        assert first[2]["committed"] == "漢字", first
+        simplified = probe(reverse, ["hanyu"])
+        assert simplified[0]["committed"] == "汉语", simplified
         assert (profile / "wanxiang.userdb").is_dir()
         copied = root / "copied"
         shutil.copytree(profile, copied)
-        subprocess.run([executable, "--probe-profile", str(copied), str(inputs), str(output)],
-                       check=True, timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        assert json.loads(output.read_text()) == first
+        # A current profile can reopen the compiled cache without a deployment.
+        (copied / dictionary.name).unlink()
+        assert probe(copied, readings) == first
         # Fresh daily-use profile, entirely from the app; Squirrel and ~/Library/Rime are never read.
         default = root / "default"
         shutil.copytree(contents / "Resources/SharedData", default)
@@ -113,13 +146,10 @@ menu:
             [str(contents / "Helpers/rime_deployer"), "--build", str(default), str(default), str(default / "build")],
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180,
         )
-        inputs.write_text(json.dumps(["nihao", "shurufa", "zhongwen"]))
-        subprocess.run([executable, "--probe-profile", str(default), str(inputs), str(output)],
-                       check=True, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        fresh = json.loads(output.read_text())
+        fresh = probe(default, ["nihao", "shurufa", "zhongwen"], timeout=60)
         assert [item["committed"] for item in fresh] == ["你好", "输入法", "中文"], fresh
         assert all(len(item["candidates"]) == 6 for item in fresh), fresh
-    print("Packaged input method: lightweight pinyin default, Rime/plugins, candidates, commits and userdb passed.")
+    print("Packaged input method: pinyin, Rime plugins, candidates, commits, userdb and OpenCC in both directions passed.")
 
 
 def database_hashes(profile: Path) -> dict[str, str]:
@@ -184,7 +214,8 @@ def check_migration(args: argparse.Namespace) -> None:
         "reading_phrase_count_weight_tick_equal": True,
         "fixed_inputs": inputs,
         "identical_candidate_and_commit_replays": matches,
-        "engine": "packaged Rime 1.16.0 for both copies",
+        "engine": "packaged Rime for both copies",
+        "engine_sha256": hashlib.sha256((contents / "Frameworks/librime.1.dylib").read_bytes()).hexdigest(),
         "source_profiles_unchanged": True,
     }
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")

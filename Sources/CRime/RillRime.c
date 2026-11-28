@@ -11,6 +11,18 @@ static int initialized;
 static void *library_handle;
 static void *plugins[3];
 
+static int prepare_workspace(void) {
+    RimeConfig installation = {0};
+    int current = 0;
+    if (api->user_config_open("installation", &installation)) {
+        const char *version = api->config_get_cstring(&installation, "rime_version");
+        current = version && strcmp(version, api->get_version()) == 0;
+        api->config_close(&installation);
+    }
+    // Record the new engine version only after its compiled dictionaries are usable.
+    return current || (api->run_task("workspace_update") && api->run_task("installation_update"));
+}
+
 int rill_rime_open(const char *library, const char *user_data) {
     if (api) return 0;
     library_handle = dlopen(library, RTLD_NOW | RTLD_GLOBAL);
@@ -30,7 +42,7 @@ int rill_rime_open(const char *library, const char *user_data) {
         if (!plugins[i]) { rill_rime_close(); return 0; }
     }
     RIME_STRUCT(RimeTraits, traits);
-    const char *modules[] = {"default", "lua", "octagram", "predict", NULL};
+    const char *modules[] = {"default", "levers", "lua", "octagram", "predict", NULL};
     traits.shared_data_dir = user_data;
     traits.user_data_dir = user_data;
     traits.distribution_name = "Rill";
@@ -46,6 +58,7 @@ int rill_rime_open(const char *library, const char *user_data) {
     for (int i = 0; i < 3; ++i) {
         if (!api->find_module(names[i])) { rill_rime_close(); return 0; }
     }
+    if (!prepare_workspace()) { rill_rime_close(); return 0; }
     return 1;
 }
 

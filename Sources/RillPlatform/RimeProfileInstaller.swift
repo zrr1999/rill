@@ -133,7 +133,7 @@ public struct RimeProfileInstaller: Sendable {
       distribution_name: Rill
       distribution_version: '1'
       installation_id: 'rill-\(UUID().uuidString.lowercased())'
-      rime_version: '1.16.0'
+      rime_version: '1.18.0'
       sync_dir: '\(destination.appendingPathComponent("sync").path.replacingOccurrences(of: "'", with: "''"))'
       """
     try (installation + "\n").write(
