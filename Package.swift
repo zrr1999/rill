@@ -12,6 +12,9 @@ let package = Package(
     .executable(name: "RillInputMethod", targets: ["RillInputMethod"]),
   ],
   dependencies: [
+    // Both Hugging Face packages cap swift-crypto below 5. Use Apple's fixed
+    // release tag until their version ranges include it (GHSA-jwv7-rv4f-rff2).
+    .package(url: "https://github.com/apple/swift-crypto.git", revision: "refs/tags/5.0.3"),
     .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.12.0"),
     .package(
       url: "https://github.com/mattt/swift-toml.git",

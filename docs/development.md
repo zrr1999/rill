@@ -26,7 +26,7 @@ mise exec -- uv run --no-build --script scripts/build_driver.py test-domain --fi
 
 该入口保留锁文件校验，不能替代完整生产依赖图上的 CI 验证。工具链、SDK、依赖声明或构建参数变化时，相应缓存会失效；普通源码修改走增量构建。 相应的测试或打包命令附加 `--clean` 可使用干净构建，具体 CI 缓存策略见 [工作流配置](../.github/workflows/ci-tests.yml)。
 
-本地 Release 可以复用跨 worktree 的语音 worker 产物。构建驱动校验输入与产物，无法确认或缓存损坏时回退源码构建；CI 和正式公证发布关闭该缓存。
+本地增量 Release 在当前 worktree 缓存 SwiftPM 包清单，并固定编译器的彩色诊断选项，避免在终端和自动化工具间切换时重新编译。语音 worker 产物可以跨 worktree 复用。构建驱动校验 worker 的输入与产物，无法确认时回退源码构建。CI、正式公证发布和显式 `--worker-cache off` 的 Release 构建均关闭这两种缓存。
 
 ```bash
 mise exec -- uv run --no-build --script scripts/build_driver.py cache status

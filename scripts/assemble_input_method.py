@@ -6,6 +6,7 @@
 """Assemble and sign the standalone InputMethodKit frontend and its pinned Rime runtime."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import io
 import json
@@ -190,15 +191,23 @@ def sign_bundle(output: Path, identity: str) -> None:
     options = "runtime" if identity != "-" else "0"
     binaries = [*sorted((contents / "Frameworks").rglob("*.dylib")),
                 *sorted((contents / "Helpers").iterdir())]
+    file_ids = set()
     for binary in binaries:
         target = binary.resolve(strict=True)
         if not target.is_file() or not target.is_relative_to(output):
             raise ValueError(f"Signing target escapes the app bundle: {binary}")
-    for binary in binaries:
+        metadata = target.stat()
+        file_ids.add((metadata.st_dev, metadata.st_ino))
+
+    def sign(path: Path) -> None:
         subprocess.run([CODESIGN, "--force", "--options", options,
-                        *timestamp, "--sign", identity, "--", str(binary)], check=True)
-    subprocess.run([CODESIGN, "--force", "--options", options,
-                    *timestamp, "--sign", identity, "--", str(output)], check=True)
+                        *timestamp, "--sign", identity, "--", str(path)], check=True)
+
+    # Preserve signing order when multiple paths name the same file.
+    workers = 3 if len(file_ids) == len(binaries) else 1
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(sign, binaries))
+    sign(output)
     subprocess.run([CODESIGN, "--verify", "--deep", "--strict", "--", str(output)], check=True)
 
 
