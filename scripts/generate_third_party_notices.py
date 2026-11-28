@@ -136,7 +136,11 @@ def load_resolved_pins(path: Path) -> dict[str, dict[str, str]]:
         if isinstance(version_value, str) and version_value:
             version = version_value
         elif isinstance(branch_value, str) and branch_value:
-            version = f"branch:{branch_value}"
+            version = (
+                branch_value.removeprefix("refs/tags/")
+                if branch_value.startswith("refs/tags/")
+                else f"branch:{branch_value}"
+            )
         else:
             version = "revision-only"
         result[identity] = {
