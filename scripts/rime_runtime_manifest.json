@@ -1,30 +1,30 @@
 {
-  "version": "1.16.0",
-  "archive_url": "https://github.com/rime/librime/releases/download/1.16.0/rime-a251145-macOS-universal.tar.bz2",
-  "archive_sha256": "e4c9a8767a456f2550f1242921b7656c6e6be088c89a921274bd5d4404f58b99",
+  "version": "1.18.0",
+  "archive_url": "https://github.com/rime/librime/releases/download/1.18.0/rime-1.18.0-macOS-universal.tar.bz2",
+  "archive_sha256": "e82c4986b4efae96887d25097cbf712b6f47ab1cb27a36d4222dff9ff597568e",
   "files": [
     {
       "sha256": "4ff1e4016dab1ec4b3d8e09b10bff294f0c677da8526737ed923d11700cd61f8",
       "path": "share/cmake/rime/RimeConfig.cmake"
     },
     {
-      "sha256": "922aad7de56473dd13e25836b0eecfa3698e07506154f418cf27e1f5e268e8b3",
-      "path": "lib/librime.1.16.0.dylib"
+      "sha256": "e8b44d60ca4a082e8e1a50060d9e3712ad1546bf5dede493781375029a30c0f9",
+      "path": "lib/librime.1.18.0.dylib"
     },
     {
-      "sha256": "fc954ffc250a4aafced5057fd903e441c653048f92ce2943ad4ebd930b01f56d",
+      "sha256": "aed815351bca1f807444302f108ecd99227d48c5ef9115ef969b87280e3eac7e",
       "path": "lib/rime-plugins/librime-predict.dylib"
     },
     {
-      "sha256": "3fe3edf02ed9da59773ed9d22acfb98db1f394fa398435520d94dd875981d6b2",
+      "sha256": "dc9098de28c2f5c1865d025afbb046f7d463e7566b6320e68684c50313d2a3a4",
       "path": "lib/rime-plugins/librime-lua.dylib"
     },
     {
-      "sha256": "94b39b89a852aaf16bd8fdd16858a642fd54720af8f1006304fae2008adcfbd5",
+      "sha256": "8faf45f591bf4acaf6f0b895c58c6eb7e9d1a6de028acdae869ce0e111a5ba27",
       "path": "lib/rime-plugins/librime-octagram.dylib"
     },
     {
-      "sha256": "35e699138d85a572b98e6232dc9c6f633d929ae43e5bfd3f0972904e46be3e04",
+      "sha256": "c9fdb013dd274668c94f2201e65509c5024e65b2d8be4c6244ec4ab8d7b2de97",
       "path": "lib/pkgconfig/rime.pc"
     },
     {
@@ -32,31 +32,31 @@
       "path": "include/rime_api_deprecated.h"
     },
     {
-      "sha256": "b2ec30a89125f0fe5e91ea6cb209e8ae71e5f67fa87bc3d4a1dd3be3b5753b5a",
+      "sha256": "654f82b7932de43f31fb34c3ff1b84841bdd1f69cda3c547a121c87d53435f90",
       "path": "include/rime_levers_api.h"
     },
     {
-      "sha256": "f5a64254e98c1c12ce6628f5d540bcd4e4b542ec287b4873c0b0ce4ed1bece99",
+      "sha256": "2387673bb97f48d55ff3ad391e1ad9ff054a355dcb1941bf3d8a60302bbe371a",
       "path": "include/rime_api_stdbool.h"
     },
     {
-      "sha256": "6eb5629162c44761e7b878f1b122f464de5c8685bd3cd5ac1e8519badc6d6424",
+      "sha256": "92deb0176e1e9625876184ff740c74694b9b216b14e64d8702ebe1b247514814",
       "path": "include/rime_api.h"
     },
     {
-      "sha256": "5cce20263c601de2ef7ed96de7645764d83854ac6d5baef0b628c8e2cdd39cc3",
+      "sha256": "56323b7924f043064f4d20faa07d28d63c4d9c9c80177cfbf62787cc9ca07aa0",
       "path": "bin/rime_dict_manager"
     },
     {
-      "sha256": "77f08a044302e92859ca2d77edf20880f9a457c8a214d7317031e1e41d363d2e",
+      "sha256": "100a088dd125c70d541a3379caefb0419b5acf67947fdfc21139fcdf6b5dc1e4",
       "path": "bin/rime_deployer"
     },
     {
-      "sha256": "66afe541a399ea36548ecb469c0159ad425836e58d941ee663b888422b43ed25",
+      "sha256": "330e55f8dee4a5aa42066986ba2c979e5110ce3ff19fca2a78651bdf7bf01359",
       "path": "bin/rime_patch"
     },
     {
-      "sha256": "ef60437f8d52779eba81a5912501dc867825b785ad4ca3f059a9922740844fe2",
+      "sha256": "134792d9cd80d8c9498c26c591b522e2614995c6d71aaa5ae4d4a9739d6a4fd1",
       "path": "bin/rime_table_decompiler"
     }
   ]

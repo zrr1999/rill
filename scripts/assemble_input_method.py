@@ -133,7 +133,7 @@ def assemble(executable: Path, output: Path) -> None:
     shutil.copy2(executable, contents / "MacOS/RillInputMethod")
     subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks",
                     str(contents / "MacOS/RillInputMethod")], check=True)
-    shutil.copy2(runtime / "lib/librime.1.16.0.dylib", contents / "Frameworks/librime.1.dylib")
+    shutil.copy2(runtime / "lib" / f"librime.{RIME_MANIFEST['version']}.dylib", contents / "Frameworks/librime.1.dylib")
     shutil.copytree(runtime / "lib/rime-plugins", contents / "Frameworks/rime-plugins", dirs_exist_ok=True)
     for name in ("rime_deployer", "rime_dict_manager"):
         target = contents / "Helpers" / name
