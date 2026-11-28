@@ -29,8 +29,6 @@ PROJECT = Path(__file__).resolve().parent.parent
 RELEASE_ARGUMENTS = [
     "--build-system",
     "swiftbuild",
-    "--manifest-cache",
-    "none",
     "--arch",
     "arm64",
 ]
@@ -634,11 +632,16 @@ def release(arguments: list[str]) -> None:
     parser.add_argument("--result-file", type=Path)
     parser.add_argument("--worker-cache", choices=("auto", "off"), default="auto")
     options = parser.parse_args(arguments)
-    context = BuildContext(PROJECT, "release", RELEASE_ARGUMENTS)
     mode = "off" if os.environ.get("CI", "").lower() == "true" else options.worker_cache
+    if mode == "auto":
+        # SwiftBuild treats a change in diagnostic color as a compiler input.
+        swift_args = [*RELEASE_ARGUMENTS, "--manifest-cache", "local", "--color-diagnostics"]
+    else:
+        swift_args = [*RELEASE_ARGUMENTS, "--manifest-cache", "none"]
+    context = BuildContext(PROJECT, "release", swift_args)
     with context.lock():
         bin_path = Path(
-            context.swift("build", RELEASE_ARGUMENTS + ["--show-bin-path"], quiet=True)
+            context.swift("build", swift_args + ["--show-bin-path"], quiet=True)
         )
         if options.show_bin_path:
             print(bin_path)
@@ -675,11 +678,11 @@ def release(arguments: list[str]) -> None:
                     if product != WORKER:
                         context.build(
                             "build",
-                            RELEASE_ARGUMENTS + ["--product", product],
+                            swift_args + ["--product", product],
                             environment,
                         )
             else:
-                context.build("build", RELEASE_ARGUMENTS, environment)
+                context.build("build", swift_args, environment)
             verify_inputs()
             if identity is not None:
                 try:
@@ -689,7 +692,7 @@ def release(arguments: list[str]) -> None:
                     if cached_products:
                         context.build(
                             "build",
-                            RELEASE_ARGUMENTS + ["--product", WORKER],
+                            swift_args + ["--product", WORKER],
                             environment,
                         )
                     cached_products = None

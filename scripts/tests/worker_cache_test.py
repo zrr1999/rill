@@ -161,7 +161,7 @@ class WorkerCacheTests(unittest.TestCase):
         self.assertIsNotNone(self.cache.read(key))
         self.assertFalse(list(self.cache.entries.glob(".pending-*")))
 
-    def run_release(self, *, source=None):
+    def run_release(self, *, source=None, mode="auto"):
         root = source or self.source
         result = self.root / ("receipt-" + root.name + ".json")
 
@@ -196,7 +196,7 @@ class WorkerCacheTests(unittest.TestCase):
             patch.object(build, "verify_checkouts"),
             patch.object(build.subprocess, "run"),
         ):
-            build.release(["--worker-cache", "auto", "--result-file", str(result)])
+            build.release(["--worker-cache", mode, "--result-file", str(result)])
         return json.loads(result.read_text())
 
     def test_cross_checkout_hit_builds_current_app_and_future_input_method(self):
@@ -213,6 +213,9 @@ class WorkerCacheTests(unittest.TestCase):
         self.assertEqual(second["workerCache"]["status"], "hit")
         products = [args[args.index("--product") + 1] for args in self.calls]
         self.assertEqual(products, ["RillApp", "RillInputMethod"])
+        for args in self.calls:
+            self.assertEqual(args[args.index("--manifest-cache") + 1], "local")
+            self.assertIn("--color-diagnostics", args)
         directory = Path(second["productsDirectory"])
         self.assertEqual(
             (directory / "Sample_RillApp.bundle/data").read_text(), "new branch UI"
@@ -223,6 +226,14 @@ class WorkerCacheTests(unittest.TestCase):
         self.assertEqual(
             (directory / build.WORKER).read_text(), "RillSpeechWorker compiled"
         )
+
+    def test_ci_and_explicit_cache_opt_out_build_without_cached_manifests(self):
+        for ci, mode in (("true", "auto"), ("false", "off")):
+            with self.subTest(ci=ci, mode=mode), patch.dict(os.environ, {"CI": ci}):
+                receipt = self.run_release(mode=mode)
+                self.assertEqual(receipt["workerCache"]["status"], "off")
+                args = self.calls[-1]
+                self.assertEqual(args[args.index("--manifest-cache") + 1], "none")
 
     def test_source_drift_rejects_cache_publication(self):
         with (
