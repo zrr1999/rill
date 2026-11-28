@@ -31,13 +31,20 @@ def unique_keys(pairs):
 
 def scan(report):
     swift = ROOT / "Package.resolved"
-    pins = json.loads(read(swift), object_pairs_hook=unique_keys)["pins"]
+    resolved = json.loads(read(swift), object_pairs_hook=unique_keys)
+    pins = resolved["pins"]
     if not pins or not isinstance(pins, list):
         raise ValueError("empty or invalid Swift lockfile")
     versions, commits = set(), {}
     for pin in pins:
         name, url, state = pin["identity"], pin["location"], pin["state"]
-        sha, version = state["revision"], state["version"]
+        sha, version = state["revision"], state.get("version")
+        if version is None:
+            # SwiftPM records explicit release-tag overrides in the branch field.
+            tag = re.fullmatch(r"refs/tags/([0-9]+\.[0-9]+\.[0-9]+)", state.get("branch", ""))
+            if not tag:
+                raise ValueError(f"Swift pin has no release version: {name!r}")
+            version = state["version"] = tag[1]
         if (
             pin["kind"] != "remoteSourceControl"
             or not name
@@ -62,7 +69,7 @@ def scan(report):
             *(ROOT / p.decode() for p in tracked.split(b"\0") if p),
         }
     )
-    expected = {swift: versions}
+    expected = {}
     for lock in locks:
         packages = tomllib.loads(read(lock).decode())["package"]
         expected[lock] = {("PyPI", pin["name"], pin["version"]) for pin in packages}
@@ -70,6 +77,11 @@ def scan(report):
             raise ValueError(f"empty Python lockfile: {lock}")
 
     with tempfile.TemporaryDirectory(prefix="rill-osv-") as tmp:
+        if any("branch" in pin["state"] for pin in pins):
+            # OSV's Swift extractor reads state.version. Keep the Git SHA scan as well.
+            swift = Path(tmp) / "Package.resolved"
+            swift.write_text(json.dumps(resolved))
+        expected[swift] = versions
         inventory = Path(tmp) / "swift-commits.json"
         # The native Swift extractor supplies URL/version but omits state.revision.
         packages = [
