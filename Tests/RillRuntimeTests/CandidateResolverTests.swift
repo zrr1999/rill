@@ -5,33 +5,23 @@
 import XCTest
 
 final class CandidateResolverTests: XCTestCase {
-  func testAcceptingSelectionsResolvesThePendingCase() async {
-    let eventBus = EventBus()
+  func testAcceptsSelectionWhileRequestDeliveryIsBlocked() async {
+    let eventBus = EventBus(maxBufferedEvents: 1)
     let resolver = CandidateResolver(eventBus: eventBus)
-    let candidateSet = CandidateSet(
-      surfaceText: "Jon",
-      range: TextRange(lowerBound: 0, upperBound: 3),
-      candidates: [
-        Candidate(text: "Jon", confidence: 0.45, source: .asr),
-        Candidate(text: "John", confidence: 0.43, source: .asr),
-      ]
-    )
-    let caseData = CandidateResolutionCase(
-      runID: UUID(),
-      recognitionResult: RecognitionResult(
-        rawText: "Jon",
-        bestText: "Jon",
-        candidateSets: [candidateSet]
-      ),
-      policy: UncertaintyPolicy(mode: .blocking, confidenceThreshold: 0.7, timeoutSeconds: 5)
-    )
+    let caseData = makeCase(timeoutSeconds: 5)
+    let candidateSet = caseData.recognitionResult.candidateSets[0]
+    let barrier = UUID()
+    await eventBus.publishBarrier(barrier)
 
-    let task = Task {
-      await resolver.resolve(caseData)
-    }
+    let task = Task { await resolver.resolve(caseData) }
     await waitUntilPending(resolver)
-    _ = await resolver.accept(caseID: caseData.id, selections: [candidateSet.id: candidateSet.candidates[1].id])
+    let accepted = await resolver.accept(
+      caseID: caseData.id, selections: [candidateSet.id: candidateSet.candidates[1].id])
+    XCTAssertTrue(accepted)
 
+    var deliveries = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
+    let firstDelivery = await deliveries.next()
+    XCTAssertEqual(firstDelivery, .barrier(barrier))
     let outcome = await task.value
     XCTAssertTrue(outcome.resolvedByUser)
     XCTAssertEqual(outcome.result.bestText, "John")
