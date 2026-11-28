@@ -481,6 +481,7 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
 
   private var issues: [WorkflowFileIssue]
   private var recordsByID: [UUID: WorkflowFileRecord]
+  private var afterNextDelete: (@Sendable () async -> Void)?
   private let rejectsSaves: Bool
 
   init(
@@ -575,11 +576,18 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
     return record
   }
 
+  func onNextDelete(_ action: @escaping @Sendable () async -> Void) {
+    afterNextDelete = action
+  }
+
   func delete(fileURL: URL, expected: WorkflowFileExpectation) async throws {
     guard let record = recordsByID.values.first(where: { $0.fileURL == fileURL }) else { throw WorkflowFileConflict.changed }
     if case .source(let source) = expected, record.source != source { throw WorkflowFileConflict.changed }
     if case .missing = expected { throw WorkflowFileConflict.changed }
     recordsByID.removeValue(forKey: record.workflow.id)
+    let action = afterNextDelete
+    afterNextDelete = nil
+    await action?()
   }
 
   func delete(fileURL: URL) async throws {

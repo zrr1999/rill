@@ -307,6 +307,51 @@ extension AppModelTests {
     XCTAssertTrue(model.workflowLibrary.customWorkflows.isEmpty)
   }
 
+  func testDeletingWorkflowPreservesSurvivorWhenFilesReloadBeforeDeleteReturns() async throws {
+    let files = UITestWorkflowFileStore()
+    let removed = makeNamedWorkflow("First")
+    let survivor = makeNamedWorkflow("Second")
+    for workflow in [removed, survivor] {
+      let url = files.configurationDirectoryURL.appendingPathComponent("\(workflow.name).toml")
+      _ = try await files.saveDocument(.init(workflow: workflow, isEnabled: true), replacing: url, expected: .missing)
+    }
+    let model = makeHarness(workflowFileStore: files).model
+    await model.waitForInitialVoiceConfiguration()
+    await model.reloadWorkflowFiles()
+    XCTAssertEqual(model.workflowLibrary.customWorkflows.map(\.id), [removed.id, survivor.id])
+
+    await files.onNextDelete { await model.reloadWorkflowFiles() }
+    await model.deleteCustomWorkflow(removed)
+
+    let remaining = await files.records()
+    XCTAssertEqual(remaining.map { $0.workflow.id }, [survivor.id])
+    XCTAssertEqual(model.workflowLibrary.customWorkflows.map(\.id), [survivor.id])
+    XCTAssertEqual(model.workflowLibrary.workflowFileURLsByID[survivor.id], remaining.first?.fileURL)
+  }
+
+  func testDeletingWorkflowPreservesReplacementLoadedBeforeDeleteReturns() async throws {
+    let files = UITestWorkflowFileStore()
+    let original = makeNamedWorkflow("Original")
+    let saved = try await files.saveDocument(.init(workflow: original, isEnabled: true), replacing: nil, expected: .missing)
+    let model = makeHarness(workflowFileStore: files).model
+    await model.waitForInitialVoiceConfiguration()
+    await model.reloadWorkflowFiles()
+
+    var replacement = original
+    replacement.name = "Replacement"
+    let document = WorkflowDocument(workflow: replacement, isEnabled: false)
+    let record = WorkflowFileRecord(workflow: replacement, isEnabled: false, fileURL: saved.fileURL, source: try files.encodeDocument(document))
+    await files.onNextDelete {
+      await files.replaceLoadResult(records: [record], issues: [])
+      await model.reloadWorkflowFiles()
+    }
+    await model.deleteCustomWorkflow(original)
+
+    XCTAssertEqual(model.workflowLibrary.customWorkflows.map(\.name), ["Replacement"])
+    XCTAssertEqual(model.workflowLibrary.workflowFileSourcesByID[original.id], record.source)
+    XCTAssertFalse(model.isWorkflowEnabled(replacement))
+  }
+
   func testNewWorkflowWithDuplicateNameGetsNumericSuffix() async throws {
     let harness = makeHarness()
     await harness.model.waitForInitialVoiceConfiguration()

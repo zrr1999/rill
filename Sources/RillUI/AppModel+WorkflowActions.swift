@@ -1212,11 +1212,16 @@ extension AppModel {
   public func deleteCustomWorkflow(_ workflow: WorkflowDefinition) async {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
     guard !isBuiltInWorkflow(workflow) else { return }
-    guard let index = self.workflowLibrary.customWorkflows.firstIndex(where: { $0.id == workflow.id }) else { return }
+    guard self.workflowLibrary.customWorkflows.contains(where: { $0.id == workflow.id }) else { return }
     if let workflowFileStore, let fileURL = self.workflowLibrary.workflowFileURLsByID[workflow.id] {
       do {
         guard let source = self.workflowLibrary.workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
         try await workflowFileStore.delete(fileURL: fileURL, expected: .source(source))
+        if let currentURL = self.workflowLibrary.workflowFileURLsByID[workflow.id],
+          currentURL != fileURL || self.workflowLibrary.workflowFileSourcesByID[workflow.id] != source
+        {
+          return
+        }
       } catch {
         self.workflowLibrary.workflowLibraryErrorPresentation = { language in
           return String(
@@ -1228,7 +1233,7 @@ extension AppModel {
       }
     }
     self.workflowLibrary.hasModifiedWorkflowLibrary = true
-    self.workflowLibrary.customWorkflows.remove(at: index)
+    self.workflowLibrary.customWorkflows.removeAll { $0.id == workflow.id }
     self.workflowLibrary.workflowFileURLsByID.removeValue(forKey: workflow.id)
     self.workflowLibrary.workflowFileSourcesByID.removeValue(forKey: workflow.id)
     self.workflowLibrary.outputStatesByID.removeValue(forKey: workflow.id)
