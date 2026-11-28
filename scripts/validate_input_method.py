@@ -103,8 +103,27 @@ menu:
                            check=True, timeout=timeout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return json.loads(output.read_text())
 
+        installation = profile / "installation.yaml"
+        previous = "installation_id: rill-upgrade-test\nrime_version: '1.16.0'\n"
+        installation.write_text(previous)
+        # A newer engine must rebuild from the profile sources before accepting input.
+        shutil.rmtree(profile / "build")
+        dictionary = profile / "wanxiang.dict.yaml"
+        saved = root / dictionary.name
+        dictionary.rename(saved)
+        try:
+            probe(profile, ["hanzi"])
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            raise AssertionError("Opened a profile whose dictionary could not be rebuilt")
+        assert installation.read_text() == previous, "Failed deployment marked the engine current"
+        saved.rename(dictionary)
         readings = ["nihao", "shijie", "hanzi"]
         first = probe(profile, readings)
+        assert (profile / "build/wanxiang.prism.bin").is_file()
+        updated = installation.read_text()
+        assert "rill-upgrade-test" in updated and "1.16.0" not in updated
         assert first[0]["candidates"][:2] == ["你好", "泥好"], first
         assert first[0]["committed"] == "你好"
         assert first[1]["committed"] == "世界"
@@ -114,6 +133,8 @@ menu:
         assert (profile / "wanxiang.userdb").is_dir()
         copied = root / "copied"
         shutil.copytree(profile, copied)
+        # A current profile can reopen the compiled cache without a deployment.
+        (copied / dictionary.name).unlink()
         assert probe(copied, readings) == first
         # Fresh daily-use profile, entirely from the app; Squirrel and ~/Library/Rime are never read.
         default = root / "default"
